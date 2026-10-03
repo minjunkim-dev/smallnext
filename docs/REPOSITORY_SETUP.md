@@ -25,7 +25,9 @@
 
 Claude 재검토는 댓글 첫 줄에 `@claude review` 또는 `@claude security review`를 씁니다.
 `ai:review` 라벨을 제거한 후 다시 지정해도 재검토합니다. `ai:skip`은 Claude 자동 리뷰를 중지합니다.
-봇 이벤트는 재실행하지 않습니다. 같은 대상의 이전 리뷰 실행은 새 요청이 취소합니다.
+봇 이벤트는 재실행하지 않습니다. 같은 대상의 이전 리뷰 작업은 권한 확인을 통과한 새 요청만 취소합니다.
+읽기 전용 권한 확인 작업과 Secret을 사용하는 리뷰 작업을 분리합니다.
+봇 댓글·일반 댓글·거절된 요청은 실행 중인 리뷰를 취소하지 않습니다.
 동일 이벤트의 반복 검토가 필요하면 Actions의 `Claude issue and PR review`를 수동 실행합니다.
 
 Claude는 작업별 GitHub 토큰을 사용합니다. 댓글 작성자는 `github-actions[bot]`으로 표시됩니다.
