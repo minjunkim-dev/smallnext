@@ -33,7 +33,8 @@ Claude는 작업별 GitHub 토큰을 사용합니다. 댓글 작성자는 `githu
 CI는 Ubuntu 패키지 저장소에서 `bubblewrap`·`socat`을 설치하고 사용자 네임스페이스 격리 실행을 확인합니다.
 Ubuntu 24.04의 AppArmor 제한이 켜져 있으면 `/usr/bin/bwrap`에만 사용자 네임스페이스 생성 권한을 부여합니다.
 시스템 전체의 AppArmor 정책과 네임스페이스 제한은 유지합니다.
-실패 시 마지막 결과에서 고정된 오류 분류만 보고합니다. 모델 메시지와 토큰 값은 출력하지 않습니다.
+실패 시 SDK의 구조화된 오류 코드와 종료 상태에서 고정된 분류만 보고합니다.
+모델 답변과 자유 형식 오류 문구는 원인 분류에 사용하지 않습니다. 모델 메시지와 토큰 값은 출력하지 않습니다.
 격리 도구가 없으면 실행을 실패로 처리합니다. 인증 환경 변수 제거를 끄는 우회는 사용하지 않습니다.
 코드 쓰기와 병합 권한은 없습니다. `@claude implement`는 이 워크플로의 지원 명령이 아닙니다.
 구현은 승인된 Issue를 로컬 Claude Code/Codex에 전달합니다. Codex 원격 작업은 별도 환경 연결 후 사용합니다.
@@ -107,7 +108,7 @@ PR과 Repository hygiene 검사를 요구하고 강제 푸시와 삭제를 차�
 | main·squash·병합 후 브랜치 삭제 | GitHub API로 설정 확인 |
 | main 보호 | rulesets API HTTP 403. 작업 규칙만 적용 |
 | Action 허용 목록·리뷰 라벨 | 고정 SHA 두 개와 `ai:review`·`ai:skip`을 저장하고 API로 재확인 |
-| Claude 인증 | Actions Secret `CLAUDE_CODE_OAUTH_TOKEN` 등록 확인. 값은 읽거나 기록하지 않음. 최초 토큰 미등록 실패 후 격리 도구 누락을 확인했고 실제 검토 재검증 진행 |
+| Claude 인증·실행 | Actions Secret `CLAUDE_CODE_OAUTH_TOKEN` 등록 확인. 값은 읽거나 기록하지 않음. [실행 검사](https://github.com/minjunkim-dev/smallnext/actions/runs/37125241622)에서 격리 검사 통과 후 Claude 종료 오류 확인. 실제 리뷰 댓글 없음. SDK 오류 코드로 원인 재검증 진행 |
 | Codex 저장소 접근 | GitHub 앱 설치 화면과 Codex 저장소 목록에서 Smallnext 접근 확인 |
 | Codex 자동 코드 리뷰 | 계정 설정에 모든 PR 검토·매 푸시마다 실행 저장 확인 |
 | Codex 자동 보안 리뷰 | 계정 설정에 모든 PR 검토·코드 리뷰와 함께 실행 저장 확인. 자동 보고 Critical·High, 수동 보고 Critical·High·Medium |

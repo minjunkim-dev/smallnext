@@ -3,41 +3,55 @@
 import json
 import os
 from pathlib import Path
-import re
 
 
-SUBTYPES = {"success", "error_during_execution", "error_max_turns", "error_max_budget_usd"}
-CATEGORIES = (
-    ("authentication", r"authenticat|invalid.api.key|invalid.token|token.expired|\b401\b"),
-    ("quota", r"rate.limit|quota|credit.balance|usage.limit|out.of.credits|extra.usage|\b429\b"),
-    ("turn_limit", r"max.turns|maximum.turns|turn.limit"),
-    ("permission", r"permission.denied|not.authorized|forbidden|\b403\b"),
-    ("isolation", r"bubblewrap|bwrap|sandbox"),
-    ("network", r"ECONN|ENOTFOUND|fetch.failed|network.error|timed.out"),
-)
+SUBTYPES = {"success", "error_during_execution", "error_max_turns", "error_max_budget_usd",
+            "error_max_structured_output_retries"}
+SUBTYPE_CATEGORIES = {"error_max_turns": "turn_limit", "error_max_budget_usd": "quota",
+                      "error_max_structured_output_retries": "invalid_request"}
+SDK_ERRORS = {"authentication_failed": "authentication", "oauth_org_not_allowed": "authentication",
+              "billing_error": "billing", "rate_limit": "quota", "overloaded": "provider",
+              "invalid_request": "invalid_request", "model_not_found": "invalid_request",
+              "server_error": "provider", "unknown": "unknown", "max_output_tokens": "output_limit"}
+API_STATUSES = {400: "invalid_request", 401: "authentication", 402: "billing", 403: "permission",
+                404: "invalid_request", 413: "invalid_request", 429: "quota", 500: "provider", 529: "provider"}
 
 
 def summarize(messages):
     if not isinstance(messages, list):
         return {"category": "unavailable"}
-    result = next(
-        (item for item in reversed(messages) if isinstance(item, dict) and item.get("type") == "result"),
-        {},
+    result_index = next(
+        (index for index in range(len(messages) - 1, -1, -1)
+         if isinstance(messages[index], dict) and messages[index].get("type") == "result"),
+        None,
     )
-    # Inspect only the final result. Never include prompts, tool output, or message text in the report.
-    text = result.get("result", "")
-    if not isinstance(text, str):
-        text = ""
-    errors = result.get("errors", [])
-    if isinstance(errors, list):
-        text += " ".join(error for error in errors if isinstance(error, str))
-    category = next((name for name, pattern in CATEGORIES if re.search(pattern, text, re.I)), "unknown")
+    if result_index is None:
+        return {"category": "unavailable"}
+    result = messages[result_index]
+    # SDK metadata only. Model prose, tool output, and free-form errors cannot establish a cause.
     subtype = result.get("subtype")
+    subtype = subtype if isinstance(subtype, str) and subtype in SUBTYPES else "unknown"
+    category = SUBTYPE_CATEGORIES.get(subtype, "unknown")
+    status = result.get("api_error_status")
+    status = status if type(status) is int and status in API_STATUSES else None
+    sdk_error = None
+    if result.get("is_error") is True:
+        last_assistant = next(
+            (item for item in reversed(messages[:result_index])
+             if isinstance(item, dict) and item.get("type") == "assistant"), {},
+        )
+        error = last_assistant.get("error")
+        if isinstance(error, str) and error in SDK_ERRORS:
+            sdk_error = error
+        if category == "unknown":
+            category = API_STATUSES.get(status, SDK_ERRORS.get(sdk_error, "unknown"))
     turns = result.get("num_turns")
     return {
         "category": category,
-        "subtype": subtype if subtype in SUBTYPES else "unknown",
+        "subtype": subtype,
         "turns": turns if type(turns) is int and 0 <= turns <= 10000 else None,
+        "sdk_error": sdk_error,
+        "api_status": status,
     }
 
 
