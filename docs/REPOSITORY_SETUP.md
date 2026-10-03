@@ -106,7 +106,7 @@ PR과 Repository hygiene 검사를 요구하고 강제 푸시와 삭제를 차�
 | Codex 자동 코드 리뷰 | 계정 설정에 모든 PR 검토·매 푸시마다 실행 저장 확인 |
 | Codex 자동 보안 리뷰 | 계정 설정에 모든 PR 검토·코드 리뷰와 함께 실행 저장 확인. 자동 보고 Critical·High, 수동 보고 Critical·High·Medium |
 | main 병합·CI | [PR #16](https://github.com/minjunkim-dev/smallnext/pull/16)을 squash 병합. 커밋 `68f6576817cb5959ba869660ff3fc2c0efb58c49`의 [main 검사](https://github.com/minjunkim-dev/smallnext/actions/runs/37120441629) 통과 |
-| Codex 실제 응답 | 연결 전 PR #16의 코드·보안 리뷰 요청에는 봇 응답 없음. 연결 후 실제 응답과 검토 SHA 확인 대기 |
+| Codex 실제 응답 | [PR #18 봇 응답](https://github.com/minjunkim-dev/smallnext/pull/18#issuecomment-5969297999)에서 PR 생성 시 자동 코드·보안 리뷰 완료 확인. 검토 SHA `423753bdfa6fc1438a9cac5b4f67394adfc5d0f5` |
 
 브라우저 재시작과 GitHub 본인 인증 후 계정 설정을 확인했습니다.
 PR 생성·CI 통과는 Secret 등록, 계정 연결, AI 응답을 증명하지 않습니다.
