@@ -108,8 +108,10 @@ jobs:
         run: |
           sudo chown "$USER" /dev/kvm
           sudo chmod u+rw /dev/kvm
-          sdkmanager "system-images;android-35;google_apis;x86_64" "emulator"
-          echo no | avdmanager create avd --force --name SmallnextCI \
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
+            "system-images;android-35;google_apis;x86_64" "emulator"
+          echo no | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" \
+            create avd --force --name SmallnextCI \
             --package "system-images;android-35;google_apis;x86_64"
           "$ANDROID_HOME/emulator/emulator" -avd SmallnextCI -no-window \
             -gpu swiftshader_indirect -no-audio -no-boot-anim -no-snapshot -no-metrics \

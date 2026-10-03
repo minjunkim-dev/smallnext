@@ -3,7 +3,7 @@
 검증일: 2026-10-03 KST.
 검증 대상: `chore/initial-monorepo-setup` 작업 브랜치.
 
-## 통과한 검사
+## 로컬에서 통과한 검사
 
 | 대상 | 확인 결과 |
 | --- | --- |
@@ -28,12 +28,18 @@
 
 ## 아직 확인하지 않은 항목
 
-- GitHub에서 새 CI 워크플로의 실행과 통과.
 - iPhone·Android 실기기의 실행, 서명, 스토어 설치.
 - 목표·행동 기능, 실제 Firebase 인증, AI, 기기 간 동기화.
 - 실제 도메인의 인증서 발급, 관리형 DB 연결, 운영 배포, DB 백업 복구.
 
-GitHub Issue 생성 요청은 자동 승인 검토에서 거부되었습니다.
-검토 사유는 Issue 등록과 설명문에 대한 사용자의 명시적 승인이 없다는 것입니다.
-원격 등록 전에 로컬 셋업과 검증 결과를 검토할 수 있도록 준비했습니다.
-이 기록은 원격 CI나 운영 배포의 완료를 뜻하지 않습니다.
+## GitHub 등록과 원격 CI
+
+사용자의 등록 승인 후 [Issue #13](https://github.com/minjunkim-dev/smallnext/issues/13)과
+[PR #14](https://github.com/minjunkim-dev/smallnext/pull/14)를 등록했습니다.
+초기 원격 실행에서 iOS 빌드·테스트, Android 빌드·lint,
+API 검사와 PostgreSQL 테스트가 통과했습니다.
+Android 에뮬레이터 단계의 `sdkmanager` 경로 오류를 수정했습니다.
+
+위 표는 로컬 검증 결과입니다.
+최종 커밋의 원격 CI 결과는 [PR 검사 목록](https://github.com/minjunkim-dev/smallnext/pull/14/checks)에서 확인합니다.
+실기기·제품 기능·운영 배포의 검증 결과는 포함하지 않습니다.
