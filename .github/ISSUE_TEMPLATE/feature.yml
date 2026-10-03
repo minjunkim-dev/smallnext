@@ -21,3 +21,13 @@ body:
       label: 완료 조건과 확인 방법
     validations:
       required: true
+  - type: textarea
+    id: flag
+    attributes:
+      label: 첫 병합 범위와 피처 플래그
+      description: 작은 첫 변경, 플래그 기본값 OFF, 담당자, 제거 기한을 적습니다. 해당 없으면 이유를 적습니다.
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: 선행 결정과 제외 범위
+      description: 선행 Issue와 이번 변경에서 구현하지 않는 항목을 적습니다.
