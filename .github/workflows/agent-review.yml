@@ -65,6 +65,13 @@ jobs:
             echo '::error::Missing CLAUDE_CODE_OAUTH_TOKEN; no AI review was performed'
             exit 1
           fi
+      - name: Install and verify subprocess isolation
+        if: steps.context.outputs.run == 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y bubblewrap socat
+          bwrap --version
+          bwrap --unshare-user --ro-bind / / -- /usr/bin/true
       - name: Review and post findings
         if: steps.context.outputs.run == 'true'
         uses: anthropics/claude-code-action@12dd8d74c712f5f3669365b2369b558c495b1104 # reviewed v1, shared with BGLike
