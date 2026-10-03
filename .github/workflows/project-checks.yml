@@ -93,9 +93,6 @@ jobs:
     if: needs.scope.outputs.android == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
-    env:
-      ANDROID_USER_HOME: ${{ runner.temp }}/android-user
-      ANDROID_AVD_HOME: ${{ runner.temp }}/android-user/avd
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -105,7 +102,12 @@ jobs:
           distribution: temurin
           java-version: '17'
       - name: Start emulator
+        env:
+          ANDROID_USER_HOME: ${{ runner.temp }}/android-user
+          ANDROID_AVD_HOME: ${{ runner.temp }}/android-user/avd
         run: |
+          echo "ANDROID_USER_HOME=$ANDROID_USER_HOME" >> "$GITHUB_ENV"
+          echo "ANDROID_AVD_HOME=$ANDROID_AVD_HOME" >> "$GITHUB_ENV"
           sudo chown "$USER" /dev/kvm
           sudo chmod u+rw /dev/kvm
           mkdir -p "$ANDROID_AVD_HOME"
@@ -131,6 +133,7 @@ jobs:
             fi
             sleep 2
           done
+          echo "Emulator did not boot after $attempt checks"
           cat "$RUNNER_TEMP/emulator.log"
           exit 1
       - name: Build and lint Android
