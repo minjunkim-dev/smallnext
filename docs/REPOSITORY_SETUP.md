@@ -25,9 +25,10 @@
 
 Claude 재검토는 댓글 첫 줄에 `@claude review` 또는 `@claude security review`를 씁니다.
 `ai:review` 라벨을 제거한 후 다시 지정해도 재검토합니다. `ai:skip`은 Claude 자동 리뷰를 중지합니다.
-봇 이벤트는 재실행하지 않습니다. 같은 대상의 이전 리뷰 작업은 권한 확인을 통과한 새 요청만 취소합니다.
+봇 이벤트는 재실행하지 않습니다. 같은 PR head 또는 같은 Issue의 이전 리뷰 작업은 권한 확인을 통과한 새 요청만 취소합니다.
 읽기 전용 권한 확인 작업과 Secret을 사용하는 리뷰 작업을 분리합니다.
 봇 댓글·일반 댓글·거절된 요청은 실행 중인 리뷰를 취소하지 않습니다.
+PR의 그룹 키에 검토 SHA를 포함합니다. 오래된 head의 권한 확인이 늦게 끝나도 새 head의 리뷰를 취소하지 않습니다.
 동일 이벤트의 반복 검토가 필요하면 Actions의 `Claude issue and PR review`를 수동 실행합니다.
 
 Claude는 작업별 GitHub 토큰을 사용합니다. 댓글 작성자는 `github-actions[bot]`으로 표시됩니다.
@@ -119,8 +120,8 @@ PR과 Repository hygiene 검사를 요구하고 강제 푸시와 삭제를 차�
 | Action 허용 목록·리뷰 라벨 | 고정 SHA 두 개와 `ai:review`·`ai:skip`을 저장하고 API로 재확인 |
 | Claude 인증·실행 | OAuth Secret 재등록 후 main의 [Issue 검토 실행](https://github.com/minjunkim-dev/smallnext/actions/runs/37126902068) 성공. 토큰 값은 읽거나 기록하지 않음 |
 | Claude Issue 실제 응답 | [Issue #15 검토 댓글](https://github.com/minjunkim-dev/smallnext/issues/15#issuecomment-5969716401) 게시 확인. 워크플로 기준 커밋 `1eaf836afd9f0c8c65978192f30e1f78c0ddedd1` |
-| Claude PR 일반 검토 | [PR #27 검토 실행](https://github.com/minjunkim-dev/smallnext/actions/runs/37127398986) 성공. [실제 리뷰 댓글](https://github.com/minjunkim-dev/smallnext/pull/27#issuecomment-5969791486)의 검토 SHA `a231f58231d3898cecdf29ef88e24b0f68abbe40` 확인. 당시 CI 조회 권한 부족은 읽기 권한 추가 후 재검증 진행 |
-| Claude PR 보안 명령 | 연결 검증용 PR에서 `@claude security review` 요청의 실제 댓글·검토 SHA 확인 진행 |
+| Claude PR 일반 검토·CI 조회 | [PR #27 검토 실행](https://github.com/minjunkim-dev/smallnext/actions/runs/37127614521) 성공. [실제 리뷰 댓글](https://github.com/minjunkim-dev/smallnext/pull/27#issuecomment-5969819982)의 검토 SHA `3932a2512f28a5c40ddf6a495657d3b103a95b6c` 확인. 최소 읽기 권한 추가 후 CI 결과 조회 성공 |
+| Claude PR 보안 명령 | [`@claude security review` 요청](https://github.com/minjunkim-dev/smallnext/pull/27#issuecomment-5969832224) 뒤 [실행](https://github.com/minjunkim-dev/smallnext/actions/runs/37127780558) 성공. [보안 검토 댓글](https://github.com/minjunkim-dev/smallnext/pull/27#issuecomment-5969841220)의 검토 SHA `3932a2512f28a5c40ddf6a495657d3b103a95b6c` 확인. P2 취소 경합 지적은 후속 변경에서 그룹 키에 SHA를 추가해 수정 |
 | Codex 저장소 접근 | GitHub 앱 설치 화면과 Codex 저장소 목록에서 Smallnext 접근 확인 |
 | Codex 자동 코드 리뷰 | 계정 설정에 모든 PR 검토·매 푸시마다 실행 저장 확인 |
 | Codex 자동 보안 리뷰 | 계정 설정에 모든 PR 검토·코드 리뷰와 함께 실행 저장 확인. 자동 보고 Critical·High, 수동 보고 Critical·High·Medium |
@@ -131,6 +132,8 @@ PR과 Repository hygiene 검사를 요구하고 강제 푸시와 삭제를 차�
 브라우저 재시작과 GitHub 본인 인증 후 계정 설정을 확인했습니다.
 PR 생성·CI 통과는 Secret 등록, 계정 연결, AI 응답을 증명하지 않습니다.
 기능 플래그는 메타데이터 계약만 추가했습니다. 앱에서 실제 OFF·ON 경로를 구현한 증거는 없습니다.
+실제 fork PR의 권한 거절 실행은 확인하지 않았습니다. 거절 조건은 단위 테스트와 워크플로 소스로 확인했습니다.
+워크플로 변경을 시험한 실행과 main 실행을 구분합니다. 병합 전에는 현재 head의 리뷰 댓글과 CI도 다시 확인합니다.
 
 이번 작업의 연결·검증 후속 상태는 [Issue #15](https://github.com/minjunkim-dev/smallnext/issues/15)에 기록합니다.
 

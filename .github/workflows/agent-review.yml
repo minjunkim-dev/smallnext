@@ -68,9 +68,9 @@ jobs:
       actions: read
       checks: read
       statuses: read
-    # Only live-authorized requests may replace a review. Ignored bot/comments never acquire this group.
+    # Ignore unapproved events. An old PR head cannot replace a newer head's review.
     concurrency:
-      group: claude-authorized-review-${{ needs.authorize.outputs.number }}
+      group: claude-authorized-review-${{ needs.authorize.outputs.number }}-${{ needs.authorize.outputs.sha || 'issue' }}
       cancel-in-progress: true
     steps:
       - name: Check out trusted instructions
