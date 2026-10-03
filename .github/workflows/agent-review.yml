@@ -85,6 +85,7 @@ jobs:
           bwrap --version
           bwrap --unshare-user --ro-bind / / -- /usr/bin/true
       - name: Review and post findings
+        id: claude
         if: steps.context.outputs.run == 'true'
         uses: anthropics/claude-code-action@12dd8d74c712f5f3669365b2369b558c495b1104 # reviewed v1, shared with BGLike
         env:
@@ -127,3 +128,8 @@ jobs:
           claude_args: >-
             --max-turns 12
             --allowedTools "Read,Bash(gh issue view:*),Bash(gh issue comment:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr checks:*),Bash(gh pr comment:*)"
+      - name: Summarize failure without model messages
+        if: failure() && steps.claude.outcome == 'failure'
+        env:
+          REVIEW_EXECUTION_FILE: ${{ steps.claude.outputs.execution_file }}
+        run: python3 scripts/review_failure.py
