@@ -83,6 +83,12 @@ Dependabot이 새 SHA를 제안하면 출처와 내부 Action 변경을 확인�
 Claude Action은 GitHub App 대신 작업 토큰을 사용하므로 Claude GitHub App 설치는 필수가 아닙니다.
 Secret과 코드 리뷰 구독·요금은 별도 조건입니다. 일반 ChatGPT API 키는 Codex GitHub 연결을 대신하지 않습니다.
 
+토큰 갱신 담당자는 저장소 소유자입니다. 발급 시 만료일을 확인하고 값은 기록하지 않습니다.
+HTTP 401 또는 SDK `authentication_failed`가 발생하면 해당 리뷰를 미검증으로 표시합니다.
+`claude setup-token`으로 새 OAuth 토큰을 발급하고 Actions Secret을 교체한 뒤 main에서 다시 검토합니다.
+재등록 후에는 실행 성공과 실제 봇 댓글을 모두 확인합니다. PR 댓글의 검토 SHA가 현재 head와 같은지도 확인합니다.
+인증 장애 중 병합 여부는 사람이 Codex 결과와 자신의 검토를 확인한 후 결정합니다. 봇은 승인하거나 병합하지 않습니다.
+
 공식 기준: [Claude GitHub Actions](https://code.claude.com/docs/en/github-actions),
 [Claude Linux 격리 설정](https://code.claude.com/docs/en/sandboxing#set-up-linux-and-wsl2),
 [Claude Action 보안](https://github.com/anthropics/claude-code-action/blob/12dd8d74c712f5f3669365b2369b558c495b1104/docs/security.md),
@@ -108,12 +114,14 @@ PR과 Repository hygiene 검사를 요구하고 강제 푸시와 삭제를 차�
 | main·squash·병합 후 브랜치 삭제 | GitHub API로 설정 확인 |
 | main 보호 | rulesets API HTTP 403. 작업 규칙만 적용 |
 | Action 허용 목록·리뷰 라벨 | 고정 SHA 두 개와 `ai:review`·`ai:skip`을 저장하고 API로 재확인 |
-| Claude 인증·실행 | Actions Secret `CLAUDE_CODE_OAUTH_TOKEN` 등록 확인. 값은 읽거나 기록하지 않음. [실행 검사](https://github.com/minjunkim-dev/smallnext/actions/runs/37125756722)에서 격리 검사 통과 후 SDK `authentication_failed`·HTTP 401 확인. 새 OAuth 토큰 등록 필요. 실제 리뷰 댓글 없음 |
+| Claude 인증·실행 | OAuth Secret 재등록 후 main의 [Issue 검토 실행](https://github.com/minjunkim-dev/smallnext/actions/runs/37126902068) 성공. 토큰 값은 읽거나 기록하지 않음 |
+| Claude Issue 실제 응답 | [Issue #15 검토 댓글](https://github.com/minjunkim-dev/smallnext/issues/15#issuecomment-5969716401) 게시 확인. 워크플로 기준 커밋 `1eaf836afd9f0c8c65978192f30e1f78c0ddedd1` |
+| Claude PR 실제 응답 | 연결 검증용 작은 PR에서 일반 검토와 보안 재검토 명령의 실제 댓글·검토 SHA 확인 진행 |
 | Codex 저장소 접근 | GitHub 앱 설치 화면과 Codex 저장소 목록에서 Smallnext 접근 확인 |
 | Codex 자동 코드 리뷰 | 계정 설정에 모든 PR 검토·매 푸시마다 실행 저장 확인 |
 | Codex 자동 보안 리뷰 | 계정 설정에 모든 PR 검토·코드 리뷰와 함께 실행 저장 확인. 자동 보고 Critical·High, 수동 보고 Critical·High·Medium |
-| main 병합·CI | [PR #16](https://github.com/minjunkim-dev/smallnext/pull/16)을 squash 병합. 커밋 `68f6576817cb5959ba869660ff3fc2c0efb58c49`의 [main 검사](https://github.com/minjunkim-dev/smallnext/actions/runs/37120441629) 통과 |
-| Codex 실제 응답 | [PR #18 봇 응답](https://github.com/minjunkim-dev/smallnext/pull/18#issuecomment-5969297999)에서 PR 생성 시 자동 코드·보안 리뷰 완료 확인. 검토 SHA `423753bdfa6fc1438a9cac5b4f67394adfc5d0f5` |
+| main 병합·CI | [PR #18](https://github.com/minjunkim-dev/smallnext/pull/18)을 squash 병합. 커밋 `1eaf836afd9f0c8c65978192f30e1f78c0ddedd1`의 [저장소 검사](https://github.com/minjunkim-dev/smallnext/actions/runs/37126498060)와 [프로젝트 검사](https://github.com/minjunkim-dev/smallnext/actions/runs/37126498353) 통과 |
+| Codex 실제 응답 | [PR #18 봇 응답](https://github.com/minjunkim-dev/smallnext/pull/18#issuecomment-5969297999)에서 최종 자동 코드·보안 리뷰 완료 확인. 검토 SHA `78ceee101164c9d768a24e50700092f717e4e06a`. 기존 지적 2건 수정 후 새 지적 없음 |
 | 앱·API 초기 셋업과 캐시 검증 | [PR #14 검사](https://github.com/minjunkim-dev/smallnext/pull/14/checks). 커밋 `2ab3841`의 [첫 실행](https://github.com/minjunkim-dev/smallnext/actions/runs/37118733750/attempts/1)과 [캐시 복원 실행](https://github.com/minjunkim-dev/smallnext/actions/runs/37118733750/attempts/2)에서 앱·API 테스트 통과 |
 
 브라우저 재시작과 GitHub 본인 인증 후 계정 설정을 확인했습니다.
