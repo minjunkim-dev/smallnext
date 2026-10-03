@@ -1,0 +1,23 @@
+name: 문제 보고
+description: 재현할 수 있는 문제를 기록합니다.
+title: "[Bug] "
+labels: [bug]
+body:
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: 재현 순서
+      description: 문제가 생기는 화면과 행동을 순서대로 적습니다.
+    validations:
+      required: true
+  - type: textarea
+    id: expected_actual
+    attributes:
+      label: 예상 결과와 실제 결과
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: 확인 근거
+      description: 기기, 버전, 화면을 적습니다. 개인정보와 비밀정보를 제거합니다.

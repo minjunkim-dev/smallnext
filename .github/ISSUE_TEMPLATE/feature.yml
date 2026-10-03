@@ -1,0 +1,23 @@
+name: 기능 제안
+description: 사용자의 문제와 완료 조건을 기록합니다.
+title: "[Feature] "
+labels: [feature]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: 사용자 상황과 문제
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: 필요한 동작
+    validations:
+      required: true
+  - type: textarea
+    id: done
+    attributes:
+      label: 완료 조건과 확인 방법
+    validations:
+      required: true

@@ -1,0 +1,33 @@
+# Operating system and local editor files
+.DS_Store
+Thumbs.db
+.idea/
+.serena/
+*.swp
+*.swo
+
+# Local secrets; commit only sanitized examples
+.env
+.env.*
+!.env.example
+!.env.*.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.keystore
+
+# Generated files and caches
+node_modules/
+dist/
+build/
+coverage/
+.cache/
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.log
+
+# Task scratch files
+work/

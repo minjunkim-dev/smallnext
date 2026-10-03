@@ -1,0 +1,20 @@
+name: 결정할 질문
+description: 구현 전에 답을 정해야 하는 질문을 기록합니다.
+title: "[Decision] "
+labels: [decision]
+body:
+  - type: textarea
+    id: question
+    attributes:
+      label: 결정할 질문
+    validations:
+      required: true
+  - type: textarea
+    id: options
+    attributes:
+      label: 선택지와 제약
+  - type: textarea
+    id: evidence
+    attributes:
+      label: 필요한 확인 근거
+      description: 사용자 의견, 시제품, 조사 중 필요한 근거를 적습니다.
