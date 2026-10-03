@@ -29,6 +29,7 @@ Claude 재검토는 댓글 첫 줄에 `@claude review` 또는 `@claude security 
 동일 이벤트의 반복 검토가 필요하면 Actions의 `Claude issue and PR review`를 수동 실행합니다.
 
 Claude는 작업별 GitHub 토큰을 사용합니다. 댓글 작성자는 `github-actions[bot]`으로 표시됩니다.
+하위 프로세스의 인증 환경 변수 제거를 활성화합니다. 전체 모델·도구 출력은 로그에 표시하지 않습니다.
 코드 쓰기와 병합 권한은 없습니다. `@claude implement`는 이 워크플로의 지원 명령이 아닙니다.
 구현은 승인된 Issue를 로컬 Claude Code/Codex에 전달합니다. Codex 원격 작업은 별도 환경 연결 후 사용합니다.
 Secret 미등록은 실행 실패로 표시합니다. 리뷰가 수행된 것으로 처리하지 않습니다.
@@ -102,7 +103,8 @@ PR과 Repository hygiene 검사를 요구하고 강제 푸시와 삭제를 차�
 | Action 허용 목록·리뷰 라벨 | 고정 SHA 두 개와 `ai:review`·`ai:skip`을 저장하고 API로 재확인 |
 | Claude 인증 | 최초 조사에서 Secret 없음. 등록과 실제 실행 대기 |
 | Codex 저장소 접근·자동 코드/보안 리뷰 | 계정 설정 확인 대기. 봇 응답 미검증 |
-| 이번 변경의 CI·리뷰 실행 | PR의 최종 SHA 검사 결과와 댓글로 기록 |
+| 이번 변경의 CI | [PR #16 검사](https://github.com/minjunkim-dev/smallnext/pull/16/checks)에서 Repository hygiene·PR conventions 통과 확인 |
+| Codex 리뷰 요청 | [코드 리뷰 요청](https://github.com/minjunkim-dev/smallnext/pull/16#issuecomment-5968737442) · [보안 리뷰 요청](https://github.com/minjunkim-dev/smallnext/pull/16#issuecomment-5968738037). 응답은 별도 확인 |
 
 브라우저 도구가 작업 경로의 심볼릭 링크 때문에 시작되지 않아 계정 설정을 직접 확인하지 못했습니다.
 PR 생성·CI 통과는 Secret 등록, 계정 연결, AI 응답을 증명하지 않습니다.

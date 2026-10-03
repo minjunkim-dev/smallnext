@@ -104,6 +104,14 @@ class ReviewTrustTest(unittest.TestCase):
         event = {"sender": self.event["sender"], "inputs": {"kind": "pr", "number": "17; echo secret"}}
         self.assertIsNone(self.request("workflow_dispatch", event))
 
+    def test_issue_auto_review_and_explicit_label(self):
+        event = {"sender": self.event["sender"], "issue": {"number": 17}, "action": "opened"}
+        self.assertEqual("issue", self.request("issues", event)["kind"])
+        event.update(action="labeled", label={"name": "decision"})
+        self.assertIsNone(self.request("issues", event))
+        event["label"]["name"] = "ai:review"
+        self.assertEqual("issue", self.request("issues", event)["kind"])
+
 
 if __name__ == "__main__":
     unittest.main()

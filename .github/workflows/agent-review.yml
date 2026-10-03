@@ -68,6 +68,8 @@ jobs:
       - name: Review and post findings
         if: steps.context.outputs.run == 'true'
         uses: anthropics/claude-code-action@12dd8d74c712f5f3669365b2369b558c495b1104 # reviewed v1, shared with BGLike
+        env:
+          CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: "1"
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           # A job-scoped token avoids broad app/PAT permissions. Comments use github-actions[bot].
