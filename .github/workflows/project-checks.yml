@@ -101,9 +101,6 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - name: Build and lint Android
-        working-directory: apps/android
-        run: ./gradlew --no-daemon assembleDebug lintDebug testDebugUnitTest
       - name: Start emulator
         run: |
           sudo chown "$USER" /dev/kvm
@@ -113,18 +110,26 @@ jobs:
           echo no | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" \
             create avd --force --name SmallnextCI \
             --package "system-images;android-35;google_apis;x86_64"
+          "$ANDROID_HOME/platform-tools/adb" start-server
           "$ANDROID_HOME/emulator/emulator" -avd SmallnextCI -no-window \
             -gpu swiftshader_indirect -no-audio -no-boot-anim -no-snapshot -no-metrics \
             > "$RUNNER_TEMP/emulator.log" 2>&1 &
-          timeout 180 "$ANDROID_HOME/platform-tools/adb" wait-for-device
-          for attempt in $(seq 1 90); do
-            if [ "$("$ANDROID_HOME/platform-tools/adb" shell getprop sys.boot_completed | tr -d '\r')" = "1" ]; then
+          EMULATOR_PID=$!
+          for attempt in $(seq 1 120); do
+            if ! kill -0 "$EMULATOR_PID" 2>/dev/null; then
+              cat "$RUNNER_TEMP/emulator.log"
+              exit 1
+            fi
+            if [ "$("$ANDROID_HOME/platform-tools/adb" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = "1" ]; then
               exit 0
             fi
             sleep 2
           done
           cat "$RUNNER_TEMP/emulator.log"
           exit 1
+      - name: Build and lint Android
+        working-directory: apps/android
+        run: ./gradlew --no-daemon assembleDebug lintDebug testDebugUnitTest
       - name: Test Room persistence
         working-directory: apps/android
         run: ./gradlew --no-daemon connectedDebugAndroidTest
