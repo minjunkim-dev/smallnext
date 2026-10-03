@@ -20,7 +20,7 @@
 | PR 제목·브랜치·구현 Issue 연결 | PR policy. PR 생성·수정·새 커밋마다 실행 |
 | Issue의 범위·완료 조건·선행 조건 검토 | Claude. 쓰기 권한 사용자가 Issue 생성·수정 또는 `ai:review` 라벨 지정 |
 | PR의 회귀·플래그·보안 검토와 댓글 | Claude. main 대상 PR 생성·갱신·ready 전환. Draft와 fork는 제외 |
-| 코드 리뷰와 보안 리뷰 | Codex GitHub 연결. 자동 리뷰 옵션은 계정 설정에서 활성화 |
+| 코드 리뷰와 보안 리뷰 | Codex. 모든 PR을 매 푸시마다 코드 검토하고 보안 검토도 함께 실행 |
 | 제품 결정·계정 연결·기기 확인·최종 병합 | 사람. AI는 검토안을 제시하고 승인된 구현을 수행 |
 
 Claude 재검토는 댓글 첫 줄에 `@claude review` 또는 `@claude security review`를 씁니다.
@@ -70,9 +70,9 @@ Dependabot이 새 SHA를 제안하면 출처와 내부 Action 변경을 확인�
 
 1. 로컬 Claude Code에서 `claude setup-token`을 실행합니다. 발급 값을 Smallnext의 Actions Secret `CLAUDE_CODE_OAUTH_TOKEN`으로 등록합니다. GitHub 토큰이나 운영 API 키는 사용하지 않습니다.
 2. GitHub Actions의 허용 목록에 검토한 `anthropics/claude-code-action`과 필요한 내부 Action의 전체 SHA를 추가합니다. 전체 Action 허용으로 바꾸지 않습니다.
-3. Codex GitHub 연결의 저장소 접근 범위에 `minjunkim-dev/smallnext`를 추가합니다. Code review 설정에서 해당 저장소의 Automatic review를 켭니다.
-4. Security review의 자동 실행 옵션이 있으면 켭니다. 옵션이 없거나 권한이 없으면 PR마다 사람이 `@codex security review`를 요청하고 응답을 확인합니다.
-5. 이 PR을 main에 병합한 후 새 Issue와 작은 PR로 첫 실행을 확인합니다. 실행 URL, 봇 댓글 URL, 검토 SHA를 아래 표에 기록합니다.
+3. Codex GitHub 연결에서 `minjunkim-dev/smallnext` 접근을 허용합니다. 해당 저장소의 자동 코드 검토를 `Review all PRs`, 검토 트리거를 `Every push`로 설정합니다.
+4. 자동 보안 검토를 `Review all PRs`, 트리거를 `Whenever code review runs`로 설정합니다. 자동 보고는 Critical·High, 수동 보고는 Critical·High·Medium을 유지합니다. 위협 모델 경로를 비우면 검토마다 모델을 생성합니다.
+5. 워크플로를 main에 병합한 후 Issue와 작은 PR로 첫 실행을 확인합니다. 실행 URL, 봇 댓글 URL, 검토 SHA를 아래 표에 기록합니다.
 
 Claude Action은 GitHub App 대신 작업 토큰을 사용하므로 Claude GitHub App 설치는 필수가 아닙니다.
 Secret과 코드 리뷰 구독·요금은 별도 조건입니다. 일반 ChatGPT API 키는 Codex GitHub 연결을 대신하지 않습니다.
@@ -94,19 +94,21 @@ PR과 Repository hygiene 검사를 요구하고 강제 푸시와 삭제를 차�
 
 ## 연결 상태와 검증 근거
 
-2026-10-03 조사 결과입니다. 실제 연결과 첫 실행은 별도로 확인합니다.
+2026-10-03 확인 결과입니다. 계정 설정 저장과 실제 봇 응답을 구분합니다.
 
 | 항목 | 상태와 근거 |
 | --- | --- |
 | main·squash·병합 후 브랜치 삭제 | GitHub API로 설정 확인 |
 | main 보호 | rulesets API HTTP 403. 작업 규칙만 적용 |
 | Action 허용 목록·리뷰 라벨 | 고정 SHA 두 개와 `ai:review`·`ai:skip`을 저장하고 API로 재확인 |
-| Claude 인증 | 최초 조사에서 Secret 없음. 등록과 실제 실행 대기 |
-| Codex 저장소 접근·자동 코드/보안 리뷰 | 계정 설정 확인 대기. 봇 응답 미검증 |
-| 이번 변경의 CI | [PR #16 검사](https://github.com/minjunkim-dev/smallnext/pull/16/checks)에서 Repository hygiene·PR conventions 통과 확인 |
-| Codex 리뷰 요청 | [코드 리뷰 요청](https://github.com/minjunkim-dev/smallnext/pull/16#issuecomment-5968737442) · [보안 리뷰 요청](https://github.com/minjunkim-dev/smallnext/pull/16#issuecomment-5968738037). 응답은 별도 확인 |
+| Claude 인증 | Secret 등록 대기. [첫 실행](https://github.com/minjunkim-dev/smallnext/actions/runs/37120487174)은 요청자 쓰기 권한 확인 후 토큰 없음으로 실패. AI 검토는 수행하지 않음 |
+| Codex 저장소 접근 | GitHub 앱 설치 화면과 Codex 저장소 목록에서 Smallnext 접근 확인 |
+| Codex 자동 코드 리뷰 | 계정 설정에 모든 PR 검토·매 푸시마다 실행 저장 확인 |
+| Codex 자동 보안 리뷰 | 계정 설정에 모든 PR 검토·코드 리뷰와 함께 실행 저장 확인. 자동 보고 Critical·High, 수동 보고 Critical·High·Medium |
+| main 병합·CI | [PR #16](https://github.com/minjunkim-dev/smallnext/pull/16)을 squash 병합. 커밋 `68f6576817cb5959ba869660ff3fc2c0efb58c49`의 [main 검사](https://github.com/minjunkim-dev/smallnext/actions/runs/37120441629) 통과 |
+| Codex 실제 응답 | 연결 전 PR #16의 코드·보안 리뷰 요청에는 봇 응답 없음. 연결 후 실제 응답과 검토 SHA 확인 대기 |
 
-브라우저 도구가 작업 경로의 심볼릭 링크 때문에 시작되지 않아 계정 설정을 직접 확인하지 못했습니다.
+브라우저 재시작과 GitHub 본인 인증 후 계정 설정을 확인했습니다.
 PR 생성·CI 통과는 Secret 등록, 계정 연결, AI 응답을 증명하지 않습니다.
 기능 플래그는 메타데이터 계약만 추가했습니다. 앱에서 실제 OFF·ON 경로를 구현한 증거는 없습니다.
 
