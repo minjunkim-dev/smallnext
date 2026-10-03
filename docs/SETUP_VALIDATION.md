@@ -38,7 +38,8 @@
 [PR #14](https://github.com/minjunkim-dev/smallnext/pull/14)를 등록했습니다.
 초기 원격 실행에서 iOS 빌드·테스트, Android 빌드·lint,
 API 검사와 PostgreSQL 테스트가 통과했습니다.
-Android 에뮬레이터 단계의 SDK 도구와 `adb` 경로 오류를 수정했습니다.
+Android CI는 SDK 도구와 `adb`를 설치 경로로 직접 호출합니다.
+가상 기기의 생성·실행 경로를 지정하고, 부팅 실패 시 시작 로그를 출력합니다.
 
 위 표는 로컬 검증 결과입니다.
 최종 커밋의 원격 CI 결과는 [PR 검사 목록](https://github.com/minjunkim-dev/smallnext/pull/14/checks)에서 확인합니다.

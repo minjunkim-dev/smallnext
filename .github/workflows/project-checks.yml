@@ -93,6 +93,9 @@ jobs:
     if: needs.scope.outputs.android == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    env:
+      ANDROID_USER_HOME: ${{ runner.temp }}/android-user
+      ANDROID_AVD_HOME: ${{ runner.temp }}/android-user/avd
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -105,11 +108,14 @@ jobs:
         run: |
           sudo chown "$USER" /dev/kvm
           sudo chmod u+rw /dev/kvm
+          mkdir -p "$ANDROID_AVD_HOME"
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
             "system-images;android-35;google_apis;x86_64" "emulator"
           echo no | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" \
             create avd --force --name SmallnextCI \
-            --package "system-images;android-35;google_apis;x86_64"
+            --package "system-images;android-35;google_apis;x86_64" \
+            --path "$ANDROID_AVD_HOME/SmallnextCI.avd"
+          test -f "$ANDROID_AVD_HOME/SmallnextCI.ini"
           "$ANDROID_HOME/platform-tools/adb" start-server
           "$ANDROID_HOME/emulator/emulator" -avd SmallnextCI -no-window \
             -gpu swiftshader_indirect -no-audio -no-boot-anim -no-snapshot -no-metrics \
