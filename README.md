@@ -37,6 +37,7 @@ python3 scripts/check_repository.py
 - [제품 가설](docs/PRODUCT.md)
 - [미결정 항목](docs/DECISIONS.md)
 - [협업 방법](docs/WORKFLOW.md)
+- [저장소 초기 설정과 제한](docs/REPOSITORY_SETUP.md)
 - [기여 안내](CONTRIBUTING.md)
 - [보안 안내](SECURITY.md)
 
