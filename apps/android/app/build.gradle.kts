@@ -58,3 +58,17 @@ dependencies {
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.runner)
 }
+
+// Compiler outputs can be cached; CI tests must execute on each runner/device.
+if (System.getenv("CI") == "true") {
+    tasks.withType<org.gradle.api.tasks.testing.Test>().configureEach {
+        outputs.upToDateWhen { false }
+        outputs.cacheIf { false }
+    }
+    tasks.matching {
+        it.name.startsWith("connected") && it.name.endsWith("AndroidTest")
+    }.configureEach {
+        outputs.upToDateWhen { false }
+        outputs.cacheIf { false }
+    }
+}
