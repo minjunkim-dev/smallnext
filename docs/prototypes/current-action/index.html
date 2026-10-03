@@ -1,0 +1,295 @@
+<!doctype html>
+<!-- Throwaway: three structurally different current-action screens at ?variant=A|B|C. -->
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Smallnext · 현재 행동 시제품</title>
+  <script src="/prototype-config.js"></script>
+  <style>
+    :root { color-scheme: light; --ink:#252a26; --muted:#656a62; --line:#d9ddd4; --accent:#46633c; --paper:#fbfaf6; }
+    * { box-sizing:border-box; }
+    body { margin:0; background:#eaece6; color:var(--ink); font:15px/1.6 -apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Noto Sans KR",sans-serif; }
+    button,input,textarea,select { font:inherit; }
+    button { cursor:pointer; border:0; color:inherit; background:none; touch-action:manipulation; }
+    button:disabled { cursor:default; opacity:.48; }
+    :focus-visible { outline:3px solid #7d58c6; outline-offset:4px; }
+    [hidden] { display:none !important; }
+    .layout { display:flex; align-items:flex-start; justify-content:center; gap:42px; padding:40px 24px 150px; }
+    .context { width:210px; position:sticky; top:44px; padding-top:12px; }
+    .context h1 { font-size:20px; font-weight:600; letter-spacing:-.7px; margin:12px 0; }
+    .context p { color:var(--muted); font-size:13px; margin:10px 0; }
+    .tag { font-size:10px; letter-spacing:1.8px; text-transform:uppercase; color:var(--muted); }
+    .context ol { padding-left:20px; font-size:13px; line-height:2; }
+    .phone { width:420px; min-height:780px; background:var(--paper); border:1px solid #dfe2d8; border-radius:32px; overflow:hidden; box-shadow:0 14px 48px #222b1d0a; }
+    .top { display:flex; justify-content:space-between; align-items:center; padding:28px 26px 18px; }
+    .brand { display:flex; gap:8px; align-items:center; font-weight:700; font-size:17px; letter-spacing:-.6px; }
+    .brand-mark { display:grid; grid-template-columns:5px 5px; gap:2px; transform:rotate(-10deg); }
+    .brand-mark i { width:5px; height:5px; border-radius:2px; background:#bec7b6; }
+    .brand-mark i:last-child { background:var(--accent); }
+    .goal-button { min-height:44px; padding:8px 10px; font-size:12px; color:var(--muted); }
+    #screen { padding:10px 26px 0; min-height:626px; }
+    .eyebrow { font-size:11px; letter-spacing:1.6px; color:var(--accent); font-weight:600; margin:0 0 10px; }
+    .intro { font-size:30px; line-height:1.32; letter-spacing:-1.2px; font-weight:500; margin:0; }
+    .subtitle { color:var(--muted); font-size:13px; margin:9px 0 0; }
+    .meta { display:flex; justify-content:space-between; align-items:center; margin:0 0 25px; font-size:12px; color:var(--muted); }
+    .time { display:inline-flex; align-items:center; gap:5px; }
+    .time::before { content:""; width:12px; height:12px; border:1.3px solid currentColor; border-radius:50%; }
+    .card-stage { position:relative; margin:36px 0 22px; }
+    .action-card { background:#fffefa; border:1px solid #dce0d4; border-radius:18px; padding:25px; box-shadow:0 7px 0 -3px #edf0e5,0 8px 0 -3px #dce0d4; }
+    .action-title { font-size:24px; font-weight:600; line-height:1.5; letter-spacing:-.85px; margin:0; overflow-wrap:anywhere; }
+    .criterion { border-top:1px solid var(--line); margin-top:26px; padding-top:18px; }
+    .criterion .label { font-size:11px; color:var(--muted); display:block; margin-bottom:4px; }
+    .criterion p { font-size:13px; margin:0; }
+    .relation { min-height:38px; margin:14px 2px 0; font-size:12px; color:var(--muted); }
+    .actions { display:grid; grid-template-columns:1fr 1.2fr; gap:10px; margin-top:18px; }
+    .actions button { min-height:54px; border-radius:14px; font-size:15px; font-weight:600; }
+    .smaller { border:1px solid #cdd5c6; background:transparent; }
+    .complete { color:#fff; background:#2e4428; }
+    .support { margin-top:22px; font-size:12px; color:var(--muted); }
+    .support summary { padding:10px 0; cursor:pointer; min-height:44px; }
+    .support p { margin:5px 0 12px; }
+    .practice { margin-top:5px; }
+    .practice summary { min-height:44px; cursor:pointer; font-size:12px; color:var(--muted); padding:10px 0; }
+    .practice textarea { resize:vertical; min-height:82px; width:100%; border:1px solid var(--line); background:#fff; padding:10px; border-radius:10px; color:var(--ink); font-size:14px; }
+    .role-options { display:flex; gap:6px; flex-wrap:wrap; }
+    .role-options button { border:1px solid var(--line); border-radius:9px; min-height:44px; padding:8px 13px; font-size:13px; }
+    .role-options button[aria-pressed="true"] { background:#e4eddf; border-color:#6e8a60; }
+    .micro { font-size:11px; color:var(--muted); }
+    .lower { display:flex; justify-content:space-between; gap:8px; align-items:center; padding:0 25px 16px; font-size:11px; color:var(--muted); }
+    .more { min-height:44px; min-width:44px; font-size:24px; line-height:1; }
+    #status { min-height:40px; font-size:12px; padding:0 26px 18px; color:var(--accent); }
+    .variant-b { --paper:#fafafa; --accent:#645290; --line:#dfdce7; }
+    .variant-b .intro { font-size:14px; letter-spacing:0; color:var(--muted); }
+    .variant-b .card-stage { margin:32px 0 0; }
+    .variant-b .action-card { padding:0; border:0; border-radius:0; background:none; box-shadow:none; }
+    .variant-b .meta { margin-bottom:30px; }
+    .variant-b .action-title { font-size:36px; line-height:1.42; font-weight:500; letter-spacing:-1.4px; }
+    .variant-b .criterion { border:0; border-left:2px solid #beb0d4; margin-top:27px; padding:0 0 0 14px; }
+    .variant-b .actions { margin-top:34px; grid-template-columns:1fr; gap:4px; }
+    .variant-b .complete { order:-1; background:#69548d; border-radius:4px; }
+    .variant-b .smaller { border:0; color:#69548d; font-size:14px; }
+    .variant-b .relation { min-height:20px; }
+    .variant-c { --paper:#f2f4ef; --accent:#46633c; }
+    .variant-c #screen { padding:0; }
+    .variant-c .c-intro { padding:36px 27px 30px; }
+    .variant-c .intro { font-size:33px; max-width:220px; }
+    .variant-c .c-panel { background:#fff; padding:26px; border-radius:30px 30px 0 0; min-height:432px; border-top:1px solid #dce3d5; }
+    .variant-c .card-stage { margin:0; }
+    .variant-c .action-card { padding:0; border:0; box-shadow:none; border-radius:0; }
+    .variant-c .action-title { font-size:22px; }
+    .variant-c .meta { margin-bottom:17px; }
+    .variant-c .criterion { margin-top:21px; }
+    .variant-c .actions { grid-template-columns:1fr; gap:9px; }
+    .variant-c .complete { order:-1; border-radius:28px; background:#526f46; }
+    .variant-c .smaller { border-radius:28px; border:0; background:#f0f4ec; }
+    .variant-c .lower,.variant-c #status { background:white; }
+    .ghost { position:absolute; inset:0; pointer-events:none; background:#fffefa; border:1px solid #dce0d4; border-radius:18px; padding:25px; z-index:1; }
+    .ghost p { margin:47px 0 0; font-size:24px; line-height:1.5; letter-spacing:-.85px; }
+    .empty { padding:90px 15px 30px; text-align:center; }
+    .empty .symbol { width:50px; height:50px; border-radius:50%; background:#e4ecde; color:var(--accent); display:grid; place-items:center; font-size:22px; margin:0 auto 24px; }
+    .empty h2 { font-size:24px; line-height:1.5; font-weight:500; }
+    .empty p { color:var(--muted); font-size:13px; }
+    .retry { min-height:44px; background:#e7edde; padding:10px 18px; border-radius:12px; margin:6px 0; }
+    .waiting { display:flex; justify-content:space-between; align-items:center; gap:8px; background:#eff2e9; padding:10px 14px; margin:14px 0; border-radius:12px; font-size:12px; }
+    .waiting button { min-height:44px; text-decoration:underline; }
+    .cause { padding:4px 0; }
+    .cause h2 { font-size:24px; font-weight:500; margin:15px 0 25px; }
+    .cause button { display:block; width:100%; text-align:left; border:1px solid var(--line); border-radius:12px; padding:16px; margin:9px 0; min-height:52px; }
+    dialog { border:1px solid var(--line); border-radius:24px; background:var(--paper); color:var(--ink); padding:27px; width:min(390px,calc(100% - 30px)); max-height:80vh; }
+    dialog::backdrop { background:#1c241755; }
+    dialog h2 { font-size:22px; line-height:1.5; margin:8px 0 20px; }
+    dialog p,dialog li { font-size:14px; }
+    dialog ol { padding-left:21px; }
+    dialog button { min-height:44px; padding:10px 14px; background:#e7edde; border-radius:12px; }
+    .menu-button { display:block; width:100%; text-align:left; margin:8px 0; }
+    .review { width:230px; position:sticky; top:44px; font-size:12px; }
+    .review summary { min-height:44px; cursor:pointer; }
+    .review label { display:block; color:var(--muted); margin-top:15px; }
+    .review select { padding:8px; border:1px solid #cbd1c3; background:#f6f7f2; width:100%; border-radius:8px; min-height:44px; }
+    .review button { min-height:44px; padding:8px 14px; border:1px solid #cbd1c3; border-radius:8px; margin-top:12px; }
+    .review pre { white-space:pre-wrap; font-size:11px; line-height:1.6; color:#52574e; max-height:450px; overflow:auto; }
+    .switcher { position:fixed; bottom:23px; left:50%; transform:translateX(-50%); display:flex; align-items:center; gap:14px; background:#222823; color:#fff; padding:7px 10px; border-radius:30px; box-shadow:0 6px 25px #20281c25; z-index:8; }
+    .switcher button { min-width:44px; min-height:44px; color:#fff; font-size:21px; border-radius:50%; }
+    .switcher .name { text-align:center; min-width:130px; font-size:13px; }
+    .switcher .name small { display:block; font-size:9px; color:#adb6a7; letter-spacing:1.2px; }
+    @media(max-width:1000px) { .context{display:none;} .layout{gap:25px;} }
+    @media(max-width:730px) { .layout{display:block;padding:0 0 130px;} .phone{width:100%;min-height:calc(100svh - 95px);border:0;border-radius:0;box-shadow:none;} .review{position:static;width:auto;margin:20px 25px;background:#eaece6;border-radius:15px;padding:12px 16px;} #screen{min-height:590px;} .switcher{bottom:16px;} }
+    @media(prefers-reduced-motion:reduce) { *,*::before,*::after{scroll-behavior:auto !important;} }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <aside class="context" data-review hidden>
+      <span class="tag">Smallnext / prototype 01</span>
+      <h1>작은 다음 행동을<br>어떻게 보여줄까?</h1>
+      <p>같은 예시를 세 화면에서 비교합니다. 아래 화살표로 바꿔 보세요.</p>
+      <ol><li>A — 종이 카드 · 분할</li><li>B — 큰 문장 · 교체</li><li>C — 아래 패널 · 이동</li></ol>
+      <p>현재 행동 하나만 보입니다.<br>최종 목표는 ‘목표 보기’로 확인합니다.</p>
+      <p>시제품입니다. 실제 AI 요청과 파일 저장은 없습니다.</p>
+    </aside>
+    <main class="phone" id="phone">
+      <header class="top">
+        <div class="brand"><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span>smallnext</div>
+        <button class="goal-button" id="goal-button">목표 보기 ↗</button>
+      </header>
+      <section id="screen" aria-label="현재 행동"></section>
+      <div class="lower"><span>지금 할 수 있는 만큼.</span><button class="more" id="more-button" aria-label="행동 보조 메뉴">···</button></div>
+      <div id="status" role="status" aria-live="polite" aria-atomic="true"></div>
+    </main>
+    <details class="review" data-review hidden>
+      <summary>검토 도구 · 예시 상태</summary>
+      <label for="motion">모션 비교</label>
+      <select id="motion"><option value="system">기본 (OS 설정 반영)</option><option value="full">일반 모션 (검토용)</option><option value="reduce">모션 감소</option><option value="none">모션 없음</option></select>
+      <label for="scenario">다음 요청의 결과</label>
+      <select id="scenario"><option value="normal">즉시 성공</option><option value="delay">3초 지연</option><option value="failure">요청 실패</option><option value="empty">다음 행동 없음</option></select>
+      <button id="reset">예시 처음부터</button>
+      <p class="micro">완료는 현재 행동에만 적용됩니다. 이 값은 파일에 저장하지 않습니다.</p>
+      <pre id="debug"></pre>
+    </details>
+  </div>
+  <nav class="switcher" aria-label="시제품 화면 비교" data-review hidden>
+    <button id="prev" aria-label="이전 화면">←</button>
+    <div class="name"><small>화면 비교 · 시제품</small><span id="variant-name"></span></div>
+    <button id="next" aria-label="다음 화면">→</button>
+  </nav>
+  <dialog id="goal-dialog" aria-labelledby="goal-title">
+    <span class="eyebrow">목표 보기</span>
+    <h2 id="goal-title">3주 안에 이력서와 포트폴리오를 지원 가능한 상태로 정리하기</h2>
+    <p class="micro">퇴사 후 준비를 시작한 날부터 3주</p>
+    <ol><li>지원용 이력서·포트폴리오 PDF 각각 하나</li><li>본인 역할과 근거 구분, 문서의 기간·역할 일치</li><li>대표 저장소 1~2개와 기존 안내 페이지 하나</li></ol>
+    <p>작은 행동을 끝내도 이 목표 전체가 완료되지는 않습니다.</p>
+    <button data-close="goal-dialog">현재 행동으로</button>
+  </dialog>
+  <dialog id="menu-dialog" aria-labelledby="menu-title">
+    <h2 id="menu-title">이 행동 다루기</h2>
+    <button class="menu-button" id="undo">분할 직전으로 되돌리기</button>
+    <button class="menu-button" id="later">나중에 하기</button>
+    <p class="micro">되돌리기는 분할만 되돌립니다. 작성한 예시와 완료 기록은 유지합니다.</p>
+    <button data-close="menu-dialog">닫기</button>
+  </dialog>
+  <script>
+    const VARIANTS = ['A','B','C'];
+    const NAMES = {A:'A · 종이 카드',B:'B · 큰 문장',C:'C · 아래 패널'};
+    const ACTIONS = {
+      write:{title:'iOS 빌드 환경 분리 경험에서 내가 맡은 역할 한 문장 쓰기',criterion:'내가 맡은 일이 드러나는 문장 하나를 남기면 끝.',time:'약 5분',help:'이미 원고에 있는 경험 하나부터 시작해요. 맡지 않은 일과 확인하지 못한 수치는 넣지 않아도 돼요.',field:'sentence',placeholder:'나는 ______를 맡았다.'},
+      mark:{title:'이 경험에서 내 역할 하나만 표시하기',criterion:'주도 · 참여 · 확인 필요 중 하나를 표시하면 끝.',time:'약 1분',help:'역할이 바로 떠오르지 않으면 ‘확인 필요’를 표시해도 돼요. 확인된 근거와는 구분해서 남겨요.',field:'role'},
+      choice:{title:'이 경험에 참여했는지 먼저 표시하기',criterion:'참여함 · 확인 필요 중 하나를 표시하면 끝.',time:'약 1분',help:'앱이 제안한 경험 후보예요. 내 경험이 맞는지 먼저 판단해요.',field:'choice'},
+      method:{title:'역할 문장의 빈칸 하나 채우기',criterion:'‘나는 ___를 맡았다’의 빈칸 하나를 채우면 끝.',time:'약 2분',help:'실제로 맡았던 작은 일의 이름만 적어요. 근거 확인은 별도 행동으로 남겨요.',field:'sentence',placeholder:'나는 ______를 맡았다.'},
+      amount:{title:'내가 맡은 일의 이름만 적기',criterion:'내가 맡았다고 기억하는 일 하나의 이름을 남기면 끝.',time:'약 1분',help:'완성된 문장을 만들지 않아도 돼요. 기억이 불확실하면 ‘확인 필요’라고 적어요.',field:'fragment',placeholder:'맡은 일 하나 또는 확인 필요'},
+      evidence:{title:'역할을 확인할 자료 한 종류 적기',criterion:'찾아볼 자료 종류 하나를 남기면 끝.',time:'약 2분',help:'예: 설정 변경 기록, 당시 업무 메모. 존재를 확인하지 않았다면 필요한 자료로 표시해요.',field:'evidence',placeholder:'찾아볼 자료 종류 하나'},
+      finish:{title:'표시한 역할을 한 문장으로 풀어 쓰기',criterion:'역할 표시를 문장 하나로 풀어 쓰면 끝.',time:'약 3분',help:'방금 표시한 역할을 참고해요. 확인 필요로 표시했다면 확인할 내용이 드러나는 문장을 써요.',field:'sentence',placeholder:'나는 ______를 맡았다. / ______ 확인 필요.'},
+      repo:{title:'대표 저장소 후보 하나 표시하기',criterion:'검토할 저장소 이름 하나를 남기면 끝.',time:'약 2분',help:'먼저 후보만 고르세요. 소스·테스트·실행 상태의 확인은 아직 남아 있어요.',field:'repo',placeholder:'검토할 저장소 이름 하나'},
+      recordKind:{title:'역할을 확인할 자료 종류 하나 고르기',criterion:'찾아볼 자료 종류 하나 또는 확인 필요를 표시하면 끝.',time:'약 1분',help:'실제 자료가 있다는 뜻은 아니에요. 필요한 자료 종류를 정하고, 원본 확인은 남겨 둬요.',field:'recordKind'},
+      repoFit:{title:'이 저장소가 내 경험을 보여줄 후보인지 표시하기',criterion:'후보로 검토 · 관련 적음 · 확인 필요 중 하나를 표시하면 끝.',time:'약 1분',help:'예시 후보: ios-production-patterns. README만 확인된 후보이며 소스·테스트·실행 상태는 아직 확인하지 않았어요.',field:'repoFit'}
+    };
+    let variant = VARIANTS.includes(new URL(location.href).searchParams.get('variant')) ? new URL(location.href).searchParams.get('variant') : 'A';
+    let state, requestId=0, busyUntil=0, lastCommit=0;
+    const screen=document.querySelector('#screen'), phone=document.querySelector('#phone');
+    const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    function init(){ requestId++; state={current:'write',completed:[],deferred:[],history:[],work:{},pending:null,retry:null,cause:false,notice:'',lastChange:'초기'}; busyUntil=0; lastCommit=0; render(); }
+    function reduced(){ return document.querySelector('#motion').value==='reduce' || (document.querySelector('#motion').value==='system' && matchMedia('(prefers-reduced-motion: reduce)').matches); }
+    function controls(){ return `<div class="actions"><button class="smaller" data-action="smaller" ${state.pending?'disabled':''}>더 작게</button><button class="complete" data-action="complete" ${state.pending?'disabled':''}>완료 <span aria-hidden="true">✓</span></button></div>`; }
+    function practice(a){
+      let content;
+      if(['role','choice','recordKind','repoFit'].includes(a.field)){
+        const options=({role:['주도','참여','확인 필요'],choice:['참여함','확인 필요'],recordKind:['설정 변경 기록','당시 업무 메모','확인 필요'],repoFit:['후보로 검토','관련 적음','확인 필요']})[a.field];
+        content=`<div class="role-options">${options.map(v=>`<button data-value="${v}" data-field="${a.field}" aria-pressed="${state.work[a.field]===v}">${v}</button>`).join('')}</div>`;
+      }else content=`<textarea aria-label="예시 작성" data-field="${a.field}" placeholder="${esc(a.placeholder)}">${esc(state.work[a.field]||'')}</textarea>`;
+      return `<details class="practice"><summary>예시로 해보기</summary>${content}<p class="micro">화면 비교용 예시입니다. 실제 자료 파일에는 저장하지 않아요.</p></details>`;
+    }
+    function card(a){ return `<div class="card-stage"><article class="action-card"><div class="meta"><span>지금 할 일</span><span class="time">${a.time}</span></div><h2 class="action-title" tabindex="-1">${a.title}</h2><div class="criterion"><span class="label">이렇게 하면 끝</span><p>${a.criterion}</p></div></article></div>`; }
+    function help(a){ return `<details class="support"><summary>막힐 때 참고하기</summary><p>${a.help}</p><p class="micro">예상 시간은 참고값이에요. 타이머나 제한 시간이 아니에요.</p></details>${practice(a)}`; }
+    function relation(){ return `<p class="relation">${state.history.length?'같은 일의 첫 부분이에요.<br>남은 범위는 그대로 두었어요.':'전체를 끝내려 하지 않아도 돼요.'}</p>`; }
+    function VariantA(a){ return `<p class="eyebrow">ONE SMALL NEXT</p><h1 class="intro">지금 할 일 하나.</h1><p class="subtitle">이 정도부터 시작해요.</p>${card(a)}${relation()}${controls()}${help(a)}`; }
+    function VariantB(a){ return `<h1 class="intro">다음에 할 일은 잠시 두고,</h1>${card(a)}${relation()}${controls()}${help(a)}`; }
+    function VariantC(a){ return `<div class="c-intro"><p class="eyebrow">SMALL IS ENOUGH</p><h1 class="intro">지금, 여기서<br>시작해요.</h1></div><div class="c-panel">${card(a)}${relation()}${controls()}${help(a)}</div>`; }
+    function render(){
+      phone.className=`phone variant-${variant.toLowerCase()}`;
+      document.querySelector('#variant-name').textContent=NAMES[variant];
+      if(state.cause){ screen.innerHTML=`<div class="cause"><p class="eyebrow">더 쉽게 시작하기</p><h2 tabindex="-1">어디에서 막혔나요?</h2>${[['amount','양이나 시간이 부담돼요'],['method','어떻게 할지 모르겠어요'],['evidence','확인할 자료가 부족해요'],['choice','무엇을 고를지 모르겠어요']].map(([k,v])=>`<button data-cause="${k}">${v}</button>`).join('')}<button data-action="back">현재 행동으로</button></div>`; }
+      else if(state.current){ const a=ACTIONS[state.current]; screen.innerHTML=({A:VariantA,B:VariantB,C:VariantC})[variant](a); }
+      else screen.innerHTML=`<div class="empty"><div class="symbol" aria-hidden="true">✓</div><h2 tabindex="-1">현재 행동을<br>완료했어요.</h2><p>다음 행동을 기다리고 있어요.<br>전체 목표는 아직 남아 있어요.</p>${state.retry?'<button class="retry" data-action="retry">다음 행동 다시 받기</button>':''}</div>`;
+      if(state.pending) screen.insertAdjacentHTML('beforeend',`<div class="waiting"><span>다음 행동을 준비하고 있어요.</span><button data-action="cancel">취소</button></div>`);
+      else if(state.retry&&state.current) screen.insertAdjacentHTML('beforeend','<button class="retry" data-action="retry">다시 시도</button>');
+      document.querySelector('#status').textContent=state.notice;
+      document.querySelector('#undo').disabled=!state.history.length||!!state.pending||!state.current;
+      document.querySelector('#later').disabled=!state.current||!!state.pending||state.current==='repo';
+      debug();
+    }
+    function debug(){ document.querySelector('#debug').textContent=JSON.stringify({화면:NAMES[variant],현재_행동:state.current?ACTIONS[state.current].title:null,모션:document.querySelector('#motion').value,OS_모션_감소:matchMedia('(prefers-reduced-motion: reduce)').matches,처리중:state.pending?.kind||null,마지막_변경:state.lastChange,완료_기록:state.completed,보류_기록:state.deferred,분할_직전:state.history,예시_결과:state.work,남은_범위:'역할 문장·근거 확인 및 문서와 온라인 자료 정리',최종_목표_완료:false,저장:'메모리만; 새로 고침 시 초기화'},null,2); }
+    function focusTitle(){ screen.querySelector('h2')?.focus({preventScroll:true}); }
+    function animate(kind,oldTitle){
+      if(document.querySelector('#motion').value==='none')return;
+      const target=screen.querySelector('.action-card');
+      if(!target)return;
+      if(reduced()){ target.animate([{opacity:.6},{opacity:1}],{duration:100}); return; }
+      if(kind==='split'&&variant==='A'){
+        const stage=target.parentElement;
+        ['inset(0 0 48% 0)','inset(52% 0 0 0)'].forEach((clip,i)=>{ const ghost=document.createElement('div');ghost.className='ghost';ghost.setAttribute('aria-hidden','true');ghost.innerHTML=`<p>${esc(oldTitle)}</p>`;ghost.style.clipPath=clip;stage.append(ghost); const effect=ghost.animate([{transform:'translate(0,0)',opacity:.85},{transform:`translate(${i?12:-6}px,${i?24:-9}px)`,opacity:0}],{duration:340,easing:'cubic-bezier(.2,.8,.2,1)',fill:'forwards'});effect.onfinish=()=>ghost.remove(); });
+        target.animate([{transform:'translateY(5px)',opacity:.3},{transform:'translateY(0)',opacity:1}],{duration:280,easing:'ease-out'});
+      }else if(variant==='C') target.animate([{transform:'translateY(12px)',opacity:.2},{transform:'translateY(0)',opacity:1}],{duration:240,easing:'ease-out'});
+      else target.animate([{opacity:.15},{opacity:1}],{duration:180});
+    }
+    function nextFor(id){ return ['mark','choice','method','amount'].includes(id)?'finish':['evidence','repo','recordKind','repoFit'].includes(id)?null:'evidence'; }
+    function smallerTarget(cause){
+      if(['evidence','recordKind'].includes(state.current))return state.current==='evidence'?'recordKind':null;
+      if(['repo','repoFit'].includes(state.current))return state.current==='repo'?'repoFit':null;
+      if(state.current==='finish'&&cause==='choice')return 'method';
+      return cause;
+    }
+    function request(kind,target){
+      const id=++requestId,from=state.current,oldTitle=from?ACTIONS[from].title:'';
+      const mode=document.querySelector('#scenario').value;
+      state.pending={id,kind,from,target}; state.retry=null; state.notice=kind==='split'?'지금 행동은 그대로 있어요.':'완료 기록을 남겼어요.'; render();
+      const settle=()=>{
+        if(id!==requestId||!state.pending)return;
+        state.pending=null;
+        if(mode==='failure'){state.retry={kind,target};state.notice=kind==='split'?'제안을 받지 못했어요. 지금 행동은 그대로 할 수 있어요.':'완료는 기록했어요. 다음 행동을 다시 요청할 수 있어요.';render();return;}
+        if(!target||mode==='empty'){state.retry={kind,target};state.notice=kind==='split'?'더 작은 제안이 없어요. 지금 행동은 유지했어요.':'다음 행동이 아직 없어요. 전체 목표는 완료되지 않았어요.';render();return;}
+        if(kind==='split'){state.history.push(from);state.notice='더 작은 행동으로 바꿨어요. 남은 범위는 유지했어요.';}
+        else {state.history=[];state.notice='현재 행동을 완료했어요. 다음 행동이 준비됐어요.';}
+        state.current=target;state.lastChange=kind==='split'?'재분할':'다음 행동';busyUntil=performance.now()+160;render();animate(kind,oldTitle);focusTitle();
+      };
+      if(mode==='normal')settle(); else setTimeout(settle,mode==='delay'?3000:500);
+    }
+    function smaller(){
+      if(state.pending||performance.now()<busyUntil)return;
+      if(!state.history.length){
+        const target=({write:'mark',finish:'method',evidence:'recordKind',repo:'repoFit'})[state.current];
+        if(target){request('split',target);return;}
+      }
+      state.cause=true;state.notice='막힌 이유 하나만 골라 주세요.';render();focusTitle();
+    }
+    function complete(){
+      const now=performance.now();
+      if(!state.current||state.pending||now<busyUntil||now-lastCommit<450)return;
+      const from=state.current;lastCommit=now;
+      if(!state.completed.some(x=>x.id===from))state.completed.push({id:from,행동:ACTIONS[from].title,예시:state.work[ACTIONS[from].field]||'완료 버튼으로 표시; 예시 작성 없음'});
+      state.current=null;state.history=[];state.cause=false;state.lastChange='현재 행동 완료';request('next',nextFor(from));
+    }
+    function cancel(){requestId++;state.pending=null;state.retry=null;state.notice=state.current?'제안을 취소했어요. 기존 행동은 유지했어요.':'다음 제안을 취소했어요. 완료 기록은 유지했어요.';state.lastChange='제안 취소';render();}
+    function switchVariant(delta){variant=VARIANTS[(VARIANTS.indexOf(variant)+delta+3)%3];const url=new URL(location.href);url.searchParams.set('variant',variant);history.replaceState(null,'',url);render();}
+    document.querySelector('#screen').addEventListener('click',event=>{
+      const button=event.target.closest('button');if(!button)return;
+      if(button.dataset.value){state.work[button.dataset.field]=button.dataset.value;button.parentElement.querySelectorAll('button').forEach(b=>b.setAttribute('aria-pressed',String(b===button)));debug();return;}
+      if(button.dataset.cause){state.cause=false;const target=smallerTarget(button.dataset.cause);if(target&&target!==state.current){request('split',target);}else{state.notice='더 줄이기 전에 참고할 예시나 필요한 자료를 확인해요.';render();screen.querySelector('.support').open=true;focusTitle();}return;}
+      const action=button.dataset.action;
+      if(action==='smaller')smaller();else if(action==='complete')complete();else if(action==='cancel')cancel();else if(action==='retry'&&state.retry){const r=state.retry;request(r.kind,r.target);}else if(action==='back'){state.cause=false;state.notice='';render();focusTitle();}
+    });
+    screen.addEventListener('input',event=>{if(event.target.dataset.field){state.work[event.target.dataset.field]=event.target.value;debug();}});
+    document.querySelector('#goal-button').onclick=()=>document.querySelector('#goal-dialog').showModal();
+    document.querySelector('#more-button').onclick=()=>document.querySelector('#menu-dialog').showModal();
+    document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>document.getElementById(b.dataset.close).close());
+    document.querySelector('#undo').onclick=()=>{state.current=state.history.pop();state.cause=false;state.retry=null;state.notice='분할 직전으로 돌아왔어요. 작성한 예시는 유지했어요.';state.lastChange='분할 직전 복귀';document.querySelector('#menu-dialog').close();render();focusTitle();};
+    document.querySelector('#later').onclick=()=>{state.deferred.push(state.current);state.current='repo';state.history=[];state.cause=false;state.retry=null;state.notice='완료하지 않고 나중에 할 일로 남겼어요.';state.lastChange='보류';document.querySelector('#menu-dialog').close();render();focusTitle();};
+    document.querySelector('#prev').onclick=()=>switchVariant(-1);document.querySelector('#next').onclick=()=>switchVariant(1);
+    document.addEventListener('keydown',event=>{if(!window.SMALLNEXT_PROTOTYPE||event.altKey||event.ctrlKey||event.metaKey||event.target.closest('input,textarea,select,[contenteditable]')||document.querySelector('dialog[open]'))return;if(event.key==='ArrowLeft'||event.key==='ArrowRight'){event.preventDefault();switchVariant(event.key==='ArrowLeft'?-1:1);}});
+    document.querySelector('#reset').onclick=init;
+    document.querySelector('#motion').onchange=debug;
+    matchMedia('(prefers-reduced-motion: reduce)').addEventListener('change',()=>{if(reduced())document.getAnimations().forEach(a=>a.finish());debug();});
+    if(window.SMALLNEXT_PROTOTYPE)document.querySelectorAll('[data-review]').forEach(e=>e.hidden=false);
+    init();
+  </script>
+</body>
+</html>
