@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">Smallnext</string>
+    <string name="welcome">작은 다음 행동을 준비하고 있어요.</string>
+    <string name="storage_error">저장 공간을 열 수 없습니다. 앱을 다시 실행해 주세요.</string>
+</resources>

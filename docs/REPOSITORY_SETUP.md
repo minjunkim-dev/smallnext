@@ -108,15 +108,20 @@ PR과 Repository hygiene 검사를 요구하고 강제 푸시와 삭제를 차�
 | main·squash·병합 후 브랜치 삭제 | GitHub API로 설정 확인 |
 | main 보호 | rulesets API HTTP 403. 작업 규칙만 적용 |
 | Action 허용 목록·리뷰 라벨 | 고정 SHA 두 개와 `ai:review`·`ai:skip`을 저장하고 API로 재확인 |
-| Claude 인증·실행 | Actions Secret `CLAUDE_CODE_OAUTH_TOKEN` 등록 확인. 값은 읽거나 기록하지 않음. [실행 검사](https://github.com/minjunkim-dev/smallnext/actions/runs/37125241622)에서 격리 검사 통과 후 Claude 종료 오류 확인. 실제 리뷰 댓글 없음. SDK 오류 코드로 원인 재검증 진행 |
+| Claude 인증·실행 | Actions Secret `CLAUDE_CODE_OAUTH_TOKEN` 등록 확인. 값은 읽거나 기록하지 않음. [실행 검사](https://github.com/minjunkim-dev/smallnext/actions/runs/37125756722)에서 격리 검사 통과 후 SDK `authentication_failed`·HTTP 401 확인. 새 OAuth 토큰 등록 필요. 실제 리뷰 댓글 없음 |
 | Codex 저장소 접근 | GitHub 앱 설치 화면과 Codex 저장소 목록에서 Smallnext 접근 확인 |
 | Codex 자동 코드 리뷰 | 계정 설정에 모든 PR 검토·매 푸시마다 실행 저장 확인 |
 | Codex 자동 보안 리뷰 | 계정 설정에 모든 PR 검토·코드 리뷰와 함께 실행 저장 확인. 자동 보고 Critical·High, 수동 보고 Critical·High·Medium |
 | main 병합·CI | [PR #16](https://github.com/minjunkim-dev/smallnext/pull/16)을 squash 병합. 커밋 `68f6576817cb5959ba869660ff3fc2c0efb58c49`의 [main 검사](https://github.com/minjunkim-dev/smallnext/actions/runs/37120441629) 통과 |
 | Codex 실제 응답 | [PR #18 봇 응답](https://github.com/minjunkim-dev/smallnext/pull/18#issuecomment-5969297999)에서 PR 생성 시 자동 코드·보안 리뷰 완료 확인. 검토 SHA `423753bdfa6fc1438a9cac5b4f67394adfc5d0f5` |
+| 앱·API 초기 셋업과 캐시 검증 | [PR #14 검사](https://github.com/minjunkim-dev/smallnext/pull/14/checks). 커밋 `2ab3841`의 [첫 실행](https://github.com/minjunkim-dev/smallnext/actions/runs/37118733750/attempts/1)과 [캐시 복원 실행](https://github.com/minjunkim-dev/smallnext/actions/runs/37118733750/attempts/2)에서 앱·API 테스트 통과 |
 
 브라우저 재시작과 GitHub 본인 인증 후 계정 설정을 확인했습니다.
 PR 생성·CI 통과는 Secret 등록, 계정 연결, AI 응답을 증명하지 않습니다.
 기능 플래그는 메타데이터 계약만 추가했습니다. 앱에서 실제 OFF·ON 경로를 구현한 증거는 없습니다.
 
 이번 작업의 연결·검증 후속 상태는 [Issue #15](https://github.com/minjunkim-dev/smallnext/issues/15)에 기록합니다.
+
+Project checks는 iOS·Android·API와 컨테이너를 검사합니다.
+로컬 실행은 [개발 환경](DEVELOPMENT.md), 캐시와 병렬 실행은 [CI 구성](CI.md)을 따릅니다.
+실제 AI 품질과 운영 배포는 초기 셋업의 검증 범위에 포함하지 않습니다.

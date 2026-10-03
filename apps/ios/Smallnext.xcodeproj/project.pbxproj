@@ -1,0 +1,447 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		30A8576C772C36E2E2FC18A4 /* SmallnextApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF3E8B07B08AD16D7D946A22 /* SmallnextApp.swift */; };
+		4E6A9ABB211804439CD23ABF /* AppDatabaseTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5408342363FFE1BED5721F7A /* AppDatabaseTests.swift */; };
+		85842A91C296A982B2900C11 /* APIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A760D43D9A97C207911C6F56 /* APIClient.swift */; };
+		B71B69141C6C67E9D1493408 /* GRDB in Frameworks */ = {isa = PBXBuildFile; productRef = CAB2E1B084489C178DE23B6E /* GRDB */; };
+		CB37945C1CFCBEC01FC47960 /* AppDatabase.swift in Sources */ = {isa = PBXBuildFile; fileRef = DAE5C5E474307463B28E7442 /* AppDatabase.swift */; };
+		F02449B4834E149702AE016B /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1150C4CB7EAB11488B1E454E /* ContentView.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		6D10E0EFBA03E0D83827E310 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 46645BF589B30CF4486263F7 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 2698CCF621FE84AF9EAF311D;
+			remoteInfo = Smallnext;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		1150C4CB7EAB11488B1E454E /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		3E93A4009080939BA076E576 /* SmallnextTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = SmallnextTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		45CC86C08E79F4BD7F4B9088 /* Smallnext.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Smallnext.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		5408342363FFE1BED5721F7A /* AppDatabaseTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDatabaseTests.swift; sourceTree = "<group>"; };
+		A760D43D9A97C207911C6F56 /* APIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIClient.swift; sourceTree = "<group>"; };
+		DAE5C5E474307463B28E7442 /* AppDatabase.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDatabase.swift; sourceTree = "<group>"; };
+		DF3E8B07B08AD16D7D946A22 /* SmallnextApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SmallnextApp.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		660E31F9C171AC06E07AB8AA /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B71B69141C6C67E9D1493408 /* GRDB in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		314C88A527B1396A51F0EA98 /* Sources */ = {
+			isa = PBXGroup;
+			children = (
+				A760D43D9A97C207911C6F56 /* APIClient.swift */,
+				DAE5C5E474307463B28E7442 /* AppDatabase.swift */,
+				1150C4CB7EAB11488B1E454E /* ContentView.swift */,
+				DF3E8B07B08AD16D7D946A22 /* SmallnextApp.swift */,
+			);
+			path = Sources;
+			sourceTree = "<group>";
+		};
+		3A15F3426C97DA0FF9A0CF45 /* Tests */ = {
+			isa = PBXGroup;
+			children = (
+				5408342363FFE1BED5721F7A /* AppDatabaseTests.swift */,
+			);
+			path = Tests;
+			sourceTree = "<group>";
+		};
+		6793D9F7101A99052B2570CD = {
+			isa = PBXGroup;
+			children = (
+				314C88A527B1396A51F0EA98 /* Sources */,
+				3A15F3426C97DA0FF9A0CF45 /* Tests */,
+				6FD4CFE4052A9EC75A7D5BF8 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		6FD4CFE4052A9EC75A7D5BF8 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				45CC86C08E79F4BD7F4B9088 /* Smallnext.app */,
+				3E93A4009080939BA076E576 /* SmallnextTests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		2698CCF621FE84AF9EAF311D /* Smallnext */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 19B13D6F77B2B58967B9C430 /* Build configuration list for PBXNativeTarget "Smallnext" */;
+			buildPhases = (
+				6E7C741583199509A3FB2DAA /* Sources */,
+				660E31F9C171AC06E07AB8AA /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = Smallnext;
+			packageProductDependencies = (
+				CAB2E1B084489C178DE23B6E /* GRDB */,
+			);
+			productName = Smallnext;
+			productReference = 45CC86C08E79F4BD7F4B9088 /* Smallnext.app */;
+			productType = "com.apple.product-type.application";
+		};
+		D93ACEC5B6C20E10635ADA6C /* SmallnextTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A9C98BC07A4446276CCAF042 /* Build configuration list for PBXNativeTarget "SmallnextTests" */;
+			buildPhases = (
+				0DBA6230B7CC90B028B28C6E /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				81650A3E06EF8787186BBA67 /* PBXTargetDependency */,
+			);
+			name = SmallnextTests;
+			packageProductDependencies = (
+			);
+			productName = SmallnextTests;
+			productReference = 3E93A4009080939BA076E576 /* SmallnextTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		46645BF589B30CF4486263F7 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1640;
+				TargetAttributes = {
+					2698CCF621FE84AF9EAF311D = {
+						ProvisioningStyle = Automatic;
+					};
+					D93ACEC5B6C20E10635ADA6C = {
+						ProvisioningStyle = Automatic;
+					};
+				};
+			};
+			buildConfigurationList = D83C0D965FBB9ADF2D425391 /* Build configuration list for PBXProject "Smallnext" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 6793D9F7101A99052B2570CD;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				F458325BE9ABB122855B42A9 /* XCRemoteSwiftPackageReference "GRDB.swift" */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 6FD4CFE4052A9EC75A7D5BF8 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				2698CCF621FE84AF9EAF311D /* Smallnext */,
+				D93ACEC5B6C20E10635ADA6C /* SmallnextTests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXSourcesBuildPhase section */
+		0DBA6230B7CC90B028B28C6E /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				4E6A9ABB211804439CD23ABF /* AppDatabaseTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		6E7C741583199509A3FB2DAA /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				85842A91C296A982B2900C11 /* APIClient.swift in Sources */,
+				CB37945C1CFCBEC01FC47960 /* AppDatabase.swift in Sources */,
+				F02449B4834E149702AE016B /* ContentView.swift in Sources */,
+				30A8576C772C36E2E2FC18A4 /* SmallnextApp.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		81650A3E06EF8787186BBA67 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 2698CCF621FE84AF9EAF311D /* Smallnext */;
+			targetProxy = 6D10E0EFBA03E0D83827E310 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		07ED1E7344D6FFE6401776C7 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MARKETING_VERSION = 0.1.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
+		72B6B918A858F4845A416EFB /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = dev.smallnext.app.tests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Smallnext.app/Smallnext";
+			};
+			name = Release;
+		};
+		B7C6E18FB6D664CE347C4938 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MARKETING_VERSION = 0.1.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+		D3DF98B76AFD1128AB8FF6C1 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = Smallnext;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = dev.smallnext.app;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		DB158F4C1FFC741D4ADF398C /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = Smallnext;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = dev.smallnext.app;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		F3ED498BC7105D85288CCA4C /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = dev.smallnext.app.tests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Smallnext.app/Smallnext";
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		19B13D6F77B2B58967B9C430 /* Build configuration list for PBXNativeTarget "Smallnext" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				D3DF98B76AFD1128AB8FF6C1 /* Debug */,
+				DB158F4C1FFC741D4ADF398C /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		A9C98BC07A4446276CCAF042 /* Build configuration list for PBXNativeTarget "SmallnextTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				F3ED498BC7105D85288CCA4C /* Debug */,
+				72B6B918A858F4845A416EFB /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		D83C0D965FBB9ADF2D425391 /* Build configuration list for PBXProject "Smallnext" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B7C6E18FB6D664CE347C4938 /* Debug */,
+				07ED1E7344D6FFE6401776C7 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		F458325BE9ABB122855B42A9 /* XCRemoteSwiftPackageReference "GRDB.swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/groue/GRDB.swift.git";
+			requirement = {
+				kind = exactVersion;
+				version = 7.11.1;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		CAB2E1B084489C178DE23B6E /* GRDB */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = F458325BE9ABB122855B42A9 /* XCRemoteSwiftPackageReference "GRDB.swift" */;
+			productName = GRDB;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 46645BF589B30CF4486263F7 /* Project object */;
+}
