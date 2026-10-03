@@ -31,6 +31,7 @@ Claude 재검토는 댓글 첫 줄에 `@claude review` 또는 `@claude security 
 동일 이벤트의 반복 검토가 필요하면 Actions의 `Claude issue and PR review`를 수동 실행합니다.
 
 Claude는 작업별 GitHub 토큰을 사용합니다. 댓글 작성자는 `github-actions[bot]`으로 표시됩니다.
+리뷰 작업은 CI 결과 조회에 필요한 `checks: read`·`statuses: read` 권한을 사용합니다.
 하위 프로세스의 인증 환경 변수 제거를 활성화합니다. 전체 모델·도구 출력은 로그에 표시하지 않습니다.
 CI는 Ubuntu 패키지 저장소에서 `bubblewrap`·`socat`을 설치하고 사용자 네임스페이스 격리 실행을 확인합니다.
 Ubuntu 24.04의 AppArmor 제한이 켜져 있으면 `/usr/bin/bwrap`에만 사용자 네임스페이스 생성 권한을 부여합니다.
@@ -118,7 +119,8 @@ PR과 Repository hygiene 검사를 요구하고 강제 푸시와 삭제를 차�
 | Action 허용 목록·리뷰 라벨 | 고정 SHA 두 개와 `ai:review`·`ai:skip`을 저장하고 API로 재확인 |
 | Claude 인증·실행 | OAuth Secret 재등록 후 main의 [Issue 검토 실행](https://github.com/minjunkim-dev/smallnext/actions/runs/37126902068) 성공. 토큰 값은 읽거나 기록하지 않음 |
 | Claude Issue 실제 응답 | [Issue #15 검토 댓글](https://github.com/minjunkim-dev/smallnext/issues/15#issuecomment-5969716401) 게시 확인. 워크플로 기준 커밋 `1eaf836afd9f0c8c65978192f30e1f78c0ddedd1` |
-| Claude PR 실제 응답 | 연결 검증용 작은 PR에서 일반 검토와 보안 재검토 명령의 실제 댓글·검토 SHA 확인 진행 |
+| Claude PR 일반 검토 | [PR #27 검토 실행](https://github.com/minjunkim-dev/smallnext/actions/runs/37127398986) 성공. [실제 리뷰 댓글](https://github.com/minjunkim-dev/smallnext/pull/27#issuecomment-5969791486)의 검토 SHA `a231f58231d3898cecdf29ef88e24b0f68abbe40` 확인. 당시 CI 조회 권한 부족은 읽기 권한 추가 후 재검증 진행 |
+| Claude PR 보안 명령 | 연결 검증용 PR에서 `@claude security review` 요청의 실제 댓글·검토 SHA 확인 진행 |
 | Codex 저장소 접근 | GitHub 앱 설치 화면과 Codex 저장소 목록에서 Smallnext 접근 확인 |
 | Codex 자동 코드 리뷰 | 계정 설정에 모든 PR 검토·매 푸시마다 실행 저장 확인 |
 | Codex 자동 보안 리뷰 | 계정 설정에 모든 PR 검토·코드 리뷰와 함께 실행 저장 확인. 자동 보고 Critical·High, 수동 보고 Critical·High·Medium |

@@ -66,6 +66,8 @@ jobs:
       issues: write
       pull-requests: write
       actions: read
+      checks: read
+      statuses: read
     # Only live-authorized requests may replace a review. Ignored bot/comments never acquire this group.
     concurrency:
       group: claude-authorized-review-${{ needs.authorize.outputs.number }}
