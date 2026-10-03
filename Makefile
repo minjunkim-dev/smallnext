@@ -36,5 +36,7 @@ android-check:
 
 check:
 	python3 scripts/check_repository.py
-	python3 scripts/test_ci_scope.py
+	python3 scripts/workflow_policy.py
+	python3 -m unittest discover -s scripts -p 'test_*.py'
+	git diff --check
 	$(MAKE) api-check api-spec-check
