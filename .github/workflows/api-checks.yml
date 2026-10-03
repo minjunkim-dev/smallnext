@@ -1,0 +1,61 @@
+name: API checks
+
+on:
+  workflow_call:
+    inputs:
+      use-cache:
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      RUSTUP_TOOLCHAIN: 1.96.0
+      TEST_DATABASE_URL: postgres://smallnext:smallnext-ci-test@127.0.0.1:5432/smallnext_test
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_DB: smallnext_test
+          POSTGRES_USER: smallnext
+          POSTGRES_PASSWORD: smallnext-ci-test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U smallnext -d smallnext_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Install pinned Rust toolchain
+        run: rustup toolchain install 1.96.0 --profile minimal --component clippy --component rustfmt
+      - name: Restore Cargo dependencies and compiler outputs
+        id: cargo-cache
+        if: inputs.use-cache
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            services/api/target/debug
+          key: cargo-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('rust-toolchain.toml') }}-${{ hashFiles('services/api/Cargo.toml', 'services/api/Cargo.lock', '.cargo/config.toml', 'services/api/.cargo/config.toml') }}
+          restore-keys: |
+            cargo-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('rust-toolchain.toml') }}-
+      - name: Check API and contract
+        run: make api-check api-spec-check
+      - name: Test PostgreSQL migration and readiness
+        run: cargo test --locked --manifest-path services/api/Cargo.toml --test database -- --ignored
+      - name: Record cache state
+        if: always()
+        env:
+          CACHE_ENABLED: ${{ inputs.use-cache }}
+          CACHE_HIT: ${{ steps.cargo-cache.outputs.cache-hit }}
+        run: |
+          printf 'Cargo cache enabled: %s; exact hit: %s\n' "$CACHE_ENABLED" "${CACHE_HIT:-false}" >> "$GITHUB_STEP_SUMMARY"

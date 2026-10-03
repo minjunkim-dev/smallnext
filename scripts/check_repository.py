@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate repository hygiene without selecting an app toolchain."""
+"""Validate text files, local documentation links, and CI action pins."""
 
 from pathlib import Path
 import re
@@ -9,15 +9,22 @@ from urllib.parse import unquote, urlsplit
 
 
 ROOT = Path(__file__).resolve().parents[1]
-TEXT_SUFFIXES = {".md", ".py", ".yml", ".yaml", ".json", ".toml"}
-TEXT_NAMES = {".gitignore", ".gitattributes", ".editorconfig", "CODEOWNERS"}
+TEXT_SUFFIXES = {
+    ".md", ".py", ".yml", ".yaml", ".json", ".toml", ".rs", ".swift",
+    ".kt", ".kts", ".sql", ".xml", ".properties", ".pbxproj", ".xcscheme",
+    ".xcworkspacedata", ".sh",
+}
+TEXT_NAMES = {
+    ".gitignore", ".gitattributes", ".editorconfig", ".dockerignore", "CODEOWNERS",
+    "Dockerfile", "Makefile", "Caddyfile", "gradlew", "Cargo.lock",
+}
 LINK_PATTERN = re.compile(r"!?\[[^\]]*\]\(([^\s)]+)(?:\s+[^)]*)?\)")
 ACTION_PATTERN = re.compile(r"^\s*(?:-\s*)?uses:\s*([^\s#]+)", re.MULTILINE)
 
 
 def main():
     tracked = subprocess.run(
-        ["git", "ls-files", "-z"],
+        ["git", "ls-files", "--cached", "--others", "--exclude-standard", "-z"],
         cwd=ROOT,
         check=True,
         stdout=subprocess.PIPE,
@@ -44,7 +51,9 @@ def main():
         except (OSError, UnicodeDecodeError) as error:
             errors.append(f"{name}: cannot read UTF-8 text ({error})")
             continue
-        if raw and not raw.endswith(b"\n"):
+        room_schema = name.startswith("apps/android/app/schemas/") and path.suffix == ".json"
+        # Room's schema exporter writes JSON without a final newline.
+        if raw and not raw.endswith(b"\n") and not room_schema:
             errors.append(f"{name}: missing final newline")
         if b"\r" in raw:
             errors.append(f"{name}: use LF line endings")
@@ -78,7 +87,7 @@ def main():
         print("FAIL: repository hygiene")
         print("\n".join(errors))
         return 1
-    print(f"PASS: {checked} tracked text files; whitespace, local links, action pins.")
+    print(f"PASS: {checked} repository text files; whitespace, local links, action pins.")
     return 0
 
 

@@ -1,0 +1,49 @@
+name: Smallnext
+options:
+  deploymentTarget:
+    iOS: "17.0"
+  xcodeVersion: "16.4"
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    CODE_SIGN_STYLE: Automatic
+packages:
+  GRDB:
+    url: https://github.com/groue/GRDB.swift.git
+    exactVersion: 7.11.1
+targets:
+  Smallnext:
+    type: application
+    platform: iOS
+    sources: [Sources]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.smallnext.app
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: Smallnext
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
+        TARGETED_DEVICE_FAMILY: "1,2"
+    dependencies:
+      - package: GRDB
+  SmallnextTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources: [Tests]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.smallnext.app.tests
+        GENERATE_INFOPLIST_FILE: YES
+    dependencies:
+      - target: Smallnext
+schemes:
+  Smallnext:
+    build:
+      targets:
+        Smallnext: all
+        SmallnextTests: [test]
+    test:
+      targets: [SmallnextTests]

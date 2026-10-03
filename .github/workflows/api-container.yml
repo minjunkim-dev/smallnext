@@ -1,0 +1,66 @@
+name: API container
+
+on:
+  workflow_call:
+    inputs:
+      use-cache:
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  image:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Restore BuildKit layers
+        id: image-cache
+        if: inputs.use-cache
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: ${{ runner.temp }}/buildx-cache
+          key: image-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('services/api/Dockerfile', 'services/api/Cargo.lock', '.dockerignore') }}-${{ hashFiles('services/api/Cargo.toml', 'services/api/src/**', 'services/api/migrations/**') }}
+          restore-keys: |
+            image-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('services/api/Dockerfile', 'services/api/Cargo.lock', '.dockerignore') }}-
+      - name: Build API container
+        env:
+          CACHE_ENABLED: ${{ inputs.use-cache }}
+        run: |
+          docker buildx create --driver docker-container --use
+          cache_args=(--no-cache)
+          if [ "$CACHE_ENABLED" = true ]; then
+            cache_args=(--cache-to "type=local,dest=$RUNNER_TEMP/buildx-cache-new,mode=max")
+            if [ -f "$RUNNER_TEMP/buildx-cache/index.json" ]; then
+              cache_args+=(--cache-from "type=local,src=$RUNNER_TEMP/buildx-cache")
+            fi
+          fi
+          docker buildx build --load --progress plain \
+            --file services/api/Dockerfile --tag smallnext-api:ci \
+            "${cache_args[@]}" .
+          if [ "$CACHE_ENABLED" = true ]; then
+            if [ -d "$RUNNER_TEMP/buildx-cache" ]; then
+              mv "$RUNNER_TEMP/buildx-cache" "$RUNNER_TEMP/buildx-cache-previous"
+            fi
+            mv "$RUNNER_TEMP/buildx-cache-new" "$RUNNER_TEMP/buildx-cache"
+          fi
+      - name: Verify runtime user
+        run: test "$(docker run --rm --entrypoint id smallnext-api:ci -u)" = 10001
+      - name: Validate container configuration
+        env:
+          API_DOMAIN: api.example.invalid
+          DATABASE_URL: postgres://example:example@database.invalid/smallnext
+        run: |
+          docker compose --env-file .env.example -f infra/dev/compose.yaml config --quiet
+          docker compose -f infra/production/compose.yaml config --quiet
+      - name: Record cache state
+        if: always()
+        env:
+          CACHE_ENABLED: ${{ inputs.use-cache }}
+          CACHE_HIT: ${{ steps.image-cache.outputs.cache-hit }}
+        run: |
+          printf 'Image cache enabled: %s; exact hit: %s\n' "$CACHE_ENABLED" "${CACHE_HIT:-false}" >> "$GITHUB_STEP_SUMMARY"

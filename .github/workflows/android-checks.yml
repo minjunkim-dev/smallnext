@@ -1,0 +1,126 @@
+name: Android checks
+
+on:
+  workflow_call:
+    inputs:
+      use-cache:
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        id: java
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: ${{ inputs.use-cache && 'gradle' || '' }}
+          cache-dependency-path: |
+            apps/android/**/*.gradle.kts
+            apps/android/gradle.properties
+            apps/android/gradle/libs.versions.toml
+            apps/android/gradle/wrapper/gradle-wrapper.properties
+      - name: Build APKs, lint and run unit tests
+        working-directory: apps/android
+        run: ./gradlew --no-daemon --parallel --build-cache assembleDebug assembleDebugAndroidTest lintDebug testDebugUnitTest
+      - name: Preserve failing build reports
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: android-build-failure-reports
+          path: |
+            apps/android/app/build/reports/lint-results-debug*
+            apps/android/app/build/reports/tests/
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Record cache state
+        if: always()
+        env:
+          CACHE_ENABLED: ${{ inputs.use-cache }}
+          CACHE_HIT: ${{ steps.java.outputs.cache-hit }}
+        run: |
+          printf 'Android build cache enabled: %s; exact Gradle hit: %s\n' "$CACHE_ENABLED" "${CACHE_HIT:-false}" >> "$GITHUB_STEP_SUMMARY"
+
+  device-tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        id: java
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: ${{ inputs.use-cache && 'gradle' || '' }}
+          cache-dependency-path: |
+            apps/android/**/*.gradle.kts
+            apps/android/gradle.properties
+            apps/android/gradle/libs.versions.toml
+            apps/android/gradle/wrapper/gradle-wrapper.properties
+      - name: Start emulator
+        env:
+          ANDROID_USER_HOME: ${{ runner.temp }}/android-user
+          ANDROID_AVD_HOME: ${{ runner.temp }}/android-user/avd
+        run: |
+          echo "ANDROID_USER_HOME=$ANDROID_USER_HOME" >> "$GITHUB_ENV"
+          echo "ANDROID_AVD_HOME=$ANDROID_AVD_HOME" >> "$GITHUB_ENV"
+          sudo chown "$USER" /dev/kvm
+          sudo chmod u+rw /dev/kvm
+          mkdir -p "$ANDROID_AVD_HOME"
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
+            "system-images;android-35;google_apis;x86_64" "emulator"
+          echo no | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" \
+            create avd --force --name SmallnextCI \
+            --package "system-images;android-35;google_apis;x86_64" \
+            --path "$ANDROID_AVD_HOME/SmallnextCI.avd"
+          test -f "$ANDROID_AVD_HOME/SmallnextCI.ini"
+          "$ANDROID_HOME/platform-tools/adb" start-server
+          "$ANDROID_HOME/emulator/emulator" -avd SmallnextCI -no-window \
+            -gpu swiftshader_indirect -no-audio -no-boot-anim -no-snapshot -no-metrics \
+            > "$RUNNER_TEMP/emulator.log" 2>&1 &
+          EMULATOR_PID=$!
+          for attempt in $(seq 1 120); do
+            if ! kill -0 "$EMULATOR_PID" 2>/dev/null; then
+              cat "$RUNNER_TEMP/emulator.log"
+              exit 1
+            fi
+            if [ "$("$ANDROID_HOME/platform-tools/adb" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = "1" ]; then
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Emulator did not boot after $attempt checks"
+          cat "$RUNNER_TEMP/emulator.log"
+          exit 1
+      - name: Test Room persistence
+        working-directory: apps/android
+        run: ./gradlew --no-daemon --parallel --build-cache connectedDebugAndroidTest
+      - name: Preserve failing device test reports
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: android-device-failure-reports
+          path: |
+            apps/android/app/build/reports/androidTests/
+            apps/android/app/build/outputs/androidTest-results/
+            ${{ runner.temp }}/emulator.log
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Record cache state
+        if: always()
+        env:
+          CACHE_ENABLED: ${{ inputs.use-cache }}
+          CACHE_HIT: ${{ steps.java.outputs.cache-hit }}
+        run: |
+          printf 'Android device cache enabled: %s; exact Gradle hit: %s\n' "$CACHE_ENABLED" "${CACHE_HIT:-false}" >> "$GITHUB_STEP_SUMMARY"

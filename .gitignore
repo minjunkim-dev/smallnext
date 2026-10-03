@@ -31,3 +31,12 @@ __pycache__/
 
 # Task scratch files
 work/
+
+# Native app and Rust build output
+**/target/
+**/.gradle/
+**/.kotlin/
+**/local.properties
+**/DerivedData/
+**/xcuserdata/
+*.xcuserstate

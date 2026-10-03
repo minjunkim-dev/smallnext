@@ -1,0 +1,86 @@
+name: Project checks
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      use-cache:
+        description: Restore and save CI caches
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: project-checks-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  scope:
+    runs-on: ubuntu-24.04
+    outputs:
+      api: ${{ steps.scope.outputs.api }}
+      container: ${{ steps.scope.outputs.container }}
+      ios: ${{ steps.scope.outputs.ios }}
+      android: ${{ steps.scope.outputs.android }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - id: scope
+        run: python3 scripts/ci_scope.py
+
+  api:
+    needs: scope
+    if: needs.scope.outputs.api == 'true'
+    uses: ./.github/workflows/api-checks.yml
+    with:
+      use-cache: ${{ github.event_name != 'workflow_dispatch' || inputs.use-cache }}
+
+  container:
+    needs: scope
+    if: needs.scope.outputs.container == 'true'
+    uses: ./.github/workflows/api-container.yml
+    with:
+      use-cache: ${{ github.event_name != 'workflow_dispatch' || inputs.use-cache }}
+
+  ios:
+    needs: scope
+    if: needs.scope.outputs.ios == 'true'
+    uses: ./.github/workflows/ios-checks.yml
+    with:
+      use-cache: ${{ github.event_name != 'workflow_dispatch' || inputs.use-cache }}
+
+  android:
+    needs: scope
+    if: needs.scope.outputs.android == 'true'
+    uses: ./.github/workflows/android-checks.yml
+    with:
+      use-cache: ${{ github.event_name != 'workflow_dispatch' || inputs.use-cache }}
+
+  project-checks:
+    name: Project checks
+    if: always()
+    needs: [scope, api, container, ios, android]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check selected job results
+        env:
+          SCOPE_RESULT: ${{ needs.scope.result }}
+          API_RESULT: ${{ needs.api.result }}
+          CONTAINER_RESULT: ${{ needs.container.result }}
+          IOS_RESULT: ${{ needs.ios.result }}
+          ANDROID_RESULT: ${{ needs.android.result }}
+        run: |
+          test "$SCOPE_RESULT" = success
+          for result in "$API_RESULT" "$CONTAINER_RESULT" "$IOS_RESULT" "$ANDROID_RESULT"; do
+            case "$result" in
+              success|skipped) ;;
+              *) exit 1 ;;
+            esac
+          done

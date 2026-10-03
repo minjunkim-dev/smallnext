@@ -104,6 +104,7 @@ PR과 Repository hygiene 검사를 요구하고 강제 푸시와 삭제를 차�
 | Claude 인증 | 최초 조사에서 Secret 없음. 등록과 실제 실행 대기 |
 | Codex 저장소 접근·자동 코드/보안 리뷰 | 계정 설정 확인 대기. 봇 응답 미검증 |
 | 이번 변경의 CI | [PR #16 검사](https://github.com/minjunkim-dev/smallnext/pull/16/checks)에서 Repository hygiene·PR conventions 통과 확인 |
+| 앱·API 초기 셋업과 캐시 검증 | [PR #14 검사](https://github.com/minjunkim-dev/smallnext/pull/14/checks). 커밋 `2ab3841`의 [첫 실행](https://github.com/minjunkim-dev/smallnext/actions/runs/37118733750/attempts/1)과 [캐시 복원 실행](https://github.com/minjunkim-dev/smallnext/actions/runs/37118733750/attempts/2)에서 앱·API 테스트 통과 |
 | Codex 리뷰 요청 | [코드 리뷰 요청](https://github.com/minjunkim-dev/smallnext/pull/16#issuecomment-5968737442) · [보안 리뷰 요청](https://github.com/minjunkim-dev/smallnext/pull/16#issuecomment-5968738037). 응답은 별도 확인 |
 
 브라우저 도구가 작업 경로의 심볼릭 링크 때문에 시작되지 않아 계정 설정을 직접 확인하지 못했습니다.
@@ -111,3 +112,7 @@ PR 생성·CI 통과는 Secret 등록, 계정 연결, AI 응답을 증명하지 
 기능 플래그는 메타데이터 계약만 추가했습니다. 앱에서 실제 OFF·ON 경로를 구현한 증거는 없습니다.
 
 이번 작업의 연결·검증 후속 상태는 [Issue #15](https://github.com/minjunkim-dev/smallnext/issues/15)에 기록합니다.
+
+Project checks는 iOS·Android·API와 컨테이너를 검사합니다.
+로컬 실행은 [개발 환경](DEVELOPMENT.md), 캐시와 병렬 실행은 [CI 구성](CI.md)을 따릅니다.
+실제 AI 품질과 운영 배포는 초기 셋업의 검증 범위에 포함하지 않습니다.
