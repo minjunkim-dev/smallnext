@@ -4,8 +4,9 @@
 
 ## 현재 상태
 
-제품 기획 단계입니다. 저장소의 협업 설정과 자동 검사만 준비했습니다.
-앱 코드, 실제 AI 연결, 배포 환경은 아직 없습니다.
+제품 기획과 초기 구현 환경을 준비한 단계입니다.
+iOS·Android 기본 앱, 로컬 DB 초기화, Rust API, 개발 DB와 CI 구성을 추가했습니다.
+제품 기능, 실제 AI 연결, 인증·동기화, 운영 배포는 아직 구현하지 않았습니다.
 
 ## 제품 방향
 
@@ -20,8 +21,8 @@ Smallnext는 '작은 다음 행동'을 나타내는 작업 이름입니다.
 
 ## 시작하기
 
-1. [제품 가설](docs/PRODUCT.md)을 읽습니다.
-2. [미결정 항목](docs/DECISIONS.md)에서 다음 질문을 선택합니다.
+1. [개발 환경과 실행](docs/DEVELOPMENT.md)에 따라 필요한 프로젝트를 실행합니다.
+2. [제품 가설](docs/PRODUCT.md)과 [미결정 항목](docs/DECISIONS.md)을 확인합니다.
 3. [협업 방법](docs/WORKFLOW.md)에 따라 작은 변경을 PR로 제출합니다.
 
 기본 검사는 Python 3 표준 라이브러리만 사용합니다.
@@ -34,6 +35,8 @@ python3 scripts/check_repository.py
 
 ## 문서
 
+- [개발 환경과 실행](docs/DEVELOPMENT.md)
+- [초기 셋업 검증 기록](docs/SETUP_VALIDATION.md)
 - [제품 가설](docs/PRODUCT.md)
 - [미결정 항목](docs/DECISIONS.md)
 - [협업 방법](docs/WORKFLOW.md)

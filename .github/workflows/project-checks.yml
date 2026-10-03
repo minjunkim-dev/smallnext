@@ -1,0 +1,149 @@
+name: Project checks
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: project-checks-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  scope:
+    runs-on: ubuntu-24.04
+    outputs:
+      api: ${{ steps.scope.outputs.api }}
+      ios: ${{ steps.scope.outputs.ios }}
+      android: ${{ steps.scope.outputs.android }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - id: scope
+        run: python3 scripts/ci_scope.py
+
+  api:
+    needs: scope
+    if: needs.scope.outputs.api == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      RUSTUP_TOOLCHAIN: 1.96.0
+      TEST_DATABASE_URL: postgres://smallnext:smallnext-ci-test@127.0.0.1:5432/smallnext_test
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_DB: smallnext_test
+          POSTGRES_USER: smallnext
+          POSTGRES_PASSWORD: smallnext-ci-test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U smallnext -d smallnext_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Install pinned Rust toolchain
+        run: rustup toolchain install 1.96.0 --profile minimal --component clippy --component rustfmt
+      - name: Check API and contract
+        run: make api-check api-spec-check
+      - name: Test PostgreSQL migration and readiness
+        run: cargo test --locked --manifest-path services/api/Cargo.toml --test database -- --ignored
+      - name: Build API container
+        run: docker build -f services/api/Dockerfile -t smallnext-api:ci .
+      - name: Validate container configuration
+        env:
+          API_DOMAIN: api.example.invalid
+          DATABASE_URL: postgres://example:example@database.invalid/smallnext
+        run: |
+          docker compose --env-file .env.example -f infra/dev/compose.yaml config --quiet
+          docker compose -f infra/production/compose.yaml config --quiet
+
+  ios:
+    needs: scope
+    if: needs.scope.outputs.ios == 'true'
+    runs-on: macos-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Select available iPhone simulator
+        run: |
+          SIMULATOR_ID="$(xcrun simctl list devices available -j | python3 -c 'import json,sys; devices=json.load(sys.stdin)["devices"]; print(next(d["udid"] for group in devices.values() for d in group if d["name"].startswith("iPhone")))')"
+          echo "SIMULATOR_ID=$SIMULATOR_ID" >> "$GITHUB_ENV"
+      - name: Build and test iOS
+        run: |
+          xcodebuild -project apps/ios/Smallnext.xcodeproj -scheme Smallnext \
+            -destination "platform=iOS Simulator,id=$SIMULATOR_ID" \
+            -onlyUsePackageVersionsFromResolvedFile CODE_SIGNING_ALLOWED=NO test
+
+  android:
+    needs: scope
+    if: needs.scope.outputs.android == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Build and lint Android
+        working-directory: apps/android
+        run: ./gradlew --no-daemon assembleDebug lintDebug testDebugUnitTest
+      - name: Start emulator
+        run: |
+          sudo chown "$USER" /dev/kvm
+          sudo chmod u+rw /dev/kvm
+          sdkmanager "system-images;android-35;google_apis;x86_64" "emulator"
+          echo no | avdmanager create avd --force --name SmallnextCI \
+            --package "system-images;android-35;google_apis;x86_64"
+          "$ANDROID_HOME/emulator/emulator" -avd SmallnextCI -no-window \
+            -gpu swiftshader_indirect -no-audio -no-boot-anim -no-snapshot -no-metrics \
+            > "$RUNNER_TEMP/emulator.log" 2>&1 &
+          timeout 180 adb wait-for-device
+          for attempt in $(seq 1 90); do
+            if [ "$(adb shell getprop sys.boot_completed | tr -d '\r')" = "1" ]; then
+              exit 0
+            fi
+            sleep 2
+          done
+          cat "$RUNNER_TEMP/emulator.log"
+          exit 1
+      - name: Test Room persistence
+        working-directory: apps/android
+        run: ./gradlew --no-daemon connectedDebugAndroidTest
+
+  project-checks:
+    name: Project checks
+    if: always()
+    needs: [scope, api, ios, android]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check selected job results
+        env:
+          SCOPE_RESULT: ${{ needs.scope.result }}
+          API_RESULT: ${{ needs.api.result }}
+          IOS_RESULT: ${{ needs.ios.result }}
+          ANDROID_RESULT: ${{ needs.android.result }}
+        run: |
+          test "$SCOPE_RESULT" = success
+          for result in "$API_RESULT" "$IOS_RESULT" "$ANDROID_RESULT"; do
+            case "$result" in
+              success|skipped) ;;
+              *) exit 1 ;;
+            esac
+          done

@@ -28,3 +28,5 @@ jobs:
         env:
           PYTHONDONTWRITEBYTECODE: "1"
         run: python3 scripts/check_repository.py
+      - name: Test project check selection
+        run: python3 scripts/test_ci_scope.py
