@@ -31,6 +31,8 @@ Claude 재검토는 댓글 첫 줄에 `@claude review` 또는 `@claude security 
 Claude는 작업별 GitHub 토큰을 사용합니다. 댓글 작성자는 `github-actions[bot]`으로 표시됩니다.
 하위 프로세스의 인증 환경 변수 제거를 활성화합니다. 전체 모델·도구 출력은 로그에 표시하지 않습니다.
 CI는 Ubuntu 패키지 저장소에서 `bubblewrap`·`socat`을 설치하고 사용자 네임스페이스 격리 실행을 확인합니다.
+Ubuntu 24.04의 AppArmor 제한이 켜져 있으면 `/usr/bin/bwrap`에만 사용자 네임스페이스 생성 권한을 부여합니다.
+시스템 전체의 AppArmor 정책과 네임스페이스 제한은 유지합니다.
 격리 도구가 없으면 실행을 실패로 처리합니다. 인증 환경 변수 제거를 끄는 우회는 사용하지 않습니다.
 코드 쓰기와 병합 권한은 없습니다. `@claude implement`는 이 워크플로의 지원 명령이 아닙니다.
 구현은 승인된 Issue를 로컬 Claude Code/Codex에 전달합니다. Codex 원격 작업은 별도 환경 연결 후 사용합니다.
@@ -80,6 +82,7 @@ Claude Action은 GitHub App 대신 작업 토큰을 사용하므로 Claude GitHu
 Secret과 코드 리뷰 구독·요금은 별도 조건입니다. 일반 ChatGPT API 키는 Codex GitHub 연결을 대신하지 않습니다.
 
 공식 기준: [Claude GitHub Actions](https://code.claude.com/docs/en/github-actions),
+[Claude Linux 격리 설정](https://code.claude.com/docs/en/sandboxing#set-up-linux-and-wsl2),
 [Claude Action 보안](https://github.com/anthropics/claude-code-action/blob/12dd8d74c712f5f3669365b2369b558c495b1104/docs/security.md),
 [Codex GitHub 리뷰](https://developers.openai.com/codex/cloud/code-review/).
 
