@@ -223,7 +223,10 @@
     function render(){
       phone.className=`phone variant-${variant.toLowerCase()}`;
       document.querySelector('#variant-name').textContent=NAMES[variant];
-      if(state.cause){ screen.innerHTML=`<div class="cause"><p class="eyebrow">더 쉽게 시작하기</p><h2 tabindex="-1">어디에서 막혔나요?</h2>${[['amount','양이나 시간이 부담돼요'],['method','어떻게 할지 모르겠어요'],['evidence','확인할 자료가 부족해요'],['choice','무엇을 고를지 모르겠어요']].map(([k,v])=>`<button data-cause="${k}">${v}</button>`).join('')}<button data-action="back">현재 행동으로</button></div>`; }
+      if(state.cause){
+        const a=ACTIONS[state.current],context=CONTEXTS[a.context];
+        screen.innerHTML=`<div class="cause"><p class="eyebrow">더 쉽게 시작하기</p><div class="action-context"><span class="label">${esc(context.label)}</span><p class="subject">${esc(context.subject)}</p><p class="description">${esc(context.description)}</p></div><p class="micro">지금 행동: ${esc(a.title)}</p>${carriedWork(a)}<h2 tabindex="-1">어디에서 막혔나요?</h2>${[['amount','양이나 시간이 부담돼요'],['method','어떻게 할지 모르겠어요'],['evidence','확인할 자료가 부족해요'],['choice','무엇을 고를지 모르겠어요']].map(([k,v])=>`<button data-cause="${k}">${v}</button>`).join('')}<button data-action="back">현재 행동으로</button></div>`;
+      }
       else if(state.current){ const a=ACTIONS[state.current]; screen.innerHTML=({A:VariantA,B:VariantB,C:VariantC})[variant](a); }
       else screen.innerHTML=`<div class="empty"><div class="symbol" aria-hidden="true">✓</div><h2 tabindex="-1">현재 행동을<br>완료했어요.</h2><p>다음 행동을 기다리고 있어요.<br>전체 목표는 아직 남아 있어요.</p>${state.retry?'<button class="retry" data-action="retry">다음 행동 다시 받기</button>':''}</div>`;
       if(state.pending) screen.insertAdjacentHTML('beforeend',`<div class="waiting"><span>다음 행동을 준비하고 있어요.</span><button data-action="cancel">취소</button></div>`);
