@@ -237,7 +237,7 @@
       debug();
     }
     function debug(){ document.querySelector('#debug').textContent=JSON.stringify({화면:NAMES[variant],현재_행동:state.current?ACTIONS[state.current].title:null,모션:document.querySelector('#motion').value,OS_모션_감소:matchMedia('(prefers-reduced-motion: reduce)').matches,처리중:state.pending?.kind||null,마지막_변경:state.lastChange,완료_기록:state.completed,보류_기록:state.deferred,분할_직전:state.history,예시_결과:state.work,남은_범위:'역할 문장·근거 확인 및 문서와 온라인 자료 정리',최종_목표_완료:false,저장:'메모리만; 새로 고침 시 초기화'},null,2); }
-    function focusTitle(){ screen.querySelector('h2')?.focus({preventScroll:true}); }
+    function focusTitle(){ screen.querySelector('h2')?.focus(); }
     function animate(kind,oldTitle){
       if(document.querySelector('#motion').value==='none')return;
       const target=screen.querySelector('.action-card');
