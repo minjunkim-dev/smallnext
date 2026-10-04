@@ -20,11 +20,12 @@ BOT_BRANCH = re.compile(r"^(?:claude|codex|dependabot)/[a-z0-9][a-z0-9._/-]*$")
 ISSUE_REF = re.compile(r"\b(?:Closes|Fixes|Resolves|Refs)\s+#[1-9][0-9]*\b", re.IGNORECASE)
 
 
-def validate_pr(title, branch, body=""):
+def validate_pr(title, branch, body="", author=""):
     errors = []
     match = TITLE.fullmatch(title)
     # Dependabot names long packages in full ("bump androidx.compose:compose-bom from ... in /apps/android").
-    too_long = len(title) > 72 and not branch.startswith("dependabot/")
+    # The PR author is set by GitHub; anyone can name a branch dependabot/.
+    too_long = len(title) > 72 and author != "dependabot[bot]"
     if not match or too_long or title.endswith("."):
         errors.append("PR title: use Conventional Commits, lowercase description, <=72 characters, no final period")
     if not BRANCH.fullmatch(branch) and not BOT_BRANCH.fullmatch(branch):
@@ -87,7 +88,7 @@ def main():
     if args.pr:
         event = json.loads(Path(os.environ["GITHUB_EVENT_PATH"]).read_text())
         pr = event["pull_request"]
-        errors.extend(validate_pr(pr["title"], pr["head"]["ref"], pr.get("body") or ""))
+        errors.extend(validate_pr(pr["title"], pr["head"]["ref"], pr.get("body") or "", pr["user"]["login"]))
     for error in errors:
         print(f"FAIL: {error}")
     if errors:
