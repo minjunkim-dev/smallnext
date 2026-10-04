@@ -42,7 +42,7 @@ Android의 빌드·lint와 기기 테스트도 별도 실행기에서 수행합�
 | 대상 | 캐시 | 갱신 기준 |
 | --- | --- | --- |
 | Rust | Cargo 레지스트리·Git 의존성·Debug 컴파일 출력 | OS·CPU·Rust 도구 버전·Cargo 설정·잠금 파일 |
-| Docker | BuildKit 레이어(의존성 빌드 레이어 중심) | OS·CPU·Dockerfile·Cargo.toml·잠금 파일 |
+| Docker | BuildKit 레이어(의존성 빌드 레이어 중심) | OS·CPU·Dockerfile·Cargo.toml·잠금 파일·베이스 이미지 digest |
 | iOS 패키지 | SwiftPM 소스 | OS·CPU·Xcode·SDK·Package.resolved |
 | iOS 컴파일 | DerivedData의 Build 폴더 | 위 도구 조건과 iOS 소스·프로젝트·워크플로의 정확한 일치 |
 | Android | Gradle 의존성·작업 출력 | OS·CPU·Gradle Wrapper·빌드 설정·버전 목록; 작업 입력은 Gradle이 확인 |
