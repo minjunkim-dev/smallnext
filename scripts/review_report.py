@@ -26,7 +26,11 @@ SECRET = re.compile(
 LABELLED_SECRET = re.compile(
     r"(?im)(\b(?:[a-z][a-z0-9]*[_-])*(?:password|passwd|pwd|secret|client[_ -]?secret|api[_ -]?key|access[_ -]?token|"
     r"refresh[_ -]?token|private[_ -]?key|(?:aws[_ -]?)?secret[_ -]?access[_ -]?key|authorization|비밀번호|인증키|비밀값)"
-    r"\b[\"'`]?\s*[:=]\s*(?:(?:Bearer|Basic)\s+)?)(\"[^\"\r\n]*(?:\"|$)|'[^'\r\n]*(?:'|$)|`[^`\r\n]*(?:`|$)|[^\r\n]+)")
+    r"\b[\"'`]?\s*[:=]\s*(?:(?:Bearer|Basic)\s+)?)"
+    r"([|>][1-9+-]*[ \t]*(?:#[^\r\n]*)?(?=[\r\n]|$)"
+    r"(?:\r?\n(?:[+-]?[ \t]+[^\r\n]*|[+-]?(?=\r?\n|$)))*"
+    r"|\"(?:\\[\s\S]|[^\"\\])*(?:\"|$)|'(?:\\[\s\S]|[^'\\])*(?:'|$)"
+    r"|`[^`]*(?:`|$)|[^\r\n]+)")
 
 
 def redact_credentials(text):

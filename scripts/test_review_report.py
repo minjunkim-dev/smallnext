@@ -229,6 +229,9 @@ class ReportTests(unittest.TestCase):
         for body in [credential, "github_pat_" + "b" * 60, "sk-ant-oat01-" + "c" * 50,
                      "sk-proj-" + "a" * 80, "sk-svcacct-" + "b" * 80, "sk-" + "c" * 48,
                      "OPENAI_API_KEY=" + "a" * 40, 'DATABASE_PASSWORD="' + "p " * 4 + 'phrase"',
+                     "password: |\n  " + "p" * 30, "api_key: >-\n\n  " + "k" * 40,
+                     "+  password: |2-\r\n+    " + "p" * 30,
+                     'password: "first\n' + "p" * 30 + '"',
                      "AKIA" + "A" * 16, "xoxb-" + "a" * 30,
                      "eyJ" + "a" * 20 + "." + "b" * 30 + "." + "c" * 30,
                      "password: " + "p" * 10, "aws_secret_access_key=" + "a" * 40,
@@ -253,11 +256,15 @@ class ReportTests(unittest.TestCase):
                 credential = "AKIA" + "A" * 16
                 openai_key = "sk-proj-" + "Z" * 80
                 labelled_key = "K" * 40
+                block_secret = "sensitive-yaml-value-" + "V" * 20
+                quoted_secret = "multiline-quoted-value-" + "W" * 20
                 password = "p " * 4 + "phrase"
                 key_material = "Q" * 64
                 pem = "-----BEGIN " + "PRIVATE KEY-----\n" + key_material + "\n-----END " + "PRIVATE KEY-----"
                 data = {"state": "OPEN", "body": credential + '\nDATABASE_PASSWORD: "' + password + '"\n' + pem +
-                        "\n" + openai_key + "\nOPENAI_API_KEY=" + labelled_key, "comments": []}
+                        "\n" + openai_key + "\nOPENAI_API_KEY=" + labelled_key +
+                        "\npassword: |\n\n  " + block_secret + '\nnot_sensitive: visible\npassword: "first\n' +
+                        quoted_secret + '"', "comments": []}
                 env = {"GITHUB_REPOSITORY": "owner/repo", "REVIEW_KIND": "issue", "REVIEW_NUMBER": "29",
                        "REVIEW_SHA": "none", "RUNNER_TEMP": directory}
                 with patch.dict(os.environ, env), patch("review_report.metadata", return_value=data), \
@@ -267,6 +274,9 @@ class ReportTests(unittest.TestCase):
                     self.assertNotIn(credential, prompt)
                     self.assertNotIn(openai_key, prompt)
                     self.assertNotIn(labelled_key, prompt)
+                    self.assertNotIn(block_secret, prompt)
+                    self.assertNotIn(quoted_secret, prompt)
+                    self.assertIn("not_sensitive: visible", prompt)
                     self.assertNotIn(password, prompt)
                     self.assertNotIn(key_material, prompt)
                     self.assertIn("[REDACTED]", prompt)
