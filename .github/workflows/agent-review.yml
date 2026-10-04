@@ -57,7 +57,7 @@ jobs:
       pull-requests: read
     # Ignore unapproved events. An old PR head cannot replace a newer head's review.
     concurrency:
-      group: claude-authorized-review-${{ needs.authorize.outputs.number }}-${{ needs.authorize.outputs.sha || 'issue' }}
+      group: claude-authorized-review-${{ needs.authorize.outputs.number }}-${{ needs.authorize.outputs.sha || 'issue' }}-${{ needs.authorize.outputs.mode }}
       cancel-in-progress: true
     steps:
       - name: Check out trusted instructions

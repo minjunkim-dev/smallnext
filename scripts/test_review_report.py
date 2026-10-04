@@ -227,6 +227,8 @@ class ReportTests(unittest.TestCase):
     def test_credentials_and_encoded_actual_credentials_are_rejected(self):
         credential = "ghp_" + "a" * 36
         for body in [credential, "github_pat_" + "b" * 60, "sk-ant-oat01-" + "c" * 50,
+                     "sk-proj-" + "a" * 80, "sk-svcacct-" + "b" * 80, "sk-" + "c" * 48,
+                     "OPENAI_API_KEY=" + "a" * 40, 'DATABASE_PASSWORD="' + "p " * 4 + 'phrase"',
                      "AKIA" + "A" * 16, "xoxb-" + "a" * 30,
                      "eyJ" + "a" * 20 + "." + "b" * 30 + "." + "c" * 30,
                      "password: " + "p" * 10, "aws_secret_access_key=" + "a" * 40,
@@ -249,10 +251,13 @@ class ReportTests(unittest.TestCase):
                 Path("AGENTS.md").write_text("rules", encoding="utf-8")
                 Path("docs/WORKFLOW.md").write_text("workflow", encoding="utf-8")
                 credential = "AKIA" + "A" * 16
+                openai_key = "sk-proj-" + "Z" * 80
+                labelled_key = "K" * 40
                 password = "p " * 4 + "phrase"
                 key_material = "Q" * 64
                 pem = "-----BEGIN " + "PRIVATE KEY-----\n" + key_material + "\n-----END " + "PRIVATE KEY-----"
-                data = {"state": "OPEN", "body": credential + '\npassword: "' + password + '"\n' + pem, "comments": []}
+                data = {"state": "OPEN", "body": credential + '\nDATABASE_PASSWORD: "' + password + '"\n' + pem +
+                        "\n" + openai_key + "\nOPENAI_API_KEY=" + labelled_key, "comments": []}
                 env = {"GITHUB_REPOSITORY": "owner/repo", "REVIEW_KIND": "issue", "REVIEW_NUMBER": "29",
                        "REVIEW_SHA": "none", "RUNNER_TEMP": directory}
                 with patch.dict(os.environ, env), patch("review_report.metadata", return_value=data), \
@@ -260,6 +265,8 @@ class ReportTests(unittest.TestCase):
                     prepare()
                     prompt = Path(output.call_args.args[1]).read_text(encoding="utf-8")
                     self.assertNotIn(credential, prompt)
+                    self.assertNotIn(openai_key, prompt)
+                    self.assertNotIn(labelled_key, prompt)
                     self.assertNotIn(password, prompt)
                     self.assertNotIn(key_material, prompt)
                     self.assertIn("[REDACTED]", prompt)

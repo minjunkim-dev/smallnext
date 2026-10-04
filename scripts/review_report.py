@@ -15,6 +15,7 @@ from urllib.parse import unquote, urlsplit
 MAX_BODY = 16000
 SECRET = re.compile(
     r"(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|sk-ant-[A-Za-z0-9_-]{20,}"
+    r"|sk-(?:(?:proj|svcacct|org)-)?[A-Za-z0-9_-]{20,}"
     r"|(?:AKIA|ASIA)[A-Z0-9]{16}|xox[baprs]-[A-Za-z0-9-]{10,}|xapp-[A-Za-z0-9-]{10,}"
     r"|[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{16,}\.[A-Za-z0-9_-]{16,}"
     r"|AIza[A-Za-z0-9_-]{35}|sk_(?:live|test)_[A-Za-z0-9]{16,}"
@@ -23,7 +24,7 @@ SECRET = re.compile(
     r"|[?&](?:sig|token|signature|X-Amz-Signature|X-Amz-Credential)=[^\s&#\"']+"
     r"|(?s:-----BEGIN (?P<key_type>[A-Z0-9 ]*PRIVATE KEY)-----.*?(?:-----END (?P=key_type)-----|$)))")
 LABELLED_SECRET = re.compile(
-    r"(?im)(\b(?:password|passwd|pwd|secret|client[_ -]?secret|api[_ -]?key|access[_ -]?token|"
+    r"(?im)(\b(?:[a-z][a-z0-9]*[_-])*(?:password|passwd|pwd|secret|client[_ -]?secret|api[_ -]?key|access[_ -]?token|"
     r"refresh[_ -]?token|private[_ -]?key|(?:aws[_ -]?)?secret[_ -]?access[_ -]?key|authorization|비밀번호|인증키|비밀값)"
     r"\b[\"'`]?\s*[:=]\s*(?:(?:Bearer|Basic)\s+)?)(\"[^\"\r\n]*(?:\"|$)|'[^'\r\n]*(?:'|$)|`[^`\r\n]*(?:`|$)|[^\r\n]+)")
 
