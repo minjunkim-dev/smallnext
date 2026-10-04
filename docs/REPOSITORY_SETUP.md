@@ -18,13 +18,13 @@
 | --- | --- |
 | 문서 링크·공백·Action SHA·플래그 메타데이터 | Repository checks. main push와 PR마다 실행 |
 | PR 제목·브랜치·구현 Issue 연결 | PR policy. PR 생성·수정·새 커밋마다 실행 |
-| Issue의 범위·완료 조건·선행 조건 검토 | Claude. 쓰기 권한 사용자가 Issue 생성·수정 또는 `ai:review` 라벨 지정 |
-| PR의 회귀·플래그·보안 검토와 댓글 | Claude. main 대상 PR 생성·갱신·ready 전환. Draft와 fork는 제외 |
+| Issue의 범위·완료 조건·선행 조건 검토 | Claude. 수동 호출만. 쓰기 권한 사용자가 `ai:review` 라벨 지정 또는 리뷰 댓글 작성 |
+| PR의 회귀·플래그·보안 검토와 댓글 | Claude. 수동 호출만. main 대상 PR에 `ai:review` 라벨 지정 또는 리뷰 댓글 작성. Draft와 fork는 제외 |
 | 코드 리뷰와 보안 리뷰 | Codex. 모든 PR을 매 푸시마다 코드 검토하고 보안 검토도 함께 실행 |
 | 제품 결정·계정 연결·기기 확인·최종 병합 | 사람. AI는 검토안을 제시하고 승인된 구현을 수행 |
 
-Claude 재검토는 댓글 첫 줄에 `@claude review` 또는 `@claude security review`를 씁니다.
-`ai:review` 라벨을 제거한 후 다시 지정해도 재검토합니다. `ai:skip`은 Claude 자동 리뷰를 중지합니다.
+Claude 검토는 댓글 첫 줄에 `@claude review` 또는 `@claude security review`를 씁니다. Issue·PR 생성과 push는 Claude를 실행하지 않습니다.
+`ai:review` 라벨을 제거한 후 다시 지정해도 재검토합니다. `ai:skip` 항목은 Claude가 검토하지 않습니다.
 봇 이벤트는 재실행하지 않습니다. 같은 PR head 또는 같은 Issue의 이전 리뷰 작업은 권한 확인을 통과한 새 요청만 취소합니다.
 읽기 전용 권한 확인, Secret을 사용하는 모델 검토, 댓글 게시 작업을 분리합니다.
 봇 댓글·일반 댓글·거절된 요청은 실행 중인 리뷰를 취소하지 않습니다.
