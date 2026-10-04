@@ -1,6 +1,7 @@
 """Prepare bounded evidence, validate tool-free model output and post a comment."""
 
 import base64
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -8,6 +9,7 @@ import re
 import subprocess
 import sys
 import uuid
+from urllib.parse import unquote, urlsplit
 
 
 MAX_BODY = 16000
@@ -72,15 +74,35 @@ def extract(messages):
     return validate_body(result.get("result"))
 
 
-def encode_report(kind, number, sha, body):
+def issue_fingerprint(data):
+    evidence = {"title": data.get("title"), "body": data.get("body"),
+                "comments": [{"id": item.get("id"), "body": item.get("body"),
+                              "author": (item.get("author") or {}).get("login")}
+                             for item in data.get("comments", [])]}
+    return hashlib.sha256(json.dumps(evidence, sort_keys=True, ensure_ascii=False,
+                                    separators=(",", ":")).encode()).hexdigest()
+
+
+def validate_fingerprint(kind, fingerprint):
+    if not isinstance(fingerprint, str) or (kind == "issue" and not re.fullmatch(r"[0-9a-f]{64}", fingerprint)) or (kind == "pr" and fingerprint != ""):
+        raise ValueError("Invalid evidence fingerprint")
+
+
+def encode_report(kind, number, sha, body, fingerprint=""):
+    validate_fingerprint(kind, fingerprint)
     return base64.b64encode(json.dumps({"kind": kind, "number": number, "sha": sha,
+                                      "fingerprint": fingerprint,
                                       "body": validate_body(body)}, ensure_ascii=False).encode()).decode()
 
 
-def decode_report(encoded, kind, number, sha):
+def decode_report(encoded, kind, number, sha, data=None):
     report = json.loads(base64.b64decode(encoded, validate=True))
     if not isinstance(report, dict) or (report.get("kind"), report.get("number"), report.get("sha")) != (kind, number, sha):
         raise ValueError("Review target mismatch")
+    fingerprint = report.get("fingerprint", "")
+    validate_fingerprint(kind, fingerprint)
+    if kind == "issue" and data is not None and issue_fingerprint(data) != fingerprint:
+        raise ValueError("Issue evidence changed; stale review was not posted")
     return validate_body(report.get("body"))
 
 
@@ -90,11 +112,68 @@ def output(name, value):
         file.write(f"{name}<<{marker}\n{value}\n{marker}\n")
 
 
+def linked_documents(repo, texts):
+    """Read bounded tracked Markdown under docs/ from this trusted checkout only."""
+    candidates = []
+    for text in texts:
+        links = re.findall(r"\[[^\]]*\]\(([^\s)]+)", text)
+        links += [link.rstrip(".,;:!?") for link in re.findall(r"https://github\.com/[^\s<>\x60)]+", text)]
+        links += re.findall(r"\x60(docs/[^\x60\n]+\.md)\x60", text)
+        for link in links:
+            try:
+                parsed = urlsplit(link)
+            except ValueError:
+                continue
+            path = unquote(parsed.path)
+            if any(ord(char) < 32 or ord(char) == 127 for char in path):
+                continue
+            if parsed.scheme or parsed.netloc:
+                prefix = "/" + repo + "/blob/"
+                if parsed.scheme != "https" or parsed.netloc != "github.com" or not path.lower().startswith(prefix.lower()):
+                    continue
+                match = re.fullmatch(r"main/(docs/.+)", path[len(prefix):])
+                if not match:
+                    continue
+                path = match.group(1)
+            path = path.removeprefix("./")
+            parts = Path(path).parts
+            if not parts or parts[0] != "docs" or ".." in parts or Path(path).suffix != ".md":
+                continue
+            if path not in candidates:
+                candidates.append(path)
+    docs = {}
+    omitted = 0
+    remaining = 48000
+    root = Path("docs").resolve()
+    for name in candidates:
+        file = Path(name)
+        if len(docs) >= 6 or remaining <= 0 or not file.resolve().is_relative_to(root):
+            omitted += 1
+            continue
+        tracked = subprocess.run(["git", "--literal-pathspecs", "ls-files", "--error-unmatch", "--", name],
+                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0
+        if not tracked:
+            omitted += 1
+            continue
+        try:
+            limit = min(16000, remaining)
+            with file.open(encoding="utf-8") as source:
+                content = source.read(limit + 1)
+            docs[name] = content[:limit]
+            remaining -= len(docs[name])
+            omitted += int(len(content) > limit)
+        except (OSError, UnicodeError):
+            omitted += 1
+    return {"source": "trusted checked-out base; only main links are mapped; other refs and external links are not fetched",
+            "documents": docs, "omitted_or_truncated": omitted}
+
+
 def prepare():
     repo, kind, number, sha = target()
     data = metadata(repo, kind, number)
     if not current(data, kind, sha):
         raise ValueError("Target changed before review")
+    output("fingerprint", issue_fingerprint(data) if kind == "issue" else "")
     comments = [{"author": (item.get("author") or {}).get("login"), "body": (item.get("body") or "")[:2000]}
                 for item in data.get("comments", [])[-10:]]
     evidence = {"title": data.get("title", "")[:1000], "body": (data.get("body") or "")[:16000], "comments": comments}
@@ -103,6 +182,24 @@ def prepare():
         diff = gh("pr", "diff", number, "--repo", repo)
         evidence["diff"] = diff[:120000]
         truncated = len(diff) > 120000
+        evidence["related_issues"] = []
+        references = list(dict.fromkeys(re.findall(r"(?im)\b(?:refs|closes|fixes|resolves)\s+#([1-9][0-9]{0,9})\b",
+                                                   evidence["body"])))
+        evidence["omitted_related_issues"] = max(0, len(references) - 3)
+        for reference in references[:3]:
+            try:
+                issue = metadata(repo, "issue", reference)
+                evidence["related_issues"].append({
+                    "number": reference, "title": (issue.get("title") or "")[:1000],
+                    "body": (issue.get("body") or "")[:16000],
+                    "comments": [(item.get("body") or "")[:2000] for item in issue.get("comments", [])[-10:]]})
+            except (ValueError, subprocess.CalledProcessError):
+                evidence["omitted_related_issues"] += 1
+    related = evidence.get("related_issues", [])
+    texts = [issue["body"] for issue in related] + [evidence["body"]]
+    texts += [comment for issue in related for comment in issue["comments"]]
+    texts += [item["body"] for item in comments]
+    evidence["linked_planning_documents"] = linked_documents(repo, texts)
     rules = "\n\n".join(
         name + ":\n" + Path(name).read_text(encoding="utf-8")[:limit]
         for name, limit in [("AGENTS.md", 16000), ("docs/WORKFLOW.md", 24000)])
@@ -137,16 +234,16 @@ def finish():
     if not file.is_relative_to(root) or file.stat().st_size > 10 * 1024 * 1024:
         raise ValueError("Invalid transcript path")
     body = extract(json.loads(file.read_text(encoding="utf-8")))
-    output("report", encode_report(kind, number, sha, body))
+    output("report", encode_report(kind, number, sha, body, os.environ.get("REVIEW_EVIDENCE_FINGERPRINT", "")))
 
 
 def publish():
     repo, kind, number, sha = target()
-    body = neutralize_mentions(decode_report(os.environ["REVIEW_REPORT"], kind, number, sha))
     data = metadata(repo, kind, number)
     if not current(data, kind, sha):
         raise ValueError("Target changed; stale review was not posted")
-    reviewed = sha if kind == "pr" else "Issue evidence at workflow execution time"
+    body = neutralize_mentions(decode_report(os.environ["REVIEW_REPORT"], kind, number, sha, data))
+    reviewed = sha if kind == "pr" else "Issue 자료 SHA-256: " + issue_fingerprint(data)
     comment = {"body": f"검토 기준: {reviewed}\n범위: 제공된 자료의 소스 검토. 실행·기기·배포 검증은 포함하지 않습니다.\n\n{body}"}
     subprocess.run(["gh", "api", "--method", "POST", f"repos/{repo}/issues/{number}/comments",
                     "--input", "-", "--silent"], input=json.dumps(comment), text=True,

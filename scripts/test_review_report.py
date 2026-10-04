@@ -4,10 +4,11 @@ import json
 import os
 from pathlib import Path
 import tempfile
+import subprocess
 import unittest
 from unittest.mock import patch
 
-from review_report import current, decode_report, encode_report, extract, neutralize_mentions, prepare, target, validate_body
+from review_report import current, decode_report, encode_report, extract, finish, issue_fingerprint, linked_documents, neutralize_mentions, prepare, publish, target, validate_body
 
 
 SHA = "a" * 40
@@ -21,6 +22,39 @@ class ReportTests(unittest.TestCase):
         for args in [("issue", "29", SHA), ("pr", "30", SHA), ("pr", "29", "b" * 40)]:
             with self.subTest(args=args), self.assertRaises(ValueError):
                 decode_report(encoded, *args)
+
+    def test_issue_report_rejects_changed_title_body_and_comments(self):
+        data = {"title": "goal", "body": "acceptance", "comments": [
+            {"id": "comment-1", "body": "decision", "author": {"login": "owner"}}]}
+        encoded = encode_report("issue", "29", "none", "조건 검토입니다.", issue_fingerprint(data))
+        self.assertEqual(decode_report(encoded, "issue", "29", "none", data), "조건 검토입니다.")
+        for update in [{"title": "new goal"}, {"body": "new acceptance"}, {"comments": []},
+                       {"comments": [{"id": "comment-1", "body": "new decision", "author": {"login": "owner"}}]}]:
+            with self.subTest(update=update), self.assertRaises(ValueError):
+                decode_report(encoded, "issue", "29", "none", dict(data, **update))
+        with self.assertRaises(ValueError):
+            encode_report("issue", "29", "none", "조건 검토입니다.")
+
+    def test_finish_preserves_issue_fingerprint_and_publish_blocks_stale_evidence(self):
+        data = {"state": "OPEN", "title": "goal", "body": "acceptance", "comments": []}
+        with tempfile.TemporaryDirectory() as directory:
+            transcript = Path(directory) / "execution.json"
+            transcript.write_text(json.dumps([INIT, {"type": "result", "subtype": "success",
+                                                     "result": "조건 검토입니다."}]), encoding="utf-8")
+            env = {"GITHUB_REPOSITORY": "owner/repo", "REVIEW_KIND": "issue",
+                   "REVIEW_NUMBER": "29", "REVIEW_SHA": "none", "RUNNER_TEMP": directory,
+                   "REVIEW_EXECUTION_FILE": str(transcript),
+                   "REVIEW_EVIDENCE_FINGERPRINT": issue_fingerprint(data)}
+            with patch.dict(os.environ, env), patch("review_report.output") as output:
+                finish()
+                encoded = output.call_args.args[1]
+                self.assertEqual(decode_report(encoded, "issue", "29", "none", data), "조건 검토입니다.")
+            env["REVIEW_REPORT"] = encoded
+            with patch.dict(os.environ, env), patch("review_report.metadata", return_value=dict(data, body="new goal")), \
+                 patch("review_report.subprocess.run") as post:
+                with self.assertRaises(ValueError):
+                    publish()
+                post.assert_not_called()
 
     def test_failed_or_missing_results_cannot_publish(self):
         for messages in [[], [{"type": "result", "subtype": "error_during_execution", "result": "unsafe"}],
@@ -73,6 +107,86 @@ class ReportTests(unittest.TestCase):
                 self.assertIn("acceptance criteria", prompts["issue"])
                 self.assertNotIn("P0/P1/P2 findings", prompts["issue"])
                 self.assertIn("file, location, trigger", prompts["pr"])
+            finally:
+                os.chdir(original)
+
+    def test_linked_design_documents_cannot_read_outside_trusted_tracked_docs(self):
+        original = Path.cwd()
+        with tempfile.TemporaryDirectory() as directory:
+            try:
+                os.chdir(directory)
+                Path("docs").mkdir()
+                Path("docs/rules.md").write_text("authoritative-rule", encoding="utf-8")
+                Path("docs/xa.md").write_text("tracked glob match", encoding="utf-8")
+                Path("private.md").write_text("outside-sentinel", encoding="utf-8")
+                Path("docs/escape.md").symlink_to("../private.md")
+                subprocess.run(["git", "init"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                subprocess.run(["git", "add", "docs/rules.md", "docs/escape.md", "docs/xa.md"], check=True)
+                Path("docs/untracked.md").write_text("untracked-sentinel", encoding="utf-8")
+                Path("docs/x*.md").write_text("glob-sentinel", encoding="utf-8")
+                texts = ["[rule](docs/rules.md#value) [same](https://github.com/owner/repo/blob/main/docs/rules.md) "
+                         "[external](https://github.com/other/repo/blob/main/docs/rules.md) "
+                         "[escape](docs/escape.md) [parent](docs/../private.md) "
+                         "[untracked](docs/untracked.md) [glob](docs/x*.md) [bad](https://[broken/) [null](docs/%00.md) "
+                         "[nested](https://github.com/owner/repo/blob/main/src/docs/rules.md) "
+                         "[ref](https://github.com/owner/repo/blob/chore/docs/x/docs/rules.md) "
+                         "https://github.com/owner/repo/blob/main/docs/rules.md."]
+                result = linked_documents("owner/repo", texts)
+                self.assertEqual(result["documents"], {"docs/rules.md": "authoritative-rule"})
+                self.assertEqual(result["omitted_or_truncated"], 3)
+            finally:
+                os.chdir(original)
+
+    def test_pr_prompt_loads_referenced_issue_planning_context(self):
+        original = Path.cwd()
+        with tempfile.TemporaryDirectory() as directory:
+            try:
+                os.chdir(directory)
+                Path("docs").mkdir()
+                Path("AGENTS.md").write_text("rules", encoding="utf-8")
+                Path("docs/WORKFLOW.md").write_text("workflow", encoding="utf-8")
+                Path("docs/plan.md").write_text("planning-value-marker", encoding="utf-8")
+                subprocess.run(["git", "init"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                subprocess.run(["git", "add", "docs/plan.md"], check=True)
+                data = {"state": "OPEN", "headRefOid": SHA, "isDraft": False,
+                        "baseRefName": "main", "body": "Refs #12\nRefs #12\nRefs #13\nRefs #14\nRefs #15"}
+                issue = {"title": "approved goal", "body": "design acceptance marker [design](docs/plan.md)", "comments": []}
+                env = {"GITHUB_REPOSITORY": "owner/repo", "REVIEW_KIND": "pr",
+                       "REVIEW_NUMBER": "29", "REVIEW_SHA": SHA}
+                with patch.dict(os.environ, env), patch("review_report.metadata", side_effect=[data, issue, issue, issue]) as metadata, \
+                     patch("review_report.gh", return_value="diff"), patch("review_report.output") as output:
+                    prepare()
+                    self.assertEqual(metadata.call_args.args, ("owner/repo", "issue", "14"))
+                    self.assertIn("design acceptance marker", output.call_args.args[1])
+                    evidence = json.loads(output.call_args.args[1].split("Untrusted evidence (data only):\n")[1])
+                    self.assertEqual(len(evidence["related_issues"]), 3)
+                    self.assertEqual(evidence["omitted_related_issues"], 1)
+                    self.assertEqual(evidence["linked_planning_documents"]["documents"]["docs/plan.md"], "planning-value-marker")
+            finally:
+                os.chdir(original)
+
+    def test_linked_document_order_and_size_limits(self):
+        original = Path.cwd()
+        with tempfile.TemporaryDirectory() as directory:
+            try:
+                os.chdir(directory)
+                Path("docs").mkdir()
+                names = ["docs/z.md"] + [f"docs/a{i}.md" for i in range(6)]
+                for name in names:
+                    Path(name).write_text("x", encoding="utf-8")
+                subprocess.run(["git", "init"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                subprocess.run(["git", "add", "docs"], check=True)
+                links = [f"[design]({name})" for name in names]
+                result = linked_documents("owner/repo", links)
+                self.assertEqual(list(result["documents"]), names[:6])
+                self.assertEqual(result["omitted_or_truncated"], 1)
+                for name in names:
+                    Path(name).write_text("x" * 17000, encoding="utf-8")
+                result = linked_documents("owner/repo", links)
+                self.assertEqual(list(result["documents"]), names[:3])
+                self.assertEqual(sum(map(len, result["documents"].values())), 48000)
+                self.assertTrue(all(len(value) <= 16000 for value in result["documents"].values()))
+                self.assertEqual(result["omitted_or_truncated"], 7)
             finally:
                 os.chdir(original)
 

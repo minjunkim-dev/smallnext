@@ -144,6 +144,7 @@ jobs:
           REVIEW_NUMBER: ${{ needs.authorize.outputs.number }}
           REVIEW_SHA: ${{ needs.authorize.outputs.sha }}
           REVIEW_EXECUTION_FILE: ${{ steps.claude.outputs.execution_file }}
+          REVIEW_EVIDENCE_FINGERPRINT: ${{ steps.evidence.outputs.fingerprint }}
         run: python3 scripts/review_report.py finish
       - name: Summarize failure without model messages
         if: failure() && steps.claude.outcome == 'failure'
