@@ -1,11 +1,12 @@
 name: Claude issue and PR review
 
 on:
+  # Manual only: a review label or an explicit review comment. Codex reviews every push.
   issues:
-    types: [opened, edited, labeled]
+    types: [labeled]
   pull_request_target:
     branches: [main]
-    types: [opened, synchronize, reopened, ready_for_review, labeled]
+    types: [labeled]
   issue_comment:
     types: [created]
 
@@ -14,12 +15,14 @@ permissions:
 
 jobs:
   authorize:
-    # Ignore bot feedback and comments that are not an explicit review request.
+    # Ignore bot feedback, other labels, and comments that are not an explicit review request.
     if: >-
       github.event.sender.type == 'User' &&
-      (github.event_name != 'issue_comment' ||
-       startsWith(github.event.comment.body, '@claude review') ||
-       startsWith(github.event.comment.body, '@claude security review'))
+      ((github.event_name == 'issue_comment' &&
+        (startsWith(github.event.comment.body, '@claude review') ||
+         startsWith(github.event.comment.body, '@claude security review'))) ||
+       (github.event_name != 'issue_comment' &&
+        contains(fromJSON('["ai:review"]'), github.event.label.name)))
     runs-on: ubuntu-24.04
     timeout-minutes: 3
     permissions:
