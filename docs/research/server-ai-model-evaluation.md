@@ -1,126 +1,103 @@
-# Smallnext 서버 AI 공급자·모델 조사
+# Smallnext 서버 AI 모델 비교와 평가 검토안
 
-확인일: 2026-10-04, Asia/Seoul. 공식 문서만 확인했습니다.
-대상 결정: [첫 버전에 사용할 서버 AI 공급자와 모델은 무엇인가?](https://github.com/minjunkim-dev/smallnext/issues/17)
-상태: 문서 조사 완료. 제품 기본 공급자·모델은 미확정입니다.
+확인일: 2026-10-04. 공식 문서만 확인했다. 유료 API를 호출하지 않았다.
+범위: OpenAI·Anthropic·Google의 주요 텍스트 API 모델 카탈로그다. 전체 시장 조사라고 주장하지 않는다.
+대상 결정: [첫 버전에 사용할 서버 AI 공급자와 모델은 무엇인가?](https://github.com/minjunkim-dev/smallnext/issues/17). 확정 답은 해당 Issue에서 관리한다.
+아래 추천은 평가 후보 제안이다. 제품 기본 모델은 아직 확정하지 않는다.
+`사실`은 문서 확인값이다. `추론`은 후보 선정 판단이다. `미측정`은 실제 요청으로 확인하지 않은 값이다.
 
-## 추천 후보
+## 최신 주요 목록과 정상 가격
 
-**평가용으로 GPT-5.4 mini와 Claude Haiku 4.5를 추천합니다.**
-두 후보는 날짜가 있는 API 모델 ID를 고정할 수 있습니다. JSON Schema 출력도 지원합니다.
-이 추천은 문서 적합성에 대한 판단입니다. 한국어 행동 분할 품질과 지연을 측정하지 않았습니다.
-Gemini 3.1 Flash-Lite는 세 번째 대안입니다. 유료 API도 남용 감시 자료를 55일 보관합니다.
-평가용 후보와 제품 기본 모델의 최종 선택을 구분합니다. 사용자 확인 전에는 API를 호출하지 않습니다.
+단위는 USD/백만 토큰이다. 캐시·Batch·도구 비용은 제외했다. 추론 토큰은 출력 과금에 포함된다.
 
-## 현재 모델과 정상 가격: 확인한 사실
+| 공급자 | 주요 텍스트 모델 | 입력 / 출력 | 문서 상태 |
+|---|---|---:|---|
+| OpenAI | GPT-6 Astra | 10 / 50 | 최신 상위급 |
+| OpenAI | GPT-6.1 Sol | 2 / 10 | 최신 균형형 |
+| OpenAI | GPT-6 Luna | 0.10 / 0.50 | 최신 저비용형 |
+| OpenAI | GPT-6 Sol | 2 / 10 | 이전 세대, 제공 중 |
+| Anthropic | Claude Fable 5.1 | 10 / 50 | Active, 최신 |
+| Anthropic | Claude Opus 5.5 | 4 / 20 | Active, 최신 |
+| Anthropic | Claude Sonnet 5.5 | 2 / 10 | Active, 최신 |
+| Anthropic | Claude Haiku 4.5 | 1 / 5 | Active, 현행 Haiku |
+| Google | Gemini 3.8 Flash | 0.75 / 3.75 | Stable |
+| Google | Gemini 3.7 Flash | 0.75 / 3.75 | Stable |
+| Google | Gemini 3.6 Flash | 0.75 / 3.75 | Stable |
+| Google | Gemini 3.5 Flash | 1.50 / 9 | Stable |
+| Google | Gemini 3.5 Flash-Lite | 0.30 / 2.50 | Stable |
+| Google | Gemini 3.1 Flash-Lite | 0.25 / 1.50 | 이전 Stable |
+| Google | Gemini 3.1 Pro | 2 / 12 | Preview, 입력 200k 이하 |
 
-가격은 USD/백만 토큰입니다. 일반 온라인 요청 기준입니다. 캐시·Batch·Priority·지역 추가요금을 제외했습니다.
+사실: Gemini 3.8·3.7·3.6 Flash의 위 가격은 2026-12-31까지다. 2027-01-01에는 1.50 / 7.50이 된다.
+사실: Gemini 3.1 Pro Preview는 입력 200k 초과 시 4 / 18이다. GPT-6 계열은 입력 272k 초과 시 별도 장문 요율이 적용된다.
+범위 밖: 전용 코딩·이미지·음성·실시간 모델과 오래된 모델은 전체 가격표로 펼치지 않았다. 카탈로그에는 구형 모델도 남아 있다.
+출처: [OpenAI 카탈로그](https://developers.openai.com/api/docs/models), [Claude 카탈로그](https://platform.claude.com/docs/en/models/overview), [Gemini 카탈로그](https://ai.google.dev/gemini-api/docs/models), [Gemini 정상 가격](https://ai.google.dev/gemini-api/docs/pricing).
+OpenAI 가격 출처: [Astra](https://developers.openai.com/api/docs/models/gpt-6-astra), [Sol 6.1](https://developers.openai.com/api/docs/models/gpt-6.1-sol), [Luna](https://developers.openai.com/api/docs/models/gpt-6-luna), [Sol 6](https://developers.openai.com/api/docs/models/gpt-6-sol).
 
-| 공급자 | 평가용 정확한 API ID | 상태와 고정 | 입력 | 과금 출력 | 추론 비용 |
-|---|---|---|---:|---:|---|
-| OpenAI | `gpt-5.4-mini-2026-03-17` | 비-preview. 날짜 스냅샷. 별칭은 `gpt-5.4-mini` | $0.75 | $4.50 | 추론 토큰도 출력 가격으로 과금 |
-| Anthropic | `claude-haiku-4-5-20251001` | Active. 날짜 스냅샷. 별칭은 `claude-haiku-4-5` | $1.00 | $5.00 | 생각을 표시하지 않아도 추론 토큰은 출력 가격으로 과금 |
-| Google | `gemini-3.1-flash-lite` | Stable. 특정 stable ID. 날짜 스냅샷 ID는 확인하지 못함 | $0.25 | $1.50 | 출력 가격에 thinking 토큰 포함 |
+## 상세 후보 6개
 
-출처: [OpenAI 모델](https://developers.openai.com/api/docs/models/gpt-5.4-mini), [OpenAI 추론](https://developers.openai.com/api/docs/guides/reasoning), [Haiku 모델](https://platform.claude.com/docs/en/models/haiku-4-5/overview), [Claude 추론](https://platform.claude.com/docs/en/build-with-claude/thinking), [Gemini 모델](https://ai.google.dev/gemini-api/docs/models/gemini-3.1-flash-lite), [Gemini 가격](https://ai.google.dev/gemini-api/docs/pricing).
+| 후보 | 정확한 API ID | 상태 | 입력 / 출력 | 구조화 출력 |
+|---|---|---|---:|---|
+| GPT-6 Luna | `gpt-6-luna` | 일반 모델, Preview 표기 없음 | 0.10 / 0.50 | 지원 |
+| GPT-6.1 Sol | `gpt-6.1-sol` | 일반 모델, Preview 표기 없음 | 2 / 10 | 지원 |
+| Claude Sonnet 5.5 | `claude-sonnet-5-5` | Active, 최신 | 2 / 10 | GA 지원 |
+| Claude Haiku 4.5 | `claude-haiku-4-5-20251001` | Active, 최신 | 1 / 5 | GA 지원 |
+| Gemini 3.8 Flash | `gemini-3.8-flash` | Stable | 0.75 / 3.75 | 지원 |
+| Gemini 3.5 Flash-Lite | `gemini-3.5-flash-lite` | Stable | 0.30 / 2.50 | 지원 |
 
-OpenAI 후보는 `reasoning.effort: none`을 지원합니다. 해당 모델의 기본값도 `none`입니다.
-Haiku 후보는 thinking을 생략하거나 `disabled`로 설정하면 추론을 끌 수 있습니다.
-Gemini 후보는 thinking을 지원합니다. 현재 공통 thinking 표에서 이 ID의 상세 단계는 확인하지 못했습니다.
-Gemini Stable 문서는 stable 모델이 보통 변경되지 않는다고 설명합니다. 날짜 스냅샷과 같은 불변 보장은 하지 않습니다. [모델 버전](https://ai.google.dev/gemini-api/docs/models), [thinking](https://ai.google.dev/gemini-api/docs/thinking).
-Haiku의 폐기 보장 하한은 2026-10-15입니다. 이 날짜는 실제 종료일이 아닙니다. 현재 표는 Active이며 폐기 통지는 N/A입니다. 공개 모델은 종료 최소 60일 전에 통지합니다. [폐기 정책](https://platform.claude.com/docs/en/about-claude/model-deprecations).
-예전 `gpt-5-mini`는 현재 Deprecated입니다. 새 평가 후보로 추천하지 않습니다. [모델 상태](https://developers.openai.com/api/docs/models/gpt-5-mini).
+사실: OpenAI 두 모델의 snapshot 목록은 위의 날짜 없는 ID를 제시한다. 날짜형 ID를 만들면 안 된다. 가중치의 영구 불변 보장으로 확대하지 않는다.
+사실: Claude 4.6 이후 날짜 없는 ID도 고정 버전이다. 문서는 해당 ID의 수명 동안 기반 모델을 바꾸지 않는다고 명시한다.
+사실: Haiku의 날짜 없는 `claude-haiku-4-5`는 별칭이다. 재현 평가에는 날짜가 있는 ID를 사용한다.
+사실: Gemini Stable은 특정 안정 버전이며 보통 변경하지 않는다고 설명한다. 불변 snapshot 보장은 아니다. `latest` 별칭은 자동 갱신되므로 평가에 쓰지 않는다.
+출처: [OpenAI Luna](https://developers.openai.com/api/docs/models/gpt-6-luna), [OpenAI Sol 6.1](https://developers.openai.com/api/docs/models/gpt-6.1-sol), [Claude ID와 버전](https://platform.claude.com/docs/en/about-claude/models/model-ids-and-versions), [Gemini 버전 이름](https://ai.google.dev/gemini-api/docs/models).
 
-## 구조화 출력: 확인한 사실
+사실: OpenAI 두 후보와 Gemini 두 후보의 종료일은 발표되지 않았다. 정해진 최소 지원 기간이 있다고 추정하지 않는다.
+사실: Sonnet 5.5의 최소 지원 기준일은 2027-09-28이다. Haiku 4.5는 2026-10-15다. 이 날짜는 확정 종료일이 아니다.
+사실: Claude 문서는 폐기 전에 최소 60일을 통지한다고 설명한다. Haiku는 평가 직전 상태를 다시 확인한다.
+출처: [OpenAI 폐기 공지](https://developers.openai.com/api/docs/deprecations), [Claude 수명 표](https://platform.claude.com/docs/en/about-claude/model-deprecations), [Gemini 폐기 공지](https://ai.google.dev/gemini-api/docs/deprecations).
 
-| 후보 | 지원 | 실험에서 처리할 제약 |
-|---|---|---|
-| GPT-5.4 mini | Responses의 `text.format`에 JSON Schema와 `strict: true` 사용 | 루트는 object. 루트 `anyOf` 불가. 모든 속성 required. 선택값은 nullable로 표현. 모든 object의 `additionalProperties: false` 필요 |
-| Haiku 4.5 | Messages의 `output_config.format`에 `type: json_schema` 사용. GA 지원 | `additionalProperties: false` 필요. 숫자 min/max와 문자열 길이 제약 등은 지원하지 않음. SDK가 일부 제약을 제거하고 응답을 로컬 검증할 수 있음 |
-| Gemini 3.1 Flash-Lite | JSON Schema 출력 지원 | JSON Schema 일부만 지원. 큰 스키마와 깊은 중첩은 거절 가능. 문법상 JSON이어도 의미상 잘못된 값은 앱에서 검증해야 함 |
+사실: 세 공급자는 JSON Schema의 일부를 지원한다. 스키마 준수와 결과의 의미·사용 가능성은 다른 검사다. 앱 서버의 값 검증이 필요하다.
+사실: 거절과 출력 한도 도달을 정상 JSON 결과로 가정하지 않는다. 모델별 스키마 제약을 어댑터에서 확인한다.
+사실: Sonnet 5.5의 `thinking.type=disabled`는 지원하지 않는다. GPT-6.1 Sol의 `none`·`minimal`도 지원하지 않는다. Gemini 3.8 Flash의 `minimal`은 오류다.
+출처: [OpenAI 구조화 출력](https://developers.openai.com/api/docs/guides/structured-outputs), [Claude 구조화 출력](https://platform.claude.com/docs/en/build-with-claude/structured-outputs), [Sonnet 5.5](https://platform.claude.com/docs/en/models/sonnet-5-5/overview), [Gemini 구조화 출력](https://ai.google.dev/gemini-api/docs/structured-output), [Gemini 3.8 Flash](https://ai.google.dev/gemini-api/docs/models/gemini-3.8-flash).
 
-OpenAI 스키마 한도는 속성 총 5,000개와 중첩 10단계입니다. 속성명·정의명·enum·const 총 문자열은 120,000자 이하입니다.
-Haiku는 재귀 스키마와 외부 `$ref`를 지원하지 않습니다. 배열 제약은 `minItems` 0 또는 1을 넘는 경우 제한됩니다.
-거절과 출력 토큰 한도 도달은 구조 준수 보장의 예외입니다. 잘못된 응답을 저장 상태로 반영하지 않는 검증이 필요합니다.
-출처: [OpenAI 구조화 출력](https://developers.openai.com/api/docs/guides/structured-outputs), [Claude 구조화 출력](https://platform.claude.com/docs/en/build-with-claude/structured-outputs), [Gemini 구조화 출력](https://ai.google.dev/gemini-api/docs/structured-output).
+## 데이터 조건과 신규 모델 예외
 
-## 학습과 보관: 확인한 사실
+사실: OpenAI API는 기본적으로 학습에 쓰지 않는다. 기본 abuse 로그는 최대 30일이다. 법적·안전상 예외가 있다.
+사실: Responses의 기본 저장 상태는 최소 30일이다. `store=false`는 이 상태 저장을 줄이지만 abuse 로그까지 제거하지 않는다.
+사실: ZDR·MAM은 사전 승인 조건이다. 신규 모델·일부 고객의 보관 예외도 문서에 있다. 현재 계정에 적용된다고 확인하지 않았다.
+사실: GPT-6 캐시 쓰기는 일반 입력의 1.25배다. Luna는 0.125/M, Sol 6.1은 2.50/M이다. 캐시 보관과 ZDR 조건을 별도로 확인해야 한다.
+추론: 평가 설정은 `prompt_cache_options.mode=explicit`과 breakpoint 없음으로 검토한다. 문서상 이 조합은 캐시 읽기·쓰기를 만들지 않는다. API로 실행하지 않았다.
+출처: [OpenAI 데이터 제어](https://developers.openai.com/api/docs/guides/your-data), [GPT-6 캐시 설정과 가격](https://developers.openai.com/api/docs/guides/prompt-caching).
 
-**Smallnext 자체 보관과 공급자 보관은 별개입니다.** 자체 운영 메타데이터 7일과 익명 평가자료 30일은 공급자 보관을 줄이지 않습니다.
+사실: Claude 상용 API는 기본적으로 학습에 쓰지 않는다. 일반 보관 조건은 30일이며 계정 계약·기능별 조건을 확인해야 한다.
+사실: Fable 5.1·Mythos 5.1·Fable 5·Mythos 5에는 필수 30일 보관 예외가 있다. 명시적 허가 없이는 ZDR을 사용할 수 없다.
+사실: Sonnet 5.5·Haiku 4.5는 이 Covered Models 목록에 없다. 이는 모든 계정의 ZDR이 승인됐다는 뜻이 아니다.
+사실: 구조화 출력 스키마는 마지막 사용 후 최대 24시간 캐시한다. 스키마 이름·설명·enum에 개인 내용을 넣지 않는다. 정책 위반 자료에는 더 긴 보관 예외가 있다.
+출처: [Claude API 보관](https://platform.claude.com/docs/en/manage-claude/api-and-data-retention), [학습 조건](https://privacy.claude.com/en/articles/7996868-is-my-data-used-for-model-training), [일반 보관 조건](https://privacy.claude.com/en/articles/7996866-how-long-do-you-store-my-organization-s-data), [스키마 보관](https://platform.claude.com/docs/en/build-with-claude/structured-outputs).
 
-| 항목 | OpenAI API | Anthropic API | Gemini Developer API |
-|---|---|---|---|
-| 일반 모델 학습 | 기본 미사용. 명시적 공유를 켜면 달라짐 | 상업 API 기본 미사용. 피드백·사용 허용을 하면 달라짐 | 유료는 제품 개선 미사용. 한국의 무료 API는 제품·모델 개선에 사용 가능 |
-| 일반 입력·출력 / 남용 감시 | 기본 남용 감시 로그 최대 30일. 법률·서비스 보호 예외 있음 | 상업 API 기본 입력·출력 30일 이내 삭제. 법률·정책 집행 예외 있음 | 프롬프트·문맥·출력 55일 남용 감시 보관 |
-| 응답 저장 | Responses 기본 또는 `store: true`이면 최소 30일. `store: false` 지정 | Messages에 같은 `store` 스위치는 확인하지 못함. 별도 ZDR는 영업팀과 협의 | 개발자 API 로깅은 선택. 끄면 개발자 로그는 줄일 수 있으나 남용 감시 55일은 남음 |
-| 프롬프트 캐시 | GPU 로컬 암호화 KV가 남을 수 있음. 현재 데이터 문서상 최대 24시간 | 원문 대신 KV·해시를 메모리에 보관. 최소 수명 5분 또는 1시간 후 삭제 | implicit 캐시는 2.5 이상 기본 사용. TTL 상한은 확인하지 못함. explicit은 기본 1시간과 TTL 지정·삭제 지원 |
-| 구조화 스키마 | 시스템 데이터로 분류. 확인 문서에서 별도 보관 TTL을 찾지 못함 | 최종 사용 후 최대 24시간 스키마 캐시 | 확인 문서에서 별도 스키마 보관 TTL을 찾지 못함 |
+사실: Gemini 유료 API는 일반 제품 개선용 학습에 쓰지 않는다. 한국의 무료 API는 제품 개선·학습 및 사람의 검토에 쓰일 수 있다.
+사실: 유료 API에도 abuse 감시용 입력·문맥·출력 55일 보관이 남는다. 정책 집행용 사용 예외가 있다. 새 후보에 별도의 완화 조건을 찾지 못했다.
+사실: 선택적 개발자 로그·데이터 공유와 기본 abuse 보관은 다르다. 유료 선택만으로 무보관이 되지 않는다.
+출처: [Gemini 약관](https://ai.google.dev/gemini-api/terms), [Gemini 사용 정책](https://ai.google.dev/gemini-api/docs/usage-policies).
 
-OpenAI `store: false`는 응답 상태 저장을 제어합니다. 남용 감시 로그와 프롬프트 캐시의 완전 삭제를 뜻하지 않습니다.
-OpenAI ZDR와 Modified Abuse Monitoring은 사전 승인이 필요합니다. 현재 계정의 승인 여부는 확인하지 않았습니다. [OpenAI 데이터 정책](https://developers.openai.com/api/docs/guides/your-data).
-Claude 구조화 출력 문서는 요청·응답의 ZDR 처리와 스키마 24시간 캐시를 설명합니다. 일반 상업 보관 정책은 30일을 설명합니다.
-Claude 전체 계정의 ZDR 보장을 추정하지 않습니다. 실제 계정·계약에서 적용 범위를 확인해야 합니다.
-Claude는 안전 시스템이 표시한 입력·출력을 최대 2년 보관할 수 있습니다. 법적 보관 예외도 있습니다. [데이터 조건](https://platform.claude.com/docs/en/manage-claude/api-and-data-retention).
-스키마의 속성명·enum·const·설명에는 사용자 개인자료를 넣지 않는 구성이 적합합니다. 이것은 본 조사의 운영 제안입니다.
-출처: [Claude 일반 보관](https://privacy.claude.com/en/articles/7996866-how-long-do-you-store-my-organization-s-data), [Claude 학습](https://privacy.claude.com/en/articles/7996868-is-my-data-used-for-model-training), [Claude 스키마 보관](https://platform.claude.com/docs/en/build-with-claude/structured-outputs#data-retention), [Claude 캐시](https://platform.claude.com/docs/en/build-with-claude/prompt-caching#data-retention).
-Gemini 유료 서비스는 활성 Cloud Billing 프로젝트의 API입니다. API가 무료라는 이유로 유료와 같은 데이터 조건을 적용하면 안 됩니다.
-Gemini 남용 감시 데이터는 일반 모델 학습에 사용하지 않습니다. 정책 집행용 모델의 학습·미세조정은 예외입니다.
-Gemini 개발자 로그는 별도로 기본 최대 55일이며 7·14·28·55일로 조정할 수 있습니다. Dataset으로 보관하면 정해진 만료가 없습니다.
-Gemini Dataset을 Google에 공유하면 무료 서비스의 데이터 사용 조건이 적용됩니다. 평가에서 공유를 켜지 않는 구성이 적합합니다.
-출처: [Gemini 약관](https://ai.google.dev/gemini-api/terms), [남용 감시](https://ai.google.dev/gemini-api/docs/usage-policies), [개발자 로그](https://ai.google.dev/gemini-api/docs/logs-policy), [캐시](https://ai.google.dev/gemini-api/docs/caching), [명시 캐시](https://ai.google.dev/gemini-api/docs/generate-content/caching).
+## 평가 제안과 비용 가정
 
-## 계정과 결제: 확인한 사실
+추론: 최신 저비용 후보 GPT-6 Luna와 현재 중간급 후보 Claude Sonnet 5.5를 1차 평가 쌍으로 제안한다. 두 후보의 구조화 출력·데이터 조건을 확인했다.
+추론: GPT-6.1 Sol은 Luna의 품질이 부족할 때 비교할 상위 후보로 남긴다. Haiku 4.5는 가격이 낮지만 최소 지원 기준일이 가깝다.
+추론: Gemini 3.8 Flash는 최신 대안이다. 3.5 Flash-Lite는 비용 대안이다. 두 후보는 55일 보관 조건의 수용 여부를 먼저 확인해야 한다.
+추론: 최신이라는 이유나 가격만으로 최종 모델을 선택하지 않는다. 기존 5.4 mini 추천을 최신 모델 검토 결과로 정당화하지 않는다.
 
-| 공급자 | 필요한 접근 | 무료와 결제 차이 |
-|---|---|---|
-| OpenAI | API 조직의 키·결제 권한과 유료 사용 단계 | 이 후보는 Free 단계 미지원. ChatGPT 구독과 별도 과금. 새 API 계정은 선불이며 최소 $5 구매 |
-| Anthropic | Claude Console 계정·키. 크레딧 구매는 Admin 또는 Billing 역할 | 일반 API는 선불 크레딧. 현재 공식 문서에서 영구 무료 API 단계·신규 무료 금액·최소 충전액은 확인하지 못함 |
-| Gemini | Google AI Studio의 프로젝트·키. 유료는 활성 Cloud Billing 연결 | Free 단계 있음. 유료 전환은 결제수단과 보통 최소 $5 선불. 계정에 따라 Postpay 선택 가능 |
+계산 가정: 요청마다 입력 8,000토큰·과금 출력 2,000토큰을 사용한다. 출력에는 숨은 추론을 포함한다. 캐시·도구·세금 비용은 제외한다.
+계산 가정: 후보별 15흐름 × 최대 3요청 = 45건이다. 경계 3종 × 3회 = 9건을 더한다. 후보별 최대 54건이다.
+계산값: Luna 0.0018USD/건, 54건 0.0972USD. Sonnet 5.5와 Sol 6.1은 0.036USD/건, 54건 1.944USD다.
+계산값: Haiku는 54건 0.972USD다. Gemini 3.8은 현재 0.729USD, 2027년 요율은 1.458USD다. 3.5 Flash-Lite는 0.3996USD다.
+계산값: Luna·Sonnet 평가 쌍의 최대 108건은 2.0412USD다. 1차 평가 API 한도 3USD는 검토안이다. 월 개인 API 예산 10USD는 유지한다.
 
-OpenAI 자동 충전은 신규 선불 설정에서 기본 켜짐입니다. 월 $10 제한의 실험에서는 끄는 구성이 적합합니다.
-선불 잔액은 즉시 중단 보장이 아닙니다. OpenAI는 반영 지연으로 음수 잔액이 생길 수 있다고 설명합니다.
-Gemini 프로젝트 지출 상한도 실험적이며 약 10분 반영 지연이 있습니다. 충전액·월 소비액·실시간 차단은 다른 값입니다.
-Anthropic는 연결 중단·timeout이어도 성공 예정 요청이면 과금할 수 있습니다. 실험 중 재전송 여부를 따로 기록해야 합니다.
-공식 문서 접근만 확인했습니다. 실제 계정, 키, 잔액, 모델 접근, 결제 화면은 확인하지 않았습니다.
-출처: [OpenAI 결제](https://help.openai.com/en/articles/8264644-setting-up-and-managing-prepaid-api-billing), [별도 과금](https://help.openai.com/en/articles/9039756-managing-billing-for-chatgpt-and-the-api-platform), [Claude 결제](https://support.claude.com/en/articles/8977456-how-do-i-pay-for-my-claude-api-usage), [Claude 시작](https://platform.claude.com/docs/en/get-started), [Gemini 결제](https://ai.google.dev/gemini-api/docs/billing).
-
-## 요청 비용 계산: 측정치 아님
-
-가정: 요청마다 입력 8,000토큰과 과금 출력 2,000토큰입니다. 출력 수는 추론을 포함합니다.
-모든 입력에 정상 가격을 적용합니다. 캐시 할인·Batch·세금·환율·기타 도구 요금을 제외했습니다.
-계산식: `(입력 토큰 × 입력 단가 + 과금 출력 토큰 × 출력 단가) / 1,000,000`.
-
-| 후보 | 요청 1건 | 첫 행동 + 더 작게 2회: 최대 3건 | 15흐름 × 3건 + 경계 9건: 54건 |
-|---|---:|---:|---:|
-| GPT-5.4 mini | $0.015 | $0.045 | $0.810 |
-| Haiku 4.5 | $0.018 | $0.054 | $0.972 |
-| Gemini 3.1 Flash-Lite | $0.005 | $0.015 | $0.270 |
-
-추천 쌍의 108요청 가정 비용은 **$1.782**입니다. 1차 실험 API 한도 $2는 제안값입니다.
-실제 토큰 수가 가정보다 늘면 $2를 넘습니다. 월 개인 API 예산 $10과 제품 요청 상한은 별도입니다.
-한국어는 공급자별 토크나이저가 다릅니다. 같은 글자 수가 같은 토큰 수라는 가정은 하지 않았습니다.
-
-## 다음 평가와 미확인 범위
-
-1. 추천 쌍과 합성 입력, 공급자 보관 조건, 첫 평가의 비용 범위를 사용자가 확인합니다. 계정의 접근·사용 가능 상태도 확인합니다.
-2. 후보마다 고정 5상황 × 3회, 총 15흐름을 평가합니다. 첫 행동 뒤 더 작게는 최대 2회입니다.
-3. 경계 3종 × 3회, 총 9요청을 추가하는 안을 검토합니다. 경계 입력과 합격 기준은 사전에 고정합니다.
-4. 3상황의 실제 사용자 시작 평가를 합니다. 한국어 분할 품질·지연·실청구를 기록합니다.
-5. 결과를 비교한 뒤 제품 기본 후보를 선택합니다. 요청 상한과 timeout은 측정 전 미확정으로 유지합니다.
-
-자동 재시도 0회와 자동 모델 전환 없음은 이미 받은 조건입니다. 실험에서도 유지합니다.
-서버 키는 앱에 넣지 않습니다. 텍스트만 요청합니다. 폴더·문서·저장소 자동 수집은 하지 않습니다.
-실행 모델 ID, 프롬프트·스키마 버전, 추론 설정, 입력·출력·캐시 토큰, 실패·거절·지연·실청구를 함께 기록하는 안이 적합합니다.
-이 기록 제안은 제품의 로그 보관 결정을 대체하지 않습니다. 원문을 운영 메타데이터 로그에 추가하지 않습니다.
-유료 API 호출, 한국어 실측, 앱 구현, 키 조회, GitHub 변경은 수행하지 않았습니다.
-
-## 확인값과 공식 출처
-
-추천 2후보: `gpt-5.4-mini-2026-03-17`, `claude-haiku-4-5-20251001`.
-정상 입력/출력: $0.75/$4.50, $1.00/$5.00. 비교 대안 Gemini는 $0.25/$1.50입니다.
-보관 핵심: OpenAI 남용 감시 최대30일, Claude 일반 API30일과 예외, Gemini 남용 감시55일입니다.
-고정5상황 반복과 사용자 시작 평가는 남아 있습니다. 제품 기본 모델 선택은 완료되지 않았습니다.
-핵심 공식 URL: [OpenAI 모델](https://developers.openai.com/api/docs/models/gpt-5.4-mini), [OpenAI 데이터](https://developers.openai.com/api/docs/guides/your-data), [Haiku 모델](https://platform.claude.com/docs/en/models/haiku-4-5/overview), [Claude 데이터](https://platform.claude.com/docs/en/manage-claude/api-and-data-retention), [Gemini 모델](https://ai.google.dev/gemini-api/docs/models/gemini-3.1-flash-lite), [Gemini 가격](https://ai.google.dev/gemini-api/docs/pricing), [Gemini 보관](https://ai.google.dev/gemini-api/docs/usage-policies).
+미측정: 한국어 분할 품질, 첫 행동의 크기, 사용자 시작 성공, 지연, 실제 토큰, 실제 청구액, 오류율을 측정하지 않았다.
+미확인: 계정별 모델 접근·결제 설정·보관 승인·요율 적용과 서버 설정 동작을 확인하지 않았다. 제품 출력 상한과 timeout은 아직 미확정이다.
+후속: 고정 평가와 3상황 사용자 시작 평가를 통과한 뒤 제품 기본 모델을 고른다. 자동 재시도 0회와 모델 자동 전환 없음은 유지한다.
+후속: 서버 키를 앱에 넣지 않는다. 자체 운영 메타데이터 7일·사용자 확인 익명 평가자료 30일과 공급자 보관을 구분한다.
 
 ## 합성 평가 입력 검토안
 
@@ -172,7 +149,7 @@ Anthropic는 연결 중단·timeout이어도 성공 예정 요청이면 과금�
 
 경계 입력은 각 종류를 세 번 실행하는 안을 제안합니다. 후보마다 9요청입니다.
 후보별 최대 54요청, 추천 쌍 최대 108요청입니다. 사용자 확인 전에는 실행하지 않습니다.
-실험의 입력 8,000토큰·과금 출력 2,000토큰 상한과 첫 비교 API 비용 2 USD를 제안합니다.
+실험의 입력 8,000토큰·과금 출력 2,000토큰 상한과 첫 비교 API 비용 3 USD를 제안합니다.
 이 수치는 평가용 제한입니다. 제품 요청 상한과 타임아웃은 실제 측정 뒤에 정합니다.
 보류는 미완료로 유지합니다. 부족한 선행 조건을 해결됐다고 가정하지 않습니다.
 
