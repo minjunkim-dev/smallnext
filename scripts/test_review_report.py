@@ -2,10 +2,12 @@
 import base64
 import json
 import os
+from pathlib import Path
+import tempfile
 import unittest
 from unittest.mock import patch
 
-from review_report import current, decode_report, encode_report, extract, neutralize_mentions, target, validate_body
+from review_report import current, decode_report, encode_report, extract, neutralize_mentions, prepare, target, validate_body
 
 
 SHA = "a" * 40
@@ -47,6 +49,32 @@ class ReportTests(unittest.TestCase):
     def test_publication_cannot_mention_users_teams_or_bots(self):
         self.assertEqual(neutralize_mentions("@someone @org/team @claude"),
                          "＠someone ＠org/team ＠claude")
+
+    def test_prompt_includes_trusted_workflow_and_matches_review_kind(self):
+        original = Path.cwd()
+        with tempfile.TemporaryDirectory() as directory:
+            try:
+                os.chdir(directory)
+                Path("docs").mkdir()
+                Path("AGENTS.md").write_text("See docs/WORKFLOW.md", encoding="utf-8")
+                Path("docs/WORKFLOW.md").write_text("workflow-rule-marker", encoding="utf-8")
+                Path("docs/GIT_CONVENTIONS.md").write_text("naming-rule-marker", encoding="utf-8")
+                prompts = {}
+                for kind in ["issue", "pr"]:
+                    env = {"GITHUB_REPOSITORY": "owner/repo", "REVIEW_KIND": kind,
+                           "REVIEW_NUMBER": "29", "REVIEW_SHA": SHA if kind == "pr" else "none"}
+                    data = {"state": "OPEN", "headRefOid": SHA, "isDraft": False, "baseRefName": "main"}
+                    with patch.dict(os.environ, env), patch("review_report.metadata", return_value=data), \
+                         patch("review_report.gh", return_value="bounded diff"), patch("review_report.output") as output:
+                        prepare()
+                        prompts[kind] = output.call_args.args[1]
+                        self.assertIn("workflow-rule-marker", prompts[kind])
+                        self.assertIn("naming-rule-marker", prompts[kind])
+                self.assertIn("acceptance criteria", prompts["issue"])
+                self.assertNotIn("P0/P1/P2 findings", prompts["issue"])
+                self.assertIn("file, location, trigger", prompts["pr"])
+            finally:
+                os.chdir(original)
 
     def test_credentials_and_encoded_actual_credentials_are_rejected(self):
         credential = "ghp_" + "a" * 36
