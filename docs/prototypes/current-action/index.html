@@ -194,10 +194,10 @@
       repoFit:{context:'repository',title:'내 경험을 보여줄 저장소 후보인지 표시하기',criterion:'후보로 검토 · 관련 적음 · 확인 필요 중 하나를 표시하면 끝.',time:'약 1분',help:'README만 확인된 후보이며 소스·테스트·실행 상태는 아직 확인하지 않았어요.',field:'repoFit'}
     };
     let variant = VARIANTS.includes(new URL(location.href).searchParams.get('variant')) ? new URL(location.href).searchParams.get('variant') : 'A';
-    let state, requestId=0, busyUntil=0, lastCommit=0;
+    let state, requestId=0, busyUntil=0, lastCommit=Number.NEGATIVE_INFINITY;
     const screen=document.querySelector('#screen'), phone=document.querySelector('#phone');
     const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-    function init(){ requestId++; state={current:'write',completed:[],deferred:[],history:[],work:{},pending:null,retry:null,cause:false,notice:'',lastChange:'초기'}; busyUntil=0; lastCommit=0; render(); }
+    function init(){ requestId++; state={current:'write',completed:[],deferred:[],history:[],work:{},pending:null,retry:null,cause:false,notice:'',lastChange:'초기'}; busyUntil=0; lastCommit=Number.NEGATIVE_INFINITY; render(); }
     function reduced(){ return document.querySelector('#motion').value==='reduce' || (document.querySelector('#motion').value==='system' && matchMedia('(prefers-reduced-motion: reduce)').matches); }
     function controls(){ return `<div class="actions"><button class="smaller" data-action="smaller" ${state.pending?'disabled':''}>더 작게</button><button class="complete" data-action="complete" ${state.pending?'disabled':''}>완료 <span aria-hidden="true">✓</span></button></div>`; }
     function practice(a){
