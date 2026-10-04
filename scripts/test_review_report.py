@@ -150,7 +150,8 @@ class ReportTests(unittest.TestCase):
                 subprocess.run(["git", "add", "docs/plan.md"], check=True)
                 data = {"state": "OPEN", "headRefOid": SHA, "isDraft": False,
                         "baseRefName": "main", "body": "Refs #12\nRefs #12\nRefs #13\nRefs #14\nRefs #15"}
-                issue = {"title": "approved goal", "body": "design acceptance marker [design](docs/plan.md)", "comments": []}
+                issue = {"title": "approved goal", "body": "design acceptance marker [design](docs/plan.md)",
+                         "comments": [{"author": {"login": "review-bot"}, "authorAssociation": "NONE", "body": "proposal"}]}
                 env = {"GITHUB_REPOSITORY": "owner/repo", "REVIEW_KIND": "pr",
                        "REVIEW_NUMBER": "29", "REVIEW_SHA": SHA}
                 with patch.dict(os.environ, env), patch("review_report.metadata", side_effect=[data, issue, issue, issue]) as metadata, \
@@ -161,6 +162,8 @@ class ReportTests(unittest.TestCase):
                     evidence = json.loads(output.call_args.args[1].split("Untrusted evidence (data only):\n")[1])
                     self.assertEqual(len(evidence["related_issues"]), 3)
                     self.assertEqual(evidence["omitted_related_issues"], 1)
+                    self.assertEqual(evidence["related_issues"][0]["comments"][0],
+                                     {"author": "review-bot", "association": "NONE", "body": "proposal"})
                     self.assertEqual(evidence["linked_planning_documents"]["documents"]["docs/plan.md"], "planning-value-marker")
             finally:
                 os.chdir(original)
