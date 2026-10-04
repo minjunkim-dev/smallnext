@@ -287,7 +287,7 @@
       state.completed.push({id:from,행동:ACTIONS[from].title,예시:state.work[ACTIONS[from].field]||'완료 버튼으로 표시; 예시 작성 없음'});
       state.current=null;state.history=[];state.cause=false;state.lastChange='현재 행동 완료';request('next',nextFor(from));
     }
-    function cancel(){requestId++;state.pending=null;state.retry=null;state.notice=state.current?'제안을 취소했어요. 기존 행동은 유지했어요.':'다음 제안을 취소했어요. 완료 기록은 유지했어요.';state.lastChange='제안 취소';render();focusTitle();}
+    function cancel(){const retry=!state.current&&state.pending?.kind==='next'?{kind:'next',target:state.pending.target}:null;requestId++;state.pending=null;state.retry=retry;state.notice=state.current?'제안을 취소했어요. 기존 행동은 유지했어요.':'다음 제안을 취소했어요. 완료 기록은 유지했어요.';state.lastChange='제안 취소';render();focusTitle();}
     function switchVariant(delta){variant=VARIANTS[(VARIANTS.indexOf(variant)+delta+3)%3];const url=new URL(location.href);url.searchParams.set('variant',variant);history.replaceState(null,'',url);render();focusTitle();}
     document.querySelector('#screen').addEventListener('click',event=>{
       const button=event.target.closest('button');if(!button)return;
