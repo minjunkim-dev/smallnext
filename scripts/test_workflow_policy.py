@@ -100,9 +100,13 @@ class ReviewTrustTest(unittest.TestCase):
         event["issue"]["pull_request"] = {"url": "example"}
         self.assertEqual("security", self.request("issue_comment", event)["mode"])
 
-    def test_dispatch_rejects_injected_number(self):
-        event = {"sender": self.event["sender"], "inputs": {"kind": "pr", "number": "17; echo secret"}}
-        self.assertIsNone(self.request("workflow_dispatch", event))
+    def test_dispatch_is_rejected_even_for_valid_writer_and_target(self):
+        for ref in ["refs/heads/main", "refs/heads/untrusted"]:
+            for number in ["17", "17; echo secret"]:
+                event = {"sender": self.event["sender"], "ref": ref,
+                         "inputs": {"kind": "pr", "number": number}}
+                with self.subTest(ref=ref, number=number):
+                    self.assertIsNone(self.request("workflow_dispatch", event))
 
     def test_issue_auto_review_and_explicit_label(self):
         event = {"sender": self.event["sender"], "issue": {"number": 17}, "action": "opened"}
