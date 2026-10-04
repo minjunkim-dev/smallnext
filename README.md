@@ -47,6 +47,7 @@ python3 -m unittest discover -s scripts -p 'test_*.py'
 | [CI](docs/CI.md) | 캐시, 병렬 실행, 변경 범위에 따른 검사 선택 |
 | [SETUP_VALIDATION](docs/SETUP_VALIDATION.md) | 초기 앱·API 셋업의 검증 범위와 근거 |
 | [REPOSITORY_SETUP](docs/REPOSITORY_SETUP.md) | 자동화, 계정 연결, 현재 제한과 실행 증거 |
+| [CONTEXT](CONTEXT.md) | 진행 상태, 입력 초안, 완료·보류·중단·삭제의 용어 |
 | [PRODUCT](docs/PRODUCT.md) · [DECISIONS](docs/DECISIONS.md) | 제품 가설과 미결정 항목. 확정 답은 해당 Issue |
 | [SECURITY](SECURITY.md) | 비밀정보 처리와 비공개 문제 보고 |
 | [CONTRIBUTING](CONTRIBUTING.md) | 기여를 시작할 때 확인할 기준 문서 |
