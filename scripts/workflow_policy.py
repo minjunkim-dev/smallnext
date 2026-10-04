@@ -23,7 +23,9 @@ ISSUE_REF = re.compile(r"\b(?:Closes|Fixes|Resolves|Refs)\s+#[1-9][0-9]*\b", re.
 def validate_pr(title, branch, body=""):
     errors = []
     match = TITLE.fullmatch(title)
-    if not match or len(title) > 72 or title.endswith("."):
+    # Dependabot names long packages in full ("bump androidx.compose:compose-bom from ... in /apps/android").
+    too_long = len(title) > 72 and not branch.startswith("dependabot/")
+    if not match or too_long or title.endswith("."):
         errors.append("PR title: use Conventional Commits, lowercase description, <=72 characters, no final period")
     if not BRANCH.fullmatch(branch) and not BOT_BRANCH.fullmatch(branch):
         errors.append("Branch: use <type>/<issue>-<slug>; docs/build/ci/chore may omit the issue")

@@ -13,6 +13,8 @@ class ConventionsTest(unittest.TestCase):
             ("feat(ios): add goal split card", "feat/17-goal-split", "Closes #17"),
             ("fix(api)!: change action contract", "codex/fix-action", "Refs #18"),
             ("chore(deps): bump checkout", "dependabot/github_actions/actions/checkout-7", ""),
+            ("chore: bump androidx.compose:compose-bom from 2026.05.00 to 2026.09.00 in /apps/android",
+             "dependabot/gradle/apps/android/androidx.compose-compose-bom-2026.09.00", ""),
             ("docs: add guide", "docs/a", ""),
         ]:
             with self.subTest(branch=branch):
