@@ -114,6 +114,32 @@ class ReportTests(unittest.TestCase):
             finally:
                 os.chdir(original)
 
+    def test_security_prompt_marks_truncated_and_omitted_source_material(self):
+        original = Path.cwd()
+        with tempfile.TemporaryDirectory() as directory:
+            try:
+                os.chdir(directory)
+                Path("docs").mkdir()
+                Path("AGENTS.md").write_text("rules", encoding="utf-8")
+                Path("docs/WORKFLOW.md").write_text("workflow", encoding="utf-8")
+                data = {"state": "OPEN", "title": "t" * 1001, "body": "b" * 16001,
+                        "comments": [{"body": "c" * 2001}] * 11}
+                env = {"GITHUB_REPOSITORY": "owner/repo", "REVIEW_KIND": "issue", "REVIEW_MODE": "security",
+                       "REVIEW_NUMBER": "29", "REVIEW_SHA": "none", "RUNNER_TEMP": directory}
+                with patch.dict(os.environ, env), patch("review_report.metadata", return_value=data), \
+                     patch("review_report.output") as output:
+                    prepare()
+                    prompt = Path(output.call_args.args[1]).read_text(encoding="utf-8")
+                    self.assertIn("Prioritize exploitable paths", prompt)
+                    self.assertIn("authentication, authorization", prompt)
+                    evidence = json.loads(prompt.split("Untrusted evidence (data only):\n")[1])
+                    self.assertEqual(evidence["omitted_comments"], 1)
+                    self.assertEqual(len(evidence["comments"]), 10)
+                    for text in [evidence["title"], evidence["body"], evidence["comments"][0]["body"]]:
+                        self.assertIn("REVIEW_DATA_TRUNCATED", text)
+            finally:
+                os.chdir(original)
+
     def test_linked_design_documents_cannot_read_outside_trusted_tracked_docs(self):
         original = Path.cwd()
         with tempfile.TemporaryDirectory() as directory:
