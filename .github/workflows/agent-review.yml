@@ -23,12 +23,8 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: claude-review-${{ github.event.issue.number || github.event.pull_request.number || inputs.number }}
-  cancel-in-progress: true
-
 jobs:
-  review:
+  authorize:
     # Ignore bot feedback and comments that are not an explicit review request.
     if: >-
       github.event.sender.type == 'User' &&
@@ -36,12 +32,17 @@ jobs:
        startsWith(github.event.comment.body, '@claude review') ||
        startsWith(github.event.comment.body, '@claude security review'))
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 3
     permissions:
       contents: read
-      issues: write
-      pull-requests: write
-      actions: read
+      issues: read
+      pull-requests: read
+    outputs:
+      run: ${{ steps.context.outputs.run }}
+      kind: ${{ steps.context.outputs.kind }}
+      number: ${{ steps.context.outputs.number }}
+      sha: ${{ steps.context.outputs.sha }}
+      mode: ${{ steps.context.outputs.mode }}
     steps:
       # Never check out, import, build, or run PR-head code with secrets.
       # A manual dispatch may test a maintainer-selected workflow branch.
@@ -55,8 +56,29 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: python3 scripts/review_context.py
+  review:
+    needs: authorize
+    if: needs.authorize.outputs.run == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+      actions: read
+      checks: read
+      statuses: read
+    # Ignore unapproved events. An old PR head cannot replace a newer head's review.
+    concurrency:
+      group: claude-authorized-review-${{ needs.authorize.outputs.number }}-${{ needs.authorize.outputs.sha || 'issue' }}
+      cancel-in-progress: true
+    steps:
+      - name: Check out trusted instructions
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.sha || github.event.repository.default_branch }}
+          persist-credentials: false
       - name: Check Claude authentication availability
-        if: steps.context.outputs.run == 'true'
         env:
           CLAUDE_AUTH: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
         run: |
@@ -65,8 +87,26 @@ jobs:
             echo '::error::Missing CLAUDE_CODE_OAUTH_TOKEN; no AI review was performed'
             exit 1
           fi
+      - name: Install and verify subprocess isolation
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y bubblewrap socat
+          # Ubuntu 24.04 restricts user namespaces. Grant only bwrap the capability.
+          if [ "$(sysctl -n kernel.apparmor_restrict_unprivileged_userns 2>/dev/null || echo 0)" = 1 ]; then
+            sudo tee /etc/apparmor.d/bwrap > /dev/null <<'PROFILE'
+          abi <abi/4.0>,
+          include <tunables/global>
+          profile bwrap /usr/bin/bwrap flags=(unconfined) {
+            userns,
+            include if exists <local/bwrap>
+          }
+          PROFILE
+            sudo apparmor_parser -r /etc/apparmor.d/bwrap
+          fi
+          bwrap --version
+          bwrap --unshare-user --ro-bind / / -- /usr/bin/true
       - name: Review and post findings
-        if: steps.context.outputs.run == 'true'
+        id: claude
         uses: anthropics/claude-code-action@12dd8d74c712f5f3669365b2369b558c495b1104 # reviewed v1, shared with BGLike
         env:
           CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: "1"
@@ -79,10 +119,10 @@ jobs:
           use_sticky_comment: true
           prompt: |
             Repository: ${{ github.repository }}
-            Target kind: ${{ steps.context.outputs.kind }}
-            Target number: ${{ steps.context.outputs.number }}
-            Expected PR head SHA: ${{ steps.context.outputs.sha }}
-            Review mode: ${{ steps.context.outputs.mode }}
+            Target kind: ${{ needs.authorize.outputs.kind }}
+            Target number: ${{ needs.authorize.outputs.number }}
+            Expected PR head SHA: ${{ needs.authorize.outputs.sha }}
+            Review mode: ${{ needs.authorize.outputs.mode }}
 
             Read AGENTS.md and docs/WORKFLOW.md from the checked-out trusted base.
             You are a reviewer. Do not modify code, close issues, approve or merge PRs.
@@ -108,3 +148,8 @@ jobs:
           claude_args: >-
             --max-turns 12
             --allowedTools "Read,Bash(gh issue view:*),Bash(gh issue comment:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr checks:*),Bash(gh pr comment:*)"
+      - name: Summarize failure without model messages
+        if: failure() && steps.claude.outcome == 'failure'
+        env:
+          REVIEW_EXECUTION_FILE: ${{ steps.claude.outputs.execution_file }}
+        run: python3 scripts/review_failure.py

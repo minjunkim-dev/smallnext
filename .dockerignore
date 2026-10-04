@@ -1,0 +1,7 @@
+.git
+graft
+work
+apps
+**/target
+**/build
+.env*

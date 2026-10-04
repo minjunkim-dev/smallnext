@@ -1,0 +1,75 @@
+name: iOS checks
+
+on:
+  workflow_call:
+    inputs:
+      use-cache:
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: macos-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Identify Xcode and simulator SDK
+        id: toolchain
+        run: |
+          python3 - <<'PY'
+          import hashlib, os, subprocess
+          xcode = subprocess.check_output(["xcodebuild", "-version"], text=True)
+          sdk = subprocess.check_output(["xcrun", "--sdk", "iphonesimulator", "--show-sdk-build-version"], text=True)
+          fingerprint = hashlib.sha256((xcode + sdk).encode()).hexdigest()
+          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+              output.write(f"fingerprint={fingerprint}\n")
+          print(xcode + sdk)
+          PY
+      - name: Restore pinned Swift packages
+        id: packages-cache
+        if: inputs.use-cache
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: ${{ runner.temp }}/swift-packages
+          key: swiftpm-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.fingerprint }}-${{ hashFiles('apps/ios/**/Package.resolved') }}
+      - name: Restore matching iOS compiler outputs
+        id: build-cache
+        if: inputs.use-cache
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: ${{ runner.temp }}/ios-derived-data/Build
+          key: xcode-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.fingerprint }}-${{ hashFiles('apps/ios/**', '.github/workflows/ios-checks.yml') }}
+      - name: Start iPhone simulator
+        run: |
+          SIMULATOR_ID="$(python3 scripts/ios_simulator.py)"
+          echo "SIMULATOR_ID=$SIMULATOR_ID" >> "$GITHUB_ENV"
+          xcrun simctl boot "$SIMULATOR_ID" || xcrun simctl bootstatus "$SIMULATOR_ID" -b
+      - name: Build and test iOS
+        run: |
+          xcodebuild -project apps/ios/Smallnext.xcodeproj -scheme Smallnext \
+            -destination "platform=iOS Simulator,id=$SIMULATOR_ID" \
+            -clonedSourcePackagesDirPath "$RUNNER_TEMP/swift-packages" \
+            -derivedDataPath "$RUNNER_TEMP/ios-derived-data" \
+            -resultBundlePath "$RUNNER_TEMP/ios-results.xcresult" \
+            -onlyUsePackageVersionsFromResolvedFile CODE_SIGNING_ALLOWED=NO test
+      - name: Preserve failing iOS test report
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ios-failure-report
+          path: ${{ runner.temp }}/ios-results.xcresult
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Record cache state
+        if: always()
+        env:
+          CACHE_ENABLED: ${{ inputs.use-cache }}
+          PACKAGES_HIT: ${{ steps.packages-cache.outputs.cache-hit }}
+          BUILD_HIT: ${{ steps.build-cache.outputs.cache-hit }}
+        run: |
+          printf 'iOS cache enabled: %s; packages hit: %s; exact compiler hit: %s\n' "$CACHE_ENABLED" "${PACKAGES_HIT:-false}" "${BUILD_HIT:-false}" >> "$GITHUB_STEP_SUMMARY"
