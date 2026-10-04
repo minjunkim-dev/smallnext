@@ -228,7 +228,7 @@
         screen.innerHTML=`<div class="cause"><p class="eyebrow">더 쉽게 시작하기</p><div class="action-context"><span class="label">${esc(context.label)}</span><p class="subject">${esc(context.subject)}</p><p class="description">${esc(context.description)}</p></div><p class="micro">지금 행동: ${esc(a.title)}</p>${carriedWork(a)}<h2 tabindex="-1">어디에서 막혔나요?</h2>${[['amount','양이나 시간이 부담돼요'],['method','어떻게 할지 모르겠어요'],['evidence','확인할 자료가 부족해요'],['choice','무엇을 고를지 모르겠어요']].map(([k,v])=>`<button data-cause="${k}">${v}</button>`).join('')}<button data-action="back">현재 행동으로</button></div>`;
       }
       else if(state.current){ const a=ACTIONS[state.current]; screen.innerHTML=({A:VariantA,B:VariantB,C:VariantC})[variant](a); }
-      else {const last=state.completed[state.completed.length-1],ended=last&&nextFor(last.id)===null;const message=ended?'준비된 예시 행동은 여기까지예요.':state.retry?'다음 행동을 다시 요청할 수 있어요.':'다음 행동을 기다리고 있어요.';screen.innerHTML=`<div class="empty"><div class="symbol" aria-hidden="true">✓</div><h2 tabindex="-1">현재 행동을<br>완료했어요.</h2><p>${message}<br>전체 목표는 아직 남아 있어요.</p>${state.retry?'<button class="retry" data-action="retry">다음 행동 다시 받기</button>':''}</div>`;}
+      else {const message=state.pending?'다음 행동을 준비하고 있어요.':state.retry?'다음 행동을 다시 요청할 수 있어요.':'준비된 예시 행동은 여기까지예요.';screen.innerHTML=`<div class="empty"><div class="symbol" aria-hidden="true">✓</div><h2 tabindex="-1">현재 행동을<br>완료했어요.</h2><p>${message}<br>전체 목표는 아직 남아 있어요.</p>${state.retry?'<button class="retry" data-action="retry">다음 행동 다시 받기</button>':''}</div>`;}
       if(state.pending) screen.insertAdjacentHTML('beforeend',`<div class="waiting"><span>다음 행동을 준비하고 있어요.</span><button data-action="cancel">취소</button></div>`);
       else if(state.retry&&state.current) screen.insertAdjacentHTML('beforeend','<button class="retry" data-action="retry">다시 시도</button>');
       document.querySelector('#status').textContent=state.notice;
@@ -250,7 +250,12 @@
       }else if(variant==='C') target.animate([{transform:'translateY(12px)',opacity:.2},{transform:'translateY(0)',opacity:1}],{duration:240,easing:'ease-out'});
       else target.animate([{opacity:.15},{opacity:1}],{duration:180});
     }
-    function nextFor(id){ return ['mark','choice','method','amount'].includes(id)?'finish':['evidence','repo','recordKind','repoFit'].includes(id)?null:'evidence'; }
+    function nextFor(id,parents=[]){
+      if(['evidence','recordKind'].includes(id))return parents.some(parent=>['write','finish','mark','choice','method','amount'].includes(parent))?'finish':null;
+      if(['repo','repoFit'].includes(id))return null;
+      if(['mark','choice','method','amount'].includes(id))return 'finish';
+      return state.completed.some(entry=>['evidence','recordKind'].includes(entry.id))?null:'evidence';
+    }
     function smallerTarget(cause){
       if(['evidence','recordKind'].includes(state.current))return state.current==='evidence'?'recordKind':null;
       if(['repo','repoFit'].includes(state.current))return state.current==='repo'?'repoFit':null;
@@ -260,7 +265,7 @@
     function request(kind,target){
       const id=++requestId,from=state.current,oldTitle=from?ACTIONS[from].title:'';
       const mode=document.querySelector('#scenario').value;
-      state.pending={id,kind,from,target}; state.retry=null; state.notice=kind==='split'?'지금 행동은 그대로 있어요.':'완료 기록을 남겼어요.'; render();
+      state.pending={id,kind,from,target}; state.retry=null; state.notice=kind==='split'?'지금 행동은 그대로 있어요.':'완료 기록을 남겼어요.'; render();focusTitle();
       const settle=()=>{
         if(id!==requestId||!state.pending)return;
         state.pending=null;
@@ -286,7 +291,8 @@
       if(!state.current||state.pending||now<busyUntil||now-lastCommit<450)return;
       const from=state.current;lastCommit=now;
       state.completed.push({id:from,행동:ACTIONS[from].title,예시:state.work[ACTIONS[from].field]||'완료 버튼으로 표시; 예시 작성 없음'});
-      state.current=null;state.history=[];state.cause=false;state.lastChange='현재 행동 완료';request('next',nextFor(from));
+      const target=nextFor(from,state.history);
+      state.current=null;state.history=[];state.cause=false;state.lastChange='현재 행동 완료';request('next',target);
     }
     function cancel(){const retry=!state.current&&state.pending?.kind==='next'&&state.pending.target?{kind:'next',target:state.pending.target}:null;requestId++;state.pending=null;state.retry=retry;state.notice=state.current?'제안을 취소했어요. 기존 행동은 유지했어요.':'다음 제안을 취소했어요. 완료 기록은 유지했어요.';state.lastChange='제안 취소';render();focusTitle();}
     function switchVariant(delta){variant=VARIANTS[(VARIANTS.indexOf(variant)+delta+3)%3];const url=new URL(location.href);url.searchParams.set('variant',variant);history.replaceState(null,'',url);render();focusTitle();}
