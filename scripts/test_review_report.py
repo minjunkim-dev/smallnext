@@ -226,7 +226,11 @@ class ReportTests(unittest.TestCase):
 
     def test_credentials_and_encoded_actual_credentials_are_rejected(self):
         credential = "ghp_" + "a" * 36
-        for body in [credential, "github_pat_" + "b" * 60, "sk-ant-oat01-" + "c" * 50]:
+        for body in [credential, "github_pat_" + "b" * 60, "sk-ant-oat01-" + "c" * 50,
+                     "AKIA" + "A" * 16, "xoxb-" + "a" * 30,
+                     "eyJ" + "a" * 20 + "." + "b" * 30 + "." + "c" * 30,
+                     "password: " + "p" * 10, "aws_secret_access_key=" + "a" * 40,
+                     'password: "' + "p " * 4 + 'phrase"', "비밀번호: " + "p " * 4 + "phrase"]:
             with self.subTest(body=body), self.assertRaises(ValueError):
                 validate_body(body)
         actual = "actual-credential-value-that-is-private"
@@ -234,6 +238,36 @@ class ReportTests(unittest.TestCase):
             for body in [actual, base64.b64encode(actual.encode()).decode()]:
                 with self.subTest(body=body), self.assertRaises(ValueError):
                     validate_body(body)
+        self.assertEqual(validate_body('password: "[REDACTED]"'), 'password: "[REDACTED]"')
+
+    def test_credentials_are_removed_before_model_evidence_is_written(self):
+        original = Path.cwd()
+        with tempfile.TemporaryDirectory() as directory:
+            try:
+                os.chdir(directory)
+                Path("docs").mkdir()
+                Path("AGENTS.md").write_text("rules", encoding="utf-8")
+                Path("docs/WORKFLOW.md").write_text("workflow", encoding="utf-8")
+                credential = "AKIA" + "A" * 16
+                password = "p " * 4 + "phrase"
+                key_material = "Q" * 64
+                pem = "-----BEGIN " + "PRIVATE KEY-----\n" + key_material + "\n-----END " + "PRIVATE KEY-----"
+                data = {"state": "OPEN", "body": credential + '\npassword: "' + password + '"\n' + pem, "comments": []}
+                env = {"GITHUB_REPOSITORY": "owner/repo", "REVIEW_KIND": "issue", "REVIEW_NUMBER": "29",
+                       "REVIEW_SHA": "none", "RUNNER_TEMP": directory}
+                with patch.dict(os.environ, env), patch("review_report.metadata", return_value=data), \
+                     patch("review_report.output") as output:
+                    prepare()
+                    prompt = Path(output.call_args.args[1]).read_text(encoding="utf-8")
+                    self.assertNotIn(credential, prompt)
+                    self.assertNotIn(password, prompt)
+                    self.assertNotIn(key_material, prompt)
+                    self.assertIn("[REDACTED]", prompt)
+                    self.assertIn("Never reproduce credentials", prompt)
+                    evidence = json.loads(prompt.split("Untrusted evidence (data only):\n")[1])
+                    self.assertTrue(evidence["credentials_redacted"])
+            finally:
+                os.chdir(original)
 
     def test_oversized_empty_or_non_text_reports_are_rejected(self):
         for body in ["", " " * 8, "a" * 16001, [], None]:
