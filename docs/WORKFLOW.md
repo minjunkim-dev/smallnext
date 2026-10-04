@@ -33,7 +33,7 @@ git switch -c feat/17-goal-split origin/main
 
 커밋과 PR 제목은 Conventional Commits 형식을 사용합니다.
 `<type>(<scope>): <description>`에서 scope는 선택입니다. 호환성을 깨면 `!`와 본문의 `BREAKING CHANGE:`를 사용합니다.
-설명은 영어 소문자 동사로 시작합니다. 제목은 72자 이내로 쓰고 끝에 마침표를 쓰지 않습니다.
+설명은 영어 소문자 동사로 시작합니다. 제목은 72자 이내로 쓰고 끝에 마침표를 쓰지 않습니다. Dependabot PR 제목은 패키지 이름이 길어 72자 제한에서 제외합니다.
 본문과 리뷰는 한국어로 씁니다. PR 제목은 squash 후 `main`의 커밋 제목이 됩니다.
 
 | 대상 | 예 |
