@@ -232,6 +232,10 @@ class ReportTests(unittest.TestCase):
                      "password: |\n  " + "p" * 30, "api_key: >-\n\n  " + "k" * 40,
                      "+  password: |2-\r\n+    " + "p" * 30,
                      'password: "first\n' + "p" * 30 + '"',
+                     "DATABASE_URL=postgresql://admin:" + "p" * 30 + "@example.test/app",
+                     "redis://:" + "p" * 30 + "@example.test/0",
+                     "https://" + "p" * 30 + "@example.test/",
+                     "Bearer " + "b" * 40, "SESSION_TOKEN=" + "s" * 40, "Cookie: session=" + "s" * 40,
                      "AKIA" + "A" * 16, "xoxb-" + "a" * 30,
                      "eyJ" + "a" * 20 + "." + "b" * 30 + "." + "c" * 30,
                      "password: " + "p" * 10, "aws_secret_access_key=" + "a" * 40,
@@ -258,13 +262,14 @@ class ReportTests(unittest.TestCase):
                 labelled_key = "K" * 40
                 block_secret = "sensitive-yaml-value-" + "V" * 20
                 quoted_secret = "multiline-quoted-value-" + "W" * 20
+                uri_password = "private-uri-password-" + "R" * 20
                 password = "p " * 4 + "phrase"
                 key_material = "Q" * 64
                 pem = "-----BEGIN " + "PRIVATE KEY-----\n" + key_material + "\n-----END " + "PRIVATE KEY-----"
                 data = {"state": "OPEN", "body": credential + '\nDATABASE_PASSWORD: "' + password + '"\n' + pem +
                         "\n" + openai_key + "\nOPENAI_API_KEY=" + labelled_key +
                         "\npassword: |\n\n  " + block_secret + '\nnot_sensitive: visible\npassword: "first\n' +
-                        quoted_secret + '"', "comments": []}
+                        quoted_secret + '"\nDATABASE_URL=postgresql://admin:' + uri_password + '@example.test/app', "comments": []}
                 env = {"GITHUB_REPOSITORY": "owner/repo", "REVIEW_KIND": "issue", "REVIEW_NUMBER": "29",
                        "REVIEW_SHA": "none", "RUNNER_TEMP": directory}
                 with patch.dict(os.environ, env), patch("review_report.metadata", return_value=data), \
@@ -276,6 +281,7 @@ class ReportTests(unittest.TestCase):
                     self.assertNotIn(labelled_key, prompt)
                     self.assertNotIn(block_secret, prompt)
                     self.assertNotIn(quoted_secret, prompt)
+                    self.assertNotIn(uri_password, prompt)
                     self.assertIn("not_sensitive: visible", prompt)
                     self.assertNotIn(password, prompt)
                     self.assertNotIn(key_material, prompt)

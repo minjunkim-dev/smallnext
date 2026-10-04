@@ -19,13 +19,14 @@ SECRET = re.compile(
     r"|(?:AKIA|ASIA)[A-Z0-9]{16}|xox[baprs]-[A-Za-z0-9-]{10,}|xapp-[A-Za-z0-9-]{10,}"
     r"|[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{16,}\.[A-Za-z0-9_-]{16,}"
     r"|AIza[A-Za-z0-9_-]{35}|sk_(?:live|test)_[A-Za-z0-9]{16,}"
+    r"|(?i:\b[a-z][a-z0-9+.-]*://[^\s/<>\"'@]+@|\b(?:Bearer|Basic)\s+[A-Za-z0-9+/_=.-]{12,})"
     r"|https://hooks\.slack\.com/services/[^\s\"']+"
     r"|https://(?:discord\.com|discordapp\.com)/api/webhooks/[^\s\"']+"
     r"|[?&](?:sig|token|signature|X-Amz-Signature|X-Amz-Credential)=[^\s&#\"']+"
     r"|(?s:-----BEGIN (?P<key_type>[A-Z0-9 ]*PRIVATE KEY)-----.*?(?:-----END (?P=key_type)-----|$)))")
 LABELLED_SECRET = re.compile(
     r"(?im)(\b(?:[a-z][a-z0-9]*[_-])*(?:password|passwd|pwd|secret|client[_ -]?secret|api[_ -]?key|access[_ -]?token|"
-    r"refresh[_ -]?token|private[_ -]?key|(?:aws[_ -]?)?secret[_ -]?access[_ -]?key|authorization|비밀번호|인증키|비밀값)"
+    r"refresh[_ -]?token|token|cookie|set[_ -]?cookie|private[_ -]?key|(?:aws[_ -]?)?secret[_ -]?access[_ -]?key|authorization|비밀번호|인증키|비밀값)"
     r"\b[\"'`]?\s*[:=]\s*(?:(?:Bearer|Basic)\s+)?)"
     r"([|>][1-9+-]*[ \t]*(?:#[^\r\n]*)?(?=[\r\n]|$)"
     r"(?:\r?\n(?:[+-]?[ \t]+[^\r\n]*|[+-]?(?=\r?\n|$)))*"
