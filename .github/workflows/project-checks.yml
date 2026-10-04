@@ -69,18 +69,11 @@ jobs:
     needs: [scope, api, container, ios, android]
     runs-on: ubuntu-24.04
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
       - name: Check selected job results
         env:
-          SCOPE_RESULT: ${{ needs.scope.result }}
-          API_RESULT: ${{ needs.api.result }}
-          CONTAINER_RESULT: ${{ needs.container.result }}
-          IOS_RESULT: ${{ needs.ios.result }}
-          ANDROID_RESULT: ${{ needs.android.result }}
+          NEEDS_JSON: ${{ toJSON(needs) }}
         run: |
-          test "$SCOPE_RESULT" = success
-          for result in "$API_RESULT" "$CONTAINER_RESULT" "$IOS_RESULT" "$ANDROID_RESULT"; do
-            case "$result" in
-              success|skipped) ;;
-              *) exit 1 ;;
-            esac
-          done
+          python3 scripts/ci_gate.py
