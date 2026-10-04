@@ -264,8 +264,8 @@
       const settle=()=>{
         if(id!==requestId||!state.pending)return;
         state.pending=null;
-        if(mode==='failure'){state.retry={kind,target};state.notice=kind==='split'?'제안을 받지 못했어요. 지금 행동은 그대로 할 수 있어요.':'완료는 기록했어요. 다음 행동을 다시 요청할 수 있어요.';render();return;}
-        if(!target||mode==='empty'){state.retry={kind,target};state.notice=kind==='split'?'더 작은 제안이 없어요. 지금 행동은 유지했어요.':'다음 행동이 아직 없어요. 전체 목표는 완료되지 않았어요.';render();return;}
+        if(mode==='failure'){state.retry={kind,target};state.notice=kind==='split'?'제안을 받지 못했어요. 지금 행동은 그대로 할 수 있어요.':'완료는 기록했어요. 다음 행동을 다시 요청할 수 있어요.';render();focusTitle();return;}
+        if(!target||mode==='empty'){state.retry={kind,target};state.notice=kind==='split'?'더 작은 제안이 없어요. 지금 행동은 유지했어요.':'다음 행동이 아직 없어요. 전체 목표는 완료되지 않았어요.';render();focusTitle();return;}
         if(kind==='split'){state.history.push(from);state.notice='더 작은 행동으로 바꿨어요. 남은 범위는 유지했어요.';}
         else {state.history=[];state.notice='현재 행동을 완료했어요. 다음 행동이 준비됐어요.';}
         state.current=target;state.lastChange=kind==='split'?'재분할':'다음 행동';busyUntil=performance.now()+160;render();animate(kind,oldTitle);focusTitle();
@@ -287,7 +287,7 @@
       if(!state.completed.some(x=>x.id===from))state.completed.push({id:from,행동:ACTIONS[from].title,예시:state.work[ACTIONS[from].field]||'완료 버튼으로 표시; 예시 작성 없음'});
       state.current=null;state.history=[];state.cause=false;state.lastChange='현재 행동 완료';request('next',nextFor(from));
     }
-    function cancel(){requestId++;state.pending=null;state.retry=null;state.notice=state.current?'제안을 취소했어요. 기존 행동은 유지했어요.':'다음 제안을 취소했어요. 완료 기록은 유지했어요.';state.lastChange='제안 취소';render();}
+    function cancel(){requestId++;state.pending=null;state.retry=null;state.notice=state.current?'제안을 취소했어요. 기존 행동은 유지했어요.':'다음 제안을 취소했어요. 완료 기록은 유지했어요.';state.lastChange='제안 취소';render();focusTitle();}
     function switchVariant(delta){variant=VARIANTS[(VARIANTS.indexOf(variant)+delta+3)%3];const url=new URL(location.href);url.searchParams.set('variant',variant);history.replaceState(null,'',url);render();}
     document.querySelector('#screen').addEventListener('click',event=>{
       const button=event.target.closest('button');if(!button)return;
