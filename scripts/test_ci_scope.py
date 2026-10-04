@@ -61,6 +61,23 @@ class ScopeTests(unittest.TestCase):
     def test_repository_workflow_uses_repository_checks(self):
         self.assert_selected([".github/workflows/repository-checks.yml"])
 
+    def test_known_review_and_policy_changes_do_not_build_apps(self):
+        paths = [
+            ".github/workflows/agent-review.yml", ".github/workflows/pr-policy.yml",
+            "scripts/workflow_policy.py", "scripts/test_workflow_policy.py",
+            "scripts/review_context.py", "scripts/review_failure.py", "scripts/test_review_failure.py",
+            "scripts/review_report.py", "scripts/test_review_report.py",
+        ]
+        for path in paths:
+            with self.subTest(path=path):
+                self.assert_selected([path])
+
+    def test_unknown_script_still_checks_all_projects(self):
+        self.assertEqual(self.selected(["scripts/new-check.py"]), ALL)
+
+    def test_mixed_maintenance_and_app_changes_still_check_the_app(self):
+        self.assert_selected(["scripts/review_context.py", "apps/ios/Sources/AppDatabase.swift"], ios=True)
+
     def test_orchestrator_and_unknown_workflows_check_all_projects(self):
         for path in [".github/workflows/project-checks.yml", ".github/workflows/new.yml"]:
             with self.subTest(path=path):
