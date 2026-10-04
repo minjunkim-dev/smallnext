@@ -18,15 +18,22 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
+      - name: Resolve base image digests
+        id: base-images
+        if: inputs.use-cache
+        run: |
+          # Floating tags such as rust:1.96-bookworm move; a new digest must start a new cache.
+          awk '/^FROM/ {print $2}' services/api/Dockerfile | while read -r image; do
+            docker buildx imagetools inspect "$image" --format '{{.Manifest.Digest}}'
+          done | sha256sum | cut -c1-16 | sed 's/^/digest=/' >> "$GITHUB_OUTPUT"
       - name: Restore BuildKit layers
         id: image-cache
         if: inputs.use-cache
         uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
           path: ${{ runner.temp }}/buildx-cache
-          key: image-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('services/api/Dockerfile', 'services/api/Cargo.lock', '.dockerignore') }}-${{ hashFiles('services/api/Cargo.toml', 'services/api/src/**', 'services/api/migrations/**') }}
-          restore-keys: |
-            image-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('services/api/Dockerfile', 'services/api/Cargo.lock', '.dockerignore') }}-
+          # Key on the dependency layer inputs only: one ~800 MB entry per lock or base image change.
+          key: image-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('services/api/Dockerfile', 'services/api/Cargo.toml', 'services/api/Cargo.lock', '.dockerignore') }}-${{ steps.base-images.outputs.digest }}
       - name: Build API container
         env:
           CACHE_ENABLED: ${{ inputs.use-cache }}
