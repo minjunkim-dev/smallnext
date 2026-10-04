@@ -57,8 +57,8 @@ class ReportTests(unittest.TestCase):
                 post.assert_not_called()
 
     def test_failed_or_missing_results_cannot_publish(self):
-        for messages in [[], [{"type": "result", "subtype": "error_during_execution", "result": "unsafe"}],
-                         [{"type": "result", "subtype": "success", "is_error": True, "result": "unsafe"}]]:
+        for messages in [[], [INIT, {"type": "result", "subtype": "error_during_execution", "result": "unsafe"}],
+                         [INIT, {"type": "result", "subtype": "success", "is_error": True, "result": "unsafe"}]]:
             with self.subTest(messages=messages), self.assertRaises(ValueError):
                 extract(messages)
 

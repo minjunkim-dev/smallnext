@@ -29,7 +29,7 @@ Claude 재검토는 댓글 첫 줄에 `@claude review` 또는 `@claude security 
 읽기 전용 권한 확인, Secret을 사용하는 모델 검토, 댓글 게시 작업을 분리합니다.
 봇 댓글·일반 댓글·거절된 요청은 실행 중인 리뷰를 취소하지 않습니다.
 PR의 그룹 키에 검토 SHA를 포함합니다. 오래된 head의 권한 확인이 늦게 끝나도 새 head의 리뷰를 취소하지 않습니다.
-동일 이벤트의 반복 검토가 필요하면 Actions의 `Claude issue and PR review`를 수동 실행합니다.
+반복 검토는 Issue·PR에 `@claude review` 또는 `@claude security review` 댓글로 요청합니다. 임의 브랜치의 수동 workflow dispatch는 지원하지 않습니다. 세 작업은 main의 신뢰된 코드만 실행합니다.
 
 Claude 모델 작업은 읽기 전용 GitHub 토큰을 사용합니다. 신뢰된 Python 코드가 제한된 Issue·PR 자료와 diff를 준비합니다.
 PR의 Refs·Closes 등으로 연결한 같은 저장소의 Issue를 최대 3개 읽습니다. 연결된 기획 문서는 신뢰된 checkout의 추적된 docs/ Markdown에서만 가져옵니다.
