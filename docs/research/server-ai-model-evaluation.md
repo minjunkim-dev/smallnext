@@ -1,6 +1,7 @@
 # Smallnext 서버 AI 모델 비교와 평가 검토안
 
-확인일: 2026-10-04. 공식 문서만 확인했다. 유료 API를 호출하지 않았다.
+확인일: 2026-10-04. 공식 문서와 기존 구독을 사용한 CLI 예비 시험을 확인했다.
+일반 개발자 API 키로는 요청하지 않았다. 구독 시험은 아래에서 구분한다.
 범위: OpenAI·Anthropic·Google의 주요 텍스트 API 모델 카탈로그다. 전체 시장 조사라고 주장하지 않는다.
 대상 결정: [첫 버전에 사용할 서버 AI 공급자와 모델은 무엇인가?](https://github.com/minjunkim-dev/smallnext/issues/17). 확정 답은 해당 Issue에서 관리한다.
 아래 추천은 평가 후보 제안이다. 제품 기본 모델은 아직 확정하지 않는다.
@@ -101,7 +102,7 @@ OpenAI 가격 출처: [Astra](https://developers.openai.com/api/docs/models/gpt-
 
 ## 합성 평가 입력 검토안
 
-상태: 사용자 확인 전. 외부 API로 보내지 않았습니다.
+상태: 2026-10-04 사용자가 비교 진행을 승인했습니다. 아래 합성 입력의 ‘진행 가능’ 사례를 기존 구독 CLI로 후보별 1회 시험했습니다.
 이 문서는 평가 준비 자료입니다. 확정 답과 실제 평가 결과는 아닙니다.
 
 기준은 [목표 분할 결과를 어떤 기준으로 통과시킬 것인가?](https://github.com/minjunkim-dev/smallnext/issues/6#issuecomment-5968651172)와 [첫 버전의 AI 연결 방식과 실패 시 동작은 무엇인가?](https://github.com/minjunkim-dev/smallnext/issues/10#issuecomment-5969227418)입니다.
@@ -148,7 +149,7 @@ OpenAI 가격 출처: [Astra](https://developers.openai.com/api/docs/models/gpt-
 3. **작은 행동만 완료**: 역할 선택만 끝났습니다. 역할 문장·PDF·최종 목표는 미완료입니다.
 
 경계 입력은 각 종류를 세 번 실행하는 안을 제안합니다. 후보마다 9요청입니다.
-후보별 최대 54요청, 추천 쌍 최대 108요청입니다. 사용자 확인 전에는 실행하지 않습니다.
+후보별 최대 54요청, 추천 쌍 최대 108요청입니다. 구독 예비 시험 2건과 전체 API 평가를 구분합니다.
 실험의 입력 8,000토큰·과금 출력 2,000토큰 상한과 첫 비교 API 비용 3 USD를 제안합니다.
 이 수치는 평가용 제한입니다. 제품 요청 상한과 타임아웃은 실제 측정 뒤에 정합니다.
 보류는 미완료로 유지합니다. 부족한 선행 조건을 해결됐다고 가정하지 않습니다.
@@ -168,7 +169,29 @@ API가 실행되지 않았거나 사용자가 수행하지 않았다면 해당 �
 
 ### 실행 전 확인할 항목
 
-사용자가 평가용 후보, 이 합성 입력, 공급자 측 보관 조건과 평가 비용 범위를 확인해야 합니다.
+사용자는 최신 후보 비교 진행을 승인했습니다. 첫 비교 상한 3 USD와 월 10 USD 범위를 유지합니다.
 현재 프로세스에는 공급자 API 키가 없습니다. 계정이나 다른 저장소의 키 보유 여부는 미확인입니다.
 키는 이 문서·GitHub 댓글·채팅에 붙여 넣지 않습니다. 실행 환경의 비밀 저장 경로로 연결합니다.
 기본 모델과 타임아웃은 실제 평가와 사용자 선택 뒤에 정합니다.
+
+## 기존 구독을 사용한 예비 시험
+
+2026-10-04 사용자가 구독 OAuth로 시험할 수 있는지 물었다. 공식 CLI의 기존 로그인을 확인한 뒤 같은 합성 사례를 각 후보에 1회 전달했다.
+Codex는 ChatGPT 로그인, Claude Code는 `claude.ai`의 Max 로그인이었다. API 키를 생성·사용하거나 OAuth 토큰을 추출하지 않았다.
+
+| 요청 후보 | 결과 | 전체 CLI 경과 | 받은 현재 행동 | 최종 목표 완료 |
+| --- | --- | ---: | --- | --- |
+| `gpt-6-luna` | 종료 0, 한국어 JSON | 7.56초 | 본인이 맡은 일을 한 문장으로 적기 | false |
+| `claude-sonnet-5-5` | 종료 0, 한국어 JSON | 5.48초 | 역할 문장 틀의 빈칸 채우기, 불확실한 내용 표시 | false |
+
+Luna는 요청 ID다. Codex 응답 이벤트에 별도의 실제 모델 ID는 없었다. Sonnet은 modelUsage에서 해당 ID와 firstParty를 확인했다.
+Codex 입력 20,721·출력 87토큰, Claude 입력 2·캐시 생성 1,531·출력 509토큰이 기록됐다. CLI 시스템 맥락이 서로 다르다.
+Codex에는 스킬 설명 예산 초과 경고가 있었다. Claude 구조 출력은 내부 tool_use로 기록됐다. 외부 검색·문서·셸 도구 호출은 관찰되지 않았다.
+CLI가 표시한 정가 환산 비용은 구독의 실제 추가 청구 증거가 아니다. 구독 한도 사용과 API 청구를 구분한다.
+이번 2건으로 전체 품질을 통과시키지 않는다. 반복·재분할·경계 사례와 사용자 3상황 수행은 남아 있다.
+위 시간은 CLI 실행 시간이다. 서버 API의 비용·지연·보관 조건을 검증한 값으로 사용하지 않는다.
+
+사실: 구독으로 공식 Codex·Claude Code를 사용할 수 있다. 평가 키가 모든 예비 시험의 필수 조건은 아니다.
+사실: OpenAI는 지원되는 Sign in with ChatGPT 통합에서 구독 OAuth 추론도 제공한다. Smallnext의 통합·계정별 모델 접근은 확인하지 않았다.
+사실: Claude 구독의 개인 CLI 사용과 제품의 API 인증은 다르다. 기존 구독 토큰을 Smallnext 서버 인증으로 복사하지 않았다.
+출처: [Codex 인증](https://learn.chatgpt.com/docs/auth), [Codex 비대화형 실행](https://learn.chatgpt.com/docs/non-interactive-mode), [Claude Code 비대화형 실행](https://code.claude.com/docs/en/headless), [Claude 구독 인증 범위](https://code.claude.com/docs/en/legal-and-compliance), [OpenAI 구독 OAuth 추론](https://developers.openai.com/siwc/token-sharing-open-source/models-and-inference).
