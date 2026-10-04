@@ -76,6 +76,7 @@ Repository hygiene에서 actionlint 1.7.12와 ShellCheck로 워크플로를 검�
 GitHub Action도 전체 커밋 SHA에 고정했습니다.
 PR의 이전 CI는 같은 PR의 새 커밋이 올라오면 취소합니다.
 main push 실행은 후속 push로 취소하지 않습니다. 후속 문서 변경이 앞선 기능 검사를 가리지 않습니다.
+PR은 같은 ref의 오래된 실행을 취소합니다. main과 수동 실행은 실행 ID별 concurrency 그룹을 사용합니다. 대기 중인 기능 검사도 후속 문서 push로 대체하지 않습니다.
 실패한 iOS·Android 보고서와 에뮬레이터 로그는 7일 동안 보관합니다.
 
 ## 배포 자동화

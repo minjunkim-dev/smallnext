@@ -42,6 +42,7 @@ Issue는 검토한 제목·본문·댓글의 SHA-256을 보고서에 묶습니�
 PR 메타데이터·연결 Issue·기획 자료는 수집 시점의 기록입니다. 현재 head 검사가 이 자료의 최신성까지 보증하지 않습니다. 완료 조건을 커밋 없이 바꿨다면 사람이 PR 재검토를 요청합니다.
 모델 출력의 멘션은 무력화하여 다른 사용자나 팀에 알림을 보내지 않습니다.
 하위 프로세스의 인증 환경 변수 제거를 활성화합니다. 전체 모델·도구 출력은 로그에 표시하지 않습니다.
+검토 자료는 권한 0600의 runner 임시 파일로 전달합니다. SDK 전용 `base-action`을 사용하며 Action 입력·로그에는 파일 경로만 넣습니다. 검토 자료를 출력하는 상위 Action의 `prompt` 입력은 사용하지 않습니다.
 CI는 Ubuntu 패키지 저장소에서 `bubblewrap`·`socat`을 설치하고 사용자 네임스페이스 격리 실행을 확인합니다.
 Ubuntu 24.04의 AppArmor 제한이 켜져 있으면 `/usr/bin/bwrap`에만 사용자 네임스페이스 생성 권한을 부여합니다.
 시스템 전체의 AppArmor 정책과 네임스페이스 제한은 유지합니다.
@@ -77,7 +78,7 @@ GitHub 소유 Action 허용과 SHA 고정은 유지합니다. 다음 두 항목�
 
 | Action | 허용 SHA |
 | --- | --- |
-| `anthropics/claude-code-action` | `12dd8d74c712f5f3669365b2369b558c495b1104` |
+| `anthropics/claude-code-action/base-action` | `12dd8d74c712f5f3669365b2369b558c495b1104` |
 | `oven-sh/setup-bun` | `0c5077e51419868618aeaa5fe8019c62421857d6` |
 
 Bun 설치 Action은 고정된 Claude composite Action이 내부에서 사용합니다.
@@ -88,7 +89,7 @@ Dependabot이 새 SHA를 제안하면 출처와 내부 Action 변경을 확인�
 이 작업에는 계정 로그인과 Secret 등록이 필요합니다. Secret 값은 채팅이나 문서에 기록하지 않습니다.
 
 1. 로컬 Claude Code에서 `claude setup-token`을 실행합니다. 발급 값을 Smallnext의 Actions Secret `CLAUDE_CODE_OAUTH_TOKEN`으로 등록합니다. GitHub 토큰이나 운영 API 키는 사용하지 않습니다.
-2. GitHub Actions의 허용 목록에 검토한 `anthropics/claude-code-action`과 필요한 내부 Action의 전체 SHA를 추가합니다. 전체 Action 허용으로 바꾸지 않습니다.
+2. GitHub Actions의 허용 목록에 검토한 `anthropics/claude-code-action/base-action`과 필요한 내부 Action의 전체 SHA를 추가합니다. 전체 Action 허용으로 바꾸지 않습니다.
 3. Codex GitHub 연결에서 `minjunkim-dev/smallnext` 접근을 허용합니다. 해당 저장소의 자동 코드 검토를 `Review all PRs`, 검토 트리거를 `Every push`로 설정합니다.
 4. 자동 보안 검토를 `Review all PRs`, 트리거를 `Whenever code review runs`로 설정합니다. 자동 보고는 Critical·High, 수동 보고는 Critical·High·Medium을 유지합니다. 위협 모델 경로를 비우면 검토마다 모델을 생성합니다.
 5. 워크플로를 main에 병합한 후 Issue와 작은 PR로 첫 실행을 확인합니다. 실행 URL, 봇 댓글 URL, 검토 SHA를 아래 표에 기록합니다.

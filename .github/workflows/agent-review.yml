@@ -115,19 +115,13 @@ jobs:
         run: python3 scripts/review_report.py prepare
       - name: Review supplied evidence without tools
         id: claude
-        uses: anthropics/claude-code-action@12dd8d74c712f5f3669365b2369b558c495b1104 # reviewed v1, shared with BGLike
+        uses: anthropics/claude-code-action/base-action@12dd8d74c712f5f3669365b2369b558c495b1104 # reviewed SDK runner; no context-prompt logging
         env:
           CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: "1"
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          # A job-scoped token avoids broad app/PAT permissions. Comments use github-actions[bot].
-          github_token: ${{ github.token }}
           show_full_output: false
-          display_report: false
-          use_sticky_comment: false
-          use_commit_signing: false
-          classify_inline_comments: false
-          prompt: ${{ steps.evidence.outputs.prompt }}
+          prompt_file: ${{ steps.evidence.outputs.prompt_file }}
           claude_args: >-
             --max-turns 2
             --tools ""

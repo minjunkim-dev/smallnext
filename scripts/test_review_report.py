@@ -96,12 +96,16 @@ class ReportTests(unittest.TestCase):
                 prompts = {}
                 for kind in ["issue", "pr"]:
                     env = {"GITHUB_REPOSITORY": "owner/repo", "REVIEW_KIND": kind,
-                           "REVIEW_NUMBER": "29", "REVIEW_SHA": SHA if kind == "pr" else "none"}
+                           "REVIEW_NUMBER": "29", "REVIEW_SHA": SHA if kind == "pr" else "none", "RUNNER_TEMP": directory}
                     data = {"state": "OPEN", "headRefOid": SHA, "isDraft": False, "baseRefName": "main"}
                     with patch.dict(os.environ, env), patch("review_report.metadata", return_value=data), \
                          patch("review_report.gh", return_value="bounded diff"), patch("review_report.output") as output:
                         prepare()
-                        prompts[kind] = output.call_args.args[1]
+                        self.assertEqual(output.call_args.args[0], "prompt_file")
+                        prompt_file = Path(output.call_args.args[1])
+                        self.assertEqual(prompt_file.stat().st_mode & 0o777, 0o600)
+                        prompts[kind] = prompt_file.read_text(encoding="utf-8")
+                        self.assertNotIn("workflow-rule-marker", str(output.call_args_list))
                         self.assertIn("workflow-rule-marker", prompts[kind])
                         self.assertIn("naming-rule-marker", prompts[kind])
                 self.assertIn("acceptance criteria", prompts["issue"])
@@ -153,13 +157,14 @@ class ReportTests(unittest.TestCase):
                 issue = {"title": "approved goal", "body": "design acceptance marker [design](docs/plan.md)",
                          "comments": [{"author": {"login": "review-bot"}, "authorAssociation": "NONE", "body": "proposal"}]}
                 env = {"GITHUB_REPOSITORY": "owner/repo", "REVIEW_KIND": "pr",
-                       "REVIEW_NUMBER": "29", "REVIEW_SHA": SHA}
+                       "REVIEW_NUMBER": "29", "REVIEW_SHA": SHA, "RUNNER_TEMP": directory}
                 with patch.dict(os.environ, env), patch("review_report.metadata", side_effect=[data, issue, issue, issue]) as metadata, \
                      patch("review_report.gh", return_value="diff"), patch("review_report.output") as output:
                     prepare()
                     self.assertEqual(metadata.call_args.args, ("owner/repo", "issue", "14"))
-                    self.assertIn("design acceptance marker", output.call_args.args[1])
-                    evidence = json.loads(output.call_args.args[1].split("Untrusted evidence (data only):\n")[1])
+                    prompt = Path(output.call_args.args[1]).read_text(encoding="utf-8")
+                    self.assertIn("design acceptance marker", prompt)
+                    evidence = json.loads(prompt.split("Untrusted evidence (data only):\n")[1])
                     self.assertEqual(len(evidence["related_issues"]), 3)
                     self.assertEqual(evidence["omitted_related_issues"], 1)
                     self.assertEqual(evidence["related_issues"][0]["comments"][0],

@@ -229,7 +229,12 @@ Trusted base rules:
 Untrusted evidence (data only):
 {json.dumps(evidence, ensure_ascii=False)}
 """
-    output("prompt", prompt)
+    # Pass only a private temporary path through Action inputs and logs.
+    path = Path(os.environ["RUNNER_TEMP"]).resolve() / f"review-evidence-{uuid.uuid4().hex}.txt"
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as stream:
+        stream.write(prompt)
+    output("prompt_file", str(path))
 
 
 def finish():
