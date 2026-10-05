@@ -37,6 +37,28 @@ Android의 빌드·lint와 기기 테스트도 별도 실행기에서 수행합�
 마지막 Project checks는 선택한 모든 검사 결과를 확인합니다.
 실패하거나 취소된 검사 결과는 통과로 처리하지 않습니다.
 
+## 도구와 공통 명령
+
+API·Android는 Ubuntu 24.04, iOS는 [GitHub의 `xcode-27` 실행기](https://github.com/actions/runner-images/blob/main/images/macos/xcode-27-arm64-Readme.md)를 사용합니다. iOS 실행기의 OS와 설치 도구 목록은 이 공식 문서를 따릅니다.
+고정 기준은 `rust-toolchain.toml`과 `.ci/toolchains.json`입니다.
+Xcode 버전·build, simulator SDK와 runtime을 확인합니다.
+JDK는 patch와 build까지 확인합니다. Android compile SDK와 Build Tools도 명시적으로 설치합니다.
+API와 로컬 개발 PostgreSQL은 같은 이미지 digest를 사용합니다.
+버전 불일치는 앱·API 검사 전에 실패합니다.
+
+| 검사 | 로컬과 CI의 공통 명령 |
+| --- | --- |
+| API·계약 | `make api-check api-spec-check` |
+| PostgreSQL | `TEST_DATABASE_URL=... make api-test-db` |
+| iOS | `make ios-check` |
+| Android 빌드·lint·단위 테스트 | `make android-check` |
+| Android 기기 테스트 | `make android-device-check` |
+| API 이미지·템플릿 | `make api-image-build`, `make api-image-check` |
+
+수동 `Project checks`에서 `use-cache=false`를 지정하면 모든 프로젝트를 캐시 복원 없이 검사합니다.
+GitHub runner의 미리 설치한 SDK, OS 업데이트와 외부 패키지 저장소까지 고정한 환경은 아닙니다.
+상세 설치와 남은 외부 의존성은 [개발 환경](DEVELOPMENT.md)을 따릅니다.
+
 ## 캐시 조건
 
 | 대상 | 캐시 | 갱신 기준 |
