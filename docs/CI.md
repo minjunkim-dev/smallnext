@@ -92,5 +92,5 @@ API 배포를 켜기 전에 운영 도메인·VM·관리형 DB·비밀정보 제
 
 - [GitHub 의존성 캐시](https://github.com/actions/cache)
 - [Java Action의 Gradle 캐시](https://github.com/actions/setup-java)
-- [Gradle 빌드 캐시](https://docs.gradle.org/8.13/userguide/build_cache.html)
+- [Gradle 빌드 캐시](https://docs.gradle.org/9.8.0/userguide/build_cache.html)
 - [Docker 로컬 캐시](https://docs.docker.com/build/cache/backends/local/)
