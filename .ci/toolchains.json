@@ -1,0 +1,10 @@
+{
+  "java": "17.0.20+1",
+  "android_compile_sdk": "37",
+  "android_build_tools": "36.0.0",
+  "android_system_image": "system-images;android-35;google_apis;x86_64",
+  "xcode": "26.6",
+  "xcode_build": "17F113",
+  "ios_sdk": "26.5",
+  "ios_runtime": "26.4.1"
+}

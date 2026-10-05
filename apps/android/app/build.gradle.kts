@@ -8,6 +8,7 @@ android {
     namespace = "dev.smallnext.app"
     // Compose BOM 2026.09 libraries require compiling against API 37.
     compileSdk = 37
+    buildToolsVersion = "36.0.0"
 
     defaultConfig {
         applicationId = "dev.smallnext.app"

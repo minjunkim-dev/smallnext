@@ -1,4 +1,4 @@
-FROM rust:1.98-bookworm AS builder
+FROM rust:1.98.0-bookworm@sha256:82150a52ec202c1b14d7817e14516c392bb7f5cfebd88f1ed531cb37ebd39922 AS builder
 WORKDIR /workspace
 COPY services/api/Cargo.toml services/api/Cargo.lock ./
 # Build dependencies in their own layer so source edits reuse the cached layer.
@@ -9,7 +9,7 @@ COPY services/api/src ./src
 COPY services/api/migrations ./migrations
 RUN cargo build --release --locked --bin smallnext-api
 
-FROM debian:bookworm-slim
+FROM debian:bookworm-slim@sha256:3783cc01769c7b2b1b83a5c5ad96c815348e28ed7da68e2e3687004faa906251
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --system --uid 10001 --create-home smallnext
