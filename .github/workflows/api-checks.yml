@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     env:
-      RUSTUP_TOOLCHAIN: 1.96.0
+      RUSTUP_TOOLCHAIN: 1.98.0
       TEST_DATABASE_URL: postgres://smallnext:smallnext-ci-test@127.0.0.1:5432/smallnext_test
     services:
       postgres:
@@ -34,7 +34,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Install pinned Rust toolchain
-        run: rustup toolchain install 1.96.0 --profile minimal --component clippy --component rustfmt
+        run: rustup toolchain install 1.98.0 --profile minimal --component clippy --component rustfmt
       - name: Restore Cargo dependencies and compiler outputs
         id: cargo-cache
         if: inputs.use-cache

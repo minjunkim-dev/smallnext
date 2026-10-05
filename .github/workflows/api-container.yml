@@ -22,7 +22,7 @@ jobs:
         id: base-images
         if: inputs.use-cache
         run: |
-          # Floating tags such as rust:1.96-bookworm move; a new digest must start a new cache.
+          # Floating tags such as rust:1.98-bookworm move; a new digest must start a new cache.
           awk '/^FROM/ {print $2}' services/api/Dockerfile | while read -r image; do
             docker buildx imagetools inspect "$image" --format '{{.Manifest.Digest}}'
           done | sha256sum | cut -c1-16 | sed 's/^/digest=/' >> "$GITHUB_OUTPUT"
