@@ -319,9 +319,7 @@ impl SubscriptionAi {
                 "-c",
                 "features.view_image=false",
                 "-c",
-                "features.skip_host_skill_discovery=true",
-                "-c",
-                "suppress_unstable_features_warning=true",
+                "skills.max_context_tokens=1",
                 "-c",
                 "model_reasoning_effort=\"medium\"",
             ])
@@ -417,6 +415,9 @@ fn parse_events(bytes: &[u8]) -> Result<Value, Disposition> {
                         );
                     }
                     Some("agent_message" | "reasoning") => (),
+                    // Codex reports this intentional catalog removal as an error item.
+                    // Accept only the exact no-skills notice; configuration/tool errors fail.
+                    Some("error") if empty_skills_notice(&event["item"]) => (),
                     _ => return Err(Disposition::Failed),
                 }
             }
@@ -428,6 +429,23 @@ fn parse_events(bytes: &[u8]) -> Result<Value, Disposition> {
         return Err(Disposition::Failed);
     }
     result.ok_or(Disposition::Failed)
+}
+
+fn empty_skills_notice(item: &Value) -> bool {
+    item["message"]
+        .as_str()
+        .and_then(|message| {
+            message
+                .strip_prefix(
+                    "Exceeded skills context budget. All skill descriptions were removed and ",
+                )?
+                .strip_suffix(
+                    " additional skills were not included in the model-visible skills list.",
+                )?
+                .parse::<u32>()
+                .ok()
+        })
+        .is_some()
 }
 
 struct Workspace(PathBuf);

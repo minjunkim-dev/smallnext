@@ -31,6 +31,11 @@ fn events(value: &Value) -> Vec<u8> {
 fn incomplete_tool_and_ambiguous_results_fail_closed() {
     let good = events(&json!({"ok":true}));
     assert!(parse_events(&good).is_ok());
+    let notice = json!({"type":"item.completed","item":{"type":"error","message":"Exceeded skills context budget. All skill descriptions were removed and 478 additional skills were not included in the model-visible skills list."}});
+    assert!(parse_events(&[format!("{notice}\n").into_bytes(), good.clone()].concat()).is_ok());
+    assert!(!empty_skills_notice(
+        &json!({"message":"Exceeded skills context budget. Some descriptions were removed."})
+    ));
     let incomplete = good.split(|b| *b == b'\n').next().unwrap();
     assert_eq!(parse_events(incomplete), Err(Disposition::Failed));
     for bad in [
