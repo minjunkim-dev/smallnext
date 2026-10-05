@@ -8,7 +8,7 @@
 | --- | --- |
 | iOS | SwiftUI, GRDB 7.11.1, URLSession |
 | Android | Compose, Room 2.8.5, Retrofit 3.0.0, OkHttp 4.12.0 |
-| API | Rust 1.96.0, Axum, Tokio, Serde, SQLx, utoipa, tracing |
+| API | Rust 1.98.0, Axum, Tokio, Serde, SQLx, utoipa, tracing |
 | 개발 DB | PostgreSQL 18, Docker Compose |
 | 운영 템플릿 | Caddy, API 컨테이너, 외부 관리형 PostgreSQL |
 
@@ -22,7 +22,7 @@ Android는 기본 실행과 저장 검증을 함께 수행합니다.
 
 - iOS: Xcode 16.4 이상, iOS 시뮬레이터.
 - Android: JDK 17 또는 21, Android SDK 36, 에뮬레이터.
-- API: rustup, Rust 1.96.0, Docker Compose v2, Python 3, make.
+- API: rustup, Rust 1.98.0, Docker Compose v2, Python 3, make.
 
 iOS 지원 하한은 우선 17.0, Android 지원 하한은 API 26입니다.
 이 값은 초기 빌드 기준입니다. 출시 지원 범위는 별도로 확인합니다.
