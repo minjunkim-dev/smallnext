@@ -42,7 +42,7 @@ def check_android():
     if sdk == Path("."):
         raise ValueError("Set ANDROID_HOME to the Android SDK directory")
     pins = config()
-    for package in (f'platforms/android-{pins["android_compile_sdk"]}',
+    for package in (f'platforms/android-{pins["android_platform"]}',
                     f'build-tools/{pins["android_build_tools"]}'):
         if not (sdk / package).is_dir():
             raise ValueError(f"Missing Android SDK package: {package}; run make android-sdk")
@@ -84,7 +84,7 @@ def main():
         sdk = Path(os.environ["ANDROID_HOME"])
         pins = config()
         subprocess.run([str(sdk / "cmdline-tools/latest/bin/sdkmanager"),
-                        f'platforms;android-{pins["android_compile_sdk"]}',
+                        f'platforms;android-{pins["android_platform"]}',
                         f'build-tools;{pins["android_build_tools"]}', "platform-tools"], check=True)
     elif action == "ios":
         check_ios()

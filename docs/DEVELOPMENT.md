@@ -107,6 +107,7 @@ make android-device-check
 마지막 명령에는 부팅한 에뮬레이터나 연결한 기기가 필요합니다.
 먼저 Android command-line tools를 `$ANDROID_HOME/cmdline-tools/latest`에 설치하고 SDK 라이선스를 승인합니다.
 `make android-sdk`는 고정 compile SDK와 Build Tools를 설치합니다.
+API 37의 SDK Manager 패키지 이름은 `platforms;android-37.0`입니다. Gradle의 `compileSdk = 37`과 구분합니다.
 CI 기기 테스트는 `.ci/toolchains.json`의 Android 35 google_apis x86_64 이미지를 사용합니다.
 로컬 기기의 OS·CPU가 다르면 같은 명령으로 수행한 추가 플랫폼 검사로 기록합니다.
 Room 테스트는 별도 테스트 DB 파일을 생성하고 삭제합니다.
