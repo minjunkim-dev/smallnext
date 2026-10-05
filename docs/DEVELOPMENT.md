@@ -15,7 +15,7 @@
 첫 기능 검증 플랫폼은 iOS입니다.
 Android는 기본 실행과 저장 검증을 함께 수행합니다.
 현재 두 앱에는 시작 화면과 DB 초기화만 있습니다.
-목표·행동 기능, AI, 실제 Firebase 인증, 동기화는 다음 작업 범위입니다.
+앱의 목표·행동 기능, AI 연결, 실제 Firebase 인증, 동기화는 다음 작업 범위입니다.
 현재 API에는 사용자 데이터를 다루는 경로가 없습니다.
 
 ## 필요한 도구
@@ -59,6 +59,55 @@ DB는 `127.0.0.1:55432`, API는 `127.0.0.1:8080`을 사용합니다.
 공유 환경에서는 배포 전 마이그레이션 절차를 별도로 검토합니다.
 개발 DB를 멈출 때는 `make dev-db-stop`을 사용합니다.
 이 명령은 저장 볼륨을 삭제하지 않습니다.
+
+## 개발 전용 AI
+
+[개발 모델 결정](https://github.com/minjunkim-dev/smallnext/issues/17#issuecomment-5993865166)과
+[개발 중 구독 연결 결정](https://github.com/minjunkim-dev/smallnext/issues/17#issuecomment-5994138248)을 따릅니다.
+공식 Codex CLI가 기존 ChatGPT OAuth 로그인을 사용합니다. 새 API 키를 만들지 않습니다.
+인증정보는 Codex가 관리합니다. 실행기는 토큰을 읽거나 추출하지 않습니다.
+Codex CLI 0.160.0과 Python 3로 검증합니다. Python 3는 모의 CLI 회귀 테스트에만 사용합니다.
+개발 연결은 호스트의 skill 검색을 끕니다. 이 설정은 CLI의 개발 중 옵션입니다.
+CLI 변경 후에는 연결과 도구 차단을 다시 확인합니다. 알 수 없는 오류 항목은 답을 차단합니다.
+
+저장소 루트에서 실행합니다.
+
+```sh
+codex login status
+# 기본 OFF: 모델을 호출하지 않습니다.
+cargo run --locked --manifest-path services/api/Cargo.toml --bin development-ai \
+  < services/api/examples/development-ai-input.json
+# 이 실행만 ON: 생성 1회와 별도 의미 검사 1회를 수행합니다.
+cargo run --locked --manifest-path services/api/Cargo.toml --bin development-ai -- \
+  --enable-local-ai < services/api/examples/development-ai-input.json
+```
+
+로그인이 없으면 `codex login`에서 ChatGPT 로그인을 선택합니다.
+키와 목표 자료를 채팅, PR, 운영 로그에 붙여 넣지 않습니다.
+예제 입력은 합성한 책상 정리 목표입니다. 특정 목표 분야로 기능을 제한하지 않습니다.
+
+`disposition: accepted`와 `applied: true`인 답만 현재 행동으로 적용합니다.
+거부, 불확실, 오류, 시간 초과에서는 기존 행동을 유지합니다. 자동 재생성은 없습니다.
+결과 JSON은 개발 검토 자료입니다. 실행기의 종료 코드만으로 수용 여부를 판단하지 않습니다.
+요청 모델은 결과에 표시합니다. CLI가 실제 모델 ID를 반환하지 않으므로 실제 모델 확인을 주장하지 않습니다.
+
+입력 구조는 예제와 Rust의 `AiInput`이 기준입니다.
+`previous_proposals`는 실행하지 않은 제안 이력입니다. 마지막 제안을 기존 행동으로 사용합니다.
+완료한 행동의 ID와 남은 작업은 코드가 원본과 비교합니다. 모델은 완료 상태를 변경할 수 없습니다.
+의미 검사기는 원본 입력과 후보를 새 호출에서 함께 검사합니다.
+다섯 기준을 모두 수용한 답만 적용합니다. 이 판정도 출시 품질의 증거는 아닙니다.
+개발 프롬프트와 입력 구조는 이전 수동 비교 자료와 다릅니다. 출시 전에 별도로 검증합니다.
+
+`ActionState`는 실행 중 중복 요청을 막습니다. 입력 변경·사용자 취소 시 `cancel()`을 호출합니다.
+취소 후 도착한 답과 다른 상태의 답은 적용하지 않습니다.
+취소·시간 초과는 로컬 CLI 프로세스를 종료합니다. 원격 처리와 구독 사용량의 취소는 보장하지 않습니다.
+개발 한도는 호출 입력 32 KiB, CLI 출력 128 KiB, 두 단계 합계 120초입니다.
+이는 임시 보호 한도입니다. 출시 비용·지연·출력 토큰 한도가 아닙니다.
+임시 폴더에는 고정 프롬프트와 스키마만 기록합니다. 완료·실패 시 폴더를 제거합니다.
+
+플래그 기본값은 [등록 파일](../config/feature-flags.json)에서 읽습니다.
+ON은 위 로컬 실행 옵션으로만 허용합니다. HTTP 서버와 모바일 앱에는 AI 경로를 추가하지 않았습니다.
+운영 API 연결과 자격증명은 개발 완료 후 별도로 준비합니다.
 
 ## iOS
 
