@@ -2,6 +2,8 @@
 
 큰 목표를 지금 실행할 수 있는 작은 다음 행동으로 바꾸는 플래너입니다.
 
+개발 중인 상업용 앱입니다. 아직 출시하지 않았습니다. 기능과 화면은 변경될 수 있습니다.
+
 ## 현재 상태
 
 제품 기획과 초기 구현 환경을 준비한 단계입니다.
@@ -47,10 +49,18 @@ python3 -m unittest discover -s scripts -p 'test_*.py'
 | [CI](docs/CI.md) | 캐시, 병렬 실행, 변경 범위에 따른 검사 선택 |
 | [SETUP_VALIDATION](docs/SETUP_VALIDATION.md) | 초기 앱·API 셋업의 검증 범위와 근거 |
 | [REPOSITORY_SETUP](docs/REPOSITORY_SETUP.md) | 자동화, 계정 연결, 현재 제한과 실행 증거 |
+| [CONTEXT](CONTEXT.md) | 진행 상태, 입력 초안, 완료·보류·중단·삭제의 용어 |
 | [PRODUCT](docs/PRODUCT.md) · [DECISIONS](docs/DECISIONS.md) | 제품 가설과 미결정 항목. 확정 답은 해당 Issue |
 | [SECURITY](SECURITY.md) | 비밀정보 처리와 비공개 문제 보고 |
 | [CONTRIBUTING](CONTRIBUTING.md) | 기여를 시작할 때 확인할 기준 문서 |
 
 작업 절차를 별도 문서에 복제하지 않습니다. 앱 셋업 문서는 실행·CI·검증 근거만 관리합니다.
 
-공개 라이선스는 아직 선택하지 않았습니다.
+## 저작권과 사용 조건
+
+Copyright © 2026 김민준. All rights reserved.
+
+자체 코드와 콘텐츠에는 모든 권리를 유보합니다. 별도의 재사용 라이선스를 제공하지 않습니다.
+소스 공개는 제품 출시·판매, 수정·재배포 등 외부 재사용을 허락하는 의미가 아닙니다.
+GitHub 약관에서 허용하는 열람·fork와 적용 법률의 예외는 유지됩니다.
+상세 조건은 [COPYRIGHT](COPYRIGHT.md), 외부 구성 요소의 조건은 [THIRD_PARTY_NOTICES](THIRD_PARTY_NOTICES.md)를 참조합니다.

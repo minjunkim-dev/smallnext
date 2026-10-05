@@ -18,6 +18,12 @@ class ConventionsTest(unittest.TestCase):
             with self.subTest(branch=branch):
                 self.assertEqual([], validate_pr(title, branch, body))
 
+    def test_long_title_exemption_requires_dependabot_author(self):
+        title = "chore: bump androidx.compose:compose-bom from 2026.05.00 to 2026.09.00 in /apps/android"
+        branch = "dependabot/gradle/apps/android/androidx.compose-compose-bom-2026.09.00"
+        self.assertEqual([], validate_pr(title, branch, "", "dependabot[bot]"))
+        self.assertTrue(validate_pr(title, branch, "", "minjunkim-dev"))
+
     def test_rejects_missing_issue_unsafe_metadata_and_invalid_names(self):
         for title, branch, body in [
             ("feat: add split", "feat/goal-split", "Refs #17"),
@@ -100,9 +106,13 @@ class ReviewTrustTest(unittest.TestCase):
         event["issue"]["pull_request"] = {"url": "example"}
         self.assertEqual("security", self.request("issue_comment", event)["mode"])
 
-    def test_dispatch_rejects_injected_number(self):
-        event = {"sender": self.event["sender"], "inputs": {"kind": "pr", "number": "17; echo secret"}}
-        self.assertIsNone(self.request("workflow_dispatch", event))
+    def test_dispatch_is_rejected_even_for_valid_writer_and_target(self):
+        for ref in ["refs/heads/main", "refs/heads/untrusted"]:
+            for number in ["17", "17; echo secret"]:
+                event = {"sender": self.event["sender"], "ref": ref,
+                         "inputs": {"kind": "pr", "number": number}}
+                with self.subTest(ref=ref, number=number):
+                    self.assertIsNone(self.request("workflow_dispatch", event))
 
     def test_issue_auto_review_and_explicit_label(self):
         event = {"sender": self.event["sender"], "issue": {"number": 17}, "action": "opened"}

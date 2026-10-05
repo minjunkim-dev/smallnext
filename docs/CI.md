@@ -3,7 +3,13 @@
 Project checks는 PR 전체 변경 범위를 기준으로 검사할 프로젝트를 선택합니다.
 main push와 수동 실행도 지원합니다.
 변경 이력을 확인할 수 없으면 모든 프로젝트를 검사합니다.
+검사 선택기는 PR 기준 SHA 또는 main push의 before SHA에서 가져옵니다. PR이 수정한 선택기로 자신의 검사를 생략하지 않습니다.
+기준 선택기가 없거나 수동 실행이면 모든 프로젝트를 검사합니다. 선택기 변경의 새 규칙은 main 반영 뒤 후속 변경부터 사용합니다.
 문서만 바뀌면 Repository hygiene를 실행합니다.
+기존 리뷰·PR 정책 워크플로와 해당 Python 검사만 바뀌어도 앱·API 빌드를 선택하지 않습니다.
+Repository hygiene의 정책·권한 회귀 테스트와 actionlint는 계속 실행합니다.
+예외는 `scripts/ci_scope.py`의 명시된 파일 목록에만 적용합니다.
+새 스크립트·워크플로, 공통 CI 선택기·Makefile 변경은 모든 프로젝트를 검사합니다.
 프로젝트 사이에서 파일을 옮기면 이동 전·후 프로젝트를 모두 검사합니다.
 
 ## 병렬 실행
@@ -36,7 +42,7 @@ Android의 빌드·lint와 기기 테스트도 별도 실행기에서 수행합�
 | 대상 | 캐시 | 갱신 기준 |
 | --- | --- | --- |
 | Rust | Cargo 레지스트리·Git 의존성·Debug 컴파일 출력 | OS·CPU·Rust 도구 버전·Cargo 설정·잠금 파일 |
-| Docker | BuildKit 레이어 | OS·CPU·Dockerfile·잠금 파일·이미지 소스 |
+| Docker | BuildKit 레이어(의존성 빌드 레이어 중심) | OS·CPU·Dockerfile·Cargo.toml·잠금 파일·베이스 이미지 digest |
 | iOS 패키지 | SwiftPM 소스 | OS·CPU·Xcode·SDK·Package.resolved |
 | iOS 컴파일 | DerivedData의 Build 폴더 | 위 도구 조건과 iOS 소스·프로젝트·워크플로의 정확한 일치 |
 | Android | Gradle 의존성·작업 출력 | OS·CPU·Gradle Wrapper·빌드 설정·버전 목록; 작업 입력은 Gradle이 확인 |
@@ -49,8 +55,8 @@ Gradle configuration cache는 이번 구성에 추가하지 않았습니다.
 
 캐시에는 실제 사용자 DB, AVD 사용자 데이터, 서명 키, 운영 비밀정보와 테스트 결과를 넣지 않습니다.
 Docker 캐시는 새 디렉터리에 내보낸 후 교체해 불필요한 과거 레이어가 누적되는 것을 줄입니다.
-Rust 소스가 바뀌면 Docker의 Cargo 빌드 레이어는 다시 실행합니다.
-이미지 캐시가 주로 줄이는 비용은 동일 이미지 소스의 반복 검사입니다.
+Dockerfile은 의존성을 별도 레이어에서 먼저 빌드합니다. Rust 소스가 바뀌면 앱 빌드 레이어만 다시 실행합니다.
+이미지 캐시 키에는 소스 해시를 넣지 않습니다. 소스 변경마다 약 800MB 캐시가 새로 쌓여 저장소 캐시 한도 10GB를 넘기기 때문입니다.
 main과 PR의 캐시 접근 범위는 GitHub 규칙을 따릅니다.
 PR에서 만든 캐시는 main에서 바로 사용할 수 없으므로 main의 첫 실행도 준비 시간이 필요할 수 있습니다.
 
@@ -68,7 +74,9 @@ PR에서 만든 캐시는 main에서 바로 사용할 수 없으므로 main의 �
 Repository hygiene에서 actionlint 1.7.12와 ShellCheck로 워크플로를 검사합니다.
 다운로드한 actionlint 파일은 고정 SHA-256으로 확인합니다.
 GitHub Action도 전체 커밋 SHA에 고정했습니다.
-이전 커밋의 CI는 새 커밋이 올라오면 취소합니다.
+PR의 이전 CI는 같은 PR의 새 커밋이 올라오면 취소합니다.
+main push 실행은 후속 push로 취소하지 않습니다. 후속 문서 변경이 앞선 기능 검사를 가리지 않습니다.
+PR은 같은 ref의 오래된 실행을 취소합니다. main과 수동 실행은 실행 ID별 concurrency 그룹을 사용합니다. 대기 중인 기능 검사도 후속 문서 push로 대체하지 않습니다.
 실패한 iOS·Android 보고서와 에뮬레이터 로그는 7일 동안 보관합니다.
 
 ## 배포 자동화
@@ -84,5 +92,5 @@ API 배포를 켜기 전에 운영 도메인·VM·관리형 DB·비밀정보 제
 
 - [GitHub 의존성 캐시](https://github.com/actions/cache)
 - [Java Action의 Gradle 캐시](https://github.com/actions/setup-java)
-- [Gradle 빌드 캐시](https://docs.gradle.org/8.13/userguide/build_cache.html)
+- [Gradle 빌드 캐시](https://docs.gradle.org/9.8.0/userguide/build_cache.html)
 - [Docker 로컬 캐시](https://docs.docker.com/build/cache/backends/local/)

@@ -30,13 +30,7 @@ def review_request(event_name, event, repo, get):
     if event.get("action") == "labeled" and event.get("label", {}).get("name") != "ai:review":
         return None, "Only ai:review requests a label-triggered review"
     mode = "review"
-    if event_name == "workflow_dispatch":
-        inputs = event.get("inputs", {})
-        kind, number = inputs.get("kind"), inputs.get("number", "")
-        if kind not in {"issue", "pr"} or not re.fullmatch(r"[1-9][0-9]*", str(number)):
-            return None, "Dispatch requires kind issue/pr and a positive number"
-        number = int(number)
-    elif event_name == "pull_request_target":
+    if event_name == "pull_request_target":
         kind, number = "pr", event["pull_request"]["number"]
     elif event_name == "issues":
         kind, number = "issue", event["issue"]["number"]
