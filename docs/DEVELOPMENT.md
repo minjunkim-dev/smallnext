@@ -70,7 +70,7 @@ GRDB 버전과 Git 커밋은 `Package.resolved`에 고정했습니다.
 CLI 검사에서는 설치한 시뮬레이터 이름을 지정합니다.
 
 ```sh
-make ios-check IOS_SIMULATOR='iPhone 17 Pro'
+make ios-check IOS_SIMULATOR='iPhone 18 Pro'
 ```
 
 커밋한 Xcode 프로젝트를 바로 사용할 수 있습니다.
@@ -122,7 +122,7 @@ Room 테스트는 별도 테스트 DB 파일을 생성하고 삭제합니다.
 ```sh
 make check
 make api-test-db
-make ios-check IOS_SIMULATOR='iPhone 17 Pro'
+make ios-check IOS_SIMULATOR='iPhone 18 Pro'
 make android-check
 ```
 
