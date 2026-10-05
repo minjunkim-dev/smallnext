@@ -18,6 +18,14 @@ class EnvironmentTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "Java runtime: expected"):
                 environment.check_java()
 
+    def test_java_runtime_uses_full_version_instead_of_action_selector(self):
+        runtime = environment.config()["java_runtime"]
+        with patch.object(environment, "output", return_value=f"java.runtime.version = {runtime}"):
+            environment.check_java()
+        with patch.object(environment, "output", return_value="java.runtime.version = 17.0.20+1"):
+            with self.assertRaises(ValueError):
+                environment.check_java()
+
     def test_wrong_xcode_is_rejected_before_sdk_lookup(self):
         with patch.object(environment, "output", return_value="Xcode 27.0\nBuild version 27A266a") as command:
             with self.assertRaisesRegex(ValueError, "Xcode: expected"):

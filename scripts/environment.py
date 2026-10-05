@@ -33,7 +33,7 @@ def check_java():
     java = str(Path(os.environ["JAVA_HOME"]) / "bin/java") if os.environ.get("JAVA_HOME") else "java"
     version = output([java, "-XshowSettings:properties", "-version"])
     match = re.search(r"java.runtime.version\s*=\s*(\S+)", version)
-    require("Java runtime", match.group(1) if match else "unknown", config()["java"])
+    require("Java runtime", match.group(1) if match else "unknown", config()["java_runtime"])
 
 
 def check_android():

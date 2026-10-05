@@ -21,7 +21,7 @@ Android는 기본 실행과 저장 검증을 함께 수행합니다.
 ## 필요한 도구
 
 - iOS: Xcode 26.6 (17F113), simulator SDK 26.5, iOS runtime 26.4.1.
-- Android: Temurin JDK 17.0.20+1, Android SDK 37, Build Tools 36.0.0, 에뮬레이터.
+- Android: Temurin JDK (설치 선택값 17.0.20+1, 실제 runtime 17.0.20.1+1), Android SDK 37, Build Tools 36.0.0, 에뮬레이터.
 - API: rustup, Rust 1.98.0, Docker Compose v2, Python 3, make.
 
 Rust 기준은 `rust-toolchain.toml`입니다. 다른 도구의 기준은 `.ci/toolchains.json`입니다.
@@ -97,7 +97,7 @@ Gradle Wrapper, 버전 목록, Room 내보내기 스키마를 커밋했습니다
 SDK 경로는 로컬 설정 또는 `ANDROID_HOME`으로 지정합니다.
 
 ```sh
-export JAVA_HOME=/path/to/temurin-17.0.20+1
+export JAVA_HOME=/path/to/pinned-temurin-jdk
 export ANDROID_HOME=/path/to/android-sdk
 make android-sdk
 make android-check

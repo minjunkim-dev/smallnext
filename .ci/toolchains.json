@@ -1,5 +1,6 @@
 {
   "java": "17.0.20+1",
+  "java_runtime": "17.0.20.1+1",
   "android_compile_sdk": "37",
   "android_build_tools": "36.0.0",
   "android_system_image": "system-images;android-35;google_apis;x86_64",
