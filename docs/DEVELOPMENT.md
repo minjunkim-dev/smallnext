@@ -152,7 +152,8 @@ DB 백업·복구, 인증 구현, 이전 앱과의 API 호환 검증이 필요�
 - [GRDB](https://github.com/groue/GRDB.swift)
 - [Android 오프라인 우선 구조](https://developer.android.com/topic/architecture/data-layer/offline-first)
 - [Room](https://developer.android.com/jetpack/androidx/releases/room)
-- [AGP 8.13 호환 조건](https://developer.android.com/build/releases/agp-8-13-0-release-notes)
+- [AGP 9.4 호환 조건](https://developer.android.com/build/releases/agp-9-4-0-release-notes)
+- [AGP 9 내장 Kotlin](https://developer.android.com/build/migrate-to-built-in-kotlin): `org.jetbrains.kotlin.android` 플러그인을 적용하지 않습니다.
 - [Axum](https://docs.rs/axum/latest/axum/)
 - [SQLx](https://github.com/transact-rs/sqlx)
 - [utoipa](https://github.com/juhaku/utoipa)
