@@ -19,6 +19,8 @@ use tokio::{
 pub const MODEL: &str = "gpt-6.1-sol";
 const INPUT_LIMIT: usize = 32 * 1024;
 const OUTPUT_LIMIT: u64 = 128 * 1024;
+// The checker receives both the original input and the bounded generator result.
+const CHECK_INPUT_LIMIT: usize = 192 * 1024;
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
@@ -276,7 +278,12 @@ impl SubscriptionAi {
     }
     async fn call(&self, role: &str, payload: &Value) -> Result<Value, Disposition> {
         let input = serde_json::to_vec(payload).map_err(|_| Disposition::InvalidInput)?;
-        if input.len() > INPUT_LIMIT {
+        let input_limit = if role == "check" {
+            CHECK_INPUT_LIMIT
+        } else {
+            INPUT_LIMIT
+        };
+        if input.len() > input_limit {
             return Err(Disposition::InvalidInput);
         }
         let workspace = Workspace::new(role)?;

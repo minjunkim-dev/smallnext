@@ -166,6 +166,31 @@ async fn accepts_only_after_two_isolated_oauth_calls() {
 
 #[cfg(unix)]
 #[tokio::test]
+async fn checker_accepts_combined_payload_larger_than_original_limit() {
+    let mut data = input();
+    data.remaining_work = vec!["x".repeat(18 * 1024)];
+    let mut candidate = proposal();
+    candidate.remaining_work = data.remaining_work.clone();
+    assert!(serde_json::to_vec(&data).unwrap().len() < INPUT_LIMIT);
+    let f = Fixture::new(
+        json!(candidate),
+        json!({"verdict":"accept","criteria":[1,2,3,4,5],"evidence":"보존 배열 확인","reason":"모두 충족"}),
+        false,
+    );
+    let mut state = ActionState::new(None);
+    let ticket = state.begin().unwrap();
+    let result = f.ai.evaluate(&data, ticket).await;
+    assert_eq!(result.disposition, Disposition::Accepted);
+    assert!(state.finish(result));
+    assert_eq!(state.current(), &Some(candidate));
+    let calls = f.calls();
+    assert_eq!(calls.len(), 2);
+    let size = serde_json::to_vec(&calls[1]["payload"]).unwrap().len();
+    assert!(size > INPUT_LIMIT && size < CHECK_INPUT_LIMIT);
+}
+
+#[cfg(unix)]
+#[tokio::test]
 async fn checker_reject_uncertain_and_malformed_keep_action_without_retry() {
     for (check, expected) in [
         (
