@@ -61,26 +61,28 @@ class EnvironmentTests(unittest.TestCase):
 
 
 class SimulatorTests(unittest.TestCase):
+    RUNTIMES = [{"version": "26.4.1", "identifier": "com.apple.CoreSimulator.SimRuntime.iOS-26-4", "isAvailable": True}]
+
     def devices(self):
         return {
-            "com.apple.CoreSimulator.SimRuntime.iOS-26-4-1": [
+            "com.apple.CoreSimulator.SimRuntime.iOS-26-4": [
                 {"name": "iPhone 17 Pro", "udid": "pinned", "state": "Shutdown", "isAvailable": True}],
             "com.apple.CoreSimulator.SimRuntime.iOS-27-0": [
                 {"name": "iPhone 18 Pro", "udid": "different", "state": "Booted", "isAvailable": True}],
         }
 
     def test_booted_other_runtime_cannot_replace_pinned_runtime(self):
-        self.assertEqual(select(self.devices(), "26.4.1"), "pinned")
+        self.assertEqual(select(self.devices(), "26.4.1", runtimes=self.RUNTIMES), "pinned")
 
     def test_explicit_wrong_runtime_device_is_rejected(self):
         for requested in ("different", "iPhone 18 Pro"):
             with self.assertRaises(ValueError):
-                select(self.devices(), "26.4.1", requested)
+                select(self.devices(), "26.4.1", requested, self.RUNTIMES)
 
     def test_missing_or_unavailable_pinned_runtime_is_rejected(self):
         with self.assertRaises(ValueError):
-            select(self.devices(), "26.5")
+            select(self.devices(), "26.5", runtimes=self.RUNTIMES)
         devices = self.devices()
-        devices["com.apple.CoreSimulator.SimRuntime.iOS-26-4-1"][0]["isAvailable"] = False
+        devices["com.apple.CoreSimulator.SimRuntime.iOS-26-4"][0]["isAvailable"] = False
         with self.assertRaises(ValueError):
-            select(devices, "26.4.1")
+            select(devices, "26.4.1", runtimes=self.RUNTIMES)

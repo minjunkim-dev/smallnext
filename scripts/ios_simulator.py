@@ -6,8 +6,13 @@ import os
 import subprocess
 from environment import config
 
-def select(devices, runtime, requested=""):
-    key = "com.apple.CoreSimulator.SimRuntime.iOS-" + runtime.replace(".", "-")
+def select(devices, runtime, requested="", runtimes=()):
+    keys = {item["identifier"] for item in runtimes
+            if item.get("version") == runtime and item.get("isAvailable", False)
+            and item["identifier"].startswith("com.apple.CoreSimulator.SimRuntime.iOS-")}
+    if len(keys) != 1:
+        raise ValueError(f"Expected one available iOS {runtime} runtime; install it in Xcode.")
+    key = keys.pop()
     available = [device for device in devices.get(key, [])
                  if device["name"].startswith("iPhone") and device.get("isAvailable", True)]
     if requested:
@@ -22,7 +27,9 @@ if __name__ == "__main__":
     try:
         data = json.loads(subprocess.check_output(
             ["xcrun", "simctl", "list", "devices", "available", "-j"], text=True))
+        runtimes = json.loads(subprocess.check_output(
+            ["xcrun", "simctl", "list", "runtimes", "-j"], text=True))["runtimes"]
         print(select(data["devices"], config()["ios_runtime"],
-                     os.environ.get("IOS_SIMULATOR_ID") or os.environ.get("IOS_SIMULATOR", "")))
+                     os.environ.get("IOS_SIMULATOR_ID") or os.environ.get("IOS_SIMULATOR", ""), runtimes))
     except ValueError as error:
         raise SystemExit(str(error))
