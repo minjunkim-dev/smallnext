@@ -3,6 +3,24 @@
 이 파일은 사람, Claude Code, Codex의 공통 작업 지침입니다.
 한국어로 답합니다. 짧은 문장과 명확한 동사를 사용합니다.
 
+## Agent skills
+
+Engineering skill을 실행하기 전에 아래 설정 문서를 읽는다.
+
+### Issue tracker
+
+Issue와 사양은 `minjunkim-dev/smallnext`의 GitHub Issues에서 관리한다.
+`gh` CLI를 사용한다. [Issue tracker](docs/agents/issue-tracker.md)를 따른다.
+
+### Triage labels
+
+기본 다섯 역할의 라벨을 사용한다. [Triage labels](docs/agents/triage-labels.md)를 따른다.
+
+### Domain docs
+
+single-context를 사용한다. 루트 `CONTEXT.md`와 필요한 ADR을 읽는다.
+[Domain docs](docs/agents/domain.md)를 따른다.
+
 ## 작업 시작
 
 1. [README](README.md)에서 현재 구현 상태를 확인합니다.
