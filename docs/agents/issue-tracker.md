@@ -24,7 +24,7 @@ GitHub는 Issue와 PR의 번호를 공유한다. 대상이 모호하면 `gh pr v
 - Child ticket: GitHub sub-issue로 지도에 연결한다. `wayfinder:research`·`wayfinder:prototype`·`wayfinder:grilling`·`wayfinder:task` 중 하나를 적용한다.
 - Claim: 작업의 첫 쓰기로 `gh issue edit <number> --repo minjunkim-dev/smallnext --add-assignee @me`를 실행한다. 이미 할당된 열린 질문은 다른 세션의 작업으로 보존한다.
 - Blocking: GitHub native issue dependencies를 사용한다. `gh api --method POST repos/minjunkim-dev/smallnext/issues/<child>/dependencies/blocked_by -F issue_id=<blocker-db-id>`로 연결한다. `issue_id`는 Issue 번호나 node ID가 아닌 숫자 database ID이다.
-- Frontier: 지도의 열린 sub-issue를 조회한다. `issue_dependencies_summary.blocked_by == 0`이고 미할당인 첫 질문을 지도 순서대로 선택한다.
+- Frontier: `gh api repos/minjunkim-dev/smallnext/issues/<map>/sub_issues --paginate --jq '.[] | select(.state == "open" and .issue_dependencies_summary.blocked_by == 0 and (.assignees | length) == 0)'`로 조회한다. REST 응답의 `issue_dependencies_summary`를 사용한다. `gh issue view/list --json`의 필드로 요청하지 않는다. 결과의 첫 질문을 지도 순서대로 선택한다.
 - Resolve: 실제 확정 답을 해결 댓글로 게시한다. 질문을 닫는다. 지도의 Decisions so far에는 제목 링크와 한 줄 요약만 추가한다.
 
 native sub-issue나 dependency가 없는 tracker로 바꾸면 해당 대체 규칙을 이 문서에 기록한다. GitHub에서 사용할 수 있는 native 관계를 본문 목록으로 대체하지 않는다.
