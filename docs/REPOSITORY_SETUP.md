@@ -78,7 +78,7 @@ GitHub 소유 Action 허용과 SHA 고정은 유지합니다. 다음 두 항목�
 
 | Action | 허용 SHA |
 | --- | --- |
-| `anthropics/claude-code-action/base-action` | `12dd8d74c712f5f3669365b2369b558c495b1104` |
+| `anthropics/claude-code-action/base-action` | `97c53473391bff1901034d4b454b5bac7ab7a029` |
 | `oven-sh/setup-bun` | `0c5077e51419868618aeaa5fe8019c62421857d6` |
 
 Bun 설치 Action은 고정된 Claude composite Action이 내부에서 사용합니다.
@@ -105,7 +105,7 @@ HTTP 401 또는 SDK `authentication_failed`가 발생하면 해당 리뷰를 미
 
 공식 기준: [Claude GitHub Actions](https://code.claude.com/docs/en/github-actions),
 [Claude Linux 격리 설정](https://code.claude.com/docs/en/sandboxing#set-up-linux-and-wsl2),
-[Claude Action 보안](https://github.com/anthropics/claude-code-action/blob/12dd8d74c712f5f3669365b2369b558c495b1104/docs/security.md),
+[Claude Action 보안](https://github.com/anthropics/claude-code-action/blob/97c53473391bff1901034d4b454b5bac7ab7a029/docs/security.md),
 [Codex GitHub 리뷰](https://developers.openai.com/codex/cloud/code-review/).
 
 ## 현재 제한
