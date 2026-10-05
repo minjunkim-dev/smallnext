@@ -9,7 +9,7 @@
 
 | 구성 요소 | 버전·위치 | 조건과 출처 |
 | --- | --- | --- |
-| Gradle Wrapper | 8.13, `apps/android/gradle/wrapper/gradle-wrapper.jar`, `gradlew`, `gradlew.bat` | Apache-2.0. JAR의 `META-INF/LICENSE`와 스크립트의 원래 고지를 유지합니다. [Gradle 라이선스](https://github.com/gradle/gradle/blob/v8.13.0/LICENSE) |
+| Gradle Wrapper | 9.8.0, `apps/android/gradle/wrapper/gradle-wrapper.jar`, `gradlew`, `gradlew.bat` | Apache-2.0. JAR의 `META-INF/LICENSE`와 스크립트의 원래 고지를 유지합니다. [Gradle 라이선스](https://github.com/gradle/gradle/blob/v9.8.0/LICENSE) |
 
 ## iOS 의존성
 
@@ -40,12 +40,12 @@ Cargo.lock과 `cargo metadata --locked`의 패키지 메타데이터를 확인�
 
 | 구성 요소 | 버전 | 조건과 출처 |
 | --- | --- | --- |
-| AndroidX Activity / Compose / Room / Test | Activity 1.12.4, Compose BOM 2026.05.00, Room 2.8.5, Test JUnit 1.3.0 / Runner 1.7.0 | Apache-2.0. [AndroidX 고지](https://android.googlesource.com/platform/frameworks/support/+/androidx-main/LICENSE.txt) |
+| AndroidX Activity / Compose / Room / Test | Activity 1.12.4, Compose BOM 2026.09.00, Room 2.8.5, Test JUnit 1.3.0 / Runner 1.7.0 | Apache-2.0. [AndroidX 고지](https://android.googlesource.com/platform/frameworks/support/+/androidx-main/LICENSE.txt) |
 | Retrofit / Gson converter | 3.0.0 | Apache-2.0. [Retrofit LICENSE](https://github.com/square/retrofit/blob/trunk/LICENSE.txt) |
 | OkHttp | 4.12.0 | Apache-2.0. [OkHttp LICENSE](https://github.com/square/okhttp/blob/parent-4.12.0/LICENSE.txt) |
 | Kotlin | 2.2.20 | Apache-2.0. [Kotlin 라이선스](https://github.com/JetBrains/kotlin/blob/v2.2.20/license/LICENSE.txt) |
-| KSP | 2.3.2 | Apache-2.0. [KSP LICENSE](https://github.com/google/ksp/blob/main/LICENSE) |
-| Android Gradle Plugin | 8.13.1 | Apache-2.0. [Android 빌드 도구 고지](https://android.googlesource.com/platform/tools/base/+/refs/heads/mirror-goog-studio-main/NOTICE) |
+| KSP | 2.3.12 | Apache-2.0. [KSP LICENSE](https://github.com/google/ksp/blob/main/LICENSE) |
+| Android Gradle Plugin | 9.4.1 | Apache-2.0. [Android 빌드 도구 고지](https://android.googlesource.com/platform/tools/base/+/refs/heads/mirror-goog-studio-main/NOTICE) |
 | JUnit (테스트용) | 4.13.2 | EPL-1.0. [JUnit LICENSE](https://github.com/junit-team/junit4/blob/r4.13.2/LICENSE-junit.txt) |
 
 ## 이미지·음악·폰트

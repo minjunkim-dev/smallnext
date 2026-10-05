@@ -1,13 +1,13 @@
 plugins {
     alias(libs.plugins.android.application)
-    alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.ksp)
 }
 
 android {
     namespace = "dev.smallnext.app"
-    compileSdk = 36
+    // Compose BOM 2026.09 libraries require compiling against API 37.
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "dev.smallnext.app"

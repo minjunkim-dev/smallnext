@@ -18,6 +18,12 @@ class ConventionsTest(unittest.TestCase):
             with self.subTest(branch=branch):
                 self.assertEqual([], validate_pr(title, branch, body))
 
+    def test_long_title_exemption_requires_dependabot_author(self):
+        title = "chore: bump androidx.compose:compose-bom from 2026.05.00 to 2026.09.00 in /apps/android"
+        branch = "dependabot/gradle/apps/android/androidx.compose-compose-bom-2026.09.00"
+        self.assertEqual([], validate_pr(title, branch, "", "dependabot[bot]"))
+        self.assertTrue(validate_pr(title, branch, "", "minjunkim-dev"))
+
     def test_rejects_missing_issue_unsafe_metadata_and_invalid_names(self):
         for title, branch, body in [
             ("feat: add split", "feat/goal-split", "Refs #17"),
