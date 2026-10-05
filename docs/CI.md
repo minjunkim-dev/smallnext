@@ -39,7 +39,7 @@ Android의 빌드·lint와 기기 테스트도 별도 실행기에서 수행합�
 
 ## 도구와 공통 명령
 
-API·Android는 Ubuntu 24.04, iOS는 macOS 26 실행기를 사용합니다.
+API·Android는 Ubuntu 24.04, iOS는 [GitHub의 `xcode-27` 실행기](https://github.com/actions/runner-images/blob/main/images/macos/xcode-27-arm64-Readme.md)를 사용합니다. iOS 실행기의 OS와 설치 도구 목록은 이 공식 문서를 따릅니다.
 고정 기준은 `rust-toolchain.toml`과 `.ci/toolchains.json`입니다.
 Xcode 버전·build, simulator SDK와 runtime을 확인합니다.
 JDK는 patch와 build까지 확인합니다. Android compile SDK와 Build Tools도 명시적으로 설치합니다.
