@@ -106,7 +106,7 @@ jobs:
         run: python3 scripts/review_report.py prepare
       - name: Review supplied evidence without tools
         id: claude
-        uses: anthropics/claude-code-action/base-action@12dd8d74c712f5f3669365b2369b558c495b1104 # reviewed SDK runner; no context-prompt logging
+        uses: anthropics/claude-code-action/base-action@97c53473391bff1901034d4b454b5bac7ab7a029 # reviewed SDK runner; no context-prompt logging
         env:
           CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: "1"
           # The pinned SDK runner otherwise overrides show_full_output in debug reruns.
