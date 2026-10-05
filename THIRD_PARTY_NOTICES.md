@@ -44,7 +44,7 @@ Cargo.lock과 `cargo metadata --locked`의 패키지 메타데이터를 확인�
 | Retrofit / Gson converter | 3.0.0 | Apache-2.0. [Retrofit LICENSE](https://github.com/square/retrofit/blob/trunk/LICENSE.txt) |
 | OkHttp | 4.12.0 | Apache-2.0. [OkHttp LICENSE](https://github.com/square/okhttp/blob/parent-4.12.0/LICENSE.txt) |
 | Kotlin | 2.2.20 | Apache-2.0. [Kotlin 라이선스](https://github.com/JetBrains/kotlin/blob/v2.2.20/license/LICENSE.txt) |
-| KSP | 2.3.2 | Apache-2.0. [KSP LICENSE](https://github.com/google/ksp/blob/main/LICENSE) |
+| KSP | 2.3.12 | Apache-2.0. [KSP LICENSE](https://github.com/google/ksp/blob/main/LICENSE) |
 | Android Gradle Plugin | 9.4.1 | Apache-2.0. [Android 빌드 도구 고지](https://android.googlesource.com/platform/tools/base/+/refs/heads/mirror-goog-studio-main/NOTICE) |
 | JUnit (테스트용) | 4.13.2 | EPL-1.0. [JUnit LICENSE](https://github.com/junit-team/junit4/blob/r4.13.2/LICENSE-junit.txt) |
 
