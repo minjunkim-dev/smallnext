@@ -3,6 +3,8 @@ use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use utoipa::{OpenApi, ToSchema};
 
+pub mod development_ai;
+
 #[derive(Clone)]
 pub struct AppState {
     pub database: PgPool,

@@ -1,4 +1,13 @@
 {
   "version": 1,
-  "flags": []
+  "flags": [
+    {
+      "key": "development_subscription_ai",
+      "default": false,
+      "phase": "development",
+      "owner": "minjunkim-dev",
+      "issue": 17,
+      "remove_by": "2026-11-04"
+    }
+  ]
 }
