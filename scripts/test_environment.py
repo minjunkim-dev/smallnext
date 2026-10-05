@@ -27,7 +27,7 @@ class EnvironmentTests(unittest.TestCase):
                 environment.check_java()
 
     def test_wrong_xcode_is_rejected_before_sdk_lookup(self):
-        with patch.object(environment, "output", return_value="Xcode 27.0\nBuild version 27A266a") as command:
+        with patch.object(environment, "output", return_value="Xcode 26.6\nBuild version 17F113") as command:
             with self.assertRaisesRegex(ValueError, "Xcode: expected"):
                 environment.check_ios()
             self.assertEqual(command.call_count, 1)
@@ -45,7 +45,7 @@ class EnvironmentTests(unittest.TestCase):
             for name in ("xcodebuild", "xcrun"):
                 executable = commands / name
                 executable.write_text(f'#!/bin/sh\necho "{name} $*" >> "$CALL_LOG"\n'
-                                      'echo "Xcode 27.0"\necho "Build version 27A266a"\n')
+                                      'echo "Xcode 26.6"\necho "Build version 17F113"\n')
                 executable.chmod(0o755)
             env = dict(os.environ, PATH=f"{commands}:{os.environ['PATH']}",
                        DEVELOPER_DIR=os.environ.get("DEVELOPER_DIR", "/Applications/Xcode.app/Contents/Developer"),

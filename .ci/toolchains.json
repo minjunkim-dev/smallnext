@@ -5,8 +5,8 @@
   "android_platform": "37.0",
   "android_build_tools": "36.0.0",
   "android_system_image": "system-images;android-35;google_apis;x86_64",
-  "xcode": "26.6",
-  "xcode_build": "17F113",
-  "ios_sdk": "26.5",
-  "ios_runtime": "26.4.1"
+  "xcode": "27.0",
+  "xcode_build": "27A266a",
+  "ios_sdk": "27.0",
+  "ios_runtime": "27.0"
 }

@@ -1,0 +1,5 @@
+# GitHub-hosted preview label; actionlint 1.7.12 does not recognize it yet.
+# https://github.blog/changelog/2026-07-16-xcode-27-runner-image-now-in-public-preview/
+self-hosted-runner:
+  labels:
+    - xcode-27
