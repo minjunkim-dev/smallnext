@@ -118,7 +118,7 @@ HTTP 401 또는 SDK `authentication_failed`가 발생하면 해당 리뷰를 미
 공개 전환 후 main 보호를 적용하고 API로 확인했습니다. PR과 최신 기준 브랜치의 검사를 요구합니다.
 필수 검사 이름은 `PR conventions`, `Repository hygiene`, `Project checks`입니다.
 관리자에게도 규칙을 적용합니다. 선형 이력, 미해결 리뷰 대화 해결, 강제 push·main 삭제 금지를 요구합니다.
-2026-10-04 사용자 요청에 따라 동료 승인을 필수로 요구하지 않습니다. GitHub API에서 기존 필수 승인 수 0명과 코드 소유자 승인 비필수 설정을 확인했습니다. 병합은 [병합 조건](WORKFLOW.md#병합-조건)을 따릅니다.
+동료 승인은 필수가 아닙니다. 2026-10-06 `gh api repos/minjunkim-dev/smallnext/branches/main/protection`의 `required_pull_request_reviews`에서 `required_approving_review_count: 0`, `require_code_owner_reviews: false`를 확인했습니다. 병합은 [병합 조건](WORKFLOW.md#병합-조건)을 따릅니다.
 비공개일 때 ruleset 요청이 HTTP 403으로 거절된 기록은 현재 공개 저장소의 보호 상태를 나타내지 않습니다.
 
 ## 연결 상태와 검증 근거
