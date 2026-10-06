@@ -51,6 +51,8 @@ struct CoreFlowView: View {
         .background(Color(.systemGroupedBackground))
         .tint(accent)
         .onChange(of: flow.screen) { oldScreen, newScreen in
+            // 답 입력은 지금 보이는 질문에만 쓴다.
+            answerText = ""
             announceChange(from: oldScreen, to: newScreen)
         }
     }
@@ -210,7 +212,6 @@ struct CoreFlowView: View {
                     .accessibilityLabel(question)
                 commandButton("답하기") {
                     try flow.answerQuestion(answerText)
-                    answerText = ""
                 }
                 .disabled(answerText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }

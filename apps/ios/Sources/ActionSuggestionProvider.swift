@@ -22,6 +22,9 @@ struct SuggestionRequest: Sendable, Equatable {
     var completedTasks: [String]
     /// 사용자가 알려준 막힘 원인이다. 같은 정보를 다시 묻지 않게 한다.
     var blocker: String? = nil
+    /// 더 작게 요청에서 현재 행동을 나눈 분할 원본의 할 일. 가장 처음 원본부터 담는다.
+    /// 비어 있지 않으면 같은 작업을 이미 나눴다. 공급자는 이 값으로 반복 막힘을 판단한다.
+    var splitSources: [String] = []
 }
 
 struct ProposedAction: Sendable, Equatable {

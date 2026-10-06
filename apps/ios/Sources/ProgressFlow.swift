@@ -36,6 +36,7 @@ enum SmallerStatus: Equatable, Sendable {
 }
 
 /// 대기 화면의 `problem`이 nil이면 제안을 기다리는 중이다. 값이 있으면 '다시 시도'를 기다린다.
+/// 현재 행동의 `smaller`가 nil이면 더 작게 요청이 없다. 기다리는 중은 `.waiting`이다.
 enum ProgressScreen: Equatable, Sendable {
     case goalInput
     /// 첫 행동을 받기 전이다. 입력한 목표를 유지한다.
@@ -118,6 +119,8 @@ final class ProgressFlow {
         guard case .currentAction(_, let smaller) = screen, smaller != .waiting else { return }
         try perform { db in
             guard let goalID = try Self.selectedGoalID(db) else { return nil }
+            // 결과 저장에 실패해 pending으로 남은 요청을 끝낸다. 늦게 온 결과는 적용하지 않는다.
+            try Self.endPendingRequests(db, goalID: goalID, status: "interrupted")
             return try Self.insertRequest(db, goalID: goalID, kind: .smaller)
         }
     }
@@ -256,7 +259,17 @@ final class ProgressFlow {
         case .success(.question(let text)):
             // 확인 질문은 더 작게 요청에서만 받는다.
             let question = text.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard isSmaller, !question.isEmpty else {
+            // 이미 답한 질문은 다시 묻지 않는다.
+            let answered = try Bool.fetchOne(
+                db,
+                sql: """
+                SELECT g.blocker IS NOT NULL AND EXISTS (
+                    SELECT 1 FROM suggestion_request WHERE goal_id = g.id AND id < ? AND question = ?
+                ) FROM goal g WHERE g.id = ?
+                """,
+                arguments: [pending.id, question, pending.goalID]
+            ) ?? false
+            guard isSmaller, !question.isEmpty, !answered else {
                 return try finishRequest(db, pending.id, status: "failed", reason: unsuitableReason)
             }
             return try db.execute(
@@ -360,8 +373,26 @@ final class ProgressFlow {
                 goal: goal["statement"],
                 currentAction: try contextAction(db, goalID: goalID, kind: kind),
                 completedTasks: completed,
-                blocker: goal["blocker"]
+                blocker: goal["blocker"],
+                splitSources: kind == .smaller ? try splitSources(db, goalID: goalID) : []
             )
+        )
+    }
+
+    private nonisolated static func splitSources(_ db: Database, goalID: Int64) throws -> [String] {
+        try String.fetchAll(
+            db,
+            sql: """
+            WITH RECURSIVE source(id, task, depth) AS (
+                SELECT p.id, p.task, 1 FROM action a JOIN action p ON p.id = a.split_from_id
+                WHERE a.goal_id = ? AND a.status = 'current'
+                UNION ALL
+                SELECT p.id, p.task, s.depth + 1 FROM source s
+                JOIN action a ON a.id = s.id JOIN action p ON p.id = a.split_from_id
+            )
+            SELECT task FROM source ORDER BY depth DESC
+            """,
+            arguments: [goalID]
         )
     }
 

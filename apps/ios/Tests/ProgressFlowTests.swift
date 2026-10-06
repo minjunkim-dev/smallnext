@@ -353,6 +353,30 @@ final class ProgressFlowTests: XCTestCase {
         XCTAssertEqual(reopened.screen, .currentAction(source, smaller: nil))
     }
 
+    func testRepeatedSmallerSendsSplitSourcesAndUndoesOneStep() async throws {
+        let smallest = ProposedAction(task: "메모 앱 열기", doneWhen: "메모 앱이 열려 있다", estimatedMinutes: 1)
+        let provider = ScriptedProvider([.action(first), .action(smaller), .action(smallest)])
+        let flow = try makeFlow(provider)
+        try flow.createGoal("주간 업무 보고서 초안 쓰기")
+        await flow.waitForSuggestion()
+        try flow.makeSmaller()
+        await flow.waitForSuggestion()
+        guard case .currentAction(let small, nil) = flow.screen else { return XCTFail("\(flow.screen)") }
+        try flow.makeSmaller()
+        await flow.waitForSuggestion()
+        guard case .currentAction(let tiny, nil) = flow.screen else { return XCTFail("\(flow.screen)") }
+        XCTAssertEqual(tiny.origin, ActionCard.Origin(id: small.id, task: smaller.task))
+
+        // 공급자가 같은 행동을 이미 나눴는지 알 수 있게 분할 원본을 처음 것부터 담는다.
+        let requests = await provider.requests
+        XCTAssertEqual(requests[1].splitSources, [])
+        XCTAssertEqual(requests[2].currentAction, card(smaller))
+        XCTAssertEqual(requests[2].splitSources, [first.task])
+
+        try flow.undoSplit()
+        XCTAssertEqual(flow.screen, .currentAction(small, smaller: nil))
+    }
+
     func testQuestionAnswerIsSavedAsBlockerAndSentWithNextRequest() async throws {
         let question = "가장 먼저 막히는 지점은 무엇인가요?"
         let provider = ScriptedProvider([.action(first), .question(question), .action(smaller)])
@@ -380,6 +404,39 @@ final class ProgressFlowTests: XCTestCase {
         XCTAssertEqual(requests.map(\.kind), [.firstAction, .smaller, .smaller])
         XCTAssertNil(requests[1].blocker)
         XCTAssertEqual(requests[2].blocker, "어떤 자료를 봐야 할지 모름")
+    }
+
+    func testAnsweredQuestionIsNotAskedAgain() async throws {
+        let question = "가장 먼저 막히는 지점은 무엇인가요?"
+        let flow = try makeFlow(ScriptedProvider([.action(first), .question(question), .question(" \(question)")]))
+        try flow.createGoal("주간 업무 보고서 초안 쓰기")
+        await flow.waitForSuggestion()
+        guard case .currentAction(let source, nil) = flow.screen else { return XCTFail("\(flow.screen)") }
+        try flow.makeSmaller()
+        await flow.waitForSuggestion()
+        try flow.answerQuestion("자료 위치를 모름")
+        await flow.waitForSuggestion()
+        XCTAssertEqual(flow.screen, .currentAction(source, smaller: .problem(.unsuitable)))
+    }
+
+    func testUnsavedSmallerResultCanBeRetried() async throws {
+        do {
+            let flow = try makeFlow(ScriptedProvider([.action(first)]))
+            try flow.createGoal("주간 업무 보고서 초안 쓰기")
+            await flow.waitForSuggestion()
+        }
+        let provider = LockingProvider(path: path, candidate: .action(smaller))
+        let flow = try makeFlow(provider)
+        guard case .currentAction(let source, nil) = flow.screen else { return XCTFail("\(flow.screen)") }
+        try flow.makeSmaller()
+        await flow.waitForSuggestion()
+        XCTAssertEqual(flow.screen, .currentAction(source, smaller: .problem(.failure(.failed))))
+
+        await provider.releaseLock()
+        try flow.makeSmaller()
+        await flow.waitForSuggestion()
+        guard case .currentAction(let small, nil) = flow.screen else { return XCTFail("\(flow.screen)") }
+        XCTAssertEqual(small.task, smaller.task)
     }
 
     func testSmallerFailureAndCancelKeepCurrentAction() async throws {
