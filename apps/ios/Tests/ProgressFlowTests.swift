@@ -321,6 +321,8 @@ private actor HeldProvider: ActionSuggestionProvider {
 
     func release() async {
         for _ in 0..<10_000 where gate == nil { await Task.yield() }
+        // 공급자가 호출되지 않았는데 테스트가 통과하지 않게 한다.
+        precondition(gate != nil, "suggest가 호출되지 않았다")
         gate?.resume()
         gate = nil
     }
