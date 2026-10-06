@@ -350,7 +350,8 @@ final class ProgressFlow {
         case .success(.action(let candidate)), .success(.minimalAction(let candidate)):
             proposed = candidate
         }
-        // 더 작게는 현재 행동을, 대체는 보류한 행동을 그대로 다시 제안하면 적용하지 않는다.
+        // 더 작게는 현재 행동을, 다른 요청은 보류한 행동을 그대로 다시 제안하면 적용하지 않는다.
+        // 더 작게는 되돌린 작은 행동을 다시 제안할 수 있다(#55).
         let excluded = isSmaller ? [pending.request.currentAction?.task].compactMap { $0 } : pending.request.deferredTasks
         guard let action = try validated(db, proposed, goalID: pending.goalID), !excluded.contains(action.task) else {
             return try finishRequest(db, pending.id, status: "failed", reason: unsuitableReason)
@@ -446,9 +447,7 @@ final class ProgressFlow {
                 completedTasks: completed,
                 blocker: goal["blocker"],
                 splitSources: kind == .smaller ? try splitSources(db, goalID: goalID) : [],
-                deferredTasks: kind == .replacement
-                    ? try deferredCards(db, goalID: goalID).map(\.task)
-                    : []
+                deferredTasks: try deferredCards(db, goalID: goalID).map(\.task)
             )
         )
     }

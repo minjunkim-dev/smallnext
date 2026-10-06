@@ -648,6 +648,20 @@ final class ProgressFlowTests: XCTestCase {
         XCTAssertEqual(try count("SELECT COUNT(*) FROM completion"), 1)
     }
 
+    func testNextActionMatchingDeferredActionIsNotApplied() async throws {
+        let provider = ScriptedProvider([.action(first), .action(second), .action(first)])
+        let flow = try makeFlow(provider)
+        let deferred = try await firstCard(flow)
+        try flow.deferAction()
+        await flow.waitForSuggestion()
+        try flow.complete()
+        await flow.waitForSuggestion()
+        XCTAssertEqual(flow.screen, .onHold(deferred: [deferred], status: .problem(.unsuitable)))
+        let requests = await provider.requests
+        XCTAssertEqual(requests[2].kind, .nextAction)
+        XCTAssertEqual(requests[2].deferredTasks, [first.task])
+    }
+
     func testResumedUndoneSmallActionHasNoUndo() async throws {
         let flow = try makeFlow(ScriptedProvider([.action(first), .action(smaller), .noAction]))
         _ = try await firstCard(flow)
