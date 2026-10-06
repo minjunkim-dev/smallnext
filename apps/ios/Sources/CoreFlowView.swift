@@ -53,6 +53,7 @@ struct CoreFlowView: View {
         .onChange(of: flow.screen) { oldScreen, newScreen in
             // 답 입력은 지금 보이는 질문에만 쓴다.
             answerText = ""
+            startSplitMotion(from: oldScreen, to: newScreen)
             announceChange(from: oldScreen, to: newScreen)
         }
     }
@@ -309,6 +310,16 @@ struct CoreFlowView: View {
         }
     }
 
+    /// 분할로 카드가 바뀔 때만 나뉘는 움직임을 보여준다. 모션 감소가 켜져 있으면 쓰지 않는다.
+    private func startSplitMotion(from oldScreen: ProgressScreen, to newScreen: ProgressScreen) {
+        guard !reduceMotion,
+              case .currentAction(let oldCard, _) = oldScreen,
+              case .currentAction(let newCard, _) = newScreen,
+              newCard.origin?.id == oldCard.id
+        else { return }
+        splitGhost = SplitGhost(task: oldCard.task)
+    }
+
     private func announceChange(from oldScreen: ProgressScreen, to newScreen: ProgressScreen) {
         var messages: [String] = []
         var oldCard: ActionCard?
@@ -326,7 +337,6 @@ struct CoreFlowView: View {
             }
         case .currentAction(let card, _):
             if let oldCard, card.origin?.id == oldCard.id {
-                if !reduceMotion { splitGhost = SplitGhost(task: oldCard.task) }
                 messages.append("더 쉬운 행동으로 나눴어요. ‘\(oldCard.task)’의 일부예요.")
             } else if oldCard?.origin?.id == card.id {
                 messages.append("나누기 전 행동으로 되돌렸어요.")

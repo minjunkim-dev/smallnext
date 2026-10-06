@@ -406,6 +406,35 @@ final class ProgressFlowTests: XCTestCase {
         XCTAssertEqual(requests[2].blocker, "어떤 자료를 봐야 할지 모름")
     }
 
+    func testUndoWhileWaitingEndsRequestAndSmallerCanStartAgain() async throws {
+        do {
+            let flow = try makeFlow(ScriptedProvider([.action(first), .action(smaller)]))
+            try flow.createGoal("주간 업무 보고서 초안 쓰기")
+            await flow.waitForSuggestion()
+            try flow.makeSmaller()
+            await flow.waitForSuggestion()
+        }
+        let provider = HeldProvider(.action(smaller))
+        let flow = try makeFlow(provider)
+        guard case .currentAction(let small, nil) = flow.screen, let origin = small.origin else { return XCTFail("\(flow.screen)") }
+        try flow.makeSmaller()
+        try flow.undoSplit()
+        guard case .currentAction(let source, nil) = flow.screen else { return XCTFail("\(flow.screen)") }
+        XCTAssertEqual(source.id, origin.id)
+        await provider.release()
+        await flow.waitForSuggestion()
+        // 되돌린 뒤 도착한 결과는 적용하지 않는다.
+        XCTAssertEqual(flow.screen, .currentAction(source, smaller: nil))
+        XCTAssertEqual(try count("SELECT COUNT(*) FROM suggestion_request WHERE status = 'interrupted'"), 1)
+
+        try flow.makeSmaller()
+        XCTAssertEqual(flow.screen, .currentAction(source, smaller: .waiting))
+        await provider.release()
+        await flow.waitForSuggestion()
+        guard case .currentAction(let again, nil) = flow.screen else { return XCTFail("\(flow.screen)") }
+        XCTAssertEqual(again.origin?.id, source.id)
+    }
+
     func testAnsweredQuestionIsNotAskedAgain() async throws {
         let question = "가장 먼저 막히는 지점은 무엇인가요?"
         let flow = try makeFlow(ScriptedProvider([.action(first), .question(question), .question(" \(question)")]))
