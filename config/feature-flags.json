@@ -8,6 +8,14 @@
       "owner": "minjunkim-dev",
       "issue": 17,
       "remove_by": "2026-11-04"
+    },
+    {
+      "key": "ios_core_flow",
+      "default": false,
+      "phase": "development",
+      "owner": "minjunkim-dev",
+      "issue": 53,
+      "remove_by": "2026-12-31"
     }
   ]
 }

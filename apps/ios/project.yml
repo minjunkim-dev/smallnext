@@ -18,7 +18,10 @@ targets:
   Smallnext:
     type: application
     platform: iOS
-    sources: [Sources]
+    sources:
+      - Sources
+      - path: ../../config/feature-flags.json
+        buildPhase: resources
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dev.smallnext.app

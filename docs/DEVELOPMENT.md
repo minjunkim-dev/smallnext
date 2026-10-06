@@ -142,6 +142,15 @@ xcodegen generate --spec apps/ios/project.yml
 앱 화면은 사용자 안내만 표시합니다.
 DB는 Application Support에 저장하며 시작 시 마이그레이션을 적용합니다.
 
+핵심 흐름은 `ios_core_flow` 플래그 뒤에 있습니다. 앱은 번들에 넣은 [등록 파일](../config/feature-flags.json)을 읽습니다.
+Debug 빌드에서만 실행 인자로 로컬 확인용 ON을 지정할 수 있습니다. Release 빌드는 실행 인자를 읽지 않습니다.
+
+```sh
+xcrun simctl launch booted dev.smallnext.app -ios_core_flow YES
+```
+
+Debug 빌드는 고정 제안 공급자를 사용합니다. Release 빌드는 아직 공급자가 없어 `사용 불가`를 반환합니다.
+
 ## Android
 
 `apps/android/`를 Android Studio에서 엽니다.
