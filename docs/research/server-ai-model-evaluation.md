@@ -4,6 +4,7 @@
 일반 개발자 API 키로는 요청하지 않았다. 구독 시험은 아래에서 구분한다.
 범위: OpenAI·Anthropic·Google의 주요 텍스트 API 모델 카탈로그다. 전체 시장 조사라고 주장하지 않는다.
 대상 결정: [첫 버전에 사용할 서버 AI 공급자와 모델은 무엇인가?](https://github.com/minjunkim-dev/smallnext/issues/17). 확정 답은 해당 Issue에서 관리한다.
+현재 상태: 2026-10-05 [#17 해결](https://github.com/minjunkim-dev/smallnext/issues/17)에서 개발 공급자·모델을 OpenAI `gpt-6.1-sol`(생성·검사 모두 medium)로 확정했다. 출시 검증은 [#47](https://github.com/minjunkim-dev/smallnext/issues/47)로 분리했다. 아래의 추천과 ‘미확정’ 표현은 해결 전의 연구 기록이다.
 현재 추천은 Sonnet 5.5를 후속 검증의 우선 후보로 두는 것이다. 두 후보 모두 품질 실패가 남아 제품 기본 모델은 확정하지 않는다. [반복 막힘 질문 선택 후 재검토](#2026-10-05-반복-막힘-질문-선택-후-재검토)에서 보완 Sonnet 검사에도 미흡한 질문 수용을 확인했다. 이후 [직접 질문 검사 대조](#2026-10-05-직접-질문-검사-대조)에서는 해당 기준을 추가한 Sonnet 지침이 알려진 8대조의 세 반복에서 참조와 일치했다. 구성과 참조가 다른 시험의 ‘불일치 0개’를 전체 품질 통과로 사용하지 않는다.
 최신 [현재 막힘 명시 실험](#2026-10-05-현재-막힘-명시-실험)에서는 근거 부족을 역할 작성으로 바꾸는 오류가 줄었다. 재분할과 미확인 사실 보존의 실패는 남았다.
 후속 [AI 응답의 의미 검사와 적용 보류 구성](https://github.com/minjunkim-dev/smallnext/issues/40)에서 사용자가 별도 검사 추가를 선택했다. 사전 30건·전수 117건·새 합성 사례 12건과 적용 시제품은 아래에 기록한다. 제품 코드와 최종 모델은 미완료다.
@@ -110,7 +111,7 @@ AI 보조 의미 검토에서 다음 결함을 확인했다. 자동 검사 오�
 남은 작업은 현재 막힘 유지·허용 수행량·최소 한계의 결함 보완, 수정 뒤 고정 세트 재평가, 사람의 필수 기준 검토, 실제 사용자 시작 확인, 일반 서버 API의 인증·비용·지연 측정이다. 현재 개인 경력 수행 과제나 필수 사용자 응답 대기는 없다. 실패가 있는 후보를 가격이나 CLI 시간으로 통과시키지 않는다.
 월 개인 API 예산 10 USD와 첫 일반 API 비교 상한 3 USD를 유지한다. 이전의 요청당 입력 8k·출력 2k 가정으로 이번 234건을 일반 API에서 실행하면 캐시·세금 등을 제외해도 4.4226 USD다. 이번 실행은 구독 CLI이며 그런 API 지출은 없었다. 후속 일반 API 비교는 전체 사례를 유지하면서 입력·출력 상한과 총비용을 3 USD 안에 맞춰 별도로 준비해야 한다.
 새 원문·manifest·CLI 이벤트의 로컬 삭제 기한은 2026-11-04다. 기존 판의 2026-11-03 기한은 연장하지 않는다. 원문 JSONL은 Git에 넣지 않았다. 자동 삭제는 설정하지 않았다. 로컬 집계 파일은 `repeated-goal-evaluation-v1/aggregate-summary.json`이다.
-[서버 AI 공급자와 모델 선택](https://github.com/minjunkim-dev/smallnext/issues/17)은 미확정으로 열어 둔다. 최종 사용자 선택과 필수 증거가 필요하다. 다른 세션의 [화면·모션 결정](https://github.com/minjunkim-dev/smallnext/issues/8)과 [저장·복구 확정 답](https://github.com/minjunkim-dev/smallnext/issues/12)을 유지한다.
+[서버 AI 공급자와 모델 선택](https://github.com/minjunkim-dev/smallnext/issues/17)은 미확정으로 열어 둔다. (기록 당시 상태다. 2026-10-05에 해결됐다. 맨 위 현재 상태를 참조한다.) 최종 사용자 선택과 필수 증거가 필요하다. 다른 세션의 [화면·모션 결정](https://github.com/minjunkim-dev/smallnext/issues/8)과 [저장·복구 확정 답](https://github.com/minjunkim-dev/smallnext/issues/12)을 유지한다.
 
 ## 최신 주요 목록과 정상 가격
 
