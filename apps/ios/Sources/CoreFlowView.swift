@@ -64,6 +64,7 @@ struct CoreFlowView: View {
         case .awaitingFirstAction(_, let problem): "awaitingFirstAction-\(String(describing: problem))"
         case .currentAction(let card, _): "currentAction-\(card.id)"
         case .awaitingNextAction(let problem): "awaitingNextAction-\(String(describing: problem))"
+        case .onHold(_, let status): "onHold-\(String(describing: status))"
         }
     }
 
@@ -110,6 +111,52 @@ struct CoreFlowView: View {
                     .accessibilityAddTraits(.isHeader)
                 suggestionStatus("다음 행동을 준비하고 있어요.", problem: problem)
             }
+        case .onHold(let deferred, let status):
+            onHold(deferred, status: status)
+        }
+    }
+
+    /// 대체 행동을 기다리거나 받지 못한 상태와 보류한 행동 목록을 보여준다. 각 행동은 '재개'할 수 있다.
+    private func onHold(_ deferred: [ActionCard], status: HoldStatus) -> some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text(status == .noAction ? "보류 중" : "다른 행동 대기")
+                .font(.title2.bold())
+                .accessibilityAddTraits(.isHeader)
+            switch status {
+            case .waiting:
+                suggestionStatus("다른 행동을 준비하고 있어요.", problem: nil)
+            case .problem(let problem):
+                suggestionStatus("다른 행동을 준비하고 있어요.", problem: problem)
+            case .noAction:
+                Text("지금 할 수 있는 다른 행동이 없어요. 보류한 행동을 재개하거나 다른 행동을 다시 찾아요.")
+                    .font(.body)
+                    .fixedSize(horizontal: false, vertical: true)
+                commandButton("다른 행동 다시 찾기", prominent: false) {
+                    try flow.retrySuggestion()
+                }
+            }
+            Text("보류한 행동")
+                .font(.headline)
+                .accessibilityAddTraits(.isHeader)
+                .padding(.top, 8)
+            ForEach(deferred) { action in
+                VStack(alignment: .leading, spacing: 12) {
+                    Text(action.task)
+                        .font(.body.weight(.semibold))
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text("완료 조건: \(action.doneWhen)")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    commandButton("재개", prominent: false) {
+                        try flow.resume(action.id)
+                    }
+                    .accessibilityLabel("재개: \(action.task)")
+                }
+                .padding(16)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12))
+            }
         }
     }
 
@@ -120,17 +167,20 @@ struct CoreFlowView: View {
                     .font(.title2.bold())
                     .accessibilityAddTraits(.isHeader)
                 Spacer()
-                if card.origin != nil {
-                    Menu {
+                Menu {
+                    if card.origin != nil {
                         Button("되돌리기") {
                             run { try flow.undoSplit() }
                         }
-                    } label: {
-                        Label("더 보기", systemImage: "ellipsis.circle")
-                            .labelStyle(.iconOnly)
-                            .font(.title2)
-                            .frame(minWidth: 44, minHeight: 44)
                     }
+                    Button("나중에") {
+                        run { try flow.deferAction() }
+                    }
+                } label: {
+                    Label("더 보기", systemImage: "ellipsis.circle")
+                        .labelStyle(.iconOnly)
+                        .font(.title2)
+                        .frame(minWidth: 44, minHeight: 44)
                 }
             }
 
@@ -340,12 +390,21 @@ struct CoreFlowView: View {
                 messages.append("더 쉬운 행동으로 나눴어요. ‘\(oldCard.task)’의 일부예요.")
             } else if oldCard?.origin?.id == card.id {
                 messages.append("나누기 전 행동으로 되돌렸어요.")
+            } else if case .onHold(let deferred, _) = oldScreen, deferred.contains(where: { $0.id == card.id }) {
+                messages.append("보류한 행동을 재개했어요.")
             }
             messages.append("지금 할 행동: \(card.task)")
         case .awaitingFirstAction(_, let problem):
             messages.append(problem.map(reason(for:)) ?? "첫 행동을 준비하고 있어요.")
         case .awaitingNextAction(let problem):
             messages.append(problem.map(reason(for:)) ?? "다음 행동을 준비하고 있어요.")
+        case .onHold(_, let status):
+            if oldCard != nil { messages.append("행동을 보류했어요.") }
+            switch status {
+            case .waiting: messages.append("다른 행동을 준비하고 있어요.")
+            case .problem(let problem): messages.append(reason(for: problem))
+            case .noAction: messages.append("보류 중. 지금 할 수 있는 다른 행동이 없어요.")
+            }
         case .goalInput:
             break
         }
