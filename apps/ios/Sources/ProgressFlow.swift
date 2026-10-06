@@ -52,7 +52,7 @@ enum ProgressScreen: Equatable, Sendable {
     case currentAction(ActionCard, smaller: SmallerStatus?)
     /// 완료 후 다음 행동을 받기 전이다. 완료 기록을 유지한다.
     case awaitingNextAction(problem: SuggestionProblem?)
-    /// '나중에' 뒤 현재 행동이 없다. 보류한 행동을 생성 순서대로 담는다.
+    /// 현재 행동이 없고 보류한 행동이 있다. 보류한 행동을 생성 순서대로 담아 재개할 수 있게 한다.
     case onHold(deferred: [ActionCard], status: HoldStatus)
 }
 
@@ -181,7 +181,10 @@ final class ProgressFlow {
         guard case .currentAction(let card, _) = screen else { return }
         try perform { db in
             guard let goalID = try Self.selectedGoalID(db) else { return nil }
-            try db.execute(sql: "UPDATE action SET status = 'deferred' WHERE id = ? AND status = 'current'", arguments: [card.id])
+            try db.execute(
+                sql: "UPDATE action SET status = 'deferred' WHERE id = ? AND goal_id = ? AND status = 'current'",
+                arguments: [card.id, goalID]
+            )
             guard db.changesCount == 1 else { return nil }
             try Self.bumpRevision(db, goalID: goalID)
             // 보류한 행동에 대한 대기 요청은 이전 상태에 대한 요청이다.
@@ -213,9 +216,13 @@ final class ProgressFlow {
 
     /// 실패·중단·취소한 제안과 대체 후보가 없는 보류 중 화면만 다시 요청한다. 기다리는 중이면 무시한다.
     func retrySuggestion() throws {
-        let onHoldWithoutAction = if case .onHold(_, .noAction) = screen { true } else { false }
-        guard screen.suggestionProblem != nil || onHoldWithoutAction else { return }
-        let replacing = if case .onHold = screen { true } else { false }
+        // 보류한 행동이 있으면 그 행동을 뺀 대체 행동을 요청한다.
+        let replacing: Bool
+        switch screen {
+        case .onHold(_, .noAction), .onHold(_, .problem): replacing = true
+        case _ where screen.suggestionProblem != nil: replacing = false
+        default: return
+        }
         try perform { db in
             guard let goalID = try Self.selectedGoalID(db) else { return nil }
             // 결과 저장에 실패해 pending으로 남은 요청을 끝낸다. 늦게 온 결과는 적용하지 않는다.
@@ -562,11 +569,13 @@ final class ProgressFlow {
             return .currentAction(card, smaller: smaller)
         }
         let problem = latest.map(requestProblem) ?? .interrupted
-        if let latest, latest["kind"] as String == SuggestionKind.replacement.rawValue {
+        // 보류한 행동이 있으면 어떤 요청을 기다리거나 실패해도 재개할 수 있게 보류 목록을 보여준다.
+        let deferred = try deferredCards(db, goalID: goalID)
+        if !deferred.isEmpty {
             let status: HoldStatus = if let problem { .problem(problem) }
-                else if latest["status"] as String == "pending" { .waiting }
+                else if latest?["status"] as String? == "pending" { .waiting }
                 else { .noAction }
-            return .onHold(deferred: try deferredCards(db, goalID: goalID), status: status)
+            return .onHold(deferred: deferred, status: status)
         }
         if try hasCompletion(db, goalID: goalID) { return .awaitingNextAction(problem: problem) }
         let goal = try String.fetchOne(db, sql: "SELECT statement FROM goal WHERE id = ?", arguments: [goalID]) ?? ""

@@ -631,6 +631,23 @@ final class ProgressFlowTests: XCTestCase {
         XCTAssertEqual(requests.map(\.kind), [.replacement])
     }
 
+    func testDeferredActionCanBeResumedAfterNextActionFails() async throws {
+        let flow = try makeFlow(ScriptedProvider([.success(.action(first)), .success(.action(second)), .failure(.timedOut)]))
+        let deferred = try await firstCard(flow)
+        try flow.deferAction()
+        await flow.waitForSuggestion()
+        try flow.complete()
+        // 다음 행동을 기다리는 동안에도 보류한 행동을 보여준다.
+        XCTAssertEqual(flow.screen, .onHold(deferred: [deferred], status: .waiting))
+        await flow.waitForSuggestion()
+        XCTAssertEqual(flow.screen, .onHold(deferred: [deferred], status: .problem(.failure(.timedOut))))
+        XCTAssertEqual(try makeFlow(SuspendedProvider()).screen, .onHold(deferred: [deferred], status: .problem(.failure(.timedOut))))
+
+        try flow.resume(deferred.id)
+        XCTAssertEqual(flow.screen, .currentAction(deferred, smaller: nil))
+        XCTAssertEqual(try count("SELECT COUNT(*) FROM completion"), 1)
+    }
+
     func testResumedUndoneSmallActionHasNoUndo() async throws {
         let flow = try makeFlow(ScriptedProvider([.action(first), .action(smaller), .noAction]))
         _ = try await firstCard(flow)

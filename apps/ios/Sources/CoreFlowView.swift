@@ -119,14 +119,14 @@ struct CoreFlowView: View {
     /// 대체 행동을 기다리거나 받지 못한 상태와 보류한 행동 목록을 보여준다. 각 행동은 '재개'할 수 있다.
     private func onHold(_ deferred: [ActionCard], status: HoldStatus) -> some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text(status == .noAction ? "보류 중" : "다른 행동 대기")
+            Text(status == .noAction ? "보류 중" : "다음 행동 대기")
                 .font(.title2.bold())
                 .accessibilityAddTraits(.isHeader)
             switch status {
             case .waiting:
-                suggestionStatus("다른 행동을 준비하고 있어요.", problem: nil)
+                suggestionStatus("다음 행동을 준비하고 있어요.", problem: nil)
             case .problem(let problem):
-                suggestionStatus("다른 행동을 준비하고 있어요.", problem: problem)
+                suggestionStatus("다음 행동을 준비하고 있어요.", problem: problem)
             case .noAction:
                 Text("지금 할 수 있는 다른 행동이 없어요. 보류한 행동을 재개하거나 다른 행동을 다시 찾아요.")
                     .font(.body)
@@ -398,10 +398,12 @@ struct CoreFlowView: View {
             messages.append(problem.map(reason(for:)) ?? "첫 행동을 준비하고 있어요.")
         case .awaitingNextAction(let problem):
             messages.append(problem.map(reason(for:)) ?? "다음 행동을 준비하고 있어요.")
-        case .onHold(_, let status):
-            if oldCard != nil { messages.append("행동을 보류했어요.") }
+        case .onHold(let deferred, let status):
+            if let oldCard {
+                messages.append(deferred.contains(where: { $0.id == oldCard.id }) ? "행동을 보류했어요." : "행동을 완료했어요.")
+            }
             switch status {
-            case .waiting: messages.append("다른 행동을 준비하고 있어요.")
+            case .waiting: messages.append("다음 행동을 준비하고 있어요.")
             case .problem(let problem): messages.append(reason(for: problem))
             case .noAction: messages.append("보류 중. 지금 할 수 있는 다른 행동이 없어요.")
             }
