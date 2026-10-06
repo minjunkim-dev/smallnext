@@ -9,7 +9,7 @@ Smallnext의 Issue와 구현 사양은 `minjunkim-dev/smallnext`의 GitHub Issue
 - Issue 읽기: `gh issue view <number> --repo minjunkim-dev/smallnext --comments`로 질문과 확정 답을 확인한다.
 - 라벨 적용: 역할 이름은 [triage-labels.md](triage-labels.md)의 실제 라벨을 사용한다.
 - Issue 게시를 요구하는 skill은 GitHub Issue를 만든다. `.scratch/`의 로컬 Issue로 대체하지 않는다.
-- 제품 결정은 해당 Issue의 해결 댓글에 기록한다. [WORKFLOW](../WORKFLOW.md)의 사람 확인·PR·병합 규칙을 따른다.
+- 제품 결정은 해당 Issue의 해결 댓글에 기록한다. [WORKFLOW](../WORKFLOW.md)의 결정 확인·PR·[병합 조건](../WORKFLOW.md#병합-조건)을 따른다.
 
 ## Pull requests as a triage surface
 

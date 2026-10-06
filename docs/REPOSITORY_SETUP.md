@@ -21,7 +21,8 @@
 | Issue의 범위·완료 조건·선행 조건 검토 | Claude. 수동 호출만. 쓰기 권한 사용자가 `ai:review` 라벨 지정 또는 리뷰 댓글 작성 |
 | PR의 회귀·플래그·보안 검토와 댓글 | Claude. 수동 호출만. main 대상 PR에 `ai:review` 라벨 지정 또는 리뷰 댓글 작성. Draft와 fork는 제외 |
 | 코드 리뷰와 보안 리뷰 | Codex. 모든 PR을 매 푸시마다 코드 검토하고 보안 검토도 함께 실행 |
-| 제품 결정·계정 연결·기기 확인·최종 병합 | 사람. AI는 검토안을 제시하고 승인된 구현을 수행 |
+| 제품 결정·계정 연결·기기 확인 | 사람. AI는 검토안을 제시하고 승인된 구현을 수행 |
+| 병합 | [병합 조건](WORKFLOW.md#병합-조건)을 충족하면 작업을 맡은 로컬 에이전트 또는 사람. 리뷰 봇은 병합하지 않음 |
 
 Claude 검토는 댓글 첫 줄에 `@claude review` 또는 `@claude security review`를 씁니다. Issue·PR 생성과 push는 Claude를 실행하지 않습니다.
 `ai:review` 라벨을 제거한 후 다시 지정해도 재검토합니다. `ai:skip` 항목은 Claude가 검토하지 않습니다.
@@ -101,7 +102,7 @@ Secret과 코드 리뷰 구독·요금은 별도 조건입니다. 일반 ChatGPT
 HTTP 401 또는 SDK `authentication_failed`가 발생하면 해당 리뷰를 미검증으로 표시합니다.
 `claude setup-token`으로 새 OAuth 토큰을 발급하고 Actions Secret을 교체한 뒤 main에서 다시 검토합니다.
 재등록 후에는 실행 성공과 실제 봇 댓글을 모두 확인합니다. PR 댓글의 검토 SHA가 현재 head와 같은지도 확인합니다.
-인증 장애 중 병합 여부는 사람이 Codex 결과와 자신의 검토를 확인한 후 결정합니다. 봇은 승인하거나 병합하지 않습니다.
+인증 장애 중에는 Claude 리뷰를 미검증으로 기록합니다. 병합은 Codex 결과로 [병합 조건](WORKFLOW.md#병합-조건)을 확인한 후 진행합니다. 봇은 승인하거나 병합하지 않습니다.
 
 공식 기준: [Claude GitHub Actions](https://code.claude.com/docs/en/github-actions),
 [Claude Linux 격리 설정](https://code.claude.com/docs/en/sandboxing#set-up-linux-and-wsl2),
@@ -117,7 +118,7 @@ HTTP 401 또는 SDK `authentication_failed`가 발생하면 해당 리뷰를 미
 공개 전환 후 main 보호를 적용하고 API로 확인했습니다. PR과 최신 기준 브랜치의 검사를 요구합니다.
 필수 검사 이름은 `PR conventions`, `Repository hygiene`, `Project checks`입니다.
 관리자에게도 규칙을 적용합니다. 선형 이력, 미해결 리뷰 대화 해결, 강제 push·main 삭제 금지를 요구합니다.
-현재 1인 개발에서는 다른 사람의 승인을 필수로 요구하지 않습니다. [협업 방법](WORKFLOW.md)의 사람 병합 규칙은 유지합니다.
+현재 1인 개발에서는 다른 사람의 승인을 필수로 요구하지 않습니다. 병합은 [병합 조건](WORKFLOW.md#병합-조건)을 따릅니다.
 비공개일 때 ruleset 요청이 HTTP 403으로 거절된 기록은 현재 공개 저장소의 보호 상태를 나타내지 않습니다.
 
 ## 연결 상태와 검증 근거
