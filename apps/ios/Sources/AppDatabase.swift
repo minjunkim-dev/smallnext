@@ -76,6 +76,13 @@ struct AppDatabase {
             }
             try db.execute(sql: "CREATE UNIQUE INDEX suggestion_request_one_pending ON suggestion_request(goal_id) WHERE status = 'pending'")
         }
+        // 더 작게 요청이 돌려준 확인 질문과 그 답. 답하기 전까지 질문을 화면에 복구한다.
+        migrator.registerMigration("progress_v2_question") { db in
+            try db.alter(table: "suggestion_request") { table in
+                table.add(column: "question", .text)
+                table.add(column: "answer", .text)
+            }
+        }
         try migrator.migrate(writer)
     }
 

@@ -2,6 +2,8 @@ import SwiftUI
 
 enum Motion {
     static let nextCard: Double = 0.18
+    /// 분할 전환 시간이다. 실제 휴대폰에서 이 값 하나로 조정한다.
+    static let split: Double = 0.34
 }
 
 @MainActor
@@ -9,7 +11,11 @@ struct CoreFlowView: View {
     let flow: ProgressFlow
 
     @State private var goalText = ""
+    @State private var answerText = ""
     @State private var storageFailed = false
+    /// 분할 직전 행동의 할 일이다. 값이 있는 동안 나뉘는 움직임을 보여준다.
+    @State private var splitGhost: SplitGhost?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private let accent = Color(red: 0.18, green: 0.27, blue: 0.16)
 
@@ -45,6 +51,9 @@ struct CoreFlowView: View {
         .background(Color(.systemGroupedBackground))
         .tint(accent)
         .onChange(of: flow.screen) { oldScreen, newScreen in
+            // 답 입력은 지금 보이는 질문에만 쓴다.
+            answerText = ""
+            startSplitMotion(from: oldScreen, to: newScreen)
             announceChange(from: oldScreen, to: newScreen)
         }
     }
@@ -53,7 +62,7 @@ struct CoreFlowView: View {
         switch flow.screen {
         case .goalInput: "goalInput"
         case .awaitingFirstAction(_, let problem): "awaitingFirstAction-\(String(describing: problem))"
-        case .currentAction(let card): "currentAction-\(card.id)"
+        case .currentAction(let card, _): "currentAction-\(card.id)"
         case .awaitingNextAction(let problem): "awaitingNextAction-\(String(describing: problem))"
         }
     }
@@ -90,8 +99,8 @@ struct CoreFlowView: View {
                 }
                 suggestionStatus("첫 행동을 준비하고 있어요.", problem: problem)
             }
-        case .currentAction(let card):
-            actionCard(card)
+        case .currentAction(let card, let smaller):
+            actionCard(card, smaller: smaller)
                 .id(card.id)
                 .transition(.opacity)
         case .awaitingNextAction(let problem):
@@ -104,11 +113,33 @@ struct CoreFlowView: View {
         }
     }
 
-    private func actionCard(_ card: ActionCard) -> some View {
+    private func actionCard(_ card: ActionCard, smaller: SmallerStatus?) -> some View {
         VStack(alignment: .leading, spacing: 24) {
-            Text("지금 할 행동")
-                .font(.title2.bold())
-                .accessibilityAddTraits(.isHeader)
+            HStack {
+                Text("지금 할 행동")
+                    .font(.title2.bold())
+                    .accessibilityAddTraits(.isHeader)
+                Spacer()
+                if card.origin != nil {
+                    Menu {
+                        Button("되돌리기") {
+                            run { try flow.undoSplit() }
+                        }
+                    } label: {
+                        Label("더 보기", systemImage: "ellipsis.circle")
+                            .labelStyle(.iconOnly)
+                            .font(.title2)
+                            .frame(minWidth: 44, minHeight: 44)
+                    }
+                }
+            }
+
+            if let origin = card.origin {
+                Text("‘\(origin.task)’의 일부예요. 같은 작업의 남은 범위는 그대로 두었어요.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
 
             VStack(alignment: .leading, spacing: 24) {
                 Label("약 \(card.estimatedMinutes)분 · 예상", systemImage: "clock")
@@ -137,10 +168,64 @@ struct CoreFlowView: View {
                     .strokeBorder(Color(.separator), lineWidth: 1)
             }
             .shadow(color: accent.opacity(0.10), radius: 0, x: 0, y: 5)
+            .overlay {
+                if let splitGhost, !reduceMotion {
+                    SplitGhostView(ghost: splitGhost) { self.splitGhost = nil }
+                }
+            }
 
+            // '완료'의 위치는 더 작게 상태와 관계없이 고정한다.
             commandButton("완료") {
                 try flow.complete()
             }
+            smallerSection(smaller)
+        }
+    }
+
+    /// 더 작게를 기다리면 '취소'를, 질문이면 답 입력을 보여준다.
+    /// 문제가 있으면 짧은 이유와 다시 시도인 '더 작게'를 보여준다.
+    @ViewBuilder
+    private func smallerSection(_ smaller: SmallerStatus?) -> some View {
+        switch smaller {
+        case nil:
+            smallerButton
+        case .waiting:
+            HStack(spacing: 12) {
+                ProgressView()
+                Text("더 쉬운 행동을 준비하고 있어요.")
+                    .font(.body)
+            }
+            .accessibilityElement(children: .combine)
+            commandButton("취소", prominent: false) {
+                try flow.cancelSuggestion()
+            }
+        case .question(let question):
+            VStack(alignment: .leading, spacing: 12) {
+                Text(question)
+                    .font(.body.weight(.semibold))
+                    .fixedSize(horizontal: false, vertical: true)
+                TextField("가장 먼저 막히는 지점", text: $answerText, axis: .vertical)
+                    .font(.body)
+                    .padding(16)
+                    .frame(minHeight: 44)
+                    .background(Color(.secondarySystemGroupedBackground),
+                                in: RoundedRectangle(cornerRadius: 12))
+                    .accessibilityLabel(question)
+                commandButton("답하기") {
+                    try flow.answerQuestion(answerText)
+                }
+                .disabled(answerText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+        case .problem(let problem):
+            Text(reason(for: problem))
+                .font(.body)
+            smallerButton
+        }
+    }
+
+    private var smallerButton: some View {
+        commandButton("더 작게", prominent: false) {
+            try flow.makeSmaller()
         }
     }
 
@@ -164,22 +249,26 @@ struct CoreFlowView: View {
         }
     }
 
+    private func run(_ command: @MainActor () throws -> Void) {
+        storageFailed = false
+        do {
+            try withAnimation(.easeInOut(duration: Motion.nextCard)) {
+                try command()
+            }
+        } catch {
+            storageFailed = true
+            AccessibilityNotification.Announcement(
+                "저장하지 못했어요. 다시 시도해 주세요."
+            ).post()
+        }
+    }
+
     @ViewBuilder
     private func commandButton(
         _ title: String, prominent: Bool = true, command: @escaping @MainActor () throws -> Void
     ) -> some View {
         let button = Button {
-            storageFailed = false
-            do {
-                try withAnimation(.easeInOut(duration: Motion.nextCard)) {
-                    try command()
-                }
-            } catch {
-                storageFailed = true
-                AccessibilityNotification.Announcement(
-                    "저장하지 못했어요. 다시 시도해 주세요."
-                ).post()
-            }
+            run(command)
         } label: {
             Text(title)
                 .font(.headline)
@@ -221,13 +310,37 @@ struct CoreFlowView: View {
         }
     }
 
+    /// 분할로 카드가 바뀔 때만 나뉘는 움직임을 보여준다. 모션 감소가 켜져 있으면 쓰지 않는다.
+    private func startSplitMotion(from oldScreen: ProgressScreen, to newScreen: ProgressScreen) {
+        guard !reduceMotion,
+              case .currentAction(let oldCard, _) = oldScreen,
+              case .currentAction(let newCard, _) = newScreen,
+              newCard.origin?.id == oldCard.id
+        else { return }
+        splitGhost = SplitGhost(task: oldCard.task)
+    }
+
     private func announceChange(from oldScreen: ProgressScreen, to newScreen: ProgressScreen) {
         var messages: [String] = []
-        if case .currentAction = oldScreen, oldScreen != newScreen {
+        var oldCard: ActionCard?
+        if case .currentAction(let card, _) = oldScreen { oldCard = card }
+        if oldCard != nil, case .awaitingNextAction = newScreen {
             messages.append("행동을 완료했어요.")
         }
         switch newScreen {
-        case .currentAction(let card):
+        case .currentAction(let card, let smaller) where card.id == oldCard?.id:
+            switch smaller {
+            case .waiting: messages.append("더 쉬운 행동을 준비하고 있어요.")
+            case .question(let question): messages.append(question)
+            case .problem(let problem): messages.append(reason(for: problem))
+            case nil: break
+            }
+        case .currentAction(let card, _):
+            if let oldCard, card.origin?.id == oldCard.id {
+                messages.append("더 쉬운 행동으로 나눴어요. ‘\(oldCard.task)’의 일부예요.")
+            } else if oldCard?.origin?.id == card.id {
+                messages.append("나누기 전 행동으로 되돌렸어요.")
+            }
             messages.append("지금 할 행동: \(card.task)")
         case .awaitingFirstAction(_, let problem):
             messages.append(problem.map(reason(for:)) ?? "첫 행동을 준비하고 있어요.")
@@ -239,5 +352,49 @@ struct CoreFlowView: View {
         if !messages.isEmpty {
             AccessibilityNotification.Announcement(messages.joined(separator: " ")).post()
         }
+    }
+}
+
+struct SplitGhost: Equatable {
+    let id = UUID()
+    let task: String
+}
+
+/// 분할 직전 카드의 위·아래 두 조각이 갈라지며 사라진다. 모션 감소가 켜져 있으면 쓰지 않는다.
+private struct SplitGhostView: View {
+    let ghost: SplitGhost
+    let onFinish: @MainActor () -> Void
+    @State private var apart = false
+
+    var body: some View {
+        GeometryReader { proxy in
+            let height = proxy.size.height
+            ZStack(alignment: .topLeading) {
+                piece.mask(alignment: .top) { Rectangle().frame(height: height * 0.48) }
+                    .offset(x: apart ? -6 : 0, y: apart ? -9 : 0)
+                piece.mask(alignment: .bottom) { Rectangle().frame(height: height * 0.48) }
+                    .offset(x: apart ? 12 : 0, y: apart ? 24 : 0)
+            }
+            .opacity(apart ? 0 : 0.85)
+        }
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+        .id(ghost.id)
+        .task(id: ghost.id) {
+            apart = false
+            withAnimation(.timingCurve(0.2, 0.8, 0.2, 1, duration: Motion.split)) { apart = true }
+            try? await Task.sleep(for: .seconds(Motion.split))
+            onFinish()
+        }
+    }
+
+    private var piece: some View {
+        Text(ghost.task)
+            .font(.title2.weight(.semibold))
+            .padding(24)
+            .padding(.top, 40)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 18))
+            .overlay { RoundedRectangle(cornerRadius: 18).strokeBorder(Color(.separator), lineWidth: 1) }
     }
 }

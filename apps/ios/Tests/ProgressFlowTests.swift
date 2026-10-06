@@ -39,7 +39,7 @@ final class ProgressFlowTests: XCTestCase {
             try flow.createGoal("  주간 업무 보고서 초안 쓰기 ")
             XCTAssertEqual(flow.screen, .awaitingFirstAction(goal: "주간 업무 보고서 초안 쓰기", problem: nil))
             await flow.waitForSuggestion()
-            guard case .currentAction(let firstCard) = flow.screen else { return XCTFail("\(flow.screen)") }
+            guard case .currentAction(let firstCard, nil) = flow.screen else { return XCTFail("\(flow.screen)") }
             XCTAssertEqual(firstCard.task, first.task)
             XCTAssertEqual(firstCard.doneWhen, first.doneWhen)
             XCTAssertEqual(firstCard.estimatedMinutes, first.estimatedMinutes)
@@ -48,7 +48,7 @@ final class ProgressFlowTests: XCTestCase {
             try flow.complete()
             XCTAssertEqual(flow.screen, .awaitingNextAction(problem: nil))
             await flow.waitForSuggestion()
-            guard case .currentAction(let card) = flow.screen else { return XCTFail("\(flow.screen)") }
+            guard case .currentAction(let card, nil) = flow.screen else { return XCTFail("\(flow.screen)") }
             XCTAssertEqual(card.task, second.task)
             secondCard = card
         }
@@ -60,7 +60,7 @@ final class ProgressFlowTests: XCTestCase {
 
         let nextProvider = ScriptedProvider([.action(third)])
         let reopened = try makeFlow(nextProvider)
-        XCTAssertEqual(reopened.screen, .currentAction(secondCard))
+        XCTAssertEqual(reopened.screen, .currentAction(secondCard, smaller: nil))
         try reopened.complete()
         await reopened.waitForSuggestion()
         let restoredRequests = await nextProvider.requests
@@ -160,7 +160,7 @@ final class ProgressFlowTests: XCTestCase {
 
         await provider.release()
         await flow.waitForSuggestion()
-        guard case .currentAction(let card) = flow.screen else { return XCTFail("\(flow.screen)") }
+        guard case .currentAction(let card, nil) = flow.screen else { return XCTFail("\(flow.screen)") }
         XCTAssertEqual(card.task, first.task)
         let requests = await provider.requests
         XCTAssertEqual(requests, 1)
@@ -182,7 +182,7 @@ final class ProgressFlowTests: XCTestCase {
         try flow.complete()
         XCTAssertEqual(flow.screen, .awaitingNextAction(problem: nil))
         await flow.waitForSuggestion()
-        guard case .currentAction(let card) = flow.screen else { return XCTFail("\(flow.screen)") }
+        guard case .currentAction(let card, nil) = flow.screen else { return XCTFail("\(flow.screen)") }
         XCTAssertEqual(card.task, second.task)
         XCTAssertEqual(try count("SELECT COUNT(*) FROM completion"), 1)
         XCTAssertEqual(try count("SELECT COUNT(*) FROM suggestion_request WHERE kind = 'smaller' AND status = 'interrupted'"), 1)
@@ -240,7 +240,7 @@ final class ProgressFlowTests: XCTestCase {
 
         try reopened.retrySuggestion()
         await reopened.waitForSuggestion()
-        guard case .currentAction(let card) = reopened.screen else { return XCTFail("\(reopened.screen)") }
+        guard case .currentAction(let card, nil) = reopened.screen else { return XCTFail("\(reopened.screen)") }
         XCTAssertEqual(card.task, first.task)
         let requests = await provider.requests
         XCTAssertEqual(requests.map(\.kind), [.firstAction])
@@ -271,8 +271,268 @@ final class ProgressFlowTests: XCTestCase {
         await provider.releaseLock()
         try flow.retrySuggestion()
         await flow.waitForSuggestion()
-        guard case .currentAction(let card) = flow.screen else { return XCTFail("\(flow.screen)") }
+        guard case .currentAction(let card, nil) = flow.screen else { return XCTFail("\(flow.screen)") }
         XCTAssertEqual(card.task, first.task)
+    }
+
+    // MARK: - 더 작게와 되돌리기 (#55)
+
+    private let smaller = ProposedAction(task: "메모 제목만 확인하기", doneWhen: "메모 제목을 읽었다", estimatedMinutes: 1)
+
+    private func card(_ action: ProposedAction) -> ProposedAction {
+        ProposedAction(task: action.task, doneWhen: action.doneWhen, estimatedMinutes: action.estimatedMinutes)
+    }
+
+    private func status(ofTask task: String) throws -> String? {
+        try AppDatabase(path: path).writer.read { db in
+            try String.fetchOne(db, sql: "SELECT status FROM action WHERE task = ?", arguments: [task])
+        }
+    }
+
+    func testSmallerThenCompleteKeepsSplitSourceAndGoalOpen() async throws {
+        let provider = ScriptedProvider([.action(first), .minimalAction(smaller), .action(second)])
+        let flow = try makeFlow(provider)
+        try flow.createGoal("주간 업무 보고서 초안 쓰기")
+        await flow.waitForSuggestion()
+        guard case .currentAction(let source, nil) = flow.screen else { return XCTFail("\(flow.screen)") }
+        try await AppDatabase(path: path).writer.write { db in
+            try db.execute(sql: "UPDATE goal SET blocker = '시간이 부족함', completion_criteria = '초안 한 쪽'")
+        }
+
+        try flow.makeSmaller()
+        // 질문 없이 바로 요청한다.
+        XCTAssertEqual(flow.screen, .currentAction(source, smaller: .waiting))
+        await flow.waitForSuggestion()
+        guard case .currentAction(let small, nil) = flow.screen else { return XCTFail("\(flow.screen)") }
+        XCTAssertEqual(small.task, smaller.task)
+        XCTAssertEqual(small.origin, ActionCard.Origin(id: source.id, task: first.task))
+        XCTAssertEqual(try status(ofTask: first.task), "split")
+
+        try flow.complete()
+        await flow.waitForSuggestion()
+        XCTAssertEqual(try status(ofTask: smaller.task), "done")
+        XCTAssertEqual(try status(ofTask: first.task), "split")
+        XCTAssertEqual(try count("SELECT COUNT(*) FROM completion"), 1)
+        XCTAssertEqual(try count("SELECT COUNT(*) FROM goal WHERE status = 'active' AND completion_criteria = '초안 한 쪽'"), 1)
+
+        let requests = await provider.requests
+        XCTAssertEqual(requests.map(\.kind), [.firstAction, .smaller, .nextAction])
+        XCTAssertEqual(requests[1].currentAction, card(first))
+        XCTAssertEqual(requests[1].blocker, "시간이 부족함")
+        // 작은 행동을 완료한 뒤에도 분할 원본의 남은 범위를 다음 요청에 전달한다.
+        XCTAssertEqual(requests[2].currentAction, card(first))
+        XCTAssertEqual(requests[2].completedTasks, [smaller.task])
+    }
+
+    func testSmallerThenUndoRestoresSourceAndKeepsResults() async throws {
+        let flow = try makeFlow(ScriptedProvider([.action(first), .action(smaller)]))
+        try flow.createGoal("주간 업무 보고서 초안 쓰기")
+        await flow.waitForSuggestion()
+        guard case .currentAction(let source, nil) = flow.screen else { return XCTFail("\(flow.screen)") }
+        try flow.makeSmaller()
+        await flow.waitForSuggestion()
+        guard case .currentAction(let small, nil) = flow.screen else { return XCTFail("\(flow.screen)") }
+        try await AppDatabase(path: path).writer.write { db in
+            try db.execute(
+                sql: "INSERT INTO action_note (action_id, body, is_draft, updated_at) VALUES (?, '제목: 주간 보고', 0, CURRENT_TIMESTAMP)",
+                arguments: [small.id]
+            )
+        }
+
+        try flow.undoSplit()
+        XCTAssertEqual(flow.screen, .currentAction(source, smaller: nil))
+        XCTAssertEqual(try status(ofTask: smaller.task), "deferred")
+        XCTAssertEqual(try count("SELECT COUNT(*) FROM action_note"), 1)
+        XCTAssertEqual(try count("SELECT COUNT(*) FROM completion"), 0)
+
+        // 분할 원본은 되돌릴 대상이 없다.
+        try flow.undoSplit()
+        XCTAssertEqual(flow.screen, .currentAction(source, smaller: nil))
+
+        let reopened = try makeFlow(ScriptedProvider([SuggestionCandidate]()))
+        XCTAssertEqual(reopened.screen, .currentAction(source, smaller: nil))
+    }
+
+    func testRepeatedSmallerSendsSplitSourcesAndUndoesOneStep() async throws {
+        let smallest = ProposedAction(task: "메모 앱 열기", doneWhen: "메모 앱이 열려 있다", estimatedMinutes: 1)
+        let provider = ScriptedProvider([.action(first), .action(smaller), .action(smallest)])
+        let flow = try makeFlow(provider)
+        try flow.createGoal("주간 업무 보고서 초안 쓰기")
+        await flow.waitForSuggestion()
+        try flow.makeSmaller()
+        await flow.waitForSuggestion()
+        guard case .currentAction(let small, nil) = flow.screen else { return XCTFail("\(flow.screen)") }
+        try flow.makeSmaller()
+        await flow.waitForSuggestion()
+        guard case .currentAction(let tiny, nil) = flow.screen else { return XCTFail("\(flow.screen)") }
+        XCTAssertEqual(tiny.origin, ActionCard.Origin(id: small.id, task: smaller.task))
+
+        // 공급자가 같은 행동을 이미 나눴는지 알 수 있게 분할 원본을 처음 것부터 담는다.
+        let requests = await provider.requests
+        XCTAssertEqual(requests[1].splitSources, [])
+        XCTAssertEqual(requests[2].currentAction, card(smaller))
+        XCTAssertEqual(requests[2].splitSources, [first.task])
+
+        try flow.undoSplit()
+        XCTAssertEqual(flow.screen, .currentAction(small, smaller: nil))
+    }
+
+    func testQuestionAnswerIsSavedAsBlockerAndSentWithNextRequest() async throws {
+        let question = "가장 먼저 막히는 지점은 무엇인가요?"
+        let provider = ScriptedProvider([.action(first), .question(question), .action(smaller)])
+        let flow = try makeFlow(provider)
+        try flow.createGoal("주간 업무 보고서 초안 쓰기")
+        await flow.waitForSuggestion()
+        guard case .currentAction(let source, nil) = flow.screen else { return XCTFail("\(flow.screen)") }
+
+        try flow.makeSmaller()
+        await flow.waitForSuggestion()
+        XCTAssertEqual(flow.screen, .currentAction(source, smaller: .question(question)))
+        XCTAssertEqual(try status(ofTask: first.task), "current")
+
+        let reopened = try makeFlow(provider)
+        XCTAssertEqual(reopened.screen, .currentAction(source, smaller: .question(question)))
+        XCTAssertThrowsError(try reopened.answerQuestion("  "))
+        try reopened.answerQuestion(" 어떤 자료를 봐야 할지 모름 ")
+        XCTAssertEqual(reopened.screen, .currentAction(source, smaller: .waiting))
+        await reopened.waitForSuggestion()
+        guard case .currentAction(let small, nil) = reopened.screen else { return XCTFail("\(reopened.screen)") }
+        XCTAssertEqual(small.task, smaller.task)
+        XCTAssertEqual(try count("SELECT COUNT(*) FROM goal WHERE blocker = '어떤 자료를 봐야 할지 모름'"), 1)
+
+        let requests = await provider.requests
+        XCTAssertEqual(requests.map(\.kind), [.firstAction, .smaller, .smaller])
+        XCTAssertNil(requests[1].blocker)
+        XCTAssertEqual(requests[2].blocker, "어떤 자료를 봐야 할지 모름")
+    }
+
+    func testUndoWhileWaitingEndsRequestAndSmallerCanStartAgain() async throws {
+        do {
+            let flow = try makeFlow(ScriptedProvider([.action(first), .action(smaller)]))
+            try flow.createGoal("주간 업무 보고서 초안 쓰기")
+            await flow.waitForSuggestion()
+            try flow.makeSmaller()
+            await flow.waitForSuggestion()
+        }
+        let provider = HeldProvider(.action(smaller))
+        let flow = try makeFlow(provider)
+        guard case .currentAction(let small, nil) = flow.screen, let origin = small.origin else { return XCTFail("\(flow.screen)") }
+        try flow.makeSmaller()
+        try flow.undoSplit()
+        guard case .currentAction(let source, nil) = flow.screen else { return XCTFail("\(flow.screen)") }
+        XCTAssertEqual(source.id, origin.id)
+        await provider.release()
+        await flow.waitForSuggestion()
+        // 되돌린 뒤 도착한 결과는 적용하지 않는다.
+        XCTAssertEqual(flow.screen, .currentAction(source, smaller: nil))
+        XCTAssertEqual(try count("SELECT COUNT(*) FROM suggestion_request WHERE status = 'interrupted'"), 1)
+
+        try flow.makeSmaller()
+        XCTAssertEqual(flow.screen, .currentAction(source, smaller: .waiting))
+        await provider.release()
+        await flow.waitForSuggestion()
+        guard case .currentAction(let again, nil) = flow.screen else { return XCTFail("\(flow.screen)") }
+        XCTAssertEqual(again.origin?.id, source.id)
+    }
+
+    func testAnsweredQuestionIsNotAskedAgain() async throws {
+        let question = "가장 먼저 막히는 지점은 무엇인가요?"
+        let flow = try makeFlow(ScriptedProvider([.action(first), .question(question), .question(" \(question)")]))
+        try flow.createGoal("주간 업무 보고서 초안 쓰기")
+        await flow.waitForSuggestion()
+        guard case .currentAction(let source, nil) = flow.screen else { return XCTFail("\(flow.screen)") }
+        try flow.makeSmaller()
+        await flow.waitForSuggestion()
+        try flow.answerQuestion("자료 위치를 모름")
+        await flow.waitForSuggestion()
+        XCTAssertEqual(flow.screen, .currentAction(source, smaller: .problem(.unsuitable)))
+    }
+
+    func testUnansweredQuestionCanBeAskedAgain() async throws {
+        let answered = "가장 먼저 막히는 지점은 무엇인가요?"
+        let skipped = "어떤 자료가 먼저 필요한가요?"
+        let flow = try makeFlow(ScriptedProvider([
+            .action(first), .question(answered), .action(smaller), .action(second),
+            .question(skipped), .action(third), .question(skipped),
+        ]))
+        try flow.createGoal("주간 업무 보고서 초안 쓰기")
+        await flow.waitForSuggestion()
+        try flow.makeSmaller()
+        await flow.waitForSuggestion()
+        try flow.answerQuestion("자료 위치를 모름")
+        await flow.waitForSuggestion()
+        try flow.complete()
+        await flow.waitForSuggestion()
+        try flow.makeSmaller()
+        await flow.waitForSuggestion()
+        guard case .currentAction(_, .question(skipped)) = flow.screen else { return XCTFail("\(flow.screen)") }
+        // 질문에 답하지 않고 완료한다. 같은 질문을 다시 받으면 보여준다.
+        try flow.complete()
+        await flow.waitForSuggestion()
+        try flow.makeSmaller()
+        await flow.waitForSuggestion()
+        guard case .currentAction(let card, .question(skipped)) = flow.screen else { return XCTFail("\(flow.screen)") }
+        XCTAssertEqual(card.task, third.task)
+    }
+
+    func testUndoWhileWaitingCancelsProvider() async throws {
+        do {
+            let flow = try makeFlow(ScriptedProvider([.action(first), .action(smaller)]))
+            try flow.createGoal("주간 업무 보고서 초안 쓰기")
+            await flow.waitForSuggestion()
+            try flow.makeSmaller()
+            await flow.waitForSuggestion()
+        }
+        let provider = SuspendedProvider()
+        let flow = try makeFlow(provider)
+        try flow.makeSmaller()
+        try flow.undoSplit()
+        await flow.waitForSuggestion()
+        let cancelled = await provider.cancelled
+        XCTAssertTrue(cancelled)
+    }
+
+    func testUnsavedSmallerResultCanBeRetried() async throws {
+        do {
+            let flow = try makeFlow(ScriptedProvider([.action(first)]))
+            try flow.createGoal("주간 업무 보고서 초안 쓰기")
+            await flow.waitForSuggestion()
+        }
+        let provider = LockingProvider(path: path, candidate: .action(smaller))
+        let flow = try makeFlow(provider)
+        guard case .currentAction(let source, nil) = flow.screen else { return XCTFail("\(flow.screen)") }
+        try flow.makeSmaller()
+        await flow.waitForSuggestion()
+        XCTAssertEqual(flow.screen, .currentAction(source, smaller: .problem(.failure(.failed))))
+
+        await provider.releaseLock()
+        try flow.makeSmaller()
+        await flow.waitForSuggestion()
+        guard case .currentAction(let small, nil) = flow.screen else { return XCTFail("\(flow.screen)") }
+        XCTAssertEqual(small.task, smaller.task)
+    }
+
+    func testSmallerFailureAndCancelKeepCurrentAction() async throws {
+        let provider = ScriptedProvider([.success(.action(first)), .failure(.timedOut), .success(.question(" "))])
+        let flow = try makeFlow(provider)
+        try flow.createGoal("주간 업무 보고서 초안 쓰기")
+        await flow.waitForSuggestion()
+        guard case .currentAction(let source, nil) = flow.screen else { return XCTFail("\(flow.screen)") }
+
+        try flow.makeSmaller()
+        await flow.waitForSuggestion()
+        XCTAssertEqual(flow.screen, .currentAction(source, smaller: .problem(.failure(.timedOut))))
+        try flow.makeSmaller()
+        await flow.waitForSuggestion()
+        XCTAssertEqual(flow.screen, .currentAction(source, smaller: .problem(.unsuitable)))
+
+        let waiting = try makeFlow(SuspendedProvider())
+        try waiting.makeSmaller()
+        try waiting.makeSmaller()
+        XCTAssertEqual(try count("SELECT COUNT(*) FROM suggestion_request WHERE status = 'pending'"), 1)
+        try waiting.cancelSuggestion()
+        XCTAssertEqual(waiting.screen, .currentAction(source, smaller: .problem(.cancelled)))
+        XCTAssertEqual(try status(ofTask: first.task), "current")
     }
 
     func testProductMigrationKeepsBootstrapMetadata() throws {
