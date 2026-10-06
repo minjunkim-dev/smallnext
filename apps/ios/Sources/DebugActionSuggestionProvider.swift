@@ -9,9 +9,17 @@ struct DebugActionSuggestionProvider: ActionSuggestionProvider {
     }
 
     static let exampleGoals: [String] = examples.map(\.goal)
+    private static let smallerPrefix = "첫 부분만: "
 
     func suggest(_ request: SuggestionRequest) async throws -> SuggestionCandidate {
         try await Task.sleep(for: delay)
+        // 더 작게: 이미 나눈 행동을 막힘 원인 없이 다시 나누면 확인 질문을 돌려준다.
+        if request.kind == .smaller, let current = request.currentAction {
+            if request.blocker == nil, current.task.hasPrefix(Self.smallerPrefix) {
+                return .question("가장 먼저 막히는 지점은 무엇인가요?")
+            }
+            return .action(Self.step(Self.smallerPrefix + current.task, "첫 부분 하나를 끝낸다", max(1, current.estimatedMinutes / 2)))
+        }
         let count = request.completedTasks.count
         let steps = Self.examples.first { $0.goal == request.goal }?.steps ?? Self.general
         let action = count < steps.count ? steps[count] : Self.continued(count)

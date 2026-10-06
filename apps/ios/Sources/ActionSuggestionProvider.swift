@@ -20,6 +20,8 @@ struct SuggestionRequest: Sendable, Equatable {
     var currentAction: ProposedAction?
     /// 완료한 행동의 할 일. 오래된 것부터 담는다.
     var completedTasks: [String]
+    /// 사용자가 알려준 막힘 원인이다. 같은 정보를 다시 묻지 않게 한다.
+    var blocker: String? = nil
 }
 
 struct ProposedAction: Sendable, Equatable {
