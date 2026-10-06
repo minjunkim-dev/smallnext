@@ -28,6 +28,8 @@ struct ProposedAction: Sendable, Equatable {
     var estimatedMinutes: Int
     /// 공급자가 목표 완료를 표시했는지 나타낸다. 앱은 이 표시로 목표를 완료하지 않는다.
     var marksGoalComplete = false
+    /// 공급자가 원래 행동의 완료를 표시했는지 나타낸다. 앱은 이 표시로 행동을 완료하지 않는다.
+    var marksCurrentActionComplete = false
 }
 
 enum SuggestionCandidate: Sendable, Equatable {
@@ -36,7 +38,8 @@ enum SuggestionCandidate: Sendable, Equatable {
     case minimalAction(ProposedAction)
 }
 
-enum SuggestionFailure: String, Error, Sendable {
+enum SuggestionFailure: String, Error, Sendable, CaseIterable {
+    case connectionLost = "connection_lost"
     case rejected
     case undecidable
     case failed
