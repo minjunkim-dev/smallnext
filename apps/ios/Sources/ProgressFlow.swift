@@ -133,6 +133,13 @@ final class ProgressFlow {
         try perform { db in
             guard let goalID = try Self.selectedGoalID(db) else { return nil }
             try db.execute(sql: "UPDATE goal SET blocker = ? WHERE id = ?", arguments: [answer, goalID])
+            try db.execute(
+                sql: """
+                UPDATE suggestion_request SET answer = ?
+                WHERE id = (SELECT MAX(id) FROM suggestion_request WHERE goal_id = ? AND question IS NOT NULL)
+                """,
+                arguments: [answer, goalID]
+            )
             try Self.bumpRevision(db, goalID: goalID)
             return try Self.insertRequest(db, goalID: goalID, kind: .smaller)
         }
@@ -141,6 +148,10 @@ final class ProgressFlow {
     /// 분할 직전 행동을 현재 행동으로 되돌린다. 작은 행동은 보류로 남긴다. 행동 결과는 지우지 않는다.
     func undoSplit() throws {
         guard case .currentAction(let card, _) = screen, let origin = card.origin else { return }
+        defer {
+            // 되돌린 뒤 결과를 버릴 공급자 작업은 취소한다.
+            if case .currentAction(let current, _) = screen, current.id == origin.id { suggestionTask?.cancel() }
+        }
         try perform { db in
             guard let goalID = try Self.selectedGoalID(db) else { return nil }
             try db.execute(sql: "UPDATE action SET status = 'deferred' WHERE id = ? AND status = 'current'", arguments: [card.id])
@@ -262,12 +273,8 @@ final class ProgressFlow {
             // 이미 답한 질문은 다시 묻지 않는다.
             let answered = try Bool.fetchOne(
                 db,
-                sql: """
-                SELECT g.blocker IS NOT NULL AND EXISTS (
-                    SELECT 1 FROM suggestion_request WHERE goal_id = g.id AND id < ? AND question = ?
-                ) FROM goal g WHERE g.id = ?
-                """,
-                arguments: [pending.id, question, pending.goalID]
+                sql: "SELECT EXISTS (SELECT 1 FROM suggestion_request WHERE goal_id = ? AND question = ? AND answer IS NOT NULL)",
+                arguments: [pending.goalID, question]
             ) ?? false
             guard isSmaller, !question.isEmpty, !answered else {
                 return try finishRequest(db, pending.id, status: "failed", reason: unsuitableReason)

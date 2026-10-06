@@ -448,6 +448,50 @@ final class ProgressFlowTests: XCTestCase {
         XCTAssertEqual(flow.screen, .currentAction(source, smaller: .problem(.unsuitable)))
     }
 
+    func testUnansweredQuestionCanBeAskedAgain() async throws {
+        let answered = "가장 먼저 막히는 지점은 무엇인가요?"
+        let skipped = "어떤 자료가 먼저 필요한가요?"
+        let flow = try makeFlow(ScriptedProvider([
+            .action(first), .question(answered), .action(smaller), .action(second),
+            .question(skipped), .action(third), .question(skipped),
+        ]))
+        try flow.createGoal("주간 업무 보고서 초안 쓰기")
+        await flow.waitForSuggestion()
+        try flow.makeSmaller()
+        await flow.waitForSuggestion()
+        try flow.answerQuestion("자료 위치를 모름")
+        await flow.waitForSuggestion()
+        try flow.complete()
+        await flow.waitForSuggestion()
+        try flow.makeSmaller()
+        await flow.waitForSuggestion()
+        guard case .currentAction(_, .question(skipped)) = flow.screen else { return XCTFail("\(flow.screen)") }
+        // 질문에 답하지 않고 완료한다. 같은 질문을 다시 받으면 보여준다.
+        try flow.complete()
+        await flow.waitForSuggestion()
+        try flow.makeSmaller()
+        await flow.waitForSuggestion()
+        guard case .currentAction(let card, .question(skipped)) = flow.screen else { return XCTFail("\(flow.screen)") }
+        XCTAssertEqual(card.task, third.task)
+    }
+
+    func testUndoWhileWaitingCancelsProvider() async throws {
+        do {
+            let flow = try makeFlow(ScriptedProvider([.action(first), .action(smaller)]))
+            try flow.createGoal("주간 업무 보고서 초안 쓰기")
+            await flow.waitForSuggestion()
+            try flow.makeSmaller()
+            await flow.waitForSuggestion()
+        }
+        let provider = SuspendedProvider()
+        let flow = try makeFlow(provider)
+        try flow.makeSmaller()
+        try flow.undoSplit()
+        await flow.waitForSuggestion()
+        let cancelled = await provider.cancelled
+        XCTAssertTrue(cancelled)
+    }
+
     func testUnsavedSmallerResultCanBeRetried() async throws {
         do {
             let flow = try makeFlow(ScriptedProvider([.action(first)]))
