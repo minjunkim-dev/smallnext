@@ -14,16 +14,20 @@ enum SuggestionProblem: Equatable, Sendable {
     case failure(SuggestionFailure)
     /// 구조 검사를 통과하지 못한 후보다.
     case unsuitable
-    /// 앱 종료 등으로 끝나지 않은 요청이다.
+    /// 앱 종료 등으로 끝나지 않았거나 이전 상태에 대한 요청이다.
     case interrupted
+    /// 사용자가 취소한 요청이다.
+    case cancelled
 }
 
+/// 대기 화면의 `problem`이 nil이면 제안을 기다리는 중이다. 값이 있으면 '다시 시도'를 기다린다.
 enum ProgressScreen: Equatable, Sendable {
     case goalInput
-    case awaitingFirstAction
+    /// 첫 행동을 받기 전이다. 입력한 목표를 유지한다.
+    case awaitingFirstAction(goal: String, problem: SuggestionProblem?)
     case currentAction(ActionCard)
-    case awaitingNextAction
-    case suggestionFailed(SuggestionProblem)
+    /// 완료 후 다음 행동을 받기 전이다. 완료 기록을 유지한다.
+    case awaitingNextAction(problem: SuggestionProblem?)
 }
 
 enum ProgressFlowError: Error {
@@ -86,26 +90,32 @@ final class ProgressFlow {
                 arguments: [card.id, Date()]
             )
             try Self.bumpRevision(db, goalID: goalID)
+            // 다른 종류의 대기 요청은 이전 상태에 대한 요청이다. 완료를 막지 않도록 끝낸다.
+            try Self.endPendingRequests(db, goalID: goalID, status: "interrupted")
             return try Self.insertRequest(db, goalID: goalID, kind: .nextAction)
         }
     }
 
+    /// 실패·중단·취소한 제안만 다시 요청한다. 기다리는 중이면 무시한다.
     func retrySuggestion() throws {
-        guard case .suggestionFailed = screen else { return }
+        guard screen.suggestionProblem != nil else { return }
         try perform { db in
             guard let goalID = try Self.selectedGoalID(db) else { return nil }
             // 결과 저장에 실패해 pending으로 남은 요청을 끝낸다. 늦게 온 결과는 적용하지 않는다.
-            try db.execute(
-                sql: "UPDATE suggestion_request SET status = 'interrupted' WHERE goal_id = ? AND status = 'pending'",
-                arguments: [goalID]
-            )
-            let hasCompletion = try Bool.fetchOne(
-                db,
-                sql: "SELECT EXISTS (SELECT 1 FROM action WHERE goal_id = ? AND status = 'done')",
-                arguments: [goalID]
-            ) ?? false
-            return try Self.insertRequest(db, goalID: goalID, kind: hasCompletion ? .nextAction : .firstAction)
+            try Self.endPendingRequests(db, goalID: goalID, status: "interrupted")
+            return try Self.insertRequest(db, goalID: goalID, kind: Self.hasCompletion(db, goalID: goalID) ? .nextAction : .firstAction)
         }
+    }
+
+    /// 기다리는 제안을 취소한다. 저장한 뒤 공급자 작업을 취소한다. 늦게 온 결과는 적용하지 않는다.
+    func cancelSuggestion() throws {
+        guard screen.isWaitingForSuggestion else { return }
+        try perform { db in
+            guard let goalID = try Self.selectedGoalID(db) else { return nil }
+            try Self.endPendingRequests(db, goalID: goalID, status: "cancelled")
+            return nil
+        }
+        suggestionTask?.cancel()
     }
 
     /// 진행 중인 제안 요청이 끝날 때까지 기다린다. 테스트에서 쓴다.
@@ -132,6 +142,7 @@ final class ProgressFlow {
 
     private func start(_ pending: PendingSuggestion) {
         let provider = provider
+        suggestionTask?.cancel()
         suggestionTask = Task {
             let outcome: Result<SuggestionCandidate, SuggestionFailure>
             do {
@@ -151,11 +162,21 @@ final class ProgressFlow {
             }
         } catch {
             logger.error("Suggestion result was not saved: \(String(describing: type(of: error)), privacy: .public)")
-            screen = .suggestionFailed(.failure(.failed))
+            // 취소한 요청의 결과는 화면에 반영하지 않는다.
+            guard !Task.isCancelled else { return }
+            switch screen {
+            case .awaitingFirstAction(let goal, nil):
+                screen = .awaitingFirstAction(goal: goal, problem: .failure(.failed))
+            case .awaitingNextAction(nil):
+                screen = .awaitingNextAction(problem: .failure(.failed))
+            default:
+                break
+            }
         }
     }
 
     /// 요청이 아직 `pending`이고 목표 리비전이 같을 때만 결과를 적용한다.
+    /// 리비전이 바뀐 요청은 `interrupted`로 끝낸다.
     private nonisolated static func apply(
         _ db: Database,
         _ pending: PendingSuggestion,
@@ -165,7 +186,10 @@ final class ProgressFlow {
             db,
             sql: "SELECT r.status, g.revision FROM suggestion_request r JOIN goal g ON g.id = r.goal_id WHERE r.id = ?",
             arguments: [pending.id]
-        ), row["status"] == "pending", row["revision"] == pending.revision else { return }
+        ), row["status"] == "pending" else { return }
+        guard row["revision"] == pending.revision else {
+            return try finishRequest(db, pending.id, status: "interrupted", reason: nil)
+        }
 
         let proposed: ProposedAction
         switch outcome {
@@ -192,12 +216,14 @@ final class ProgressFlow {
     }
 
     /// 앞뒤 공백을 지운 후보를 돌려준다.
-    /// 비었거나, 완료한 행동을 다시 제안했거나, 목표 완료를 표시한 후보는 nil이다.
+    /// 필수 필드가 비었거나, 완료한 행동을 다시 제안했거나, 목표·원래 행동의 완료를 표시한 후보는 nil이다.
+    /// 후보 타입은 행동 하나만 담는다.
     private nonisolated static func validated(_ db: Database, _ proposed: ProposedAction, goalID: Int64) throws -> ProposedAction? {
         var action = proposed
         action.task = proposed.task.trimmingCharacters(in: .whitespacesAndNewlines)
         action.doneWhen = proposed.doneWhen.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !action.task.isEmpty, !action.doneWhen.isEmpty, action.estimatedMinutes > 0, !action.marksGoalComplete else {
+        guard !action.task.isEmpty, !action.doneWhen.isEmpty, action.estimatedMinutes > 0,
+              !action.marksGoalComplete, !action.marksCurrentActionComplete else {
             return nil
         }
         let repeated = try Bool.fetchOne(
@@ -214,6 +240,13 @@ final class ProgressFlow {
         try db.execute(
             sql: "UPDATE suggestion_request SET status = ?, failure_reason = ? WHERE id = ?",
             arguments: [status, reason, id]
+        )
+    }
+
+    private nonisolated static func endPendingRequests(_ db: Database, goalID: Int64, status: String) throws {
+        try db.execute(
+            sql: "UPDATE suggestion_request SET status = ? WHERE goal_id = ? AND status = 'pending'",
+            arguments: [status, goalID]
         )
     }
 
@@ -256,6 +289,14 @@ final class ProgressFlow {
         try String.fetchOne(db, sql: "SELECT value FROM app_metadata WHERE key = 'selected_goal_id'").flatMap { Int64($0) }
     }
 
+    private nonisolated static func hasCompletion(_ db: Database, goalID: Int64) throws -> Bool {
+        try Bool.fetchOne(
+            db,
+            sql: "SELECT EXISTS (SELECT 1 FROM action WHERE goal_id = ? AND status = 'done')",
+            arguments: [goalID]
+        ) ?? false
+    }
+
     private nonisolated static func loadScreen(_ db: Database) throws -> ProgressScreen {
         guard let goalID = try selectedGoalID(db) else { return .goalInput }
         if let row = try Row.fetchOne(
@@ -270,21 +311,46 @@ final class ProgressFlow {
                 estimatedMinutes: row["estimated_minutes"]
             ))
         }
-        guard let latest = try Row.fetchOne(
+        let problem: SuggestionProblem?
+        if let latest = try Row.fetchOne(
             db,
-            sql: "SELECT kind, status, failure_reason FROM suggestion_request WHERE goal_id = ? ORDER BY id DESC LIMIT 1",
+            sql: "SELECT status, failure_reason FROM suggestion_request WHERE goal_id = ? ORDER BY id DESC LIMIT 1",
             arguments: [goalID]
-        ) else { return .suggestionFailed(.interrupted) }
-        let status: String = latest["status"]
-        let kind: String = latest["kind"]
-        let reason: String? = latest["failure_reason"]
-        switch status {
-        case "pending":
-            return kind == SuggestionKind.firstAction.rawValue ? .awaitingFirstAction : .awaitingNextAction
-        case "failed":
-            return .suggestionFailed(reason.flatMap(SuggestionFailure.init(rawValue:)).map { .failure($0) } ?? .unsuitable)
-        default:
-            return .suggestionFailed(.interrupted)
+        ) {
+            let reason: String? = latest["failure_reason"]
+            switch latest["status"] as String {
+            case "pending":
+                problem = nil
+            case "failed":
+                problem = reason.flatMap(SuggestionFailure.init(rawValue:)).map { .failure($0) } ?? .unsuitable
+            case "cancelled":
+                problem = .cancelled
+            default:
+                problem = .interrupted
+            }
+        } else {
+            problem = .interrupted
+        }
+        if try hasCompletion(db, goalID: goalID) { return .awaitingNextAction(problem: problem) }
+        let goal = try String.fetchOne(db, sql: "SELECT statement FROM goal WHERE id = ?", arguments: [goalID]) ?? ""
+        return .awaitingFirstAction(goal: goal, problem: problem)
+    }
+}
+
+extension ProgressScreen {
+    /// 제안을 기다리는 중인지 나타낸다.
+    var isWaitingForSuggestion: Bool {
+        switch self {
+        case .awaitingFirstAction(_, nil), .awaitingNextAction(nil): true
+        default: false
+        }
+    }
+
+    /// 실패·중단·취소한 제안의 문제다. '다시 시도'를 보여줄 때만 값이 있다.
+    var suggestionProblem: SuggestionProblem? {
+        switch self {
+        case .awaitingFirstAction(_, let problem), .awaitingNextAction(let problem): problem
+        case .goalInput, .currentAction: nil
         }
     }
 }

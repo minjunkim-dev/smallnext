@@ -25,6 +25,10 @@ final class ProgressFlowTests: XCTestCase {
         try ProgressFlow(database: AppDatabase(path: path), provider: provider)
     }
 
+    private func count(_ sql: String) throws -> Int {
+        try AppDatabase(path: path).writer.read { db in try Int.fetchOne(db, sql: sql) ?? 0 }
+    }
+
     func testGoalToFirstActionToCompletionToNextActionSurvivesReopen() async throws {
         let provider = ScriptedProvider([.action(first), .action(second)])
         let secondCard: ActionCard
@@ -33,7 +37,7 @@ final class ProgressFlowTests: XCTestCase {
             XCTAssertEqual(flow.screen, .goalInput)
 
             try flow.createGoal("  주간 업무 보고서 초안 쓰기 ")
-            XCTAssertEqual(flow.screen, .awaitingFirstAction)
+            XCTAssertEqual(flow.screen, .awaitingFirstAction(goal: "주간 업무 보고서 초안 쓰기", problem: nil))
             await flow.waitForSuggestion()
             guard case .currentAction(let firstCard) = flow.screen else { return XCTFail("\(flow.screen)") }
             XCTAssertEqual(firstCard.task, first.task)
@@ -42,7 +46,7 @@ final class ProgressFlowTests: XCTestCase {
 
             try flow.complete()
             try flow.complete()
-            XCTAssertEqual(flow.screen, .awaitingNextAction)
+            XCTAssertEqual(flow.screen, .awaitingNextAction(problem: nil))
             await flow.waitForSuggestion()
             guard case .currentAction(let card) = flow.screen else { return XCTFail("\(flow.screen)") }
             XCTAssertEqual(card.task, second.task)
@@ -72,13 +76,29 @@ final class ProgressFlowTests: XCTestCase {
         XCTAssertTrue(requests.isEmpty)
     }
 
-    func testGoalCompletionMarkIsNotApplied() async throws {
-        var marked = first
-        marked.marksGoalComplete = true
-        let flow = try makeFlow(ScriptedProvider([.action(marked)]))
-        try flow.createGoal("기타 코드 세 개 익히기")
-        await flow.waitForSuggestion()
-        XCTAssertEqual(flow.screen, .suggestionFailed(.unsuitable))
+    func testStructurallyInvalidCandidatesAreNotApplied() async throws {
+        var blankTask = first
+        blankTask.task = " \n"
+        var blankDoneWhen = first
+        blankDoneWhen.doneWhen = ""
+        var noMinutes = first
+        noMinutes.estimatedMinutes = 0
+        var goalDone = first
+        goalDone.marksGoalComplete = true
+        var currentDone = first
+        currentDone.marksCurrentActionComplete = true
+        let invalid: [SuggestionCandidate] = [
+            .action(blankTask), .action(blankDoneWhen), .action(noMinutes),
+            .action(goalDone), .minimalAction(currentDone), .question("어느 자료부터 볼까요?"),
+        ]
+        let flow = try makeFlow(ScriptedProvider(invalid.map { .success($0) }))
+        for (index, candidate) in invalid.enumerated() {
+            let goal = "목표 \(index)"
+            try flow.createGoal(goal)
+            await flow.waitForSuggestion()
+            XCTAssertEqual(flow.screen, .awaitingFirstAction(goal: goal, problem: .unsuitable), "\(candidate)")
+        }
+        XCTAssertEqual(try count("SELECT COUNT(*) FROM action"), 0)
     }
 
     func testRepeatedCompletedActionIsNotApplied() async throws {
@@ -89,19 +109,132 @@ final class ProgressFlowTests: XCTestCase {
         await flow.waitForSuggestion()
         try flow.complete()
         await flow.waitForSuggestion()
-        XCTAssertEqual(flow.screen, .suggestionFailed(.unsuitable))
+        XCTAssertEqual(flow.screen, .awaitingNextAction(problem: .unsuitable))
+    }
+
+    func testFirstActionFailureKeepsGoalWithoutAutomaticRetry() async throws {
+        let failures = SuggestionFailure.allCases
+        let provider = ScriptedProvider(failures.map { .failure($0) })
+        let flow = try makeFlow(provider)
+        for failure in failures {
+            let goal = "목표 \(failure.rawValue)"
+            try flow.createGoal(goal)
+            await flow.waitForSuggestion()
+            XCTAssertEqual(flow.screen, .awaitingFirstAction(goal: goal, problem: .failure(failure)))
+        }
+        try await Task.sleep(for: .milliseconds(50))
+        let requests = await provider.requests
+        XCTAssertEqual(requests.count, failures.count)
+        XCTAssertEqual(try count("SELECT COUNT(*) FROM action"), 0)
+    }
+
+    func testNextActionFailureKeepsCompletionOffline() async throws {
+        let failures = SuggestionFailure.allCases
+        let provider = ScriptedProvider(failures.flatMap { [.success(.action(first)), .failure($0)] })
+        let flow = try makeFlow(provider)
+        for failure in failures {
+            try flow.createGoal("목표 \(failure.rawValue)")
+            await flow.waitForSuggestion()
+            try flow.complete()
+            XCTAssertEqual(flow.screen, .awaitingNextAction(problem: nil))
+            await flow.waitForSuggestion()
+            XCTAssertEqual(flow.screen, .awaitingNextAction(problem: .failure(failure)))
+        }
+        try await Task.sleep(for: .milliseconds(50))
+        let requests = await provider.requests
+        XCTAssertEqual(requests.count, failures.count * 2)
+
+        let reopened = try makeFlow(ScriptedProvider([SuggestionCandidate]()))
+        XCTAssertEqual(reopened.screen, .awaitingNextAction(problem: .failure(failures.last!)))
+        XCTAssertEqual(try count("SELECT COUNT(*) FROM completion"), failures.count)
+    }
+
+    func testDelayedResultIsAppliedAndRetryWhileWaitingIsIgnored() async throws {
+        let provider = HeldProvider(.action(first))
+        let flow = try makeFlow(provider)
+        try flow.createGoal("통계 강의 1장 끝내기")
+        XCTAssertEqual(flow.screen, .awaitingFirstAction(goal: "통계 강의 1장 끝내기", problem: nil))
+
+        try flow.retrySuggestion()
+        XCTAssertEqual(try count("SELECT COUNT(*) FROM suggestion_request"), 1)
+
+        await provider.release()
+        await flow.waitForSuggestion()
+        guard case .currentAction(let card) = flow.screen else { return XCTFail("\(flow.screen)") }
+        XCTAssertEqual(card.task, first.task)
+        let requests = await provider.requests
+        XCTAssertEqual(requests, 1)
+    }
+
+    func testCompletionWhileAnotherSuggestionIsPendingSucceeds() async throws {
+        let provider = ScriptedProvider([.action(first), .action(second)])
+        let flow = try makeFlow(provider)
+        try flow.createGoal("주간 업무 보고서 초안 쓰기")
+        await flow.waitForSuggestion()
+        // 더 작게(#55) 같은 다른 종류의 요청이 기다리는 상태를 만든다.
+        try await AppDatabase(path: path).writer.write { db in
+            try db.execute(sql: """
+                INSERT INTO suggestion_request (goal_id, kind, goal_revision, status, created_at)
+                SELECT id, 'smaller', revision, 'pending', CURRENT_TIMESTAMP FROM goal
+                """)
+        }
+
+        try flow.complete()
+        XCTAssertEqual(flow.screen, .awaitingNextAction(problem: nil))
+        await flow.waitForSuggestion()
+        guard case .currentAction(let card) = flow.screen else { return XCTFail("\(flow.screen)") }
+        XCTAssertEqual(card.task, second.task)
+        XCTAssertEqual(try count("SELECT COUNT(*) FROM completion"), 1)
+        XCTAssertEqual(try count("SELECT COUNT(*) FROM suggestion_request WHERE kind = 'smaller' AND status = 'interrupted'"), 1)
+    }
+
+    func testCancelReachesProviderAndKeepsGoal() async throws {
+        let provider = SuspendedProvider()
+        let flow = try makeFlow(provider)
+        try flow.createGoal("통계 강의 1장 끝내기")
+        try flow.cancelSuggestion()
+        XCTAssertEqual(flow.screen, .awaitingFirstAction(goal: "통계 강의 1장 끝내기", problem: .cancelled))
+        await flow.waitForSuggestion()
+        let cancelled = await provider.cancelled
+        XCTAssertTrue(cancelled)
+        XCTAssertEqual(flow.screen, .awaitingFirstAction(goal: "통계 강의 1장 끝내기", problem: .cancelled))
+        XCTAssertEqual(try count("SELECT COUNT(*) FROM suggestion_request WHERE status = 'cancelled'"), 1)
+    }
+
+    func testResultArrivingAfterCancelIsNotApplied() async throws {
+        let provider = HeldProvider(.action(first))
+        let flow = try makeFlow(provider)
+        try flow.createGoal("방 한 칸 정리하기")
+        try flow.cancelSuggestion()
+        await provider.release()
+        await flow.waitForSuggestion()
+        XCTAssertEqual(flow.screen, .awaitingFirstAction(goal: "방 한 칸 정리하기", problem: .cancelled))
+        XCTAssertEqual(try count("SELECT COUNT(*) FROM action"), 0)
+    }
+
+    func testResultForChangedRevisionIsNotApplied() async throws {
+        let provider = HeldProvider(.action(first))
+        let flow = try makeFlow(provider)
+        try flow.createGoal("방 한 칸 정리하기")
+        try await AppDatabase(path: path).writer.write { db in
+            try db.execute(sql: "UPDATE goal SET revision = revision + 1")
+        }
+        await provider.release()
+        await flow.waitForSuggestion()
+        XCTAssertEqual(flow.screen, .awaitingFirstAction(goal: "방 한 칸 정리하기", problem: .interrupted))
+        XCTAssertEqual(try count("SELECT COUNT(*) FROM action"), 0)
     }
 
     func testPendingSuggestionIsInterruptedAfterReopenAndCanBeRetried() async throws {
         do {
             let flow = try makeFlow(SuspendedProvider())
             try flow.createGoal("통계 강의 1장 끝내기")
-            XCTAssertEqual(flow.screen, .awaitingFirstAction)
+            XCTAssertEqual(flow.screen, .awaitingFirstAction(goal: "통계 강의 1장 끝내기", problem: nil))
         }
 
         let provider = ScriptedProvider([.action(first)])
         let reopened = try makeFlow(provider)
-        XCTAssertEqual(reopened.screen, .suggestionFailed(.interrupted))
+        XCTAssertEqual(reopened.screen, .awaitingFirstAction(goal: "통계 강의 1장 끝내기", problem: .interrupted))
         let untouched = await provider.requests
         XCTAssertTrue(untouched.isEmpty)
 
@@ -113,12 +246,27 @@ final class ProgressFlowTests: XCTestCase {
         XCTAssertEqual(requests.map(\.kind), [.firstAction])
     }
 
+    func testPendingNextActionIsInterruptedAfterReopenAndKeepsCompletion() async throws {
+        let flow = try makeFlow(ScriptedProvider([.action(first)]))
+        try flow.createGoal("주간 업무 보고서 초안 쓰기")
+        await flow.waitForSuggestion()
+        do {
+            let waiting = try makeFlow(SuspendedProvider())
+            try waiting.complete()
+            XCTAssertEqual(waiting.screen, .awaitingNextAction(problem: nil))
+        }
+
+        let reopened = try makeFlow(ScriptedProvider([SuggestionCandidate]()))
+        XCTAssertEqual(reopened.screen, .awaitingNextAction(problem: .interrupted))
+        XCTAssertEqual(try count("SELECT COUNT(*) FROM completion"), 1)
+    }
+
     func testUnsavedSuggestionResultShowsFailureAndCanBeRetried() async throws {
         let provider = LockingProvider(path: path, candidate: .action(first))
         let flow = try makeFlow(provider)
         try flow.createGoal("주간 업무 보고서 초안 쓰기")
         await flow.waitForSuggestion()
-        XCTAssertEqual(flow.screen, .suggestionFailed(.failure(.failed)))
+        XCTAssertEqual(flow.screen, .awaitingFirstAction(goal: "주간 업무 보고서 초안 쓰기", problem: .failure(.failed)))
 
         await provider.releaseLock()
         try flow.retrySuggestion()
@@ -137,17 +285,46 @@ final class ProgressFlowTests: XCTestCase {
 }
 
 private actor ScriptedProvider: ActionSuggestionProvider {
-    private var candidates: [SuggestionCandidate]
+    private var outcomes: [Result<SuggestionCandidate, SuggestionFailure>]
     private(set) var requests: [SuggestionRequest] = []
 
+    init(_ outcomes: [Result<SuggestionCandidate, SuggestionFailure>]) {
+        self.outcomes = outcomes
+    }
+
     init(_ candidates: [SuggestionCandidate]) {
-        self.candidates = candidates
+        self.init(candidates.map { .success($0) })
     }
 
     func suggest(_ request: SuggestionRequest) async throws -> SuggestionCandidate {
         requests.append(request)
-        guard !candidates.isEmpty else { throw SuggestionFailure.failed }
-        return candidates.removeFirst()
+        guard !outcomes.isEmpty else { throw SuggestionFailure.failed }
+        return try outcomes.removeFirst().get()
+    }
+}
+
+/// `release()` 전까지 결과를 붙잡는다. 취소를 무시해 늦게 도착한 결과를 만든다.
+private actor HeldProvider: ActionSuggestionProvider {
+    private let candidate: SuggestionCandidate
+    private var gate: CheckedContinuation<Void, Never>?
+    private(set) var requests = 0
+
+    init(_ candidate: SuggestionCandidate) {
+        self.candidate = candidate
+    }
+
+    func suggest(_ request: SuggestionRequest) async throws -> SuggestionCandidate {
+        requests += 1
+        await withCheckedContinuation { gate = $0 }
+        return candidate
+    }
+
+    func release() async {
+        for _ in 0..<10_000 where gate == nil { await Task.yield() }
+        // 공급자가 호출되지 않았는데 테스트가 통과하지 않게 한다.
+        precondition(gate != nil, "suggest가 호출되지 않았다")
+        gate?.resume()
+        gate = nil
     }
 }
 
@@ -181,9 +358,16 @@ private actor LockingProvider: ActionSuggestionProvider {
     }
 }
 
-private struct SuspendedProvider: ActionSuggestionProvider {
+private actor SuspendedProvider: ActionSuggestionProvider {
+    private(set) var cancelled = false
+
     func suggest(_ request: SuggestionRequest) async throws -> SuggestionCandidate {
-        try await Task.sleep(for: .seconds(3600))
+        do {
+            try await Task.sleep(for: .seconds(3600))
+        } catch {
+            cancelled = true
+            throw error
+        }
         throw SuggestionFailure.timedOut
     }
 }

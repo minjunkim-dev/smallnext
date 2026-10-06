@@ -52,10 +52,9 @@ struct CoreFlowView: View {
     private var screenIdentity: String {
         switch flow.screen {
         case .goalInput: "goalInput"
-        case .awaitingFirstAction: "awaitingFirstAction"
+        case .awaitingFirstAction(_, let problem): "awaitingFirstAction-\(String(describing: problem))"
         case .currentAction(let card): "currentAction-\(card.id)"
-        case .awaitingNextAction: "awaitingNextAction"
-        case .suggestionFailed(let problem): "suggestionFailed-\(reason(for: problem))"
+        case .awaitingNextAction(let problem): "awaitingNextAction-\(String(describing: problem))"
         }
     }
 
@@ -79,21 +78,28 @@ struct CoreFlowView: View {
                 }
                 .disabled(trimmedGoal.isEmpty)
             }
-        case .awaitingFirstAction:
-            waiting("첫 행동을 준비하고 있어요.")
+        case .awaitingFirstAction(let goal, let problem):
+            VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("입력한 목표")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                    Text(goal)
+                        .font(.body)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                suggestionStatus("첫 행동을 준비하고 있어요.", problem: problem)
+            }
         case .currentAction(let card):
             actionCard(card)
                 .id(card.id)
                 .transition(.opacity)
-        case .awaitingNextAction:
-            waiting("다음 행동을 준비하고 있어요.")
-        case .suggestionFailed(let problem):
+        case .awaitingNextAction(let problem):
             VStack(alignment: .leading, spacing: 16) {
-                Text(reason(for: problem))
-                    .font(.body)
-                commandButton("다시 시도") {
-                    try flow.retrySuggestion()
-                }
+                Text("다음 행동 대기")
+                    .font(.title2.bold())
+                    .accessibilityAddTraits(.isHeader)
+                suggestionStatus("다음 행동을 준비하고 있어요.", problem: problem)
             }
         }
     }
@@ -138,19 +144,31 @@ struct CoreFlowView: View {
         }
     }
 
-    private func waiting(_ message: String) -> some View {
-        VStack(alignment: .leading, spacing: 16) {
-            ProgressView()
-                .accessibilityLabel(message)
-            Text(message)
+    /// 기다리는 중이면 '취소'를, 문제가 있으면 짧은 이유와 '다시 시도'를 보여준다.
+    @ViewBuilder
+    private func suggestionStatus(_ waitingMessage: String, problem: SuggestionProblem?) -> some View {
+        if let problem {
+            Text(reason(for: problem))
                 .font(.body)
+            commandButton("다시 시도") {
+                try flow.retrySuggestion()
+            }
+        } else {
+            ProgressView()
+                .accessibilityLabel(waitingMessage)
+            Text(waitingMessage)
+                .font(.body)
+            commandButton("취소", prominent: false) {
+                try flow.cancelSuggestion()
+            }
         }
     }
 
+    @ViewBuilder
     private func commandButton(
-        _ title: String, command: @escaping @MainActor () throws -> Void
+        _ title: String, prominent: Bool = true, command: @escaping @MainActor () throws -> Void
     ) -> some View {
-        Button {
+        let button = Button {
             storageFailed = false
             do {
                 try withAnimation(.easeInOut(duration: Motion.nextCard)) {
@@ -167,7 +185,12 @@ struct CoreFlowView: View {
                 .font(.headline)
                 .frame(maxWidth: .infinity, minHeight: 44)
         }
-        .buttonStyle(.borderedProminent)
+
+        if prominent {
+            button.buttonStyle(.borderedProminent)
+        } else {
+            button.buttonStyle(.bordered)
+        }
     }
 
     private func reason(for problem: SuggestionProblem) -> String {
@@ -176,8 +199,12 @@ struct CoreFlowView: View {
             "알맞은 행동을 찾지 못했어요."
         case .interrupted:
             "행동 제안이 중단됐어요."
+        case .cancelled:
+            "행동 제안을 취소했어요."
         case .failure(let failure):
             switch failure {
+            case .connectionLost:
+                "연결이 끊겨 행동을 받지 못했어요."
             case .rejected:
                 "행동 제안 요청이 거절됐어요."
             case .undecidable:
@@ -202,12 +229,10 @@ struct CoreFlowView: View {
         switch newScreen {
         case .currentAction(let card):
             messages.append("지금 할 행동: \(card.task)")
-        case .awaitingFirstAction:
-            messages.append("첫 행동을 준비하고 있어요.")
-        case .awaitingNextAction:
-            messages.append("다음 행동을 준비하고 있어요.")
-        case .suggestionFailed(let problem):
-            messages.append(reason(for: problem))
+        case .awaitingFirstAction(_, let problem):
+            messages.append(problem.map(reason(for:)) ?? "첫 행동을 준비하고 있어요.")
+        case .awaitingNextAction(let problem):
+            messages.append(problem.map(reason(for:)) ?? "다음 행동을 준비하고 있어요.")
         case .goalInput:
             break
         }
