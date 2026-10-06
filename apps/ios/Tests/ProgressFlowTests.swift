@@ -1,4 +1,5 @@
 import Foundation
+import SQLite3
 import XCTest
 @testable import Smallnext
 
@@ -112,6 +113,20 @@ final class ProgressFlowTests: XCTestCase {
         XCTAssertEqual(requests.map(\.kind), [.firstAction])
     }
 
+    func testUnsavedSuggestionResultShowsFailureAndCanBeRetried() async throws {
+        let provider = LockingProvider(path: path, candidate: .action(first))
+        let flow = try makeFlow(provider)
+        try flow.createGoal("주간 업무 보고서 초안 쓰기")
+        await flow.waitForSuggestion()
+        XCTAssertEqual(flow.screen, .suggestionFailed(.failure(.failed)))
+
+        await provider.releaseLock()
+        try flow.retrySuggestion()
+        await flow.waitForSuggestion()
+        guard case .currentAction(let card) = flow.screen else { return XCTFail("\(flow.screen)") }
+        XCTAssertEqual(card.task, first.task)
+    }
+
     func testProductMigrationKeepsBootstrapMetadata() throws {
         _ = try makeFlow(UnavailableSuggestionProvider())
         let value = try AppDatabase(path: path).writer.read { db in
@@ -133,6 +148,36 @@ private actor ScriptedProvider: ActionSuggestionProvider {
         requests.append(request)
         guard !candidates.isEmpty else { throw SuggestionFailure.failed }
         return candidates.removeFirst()
+    }
+}
+
+/// 첫 요청에서 다른 연결로 쓰기 잠금을 잡는다. 결과 저장이 실패하는 경우를 만든다.
+/// GRDB는 열린 트랜잭션을 남길 수 없어 SQLite C API를 쓴다.
+private actor LockingProvider: ActionSuggestionProvider {
+    private let path: String
+    private let candidate: SuggestionCandidate
+    private var lock: OpaquePointer?
+    private var locked = false
+
+    init(path: String, candidate: SuggestionCandidate) {
+        self.path = path
+        self.candidate = candidate
+    }
+
+    func suggest(_ request: SuggestionRequest) async throws -> SuggestionCandidate {
+        if !locked {
+            locked = true
+            guard sqlite3_open(path, &lock) == SQLITE_OK,
+                  sqlite3_exec(lock, "BEGIN EXCLUSIVE", nil, nil, nil) == SQLITE_OK
+            else { throw SuggestionFailure.failed }
+        }
+        return candidate
+    }
+
+    func releaseLock() {
+        sqlite3_exec(lock, "ROLLBACK", nil, nil, nil)
+        sqlite3_close(lock)
+        lock = nil
     }
 }
 

@@ -26,7 +26,7 @@ struct SmallnextApp: App {
                         flow = try ProgressFlow(database: opened, provider: Self.suggestionProvider)
                     }
                 } catch {
-                    logger.error("Storage initialization failed: \(error.localizedDescription, privacy: .public)")
+                    logger.error("Storage initialization failed: \(String(describing: type(of: error)), privacy: .public)")
                     storageFailed = true
                 }
             }

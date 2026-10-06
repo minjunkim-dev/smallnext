@@ -94,6 +94,11 @@ final class ProgressFlow {
         guard case .suggestionFailed = screen else { return }
         try perform { db in
             guard let goalID = try Self.selectedGoalID(db) else { return nil }
+            // 결과 저장에 실패해 pending으로 남은 요청을 끝낸다. 늦게 온 결과는 적용하지 않는다.
+            try db.execute(
+                sql: "UPDATE suggestion_request SET status = 'interrupted' WHERE goal_id = ? AND status = 'pending'",
+                arguments: [goalID]
+            )
             let hasCompletion = try Bool.fetchOne(
                 db,
                 sql: "SELECT EXISTS (SELECT 1 FROM action WHERE goal_id = ? AND status = 'done')",
@@ -146,6 +151,7 @@ final class ProgressFlow {
             }
         } catch {
             logger.error("Suggestion result was not saved: \(String(describing: type(of: error)), privacy: .public)")
+            screen = .suggestionFailed(.failure(.failed))
         }
     }
 
