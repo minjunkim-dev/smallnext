@@ -7,12 +7,20 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		2A990F296BB50B6899299801 /* FeatureFlagsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 29D77D33FB48D05C179D0CF8 /* FeatureFlagsTests.swift */; };
+		2D265947424569D25EE96146 /* ActionSuggestionProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1CF338F09FA620EF90A9CA8 /* ActionSuggestionProvider.swift */; };
 		30A8576C772C36E2E2FC18A4 /* SmallnextApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF3E8B07B08AD16D7D946A22 /* SmallnextApp.swift */; };
+		4300C21671B204C2CC1D47FC /* DebugActionSuggestionProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = D865871F50B31C31045FC496 /* DebugActionSuggestionProvider.swift */; };
 		4E6A9ABB211804439CD23ABF /* AppDatabaseTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5408342363FFE1BED5721F7A /* AppDatabaseTests.swift */; };
+		7869651E9B8FEA5180779875 /* ProgressFlowTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CF3BBFF7EDE37F5CAD944BA /* ProgressFlowTests.swift */; };
 		85842A91C296A982B2900C11 /* APIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A760D43D9A97C207911C6F56 /* APIClient.swift */; };
+		A0124FEBDF2CB8A51826648F /* FeatureFlags.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4907685C03FA261E1DA37D9C /* FeatureFlags.swift */; };
+		A9CF16D2206FF500083EBDC6 /* feature-flags.json in Resources */ = {isa = PBXBuildFile; fileRef = 11C1F69DF05E9AE74CF34A04 /* feature-flags.json */; };
+		B6B0E5F26C4133A820CA8D52 /* ProgressFlow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5DC4243300950F8B770CC92F /* ProgressFlow.swift */; };
 		B71B69141C6C67E9D1493408 /* GRDB in Frameworks */ = {isa = PBXBuildFile; productRef = CAB2E1B084489C178DE23B6E /* GRDB */; };
 		CB37945C1CFCBEC01FC47960 /* AppDatabase.swift in Sources */ = {isa = PBXBuildFile; fileRef = DAE5C5E474307463B28E7442 /* AppDatabase.swift */; };
 		F02449B4834E149702AE016B /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1150C4CB7EAB11488B1E454E /* ContentView.swift */; };
+		F224F8FC7FAD5CCDC4FCD8A1 /* CoreFlowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50528CC70F298B20C17329B6 /* CoreFlowView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -27,12 +35,20 @@
 
 /* Begin PBXFileReference section */
 		1150C4CB7EAB11488B1E454E /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		11C1F69DF05E9AE74CF34A04 /* feature-flags.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "feature-flags.json"; sourceTree = "<group>"; };
+		29D77D33FB48D05C179D0CF8 /* FeatureFlagsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeatureFlagsTests.swift; sourceTree = "<group>"; };
 		3E93A4009080939BA076E576 /* SmallnextTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = SmallnextTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		45CC86C08E79F4BD7F4B9088 /* Smallnext.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Smallnext.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		4907685C03FA261E1DA37D9C /* FeatureFlags.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeatureFlags.swift; sourceTree = "<group>"; };
+		50528CC70F298B20C17329B6 /* CoreFlowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoreFlowView.swift; sourceTree = "<group>"; };
 		5408342363FFE1BED5721F7A /* AppDatabaseTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDatabaseTests.swift; sourceTree = "<group>"; };
+		5DC4243300950F8B770CC92F /* ProgressFlow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProgressFlow.swift; sourceTree = "<group>"; };
+		7CF3BBFF7EDE37F5CAD944BA /* ProgressFlowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProgressFlowTests.swift; sourceTree = "<group>"; };
 		A760D43D9A97C207911C6F56 /* APIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIClient.swift; sourceTree = "<group>"; };
+		D865871F50B31C31045FC496 /* DebugActionSuggestionProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugActionSuggestionProvider.swift; sourceTree = "<group>"; };
 		DAE5C5E474307463B28E7442 /* AppDatabase.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDatabase.swift; sourceTree = "<group>"; };
 		DF3E8B07B08AD16D7D946A22 /* SmallnextApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SmallnextApp.swift; sourceTree = "<group>"; };
+		F1CF338F09FA620EF90A9CA8 /* ActionSuggestionProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActionSuggestionProvider.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -50,9 +66,14 @@
 		314C88A527B1396A51F0EA98 /* Sources */ = {
 			isa = PBXGroup;
 			children = (
+				F1CF338F09FA620EF90A9CA8 /* ActionSuggestionProvider.swift */,
 				A760D43D9A97C207911C6F56 /* APIClient.swift */,
 				DAE5C5E474307463B28E7442 /* AppDatabase.swift */,
 				1150C4CB7EAB11488B1E454E /* ContentView.swift */,
+				50528CC70F298B20C17329B6 /* CoreFlowView.swift */,
+				D865871F50B31C31045FC496 /* DebugActionSuggestionProvider.swift */,
+				4907685C03FA261E1DA37D9C /* FeatureFlags.swift */,
+				5DC4243300950F8B770CC92F /* ProgressFlow.swift */,
 				DF3E8B07B08AD16D7D946A22 /* SmallnextApp.swift */,
 			);
 			path = Sources;
@@ -62,6 +83,8 @@
 			isa = PBXGroup;
 			children = (
 				5408342363FFE1BED5721F7A /* AppDatabaseTests.swift */,
+				29D77D33FB48D05C179D0CF8 /* FeatureFlagsTests.swift */,
+				7CF3BBFF7EDE37F5CAD944BA /* ProgressFlowTests.swift */,
 			);
 			path = Tests;
 			sourceTree = "<group>";
@@ -69,6 +92,7 @@
 		6793D9F7101A99052B2570CD = {
 			isa = PBXGroup;
 			children = (
+				D29CB81A766063E3D71BD539 /* smallnext */,
 				314C88A527B1396A51F0EA98 /* Sources */,
 				3A15F3426C97DA0FF9A0CF45 /* Tests */,
 				6FD4CFE4052A9EC75A7D5BF8 /* Products */,
@@ -84,6 +108,23 @@
 			name = Products;
 			sourceTree = "<group>";
 		};
+		AE33151ADE7C8E134A2BE14F /* config */ = {
+			isa = PBXGroup;
+			children = (
+				11C1F69DF05E9AE74CF34A04 /* feature-flags.json */,
+			);
+			path = config;
+			sourceTree = "<group>";
+		};
+		D29CB81A766063E3D71BD539 /* smallnext */ = {
+			isa = PBXGroup;
+			children = (
+				AE33151ADE7C8E134A2BE14F /* config */,
+			);
+			name = smallnext;
+			path = ../..;
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -92,6 +133,7 @@
 			buildConfigurationList = 19B13D6F77B2B58967B9C430 /* Build configuration list for PBXNativeTarget "Smallnext" */;
 			buildPhases = (
 				6E7C741583199509A3FB2DAA /* Sources */,
+				E37944F27193C678F5A600DE /* Resources */,
 				660E31F9C171AC06E07AB8AA /* Frameworks */,
 			);
 			buildRules = (
@@ -164,12 +206,25 @@
 		};
 /* End PBXProject section */
 
+/* Begin PBXResourcesBuildPhase section */
+		E37944F27193C678F5A600DE /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A9CF16D2206FF500083EBDC6 /* feature-flags.json in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
 /* Begin PBXSourcesBuildPhase section */
 		0DBA6230B7CC90B028B28C6E /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
 				4E6A9ABB211804439CD23ABF /* AppDatabaseTests.swift in Sources */,
+				2A990F296BB50B6899299801 /* FeatureFlagsTests.swift in Sources */,
+				7869651E9B8FEA5180779875 /* ProgressFlowTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -178,8 +233,13 @@
 			buildActionMask = 2147483647;
 			files = (
 				85842A91C296A982B2900C11 /* APIClient.swift in Sources */,
+				2D265947424569D25EE96146 /* ActionSuggestionProvider.swift in Sources */,
 				CB37945C1CFCBEC01FC47960 /* AppDatabase.swift in Sources */,
 				F02449B4834E149702AE016B /* ContentView.swift in Sources */,
+				F224F8FC7FAD5CCDC4FCD8A1 /* CoreFlowView.swift in Sources */,
+				4300C21671B204C2CC1D47FC /* DebugActionSuggestionProvider.swift in Sources */,
+				A0124FEBDF2CB8A51826648F /* FeatureFlags.swift in Sources */,
+				B6B0E5F26C4133A820CA8D52 /* ProgressFlow.swift in Sources */,
 				30A8576C772C36E2E2FC18A4 /* SmallnextApp.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
