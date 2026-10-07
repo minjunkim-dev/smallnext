@@ -83,6 +83,11 @@ struct AppDatabase {
                 table.add(column: "answer", .text)
             }
         }
+        migrator.registerMigration("progress_v3_material_links") { db in
+            try db.alter(table: "action") { table in
+                table.add(column: "material_links", .text).notNull().defaults(to: "[]")
+            }
+        }
         try migrator.migrate(writer)
     }
 

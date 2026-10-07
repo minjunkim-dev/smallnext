@@ -10,11 +10,22 @@ struct ActionCard: Equatable, Identifiable, Sendable {
     let estimatedMinutes: Int
     /// 이 행동을 나눈 분할 원본이다. 분할로 만든 행동만 값이 있다.
     var origin: Origin? = nil
+    var draft = ""
+    var results: [ActionResult] = []
+    var targetName: String? = nil
+    var targetDescription: String? = nil
+    var materialLinks: [URL] = []
+    var previousResults: [ActionResult] = []
 
     struct Origin: Equatable, Sendable {
         let id: Int64
         let task: String
     }
+}
+
+struct ActionResult: Equatable, Identifiable, Sendable {
+    let id: Int64
+    let body: String
 }
 
 enum SuggestionProblem: Equatable, Sendable {
@@ -62,6 +73,8 @@ enum ProgressFlowError: Error {
     case emptyAnswer
     case splitSourceNotFound
     case deferredActionNotFound
+    case actionNotCurrent
+    case emptyResult
 }
 
 /// 화면이 호출하는 진행 흐름의 유일한 진입점이다.
@@ -74,6 +87,8 @@ final class ProgressFlow {
     @ObservationIgnored private let database: AppDatabase
     @ObservationIgnored private let provider: any ActionSuggestionProvider
     @ObservationIgnored private var suggestionTask: Task<Void, Never>?
+    /// 결과 저장 실패로 DB에 pending이 남은 요청이다. 다음 성공한 명령에서 실패 상태도 저장한다.
+    @ObservationIgnored private var unsavedSuggestionID: Int64?
     @ObservationIgnored private let logger = Logger(subsystem: "dev.smallnext.app", category: "progress")
 
     init(database: AppDatabase, provider: any ActionSuggestionProvider) throws {
@@ -103,6 +118,49 @@ final class ProgressFlow {
                 arguments: [String(goalID)]
             )
             return try Self.insertRequest(db, goalID: goalID, kind: .firstAction)
+        }
+    }
+
+    /// 입력 초안을 그대로 자동 저장한다. 결과나 완료 기록으로 바꾸지 않는다.
+    func updateDraft(_ text: String, for actionID: Int64) throws {
+        guard case .currentAction(let card, _) = screen, card.id == actionID else {
+            throw ProgressFlowError.actionNotCurrent
+        }
+        try perform { db in
+            guard let goalID = try Self.selectedGoalID(db),
+                  try Bool.fetchOne(db, sql: "SELECT EXISTS (SELECT 1 FROM action WHERE id = ? AND goal_id = ? AND status = 'current')",
+                                    arguments: [actionID, goalID]) == true else {
+                throw ProgressFlowError.actionNotCurrent
+            }
+            try db.execute(
+                sql: """
+                INSERT INTO action_note (action_id, body, is_draft, updated_at) VALUES (?, ?, 1, ?)
+                ON CONFLICT(action_id) WHERE is_draft DO UPDATE SET body = excluded.body, updated_at = excluded.updated_at
+                """,
+                arguments: [actionID, text, Date()]
+            )
+            return nil
+        }
+    }
+
+    /// 사용자가 남긴 행동 결과를 기록하고 입력 초안을 비운다. 행동을 완료하지 않는다.
+    func recordResult(_ text: String, for actionID: Int64) throws {
+        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw ProgressFlowError.emptyResult }
+        guard case .currentAction(let card, _) = screen, card.id == actionID else {
+            throw ProgressFlowError.actionNotCurrent
+        }
+        try perform { db in
+            guard let goalID = try Self.selectedGoalID(db),
+                  try Bool.fetchOne(db, sql: "SELECT EXISTS (SELECT 1 FROM action WHERE id = ? AND goal_id = ? AND status = 'current')",
+                                    arguments: [actionID, goalID]) == true else {
+                throw ProgressFlowError.actionNotCurrent
+            }
+            try db.execute(
+                sql: "INSERT INTO action_note (action_id, body, is_draft, updated_at) VALUES (?, ?, 0, ?)",
+                arguments: [actionID, text, Date()]
+            )
+            try db.execute(sql: "DELETE FROM action_note WHERE action_id = ? AND is_draft", arguments: [actionID])
+            return nil
         }
     }
 
@@ -264,9 +322,17 @@ final class ProgressFlow {
     }
 
     private func perform(_ command: @Sendable (Database) throws -> PendingSuggestion?) throws {
+        let failedID = unsavedSuggestionID
         let (pending, screen) = try database.writer.write { db in
-            (try command(db), try Self.loadScreen(db))
+            if let failedID {
+                try db.execute(
+                    sql: "UPDATE suggestion_request SET status = 'failed', failure_reason = ? WHERE id = ? AND status = 'pending'",
+                    arguments: [SuggestionFailure.failed.rawValue, failedID]
+                )
+            }
+            return (try command(db), try Self.loadScreen(db))
         }
+        unsavedSuggestionID = nil
         self.screen = screen
         if let pending { start(pending) }
     }
@@ -295,6 +361,7 @@ final class ProgressFlow {
             logger.error("Suggestion result was not saved: \(String(describing: type(of: error)), privacy: .public)")
             // 취소한 요청의 결과는 화면에 반영하지 않는다.
             guard !Task.isCancelled else { return }
+            unsavedSuggestionID = pending.id
             switch screen {
             case .awaitingFirstAction(let goal, nil):
                 screen = .awaitingFirstAction(goal: goal, problem: .failure(.failed))
@@ -359,24 +426,35 @@ final class ProgressFlow {
         // 더 작게는 현재 행동을, 다른 요청은 보류한 행동을 그대로 다시 제안하면 적용하지 않는다.
         // 더 작게는 되돌린 작은 행동을 다시 제안할 수 있다(#55).
         let excluded = isSmaller ? [pending.request.currentAction?.task].compactMap { $0 } : pending.request.deferredTasks
-        guard let action = try validated(db, proposed, goalID: pending.goalID), !excluded.contains(action.task) else {
+        guard var action = try validated(db, proposed, goalID: pending.goalID), !excluded.contains(action.task) else {
             return try finishRequest(db, pending.id, status: "failed", reason: unsuitableReason)
         }
         // 분할 원본은 내용을 바꾸지 않고 `split`으로 남긴다. 남은 범위와 목표의 완료 조건을 유지한다.
         var sourceID: Int64?
         if isSmaller {
-            sourceID = try Int64.fetchOne(
-                db, sql: "SELECT id FROM action WHERE goal_id = ? AND status = 'current'", arguments: [pending.goalID]
-            )
-            guard sourceID != nil else { return try finishRequest(db, pending.id, status: "interrupted", reason: nil) }
+            guard let source = try Row.fetchOne(
+                db, sql: "SELECT id, target_name, target_description, material_links FROM action WHERE goal_id = ? AND status = 'current'",
+                arguments: [pending.goalID]
+            ) else { return try finishRequest(db, pending.id, status: "interrupted", reason: nil) }
+            sourceID = source["id"]
+            // 같은 작업을 나눈 행동에서 생략한 대상 정보는 분할 원본의 정보를 유지한다.
+            if action.targetName == nil { action.targetName = source["target_name"] }
+            if action.targetName == source["target_name"] as String? {
+                if action.targetDescription == nil { action.targetDescription = source["target_description"] }
+                if action.materialLinks.isEmpty {
+                    action.materialLinks = try JSONDecoder().decode([URL].self, from: Data((source["material_links"] as String).utf8))
+                }
+            }
             try db.execute(sql: "UPDATE action SET status = 'split' WHERE id = ?", arguments: [sourceID])
         }
         try db.execute(
             sql: """
-            INSERT INTO action (goal_id, task, done_when, estimated_minutes, status, split_from_id, sequence)
-            VALUES (?, ?, ?, ?, 'current', ?, (SELECT COALESCE(MAX(sequence), 0) + 1 FROM action WHERE goal_id = ?))
+            INSERT INTO action (goal_id, task, done_when, estimated_minutes, target_name, target_description, material_links, status, split_from_id, sequence)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 'current', ?, (SELECT COALESCE(MAX(sequence), 0) + 1 FROM action WHERE goal_id = ?))
             """,
-            arguments: [pending.goalID, action.task, action.doneWhen, action.estimatedMinutes, sourceID, pending.goalID]
+            arguments: [pending.goalID, action.task, action.doneWhen, action.estimatedMinutes,
+                        action.targetName, action.targetDescription, String(decoding: try JSONEncoder().encode(action.materialLinks), as: UTF8.self),
+                        sourceID, pending.goalID]
         )
         try bumpRevision(db, goalID: pending.goalID)
         try finishRequest(db, pending.id, status: "applied", reason: nil)
@@ -389,8 +467,13 @@ final class ProgressFlow {
         var action = proposed
         action.task = proposed.task.trimmingCharacters(in: .whitespacesAndNewlines)
         action.doneWhen = proposed.doneWhen.trimmingCharacters(in: .whitespacesAndNewlines)
+        action.targetName = proposed.targetName?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if action.targetName?.isEmpty == true { action.targetName = nil }
+        action.targetDescription = proposed.targetDescription?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if action.targetDescription?.isEmpty == true { action.targetDescription = nil }
         guard !action.task.isEmpty, !action.doneWhen.isEmpty, action.estimatedMinutes > 0,
-              !action.marksGoalComplete, !action.marksCurrentActionComplete else {
+              !action.marksGoalComplete, !action.marksCurrentActionComplete,
+              action.materialLinks.allSatisfy({ ["https", "http"].contains($0.scheme?.lowercased() ?? "") && !($0.host ?? "").isEmpty }) else {
             return nil
         }
         let repeated = try Bool.fetchOne(
@@ -545,7 +628,8 @@ final class ProgressFlow {
         if let row = try Row.fetchOne(
             db,
             sql: """
-            SELECT a.id, a.task, a.done_when, a.estimated_minutes, a.split_from_id, p.task AS source_task, g.revision
+            SELECT a.id, a.task, a.done_when, a.estimated_minutes, a.target_name, a.target_description, a.material_links,
+                   a.split_from_id, p.task AS source_task, g.revision
             FROM action a JOIN goal g ON g.id = a.goal_id
             LEFT JOIN action p ON p.id = a.split_from_id AND p.status = 'split'
             WHERE a.goal_id = ? AND a.status = 'current'
@@ -558,7 +642,21 @@ final class ProgressFlow {
                 doneWhen: row["done_when"],
                 estimatedMinutes: row["estimated_minutes"],
                 // 분할 원본이 `split`일 때만 되돌릴 수 있다. 보류·완료한 원본은 관계에서 뺀다.
-                origin: (row["source_task"] as String?).map { ActionCard.Origin(id: row["split_from_id"], task: $0) }
+                origin: (row["source_task"] as String?).map { ActionCard.Origin(id: row["split_from_id"], task: $0) },
+                draft: try String.fetchOne(db, sql: "SELECT body FROM action_note WHERE action_id = ? AND is_draft", arguments: [row["id"] as Int64]) ?? "",
+                results: try Row.fetchAll(db, sql: "SELECT id, body FROM action_note WHERE action_id = ? AND NOT is_draft ORDER BY id",
+                                          arguments: [row["id"] as Int64]).map { ActionResult(id: $0["id"], body: $0["body"]) },
+                targetName: row["target_name"],
+                targetDescription: row["target_description"],
+                materialLinks: try JSONDecoder().decode([URL].self, from: Data((row["material_links"] as String).utf8)),
+                previousResults: try Row.fetchAll(
+                    db,
+                    sql: """
+                    SELECT n.id, n.body FROM action_note n JOIN action a ON a.id = n.action_id
+                    WHERE a.goal_id = ? AND a.target_name = ? AND a.id != ? AND NOT n.is_draft ORDER BY n.id
+                    """,
+                    arguments: [goalID, row["target_name"] as String?, row["id"] as Int64]
+                ).map { ActionResult(id: $0["id"], body: $0["body"]) }
             )
             // 같은 리비전의 더 작게 요청만 현재 행동에 대한 요청이다.
             var smaller: SmallerStatus?
