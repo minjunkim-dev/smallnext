@@ -30,6 +30,9 @@ targets:
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
         TARGETED_DEVICE_FAMILY: "1,2"
+      configs:
+        Debug:
+          INFOPLIST_FILE: Config/Debug.plist
     dependencies:
       - package: GRDB
   SmallnextTests:

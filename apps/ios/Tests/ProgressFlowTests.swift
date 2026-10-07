@@ -25,6 +25,31 @@ final class ProgressFlowTests: XCTestCase {
         try ProgressFlow(database: AppDatabase(path: path), provider: provider)
     }
 
+    func testRemainingSplitWorkSurvivesTwoNextActionsAndReopen() async throws {
+        let fourth = ProposedAction(task: "자료 저장하기", doneWhen: "자료가 저장됐다", estimatedMinutes: 1)
+        let fifth = ProposedAction(task: "자료 위치 확인하기", doneWhen: "위치를 확인했다", estimatedMinutes: 1)
+        let provider = ScriptedProvider([.action(first), .action(second), .action(third), .action(fourth), .action(fifth)])
+        let flow = try makeFlow(provider)
+        try flow.createGoal("학습 자료 정리")
+        await flow.waitForSuggestion()
+        try flow.makeSmaller()
+        await flow.waitForSuggestion()
+        try flow.complete()
+        await flow.waitForSuggestion()
+        try flow.complete()
+        await flow.waitForSuggestion()
+        let requests = await provider.requests
+        XCTAssertTrue(requests.last!.remainingTasks.contains(first.task))
+        XCTAssertEqual(requests.last!.completedActionIDs.count, 2)
+        XCTAssertFalse(requests.last!.stateKey.isEmpty)
+        let reopened = try makeFlow(provider)
+        try reopened.complete()
+        await reopened.waitForSuggestion()
+        let recovered = await provider.requests
+        XCTAssertTrue(recovered.last!.remainingTasks.contains(first.task))
+        XCTAssertEqual(recovered.last!.completedActionIDs.count, 3)
+    }
+
     private func count(_ sql: String) throws -> Int {
         try AppDatabase(path: path).writer.read { db in try Int.fetchOne(db, sql: sql) ?? 0 }
     }

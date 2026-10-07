@@ -14,6 +14,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let address: SocketAddr = env::var("API_BIND_ADDRESS")
         .unwrap_or_else(|_| "127.0.0.1:8080".into())
         .parse()?;
+    let development = smallnext_api::development_ai::http::from_environment(address)?;
     let database = PgPoolOptions::new()
         .max_connections(5)
         .acquire_timeout(Duration::from_secs(5))
@@ -22,7 +23,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     smallnext_api::migrate(&database).await?;
     let listener = tokio::net::TcpListener::bind(address).await?;
     tracing::info!(%address, "API listening");
-    axum::serve(listener, smallnext_api::router(database))
+    axum::serve(listener, smallnext_api::router(database).merge(development))
         .with_graceful_shutdown(shutdown())
         .await?;
     Ok(())

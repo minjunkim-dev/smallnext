@@ -825,7 +825,10 @@ final class ProgressFlow {
                 splitSources: kind == .smaller ? try splitSources(db, goalID: goalID) : [],
                 deferredTasks: try deferredCards(db, goalID: goalID).map(\.task),
                 context: try loadGoalContext(db, row: goal, goalID: goalID),
-                completionCriteria: goal["completion_criteria"]
+                completionCriteria: goal["completion_criteria"],
+                stateKey: "\(goalID):\(revision)",
+                remainingTasks: try String.fetchAll(db, sql: "SELECT task FROM action WHERE goal_id = ? AND status IN ('current', 'split', 'deferred') ORDER BY sequence", arguments: [goalID]),
+                completedActionIDs: try Int64.fetchAll(db, sql: "SELECT a.id FROM completion c JOIN action a ON a.id = c.action_id WHERE a.goal_id = ? ORDER BY c.id", arguments: [goalID]).map(String.init)
             )
         )
     }

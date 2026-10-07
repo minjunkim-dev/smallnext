@@ -1,4 +1,5 @@
-//! Local development only. The HTTP server never exposes this subscription adapter.
+//! Developer's Mac only. HTTP access requires the local development flag.
+pub mod http;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{
@@ -28,6 +29,8 @@ pub enum ProposalStatus {
     Action,
     NeedInfo,
     Minimum,
+    GoalSummary,
+    NoAction,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -58,6 +61,8 @@ pub struct AiInput {
     pub remaining_work: Vec<String>,
     pub completed_ids: Vec<String>,
     pub previous_proposals: Vec<Proposal>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub request_kind: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -89,6 +94,8 @@ pub enum Disposition {
     Failed,
     TimedOut,
     Superseded,
+    BudgetLimit,
+    ConnectionLost,
 }
 
 /// Only the evaluator can construct a candidate that has passed both stages.
@@ -166,6 +173,7 @@ impl ActionState {
     }
 }
 
+#[derive(Clone)]
 pub struct SubscriptionAi {
     enabled: bool,
     executable: PathBuf,
@@ -191,7 +199,7 @@ impl Default for SubscriptionAi {
     }
 }
 impl SubscriptionAi {
-    /// Explicit local override. Never used by the API server or mobile apps.
+    /// Explicit override for the developer's local CLI or development HTTP server.
     pub fn for_local_development() -> Self {
         Self {
             enabled: true,
@@ -236,6 +244,13 @@ impl SubscriptionAi {
             || input.user_request.trim().is_empty()
             || !input.available_minutes.is_finite()
             || input.available_minutes < 0.0
+            || input.current_blocker.len() > 2048
+            || input.request_kind.as_deref().is_some_and(|kind| {
+                !matches!(
+                    kind,
+                    "goal_preparation" | "first_action" | "next_action" | "smaller" | "replacement"
+                )
+            })
         {
             return Err(Disposition::InvalidInput);
         }
@@ -251,6 +266,10 @@ impl SubscriptionAi {
             || proposal.current_action_completed
             || proposal.remaining_work != input.remaining_work
             || proposal.preserved_completed_ids != input.completed_ids
+            || (proposal.status == ProposalStatus::GoalSummary
+                && input.request_kind.as_deref() != Some("goal_preparation"))
+            || (proposal.status == ProposalStatus::NoAction
+                && input.request_kind.as_deref() != Some("replacement"))
         {
             return Err(Disposition::InvalidProposal);
         }
@@ -329,6 +348,16 @@ impl SubscriptionAi {
                 "skills.max_context_tokens=1",
                 "-c",
                 "model_reasoning_effort=\"medium\"",
+                "-c",
+                "model_provider=\"smallnext-development\"",
+                "-c",
+                "model_providers.smallnext-development.name=\"OpenAI\"",
+                "-c",
+                "model_providers.smallnext-development.requires_openai_auth=true",
+                "-c",
+                "model_providers.smallnext-development.request_max_retries=0",
+                "-c",
+                "model_providers.smallnext-development.stream_max_retries=0",
             ])
             .arg("-c")
             .arg(format!(
@@ -382,15 +411,16 @@ impl SubscriptionAi {
         if output.len() as u64 > OUTPUT_LIMIT {
             return Err(Disposition::Failed);
         }
+        let parsed = parse_events(&output);
         if !child
             .wait()
             .await
             .map_err(|_| Disposition::Failed)?
             .success()
         {
-            return Err(Disposition::Failed);
+            return Err(parsed.err().unwrap_or(Disposition::Failed));
         }
-        parse_events(&output)
+        parsed
     }
 }
 
@@ -401,7 +431,8 @@ fn parse_events(bytes: &[u8]) -> Result<Value, Disposition> {
     for line in text.lines().filter(|s| !s.trim().is_empty()) {
         let event: Value = serde_json::from_str(line).map_err(|_| Disposition::Failed)?;
         match event["type"].as_str() {
-            Some("turn.failed" | "error") => return Err(Disposition::Failed),
+            Some("turn.failed") => return Err(cli_failure(&event["error"])),
+            Some("error") => return Err(cli_failure(&event)),
             Some("turn.completed") => {
                 if completed {
                     return Err(Disposition::Failed);
@@ -425,6 +456,7 @@ fn parse_events(bytes: &[u8]) -> Result<Value, Disposition> {
                     // Codex reports this intentional catalog removal as an error item.
                     // Accept only the exact no-skills notice; configuration/tool errors fail.
                     Some("error") if empty_skills_notice(&event["item"]) => (),
+                    Some("error") => return Err(cli_failure(&event["item"])),
                     _ => return Err(Disposition::Failed),
                 }
             }
@@ -436,6 +468,31 @@ fn parse_events(bytes: &[u8]) -> Result<Value, Disposition> {
         return Err(Disposition::Failed);
     }
     result.ok_or(Disposition::Failed)
+}
+
+// Codex exec exposes only an error message, not a structured error code.
+// Match known upstream prefixes; unknown or changed messages still fail closed.
+fn cli_failure(error: &Value) -> Disposition {
+    let message = error["message"].as_str().unwrap_or("");
+    if message.starts_with("You've hit your usage limit")
+        || message.starts_with("You’ve hit your usage limit")
+        || message.starts_with("You hit your spend cap")
+        || message.starts_with("Quota exceeded.")
+    {
+        Disposition::BudgetLimit
+    } else if message.starts_with("Connection failed:")
+        || message.starts_with("stream disconnected before completion:")
+    {
+        if message.contains("reason: content_filter") {
+            Disposition::Rejected
+        } else {
+            Disposition::ConnectionLost
+        }
+    } else if message == "request timed out" {
+        Disposition::TimedOut
+    } else {
+        Disposition::Failed
+    }
 }
 
 fn empty_skills_notice(item: &Value) -> bool {

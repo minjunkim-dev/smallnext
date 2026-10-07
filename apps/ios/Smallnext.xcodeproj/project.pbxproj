@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		0B9EE1C48A878327AD58B157 /* DevelopmentActionSuggestionProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = EBCF62E6888EE7657EE273B8 /* DevelopmentActionSuggestionProvider.swift */; };
 		2A990F296BB50B6899299801 /* FeatureFlagsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 29D77D33FB48D05C179D0CF8 /* FeatureFlagsTests.swift */; };
 		2D265947424569D25EE96146 /* ActionSuggestionProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1CF338F09FA620EF90A9CA8 /* ActionSuggestionProvider.swift */; };
 		30A8576C772C36E2E2FC18A4 /* SmallnextApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF3E8B07B08AD16D7D946A22 /* SmallnextApp.swift */; };
@@ -19,6 +20,7 @@
 		B6B0E5F26C4133A820CA8D52 /* ProgressFlow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5DC4243300950F8B770CC92F /* ProgressFlow.swift */; };
 		B71B69141C6C67E9D1493408 /* GRDB in Frameworks */ = {isa = PBXBuildFile; productRef = CAB2E1B084489C178DE23B6E /* GRDB */; };
 		CB37945C1CFCBEC01FC47960 /* AppDatabase.swift in Sources */ = {isa = PBXBuildFile; fileRef = DAE5C5E474307463B28E7442 /* AppDatabase.swift */; };
+		EB0D6BCE1C5287B628AF9659 /* DevelopmentActionSuggestionProviderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B3B5E4145554A1FC8D297E /* DevelopmentActionSuggestionProviderTests.swift */; };
 		F02449B4834E149702AE016B /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1150C4CB7EAB11488B1E454E /* ContentView.swift */; };
 		F224F8FC7FAD5CCDC4FCD8A1 /* CoreFlowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50528CC70F298B20C17329B6 /* CoreFlowView.swift */; };
 /* End PBXBuildFile section */
@@ -44,10 +46,12 @@
 		5408342363FFE1BED5721F7A /* AppDatabaseTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDatabaseTests.swift; sourceTree = "<group>"; };
 		5DC4243300950F8B770CC92F /* ProgressFlow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProgressFlow.swift; sourceTree = "<group>"; };
 		7CF3BBFF7EDE37F5CAD944BA /* ProgressFlowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProgressFlowTests.swift; sourceTree = "<group>"; };
+		A1B3B5E4145554A1FC8D297E /* DevelopmentActionSuggestionProviderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DevelopmentActionSuggestionProviderTests.swift; sourceTree = "<group>"; };
 		A760D43D9A97C207911C6F56 /* APIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIClient.swift; sourceTree = "<group>"; };
 		D865871F50B31C31045FC496 /* DebugActionSuggestionProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugActionSuggestionProvider.swift; sourceTree = "<group>"; };
 		DAE5C5E474307463B28E7442 /* AppDatabase.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDatabase.swift; sourceTree = "<group>"; };
 		DF3E8B07B08AD16D7D946A22 /* SmallnextApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SmallnextApp.swift; sourceTree = "<group>"; };
+		EBCF62E6888EE7657EE273B8 /* DevelopmentActionSuggestionProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DevelopmentActionSuggestionProvider.swift; sourceTree = "<group>"; };
 		F1CF338F09FA620EF90A9CA8 /* ActionSuggestionProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActionSuggestionProvider.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -72,6 +76,7 @@
 				1150C4CB7EAB11488B1E454E /* ContentView.swift */,
 				50528CC70F298B20C17329B6 /* CoreFlowView.swift */,
 				D865871F50B31C31045FC496 /* DebugActionSuggestionProvider.swift */,
+				EBCF62E6888EE7657EE273B8 /* DevelopmentActionSuggestionProvider.swift */,
 				4907685C03FA261E1DA37D9C /* FeatureFlags.swift */,
 				5DC4243300950F8B770CC92F /* ProgressFlow.swift */,
 				DF3E8B07B08AD16D7D946A22 /* SmallnextApp.swift */,
@@ -83,6 +88,7 @@
 			isa = PBXGroup;
 			children = (
 				5408342363FFE1BED5721F7A /* AppDatabaseTests.swift */,
+				A1B3B5E4145554A1FC8D297E /* DevelopmentActionSuggestionProviderTests.swift */,
 				29D77D33FB48D05C179D0CF8 /* FeatureFlagsTests.swift */,
 				7CF3BBFF7EDE37F5CAD944BA /* ProgressFlowTests.swift */,
 			);
@@ -223,6 +229,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				4E6A9ABB211804439CD23ABF /* AppDatabaseTests.swift in Sources */,
+				EB0D6BCE1C5287B628AF9659 /* DevelopmentActionSuggestionProviderTests.swift in Sources */,
 				2A990F296BB50B6899299801 /* FeatureFlagsTests.swift in Sources */,
 				7869651E9B8FEA5180779875 /* ProgressFlowTests.swift in Sources */,
 			);
@@ -238,6 +245,7 @@
 				F02449B4834E149702AE016B /* ContentView.swift in Sources */,
 				F224F8FC7FAD5CCDC4FCD8A1 /* CoreFlowView.swift in Sources */,
 				4300C21671B204C2CC1D47FC /* DebugActionSuggestionProvider.swift in Sources */,
+				0B9EE1C48A878327AD58B157 /* DevelopmentActionSuggestionProvider.swift in Sources */,
 				A0124FEBDF2CB8A51826648F /* FeatureFlags.swift in Sources */,
 				B6B0E5F26C4133A820CA8D52 /* ProgressFlow.swift in Sources */,
 				30A8576C772C36E2E2FC18A4 /* SmallnextApp.swift in Sources */,
@@ -403,6 +411,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Config/Debug.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Smallnext;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;

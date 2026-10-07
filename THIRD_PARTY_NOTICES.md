@@ -25,6 +25,7 @@ Cargo.lock과 `cargo metadata --locked`의 패키지 메타데이터를 확인�
 | 구성 요소 | 잠금 버전 | 라이선스 | 출처 |
 | --- | --- | --- | --- |
 | axum | 0.8.9 | MIT | [tokio-rs/axum](https://github.com/tokio-rs/axum) |
+| http-body | 1.1.0 | MIT | [hyperium/http-body](https://github.com/hyperium/http-body) |
 | serde | 1.0.229 | MIT OR Apache-2.0 | [serde-rs/serde](https://github.com/serde-rs/serde) |
 | serde_json | 1.0.151 | MIT OR Apache-2.0 | [serde-rs/json](https://github.com/serde-rs/json) |
 | sqlx | 0.8.6 | MIT OR Apache-2.0 | [launchbadge/sqlx](https://github.com/launchbadge/sqlx) |

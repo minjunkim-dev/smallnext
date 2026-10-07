@@ -30,6 +30,11 @@ struct SuggestionRequest: Sendable, Equatable {
     var deferredTasks: [String] = []
     var context = GoalContext()
     var completionCriteria: String? = nil
+    /// 같은 목표 리비전의 HTTP 중복 요청을 막는 키다.
+    var stateKey: String = ""
+    /// 완료한 행동과 구분하는 미완료 분할 원본·현재·보류 행동이다.
+    var remainingTasks: [String] = []
+    var completedActionIDs: [String] = []
 }
 
 struct GoalAnswer: Equatable, Sendable {
