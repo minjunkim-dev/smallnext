@@ -648,6 +648,24 @@ final class ProgressFlowTests: XCTestCase {
         XCTAssertEqual(try count("SELECT COUNT(*) FROM completion"), 1)
     }
 
+    func testFailedNextActionIsRetriedAsNextActionWhileOnHold() async throws {
+        let provider = ScriptedProvider([.success(.action(first)), .success(.action(second)), .failure(.timedOut), .success(.action(third))])
+        let flow = try makeFlow(provider)
+        _ = try await firstCard(flow)
+        try flow.deferAction()
+        await flow.waitForSuggestion()
+        try flow.complete()
+        await flow.waitForSuggestion()
+        try flow.retrySuggestion()
+        await flow.waitForSuggestion()
+        guard case .currentAction(let card, nil) = flow.screen else { return XCTFail("\(flow.screen)") }
+        XCTAssertEqual(card.task, third.task)
+        // 실패한 다음 행동은 같은 종류로 다시 요청한다. 보류 목록은 계속 담는다.
+        let requests = await provider.requests
+        XCTAssertEqual(requests.map(\.kind), [.firstAction, .replacement, .nextAction, .nextAction])
+        XCTAssertEqual(requests[3].deferredTasks, [first.task])
+    }
+
     func testNextActionMatchingDeferredActionIsNotApplied() async throws {
         let provider = ScriptedProvider([.action(first), .action(second), .action(first)])
         let flow = try makeFlow(provider)

@@ -216,18 +216,24 @@ final class ProgressFlow {
 
     /// 실패·중단·취소한 제안과 대체 후보가 없는 보류 중 화면만 다시 요청한다. 기다리는 중이면 무시한다.
     func retrySuggestion() throws {
-        // 보류한 행동이 있으면 그 행동을 뺀 대체 행동을 요청한다.
-        let replacing: Bool
         switch screen {
-        case .onHold(_, .noAction), .onHold(_, .problem): replacing = true
-        case _ where screen.suggestionProblem != nil: replacing = false
+        case .onHold(_, .noAction), .onHold(_, .problem): break
+        case _ where screen.suggestionProblem != nil: break
         default: return
         }
         try perform { db in
             guard let goalID = try Self.selectedGoalID(db) else { return nil }
+            let latest = try String.fetchOne(
+                db, sql: "SELECT kind FROM suggestion_request WHERE goal_id = ? ORDER BY id DESC LIMIT 1", arguments: [goalID]
+            ).flatMap(SuggestionKind.init(rawValue:))
             // 결과 저장에 실패해 pending으로 남은 요청을 끝낸다. 늦게 온 결과는 적용하지 않는다.
             try Self.endPendingRequests(db, goalID: goalID, status: "interrupted")
-            let kind: SuggestionKind = replacing ? .replacement : try Self.hasCompletion(db, goalID: goalID) ? .nextAction : .firstAction
+            // 첫 행동·다음 행동은 같은 종류로 다시 요청해 분할 원본 문맥을 유지한다.
+            // 그 밖에는 현재 행동이 없을 때 대체 요청이다. 모든 요청은 보류한 행동을 제외한다.
+            let kind: SuggestionKind = switch latest {
+            case .firstAction, .nextAction, nil: try Self.hasCompletion(db, goalID: goalID) ? .nextAction : .firstAction
+            case .smaller, .replacement: .replacement
+            }
             return try Self.insertRequest(db, goalID: goalID, kind: kind)
         }
     }
