@@ -13,6 +13,14 @@ struct DebugActionSuggestionProvider: ActionSuggestionProvider {
 
     func suggest(_ request: SuggestionRequest) async throws -> SuggestionCandidate {
         try await Task.sleep(for: delay)
+        if request.kind == .goalPreparation {
+            if ["정리하기", "준비하기", "공부하기"].contains(request.goal),
+               request.context.currentState == nil, request.blocker == nil,
+               request.context.materialExcerpt == nil, request.context.answers.isEmpty {
+                return .question("무엇을 하려는지 한 가지 알려 주세요.")
+            }
+            return .goalSummary("‘\(request.goal)’을 마쳤다고 확인한다.")
+        }
         // 대체: 대체 행동 하나를 돌려준다. 그 행동도 보류했으면 후보가 없다.
         if request.kind == .replacement {
             var replacement = Self.step("목표에 대해 떠오르는 생각 한 줄 적기", "생각 한 줄이 남는다", 3)

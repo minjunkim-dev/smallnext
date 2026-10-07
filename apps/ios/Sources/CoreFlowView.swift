@@ -10,7 +10,11 @@ enum Motion {
 struct CoreFlowView: View {
     let flow: ProgressFlow
 
-    @State private var goalText = ""
+    @State private var goalInputDraft = GoalInput()
+    @State private var goalContextExpanded = false
+    @State private var criteriaText = ""
+    @State private var showingGoal = false
+    @State private var goalInputProblem: String?
     @State private var answerText = ""
     @State private var draftText = ""
     @State private var detailsExpanded = false
@@ -22,15 +26,22 @@ struct CoreFlowView: View {
     private let accent = Color(red: 0.18, green: 0.27, blue: 0.16)
 
     private var trimmedGoal: String {
-        goalText.trimmingCharacters(in: .whitespacesAndNewlines)
+        goalInputDraft.statement.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
-                Text("Smallnext")
-                    .font(.headline)
-                    .accessibilityAddTraits(.isHeader)
+                HStack(alignment: .top) {
+                    Text("Smallnext")
+                        .font(.headline)
+                        .accessibilityAddTraits(.isHeader)
+                    Spacer()
+                    if flow.goalDetails != nil {
+                        Button("목표 보기") { showingGoal = true }
+                            .frame(minHeight: 44)
+                    }
+                }
 
                 // 상태별 뷰를 위쪽에 맞춰 교체한다. 이동 없이 투명도 전환만 쓴다.
                 ZStack(alignment: .topLeading) {
@@ -45,6 +56,9 @@ struct CoreFlowView: View {
                         .font(.body)
                         .foregroundStyle(.primary)
                 }
+                if let goalInputProblem {
+                    Text(goalInputProblem).fixedSize(horizontal: false, vertical: true)
+                }
             }
             .padding(24)
             .frame(maxWidth: 560, alignment: .leading)
@@ -52,7 +66,12 @@ struct CoreFlowView: View {
         }
         .background(Color(.systemGroupedBackground))
         .tint(accent)
-        .onAppear { restoreDraft() }
+        .sheet(isPresented: $showingGoal) { goalView }
+        .onAppear {
+            restoreDraft()
+            goalInputDraft = flow.goalInput
+            if case .preparingGoal(_, let criteria, _) = flow.screen { criteriaText = criteria ?? "" }
+        }
         .onChange(of: flow.screen) { oldScreen, newScreen in
             if case .currentAction(let oldCard, let oldSmaller) = oldScreen,
                case .currentAction(let newCard, let newSmaller) = newScreen,
@@ -64,6 +83,7 @@ struct CoreFlowView: View {
             }
             // 답 입력은 지금 보이는 질문에만 쓴다.
             answerText = ""
+            if case .preparingGoal(_, let criteria, _) = newScreen { criteriaText = criteria ?? "" }
             startSplitMotion(from: oldScreen, to: newScreen)
             announceChange(from: oldScreen, to: newScreen)
         }
@@ -72,6 +92,7 @@ struct CoreFlowView: View {
     private var screenIdentity: String {
         switch flow.screen {
         case .goalInput: "goalInput"
+        case .preparingGoal: "preparingGoal"
         case .awaitingFirstAction(_, let problem): "awaitingFirstAction-\(String(describing: problem))"
         case .currentAction(let card, _): "currentAction-\(card.id)"
         case .awaitingNextAction(let problem): "awaitingNextAction-\(String(describing: problem))"
@@ -82,33 +103,56 @@ struct CoreFlowView: View {
     @ViewBuilder
     private var screenContent: some View {
         switch flow.screen {
+        case .preparingGoal(let question, let criteria, let problem):
+            VStack(alignment: .leading, spacing: 16) {
+                Text("목표 확인")
+                    .font(.title2.bold()).accessibilityAddTraits(.isHeader)
+                Text(flow.goalDetails?.statement ?? "").fixedSize(horizontal: false, vertical: true)
+                if let question, problem == nil {
+                    Text(question).font(.headline).fixedSize(horizontal: false, vertical: true)
+                    TextField("알고 있는 답", text: $answerText, axis: .vertical)
+                        .textFieldStyle(.roundedBorder).accessibilityLabel("목표 확인 질문 답")
+                    commandButton("답 보내기") { try flow.answerGoalQuestion(answerText) }
+                        .disabled(answerText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                } else if criteria != nil, problem == nil {
+                    Text("완료 조건").font(.headline)
+                    TextField("이 목표가 끝난 기준", text: $criteriaText, axis: .vertical)
+                        .textFieldStyle(.roundedBorder).accessibilityLabel("목표 완료 조건")
+                    Text("현재 상태").font(.headline)
+                    Text(flow.goalDetails?.context.currentState ?? "아직 알려주지 않았어요.")
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text("완료 조건과 현재 상태를 확인해 주세요. 완료 조건은 직접 고칠 수 있어요.")
+                        .fixedSize(horizontal: false, vertical: true)
+                    commandButton("확인하고 시작") { try flow.confirmGoal(completionCriteria: criteriaText) }
+                        .disabled(criteriaText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                } else {
+                    suggestionStatus("목표를 정리하고 있어요.", problem: problem)
+                }
+            }
         case .goalInput:
             VStack(alignment: .leading, spacing: 16) {
                 Text("목표를 한 문장으로 적어 주세요.")
                     .font(.title2.bold())
                     .accessibilityAddTraits(.isHeader)
-                TextField("목표 한 문장", text: $goalText, axis: .vertical)
-                    .font(.body)
-                    .padding(16)
-                    .frame(minHeight: 44)
-                    .background(Color(.secondarySystemGroupedBackground),
-                                in: RoundedRectangle(cornerRadius: 12))
-                    .accessibilityLabel("목표 한 문장")
-                commandButton("시작") {
-                    try flow.createGoal(trimmedGoal)
+                goalField("목표 한 문장", field: \.statement)
+                DisclosureGroup("아는 맥락 보태기 (선택)", isExpanded: $goalContextExpanded) {
+                    VStack(alignment: .leading, spacing: 16) {
+                        goalField("기한 (선택)", field: \.deadline)
+                        goalField("현재 상태 (선택)", field: \.currentState)
+                        goalField("막힌 점 (선택)", field: \.blocker)
+                        goalField("자료 링크 (선택, 한 줄에 하나)", field: \.materialLinks)
+                        goalField("고른 발췌·요약 (선택)", field: \.materialExcerpt)
+                        goalField("지금 쓸 수 있는 시간 (선택, 분)", field: \.availableMinutes)
+                        Text("자료는 링크와 직접 고른 발췌·요약만 보내요. 링크의 내용은 자동으로 읽지 않아요.")
+                            .font(.footnote).fixedSize(horizontal: false, vertical: true)
+                    }
+                    .padding(.top, 12)
                 }
+                commandButton("목표 정리") { try flow.prepareGoal() }
                 .disabled(trimmedGoal.isEmpty)
             }
-        case .awaitingFirstAction(let goal, let problem):
+        case .awaitingFirstAction(_, let problem):
             VStack(alignment: .leading, spacing: 16) {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("입력한 목표")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                    Text(goal)
-                        .font(.body)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
                 suggestionStatus("첫 행동을 준비하고 있어요.", problem: problem)
             }
         case .currentAction(let card, let smaller):
@@ -124,6 +168,55 @@ struct CoreFlowView: View {
             }
         case .onHold(let deferred, let status):
             onHold(deferred, status: status)
+        }
+    }
+
+    private func goalField(_ title: String, field: WritableKeyPath<GoalInput, String>) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title).font(.subheadline).fixedSize(horizontal: false, vertical: true)
+            TextField(title, text: Binding(
+                get: { goalInputDraft[keyPath: field] },
+                set: { text in
+                    guard flow.screen == .goalInput else { return }
+                    goalInputDraft[keyPath: field] = text
+                    goalInputProblem = nil
+                    do {
+                        try flow.updateGoalInput(goalInputDraft)
+                        storageFailed = false
+                    } catch {
+                        storageFailed = true
+                    }
+                }
+            ), axis: .vertical)
+                .font(.body)
+                .padding(12)
+                .frame(minHeight: 44)
+                .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12))
+                .accessibilityLabel(title)
+        }
+    }
+
+    private var goalView: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    if let goal = flow.goalDetails {
+                        Text("목표").font(.headline).accessibilityAddTraits(.isHeader)
+                        Text(goal.statement).fixedSize(horizontal: false, vertical: true)
+                        Text("완료 조건").font(.headline).accessibilityAddTraits(.isHeader)
+                        Text(goal.completionCriteria ?? "아직 확인하지 않았어요.")
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .padding(24)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .navigationTitle("목표 보기")
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("닫기") { showingGoal = false }
+                }
+            }
         }
     }
 
@@ -396,7 +489,11 @@ struct CoreFlowView: View {
 
     private func run(_ command: @MainActor () throws -> Void) {
         storageFailed = false
+        goalInputProblem = nil
         do {
+            if flow.screen == .goalInput, goalInputDraft != flow.goalInput {
+                try flow.updateGoalInput(goalInputDraft)
+            }
             // 자동 저장에 실패한 입력이 있으면 화면을 떠나기 전에 다시 저장한다.
             if case .currentAction(let card, _) = flow.screen, card.draft != draftText {
                 try flow.updateDraft(draftText, for: card.id)
@@ -404,6 +501,8 @@ struct CoreFlowView: View {
             try withAnimation(.easeInOut(duration: Motion.nextCard)) {
                 try command()
             }
+        } catch ProgressFlowError.invalidGoalContext {
+            goalInputProblem = "자료 링크는 http:// 또는 https://로 입력해 주세요. 시간은 1 이상의 정수로 입력해 주세요."
         } catch {
             storageFailed = true
             AccessibilityNotification.Announcement(
@@ -506,6 +605,8 @@ struct CoreFlowView: View {
             case .problem(let problem): messages.append(reason(for: problem))
             case .noAction: messages.append("보류 중. 지금 할 수 있는 다른 행동이 없어요.")
             }
+        case .preparingGoal(let question, let criteria, let problem):
+            messages.append(problem.map(reason(for:)) ?? question ?? (criteria == nil ? "목표를 정리하고 있어요." : "완료 조건을 확인해 주세요."))
         case .goalInput:
             break
         }

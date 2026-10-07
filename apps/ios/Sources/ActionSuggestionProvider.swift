@@ -8,6 +8,7 @@ protocol ActionSuggestionProvider: Sendable {
 }
 
 enum SuggestionKind: String, Sendable {
+    case goalPreparation = "goal_preparation"
     case firstAction = "first_action"
     case nextAction = "next_action"
     case smaller
@@ -27,6 +28,23 @@ struct SuggestionRequest: Sendable, Equatable {
     var splitSources: [String] = []
     /// 보류한 행동의 할 일. 생성 순서로 담는다. 공급자는 이 행동을 다시 제안하지 않는다.
     var deferredTasks: [String] = []
+    var context = GoalContext()
+    var completionCriteria: String? = nil
+}
+
+struct GoalAnswer: Equatable, Sendable {
+    let question: String
+    let answer: String
+}
+
+/// 자료 본문을 자동으로 읽지 않는다. 링크와 사용자가 고른 발췌·요약만 담는다.
+struct GoalContext: Equatable, Sendable {
+    var deadline: String? = nil
+    var currentState: String? = nil
+    var materialLinks: [URL] = []
+    var materialExcerpt: String? = nil
+    var availableMinutes: Int? = nil
+    var answers: [GoalAnswer] = []
 }
 
 struct ProposedAction: Sendable, Equatable {
@@ -43,6 +61,8 @@ struct ProposedAction: Sendable, Equatable {
 }
 
 enum SuggestionCandidate: Sendable, Equatable {
+    /// 사용자가 확인하기 전에는 목표의 완료 조건으로 저장하지 않는다.
+    case goalSummary(String)
     case action(ProposedAction)
     case question(String)
     case minimalAction(ProposedAction)

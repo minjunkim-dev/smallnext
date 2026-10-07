@@ -3,6 +3,23 @@ import GRDB
 import Observation
 import OSLog
 
+struct GoalInput: Codable, Equatable, Sendable {
+    var statement = ""
+    var deadline = ""
+    var currentState = ""
+    var blocker = ""
+    var materialLinks = ""
+    var materialExcerpt = ""
+    var availableMinutes = ""
+}
+
+struct GoalDetails: Equatable, Sendable {
+    let id: Int64
+    let statement: String
+    let completionCriteria: String?
+    var context = GoalContext()
+}
+
 struct ActionCard: Equatable, Identifiable, Sendable {
     let id: Int64
     let task: String
@@ -58,6 +75,7 @@ enum HoldStatus: Equatable, Sendable {
 /// 현재 행동의 `smaller`가 nil이면 더 작게 요청이 없다. 기다리는 중은 `.waiting`이다.
 enum ProgressScreen: Equatable, Sendable {
     case goalInput
+    case preparingGoal(question: String?, completionCriteria: String?, problem: SuggestionProblem?)
     /// 첫 행동을 받기 전이다. 입력한 목표를 유지한다.
     case awaitingFirstAction(goal: String, problem: SuggestionProblem?)
     case currentAction(ActionCard, smaller: SmallerStatus?)
@@ -75,6 +93,9 @@ enum ProgressFlowError: Error {
     case deferredActionNotFound
     case actionNotCurrent
     case emptyResult
+    case goalInputNotActive
+    case invalidGoalContext
+    case goalNotReady
 }
 
 /// 화면이 호출하는 진행 흐름의 유일한 진입점이다.
@@ -83,6 +104,8 @@ enum ProgressFlowError: Error {
 @Observable
 final class ProgressFlow {
     private(set) var screen: ProgressScreen = .goalInput
+    private(set) var goalInput = GoalInput()
+    private(set) var goalDetails: GoalDetails?
 
     @ObservationIgnored private let database: AppDatabase
     @ObservationIgnored private let provider: any ActionSuggestionProvider
@@ -98,8 +121,109 @@ final class ProgressFlow {
             try db.execute(sql: "UPDATE suggestion_request SET status = 'interrupted' WHERE status = 'pending'")
             return try Self.loadScreen(db)
         }
+        goalInput = try database.writer.read(Self.loadGoalInput)
+        goalDetails = try database.writer.read(Self.loadGoalDetails)
     }
 
+    /// 제출하기 전의 입력도 그대로 저장한다. 입력 초안은 확인한 목표가 아니다.
+    func updateGoalInput(_ input: GoalInput) throws {
+        guard screen == .goalInput else { throw ProgressFlowError.goalInputNotActive }
+        try database.writer.write { db in
+            try db.execute(
+                sql: "INSERT INTO app_metadata (key, value) VALUES ('goal_input', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                arguments: [String(decoding: try JSONEncoder().encode(input), as: UTF8.self)]
+            )
+        }
+        goalInput = input
+    }
+
+    private nonisolated static func loadGoalInput(_ db: Database) throws -> GoalInput {
+        guard let text = try String.fetchOne(db, sql: "SELECT value FROM app_metadata WHERE key = 'goal_input'") else { return GoalInput() }
+        return try JSONDecoder().decode(GoalInput.self, from: Data(text.utf8))
+    }
+
+    private nonisolated static func loadGoalDetails(_ db: Database) throws -> GoalDetails? {
+        guard let goalID = try selectedGoalID(db),
+              let row = try Row.fetchOne(db, sql: "SELECT * FROM goal WHERE id = ?", arguments: [goalID]) else { return nil }
+        return GoalDetails(id: goalID, statement: row["statement"], completionCriteria: row["completion_criteria"],
+                           context: try loadGoalContext(db, row: row, goalID: goalID))
+    }
+
+    /// 선택 입력을 검사해 저장한다. 확인용 요약만 요청한다.
+    func prepareGoal() throws {
+        guard screen == .goalInput else { throw ProgressFlowError.goalInputNotActive }
+        let input = goalInput
+        let statement = input.statement.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !statement.isEmpty else { throw ProgressFlowError.emptyGoal }
+        let links = input.materialLinks.split(whereSeparator: \.isNewline).compactMap { Self.nonempty(String($0)) }
+        let urls = links.compactMap(URL.init(string:))
+        let minutesText = input.availableMinutes.trimmingCharacters(in: .whitespacesAndNewlines)
+        let minutes = Int(minutesText)
+        guard urls.count == links.count,
+              urls.allSatisfy({ ["https", "http"].contains($0.scheme?.lowercased() ?? "") && !($0.host ?? "").isEmpty }),
+              minutesText.isEmpty || (minutes ?? 0) > 0 else { throw ProgressFlowError.invalidGoalContext }
+        try perform { db in
+            let now = Date()
+            try db.execute(
+                sql: """
+                INSERT INTO goal (statement, deadline, current_state, blocker, materials, material_excerpt, available_minutes,
+                                  is_confirmed, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
+                """,
+                arguments: [statement, Self.nonempty(input.deadline), Self.nonempty(input.currentState), Self.nonempty(input.blocker),
+                            String(decoding: try JSONEncoder().encode(urls), as: UTF8.self), Self.nonempty(input.materialExcerpt), minutes, now, now]
+            )
+            let goalID = db.lastInsertedRowID
+            try db.execute(sql: "INSERT INTO app_metadata (key, value) VALUES ('selected_goal_id', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                           arguments: [String(goalID)])
+            return try Self.insertRequest(db, goalID: goalID, kind: .goalPreparation)
+        }
+    }
+
+    /// 사용자가 확인한 완료 조건만 확정한다. 그 뒤 첫 행동을 요청한다.
+    func confirmGoal(completionCriteria: String) throws {
+        guard case .preparingGoal(_, .some, nil) = screen else { throw ProgressFlowError.goalNotReady }
+        guard let criteria = Self.nonempty(completionCriteria) else { throw ProgressFlowError.goalNotReady }
+        try perform { db in
+            guard let goalID = try Self.selectedGoalID(db) else { throw ProgressFlowError.goalNotFound }
+            try db.execute(sql: "UPDATE goal SET completion_criteria = ?, is_confirmed = 1, proposed_completion_criteria = NULL WHERE id = ? AND NOT is_confirmed AND proposed_completion_criteria IS NOT NULL",
+                           arguments: [criteria, goalID])
+            guard db.changesCount == 1 else { throw ProgressFlowError.goalNotReady }
+            try db.execute(sql: "DELETE FROM app_metadata WHERE key = 'goal_input'")
+            try Self.bumpRevision(db, goalID: goalID)
+            return try Self.insertRequest(db, goalID: goalID, kind: .firstAction)
+        }
+    }
+
+    private nonisolated static func nonempty(_ text: String) -> String? {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    /// 목표의 확인 질문 하나에 답한다. 답은 원래 질문과 함께 목표 맥락으로 보존한다.
+    func answerGoalQuestion(_ text: String) throws {
+        guard case .preparingGoal(.some, nil, nil) = screen else { throw ProgressFlowError.goalNotReady }
+        guard let answer = Self.nonempty(text) else { throw ProgressFlowError.emptyAnswer }
+        try perform { db in
+            guard let goalID = try Self.selectedGoalID(db) else { throw ProgressFlowError.goalNotFound }
+            try db.execute(sql: "UPDATE suggestion_request SET answer = ? WHERE id = (SELECT MAX(id) FROM suggestion_request WHERE goal_id = ?) AND kind = ? AND question IS NOT NULL AND answer IS NULL AND status = 'applied'",
+                           arguments: [answer, goalID, SuggestionKind.goalPreparation.rawValue])
+            guard db.changesCount == 1 else { throw ProgressFlowError.goalNotReady }
+            try Self.bumpRevision(db, goalID: goalID)
+            return try Self.insertRequest(db, goalID: goalID, kind: .goalPreparation)
+        }
+    }
+
+    private nonisolated static func loadGoalContext(_ db: Database, row: Row, goalID: Int64) throws -> GoalContext {
+        let materials: String? = row["materials"]
+        return GoalContext(deadline: row["deadline"], currentState: row["current_state"],
+                           materialLinks: try materials.map { try JSONDecoder().decode([URL].self, from: Data($0.utf8)) } ?? [],
+                           materialExcerpt: row["material_excerpt"], availableMinutes: row["available_minutes"],
+                           answers: try Row.fetchAll(db, sql: "SELECT question, answer FROM suggestion_request WHERE goal_id = ? AND kind = ? AND answer IS NOT NULL ORDER BY id",
+                                                    arguments: [goalID, SuggestionKind.goalPreparation.rawValue]).map { GoalAnswer(question: $0["question"], answer: $0["answer"]) })
+    }
+
+    /// 이미 확인한 목표를 생성하는 기존 명령이다. 새 입력 화면은 prepareGoal과 confirmGoal을 사용한다.
     func createGoal(_ text: String) throws {
         let statement = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !statement.isEmpty else { throw ProgressFlowError.emptyGoal }
@@ -289,6 +413,7 @@ final class ProgressFlow {
             // 첫 행동·다음 행동은 같은 종류로 다시 요청해 분할 원본 문맥을 유지한다.
             // 그 밖에는 현재 행동이 없을 때 대체 요청이다. 모든 요청은 보류한 행동을 제외한다.
             let kind: SuggestionKind = switch latest {
+            case .goalPreparation: .goalPreparation
             case .firstAction, .nextAction, nil: try Self.hasCompletion(db, goalID: goalID) ? .nextAction : .firstAction
             case .smaller, .replacement: .replacement
             }
@@ -323,17 +448,20 @@ final class ProgressFlow {
 
     private func perform(_ command: @Sendable (Database) throws -> PendingSuggestion?) throws {
         let failedID = unsavedSuggestionID
-        let (pending, screen) = try database.writer.write { db in
+        let (pending, screen, input, details) = try database.writer.write { db in
             if let failedID {
                 try db.execute(
                     sql: "UPDATE suggestion_request SET status = 'failed', failure_reason = ? WHERE id = ? AND status = 'pending'",
                     arguments: [SuggestionFailure.failed.rawValue, failedID]
                 )
             }
-            return (try command(db), try Self.loadScreen(db))
+            let pending = try command(db)
+            return (pending, try Self.loadScreen(db), try Self.loadGoalInput(db), try Self.loadGoalDetails(db))
         }
         unsavedSuggestionID = nil
         self.screen = screen
+        goalInput = input
+        goalDetails = details
         if let pending { start(pending) }
     }
 
@@ -363,6 +491,8 @@ final class ProgressFlow {
             guard !Task.isCancelled else { return }
             unsavedSuggestionID = pending.id
             switch screen {
+            case .preparingGoal(nil, nil, nil):
+                screen = .preparingGoal(question: nil, completionCriteria: nil, problem: .failure(.failed))
             case .awaitingFirstAction(let goal, nil):
                 screen = .awaitingFirstAction(goal: goal, problem: .failure(.failed))
             case .awaitingNextAction(nil):
@@ -396,6 +526,12 @@ final class ProgressFlow {
         let isSmaller = pending.request.kind == .smaller
         let proposed: ProposedAction
         switch outcome {
+        case .success(.goalSummary(let text)):
+            guard pending.request.kind == .goalPreparation, let criteria = nonempty(text) else {
+                return try finishRequest(db, pending.id, status: "failed", reason: unsuitableReason)
+            }
+            try db.execute(sql: "UPDATE goal SET proposed_completion_criteria = ? WHERE id = ? AND NOT is_confirmed", arguments: [criteria, pending.goalID])
+            return try finishRequest(db, pending.id, status: "applied", reason: nil)
         case .failure(let failure):
             return try finishRequest(db, pending.id, status: "failed", reason: failure.rawValue)
         case .success(.noAction):
@@ -405,7 +541,7 @@ final class ProgressFlow {
             }
             return try finishRequest(db, pending.id, status: "applied", reason: nil)
         case .success(.question(let text)):
-            // 확인 질문은 더 작게 요청에서만 받는다.
+            // 목표 준비와 더 작게에서만 확인 질문 하나를 받는다.
             let question = text.trimmingCharacters(in: .whitespacesAndNewlines)
             // 이미 답한 질문은 다시 묻지 않는다.
             let answered = try Bool.fetchOne(
@@ -413,7 +549,7 @@ final class ProgressFlow {
                 sql: "SELECT EXISTS (SELECT 1 FROM suggestion_request WHERE goal_id = ? AND question = ? AND answer IS NOT NULL)",
                 arguments: [pending.goalID, question]
             ) ?? false
-            guard isSmaller, !question.isEmpty, !answered else {
+            guard (isSmaller || pending.request.kind == .goalPreparation), !question.isEmpty, !answered else {
                 return try finishRequest(db, pending.id, status: "failed", reason: unsuitableReason)
             }
             return try db.execute(
@@ -421,6 +557,9 @@ final class ProgressFlow {
                 arguments: [question, pending.id]
             )
         case .success(.action(let candidate)), .success(.minimalAction(let candidate)):
+            guard pending.request.kind != .goalPreparation else {
+                return try finishRequest(db, pending.id, status: "failed", reason: unsuitableReason)
+            }
             proposed = candidate
         }
         // 더 작게는 현재 행동을, 다른 요청은 보류한 행동을 그대로 다시 제안하면 적용하지 않는다.
@@ -508,7 +647,7 @@ final class ProgressFlow {
     }
 
     private nonisolated static func insertRequest(_ db: Database, goalID: Int64, kind: SuggestionKind) throws -> PendingSuggestion {
-        guard let goal = try Row.fetchOne(db, sql: "SELECT statement, revision, blocker FROM goal WHERE id = ?", arguments: [goalID]) else {
+        guard let goal = try Row.fetchOne(db, sql: "SELECT * FROM goal WHERE id = ?", arguments: [goalID]) else {
             throw ProgressFlowError.goalNotFound
         }
         let revision: Int = goal["revision"]
@@ -536,7 +675,9 @@ final class ProgressFlow {
                 completedTasks: completed,
                 blocker: goal["blocker"],
                 splitSources: kind == .smaller ? try splitSources(db, goalID: goalID) : [],
-                deferredTasks: try deferredCards(db, goalID: goalID).map(\.task)
+                deferredTasks: try deferredCards(db, goalID: goalID).map(\.task),
+                context: try loadGoalContext(db, row: goal, goalID: goalID),
+                completionCriteria: goal["completion_criteria"]
             )
         )
     }
@@ -579,7 +720,7 @@ final class ProgressFlow {
             LEFT JOIN action p ON p.id = a.split_from_id AND p.status = 'split'
             WHERE a.goal_id = ? ORDER BY c.id DESC LIMIT 1
             """
-        case .firstAction, .replacement:
+        case .goalPreparation, .firstAction, .replacement:
             return nil
         }
         guard let row = try Row.fetchOne(db, sql: sql, arguments: [goalID]), let task: String = row["task"] else { return nil }
@@ -625,6 +766,11 @@ final class ProgressFlow {
             """,
             arguments: [goalID]
         )
+        if let goal = try Row.fetchOne(db, sql: "SELECT is_confirmed, proposed_completion_criteria FROM goal WHERE id = ?", arguments: [goalID]),
+           !(goal["is_confirmed"] as Bool) {
+            return .preparingGoal(question: latest?["question"], completionCriteria: goal["proposed_completion_criteria"],
+                                  problem: latest.map(requestProblem) ?? .interrupted)
+        }
         if let row = try Row.fetchOne(
             db,
             sql: """
@@ -690,6 +836,7 @@ extension ProgressScreen {
     /// 제안을 기다리는 중인지 나타낸다.
     var isWaitingForSuggestion: Bool {
         switch self {
+        case .preparingGoal(nil, nil, nil): true
         case .awaitingFirstAction(_, nil), .awaitingNextAction(nil), .currentAction(_, .waiting), .onHold(_, .waiting): true
         default: false
         }
@@ -698,6 +845,7 @@ extension ProgressScreen {
     /// 실패·중단·취소한 제안의 문제다. '다시 시도'를 보여줄 때만 값이 있다.
     var suggestionProblem: SuggestionProblem? {
         switch self {
+        case .preparingGoal(_, _, let problem): problem
         case .awaitingFirstAction(_, let problem), .awaitingNextAction(let problem): problem
         case .onHold(_, .problem(let problem)): problem
         case .goalInput, .currentAction, .onHold: nil

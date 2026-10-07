@@ -88,6 +88,13 @@ struct AppDatabase {
                 table.add(column: "material_links", .text).notNull().defaults(to: "[]")
             }
         }
+        migrator.registerMigration("progress_v4_goal_preparation") { db in
+            try db.alter(table: "goal") { table in
+                table.add(column: "material_excerpt", .text)
+                table.add(column: "is_confirmed", .boolean).notNull().defaults(to: true)
+                table.add(column: "proposed_completion_criteria", .text)
+            }
+        }
         try migrator.migrate(writer)
     }
 
