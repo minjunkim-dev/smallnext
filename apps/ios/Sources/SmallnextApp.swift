@@ -35,7 +35,7 @@ struct SmallnextApp: App {
 
     private static var suggestionProvider: any ActionSuggestionProvider {
         #if DEBUG
-        DebugActionSuggestionProvider()
+        DevelopmentActionSuggestionProvider.configured() ?? DebugActionSuggestionProvider()
         #else
         UnavailableSuggestionProvider()
         #endif

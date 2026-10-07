@@ -76,7 +76,11 @@ if (root/'mode').exists():
     if mode == 'exit': sys.exit(1)
     if mode == 'oversized': print('x'*140000); sys.exit(0)
     if mode == 'warning': print(json.dumps({'type':'item.completed','item':{'type':'error','message':'configuration warning'}}))
-if (root/'delay').exists(): time.sleep(10)
+    messages = {'quota': 'You’ve hit your usage limit. Try again later.', 'disconnect': 'Connection failed: test disconnect', 'request_timeout': 'request timed out'}
+    if mode in messages:
+        print(json.dumps({'type':'turn.failed','error':{'message':messages[mode]}}))
+        sys.exit(1)
+if (root/'delay').exists() and (root/'delay').read_text() in ['', role]: time.sleep(10)
 result = json.loads((root/(role+'.json')).read_text())
 print(json.dumps({'type':'item.completed','item':{'type':'agent_message','text':json.dumps(result)}}))
 print(json.dumps({'type':'turn.completed'}))
@@ -126,6 +130,94 @@ async fn default_off_never_starts_cli_and_keeps_action() {
 
 #[cfg(unix)]
 #[tokio::test]
+async fn http_disconnect_kills_cli_and_releases_duplicate_request() {
+    use axum::{
+        body::Body,
+        http::{Request, StatusCode},
+    };
+    use tokio::net::{TcpListener, TcpStream};
+    use tower::ServiceExt;
+    for stage in ["candidate", "check"] {
+        let f = Fixture::accepted();
+        std::fs::write(f.dir.0.join("delay"), stage).unwrap();
+        let expected_calls = if stage == "candidate" { 1 } else { 2 };
+        let app = http::router(f.ai.clone(), None);
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(axum::serve(listener, app.clone()).into_future());
+        let payload = json!({"state_key":"goal-1:revision-2", "input":input()}).to_string();
+        let mut socket = TcpStream::connect(address).await.unwrap();
+        socket.write_all(format!("POST /development/suggestions HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{}", payload.len(), payload).as_bytes()).await.unwrap();
+        for _ in 0..100 {
+            if f.calls().len() == expected_calls {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        assert_eq!(
+            f.calls().len(),
+            expected_calls,
+            "request reaches the selected stage"
+        );
+        let pid = f.calls().last().unwrap()["pid"]
+            .as_u64()
+            .unwrap()
+            .to_string();
+        let response = app
+            .clone()
+            .oneshot(
+                Request::post("/development/suggestions")
+                    .header("Content-Type", "application/json")
+                    .body(Body::from(payload.clone()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::CONFLICT);
+        drop(socket);
+        for _ in 0..100 {
+            if !std::process::Command::new("kill")
+                .args(["-0", &pid])
+                .stderr(Stdio::null())
+                .status()
+                .unwrap()
+                .success()
+            {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        assert!(
+            !std::process::Command::new("kill")
+                .args(["-0", &pid])
+                .stderr(Stdio::null())
+                .status()
+                .unwrap()
+                .success(),
+            "disconnect terminates CLI before its 3-second timeout"
+        );
+        let retry = app
+            .oneshot(
+                Request::post("/development/suggestions")
+                    .header("Content-Type", "application/json")
+                    .body(Body::from(payload))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(retry.status(), StatusCode::OK);
+        drop(retry);
+        assert_eq!(
+            f.calls().len(),
+            expected_calls,
+            "no automatic retry or checker after cancel"
+        );
+        server.abort();
+    }
+}
+
+#[cfg(unix)]
+#[tokio::test]
 async fn accepts_only_after_two_isolated_oauth_calls() {
     let f = Fixture::accepted();
     let mut state = ActionState::new(None);
@@ -157,10 +249,92 @@ async fn accepts_only_after_two_isolated_oauth_calls() {
             "web_search=\"disabled\"",
             "--ephemeral",
             "--no-daemon",
+            "model_provider=\"smallnext-development\"",
+            "model_providers.smallnext-development.requires_openai_auth=true",
+            "model_providers.smallnext-development.request_max_retries=0",
+            "model_providers.smallnext-development.stream_max_retries=0",
         ] {
             assert!(args.contains(&json!(required)));
         }
         assert_eq!(call["keys"], json!([]));
+    }
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn http_returns_only_independently_accepted_candidates_without_retries() {
+    use axum::{body::Body, http::Request};
+    use http_body_util::BodyExt;
+    use tower::ServiceExt;
+    for verdict in ["accept", "reject", "uncertain"] {
+        let f = Fixture::new(
+            json!(proposal()),
+            json!({"verdict":verdict,"criteria":[1,2,3,4,5],"evidence":"고정 검증 증거","reason":"판정 이유"}),
+            false,
+        );
+        let app = http::router(f.ai.clone(), Some("local-token".into()));
+        let response = app
+            .oneshot(
+                Request::post("/development/suggestions")
+                    .header("Content-Type", "application/json")
+                    .header("Authorization", "Bearer local-token")
+                    .body(Body::from(
+                        json!({"state_key":"1:0", "input":input()}).to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let body = response.into_body().collect().await.unwrap().to_bytes();
+        let value: Value = serde_json::from_slice(&body).unwrap();
+        if verdict == "accept" {
+            assert_eq!(value["disposition"], "accepted");
+            assert_eq!(value["proposal"], json!(proposal()));
+        } else {
+            assert_eq!(
+                value["disposition"],
+                if verdict == "reject" {
+                    "rejected"
+                } else {
+                    "uncertain"
+                }
+            );
+            assert_eq!(value["proposal"], Value::Null);
+        }
+        assert_eq!(f.calls().len(), 2);
+    }
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn cli_transport_failures_keep_their_reason_through_http() {
+    use axum::{body::Body, http::Request};
+    use http_body_util::BodyExt;
+    use tower::ServiceExt;
+    for (mode, expected) in [
+        ("quota", "budget_limit"),
+        ("disconnect", "connection_lost"),
+        ("request_timeout", "timed_out"),
+    ] {
+        let f = Fixture::accepted();
+        std::fs::write(f.dir.0.join("mode"), mode).unwrap();
+        let response = http::router(f.ai.clone(), None)
+            .oneshot(
+                Request::post("/development/suggestions")
+                    .header("Content-Type", "application/json")
+                    .body(Body::from(
+                        json!({"state_key":"1:0","input":input()}).to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let value: Value =
+            serde_json::from_slice(&response.into_body().collect().await.unwrap().to_bytes())
+                .unwrap();
+        assert_eq!(value["disposition"], expected);
+        assert_eq!(value["proposal"], Value::Null);
+        assert_eq!(f.calls().len(), 1);
     }
 }
 

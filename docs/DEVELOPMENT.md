@@ -70,6 +70,9 @@ Codex CLI 0.160.0과 Python 3로 검증합니다. Python 3는 모의 CLI 회귀 
 개발 연결은 skill 목록의 문맥 한도를 1토큰으로 제한합니다.
 CLI가 모든 skill 설명을 제거했다는 정확한 안내만 허용합니다. 다른 오류 항목은 답을 차단합니다.
 CLI 변경 후에는 연결과 도구 차단을 다시 확인합니다.
+CLI의 개발용 provider 설정도 HTTP·스트림 재시도를 0회로 지정합니다.
+이 설정은 공식 CLI의 ChatGPT 인증을 사용합니다. 제공사 주소와 인증 토큰을 별도로 지정하지 않습니다.
+설정 근거는 [Codex 구성 참조](https://developers.openai.com/ja-JP/docs/config-file/config-reference)와 [공식 provider 구현](https://github.com/openai/codex/blob/main/codex-rs/model-provider-info/src/lib.rs)입니다.
 
 저장소 루트에서 실행합니다.
 
@@ -108,8 +111,58 @@ cargo run --locked --manifest-path services/api/Cargo.toml --bin development-ai 
 임시 폴더에는 고정 프롬프트와 스키마만 기록합니다. 완료·실패 시 폴더를 제거합니다.
 
 플래그 기본값은 [등록 파일](../config/feature-flags.json)에서 읽습니다.
-ON은 위 로컬 실행 옵션으로만 허용합니다. HTTP 서버와 모바일 앱에는 AI 경로를 추가하지 않았습니다.
+ON은 로컬 실행 옵션 또는 아래 Mac 개발 서버 설정으로 허용합니다.
+운영 AI와 실기기 검증은 [#47](https://github.com/minjunkim-dev/smallnext/issues/47)과 [#61](https://github.com/minjunkim-dev/smallnext/issues/61)에서 관리합니다.
 운영 API 연결과 자격증명은 개발 완료 후 별도로 준비합니다.
+
+### Mac 개발 서버와 iOS HTTP 공급자
+
+[#50의 확정 경로](https://github.com/minjunkim-dev/smallnext/issues/50#issuecomment-6006788499)를 사용합니다.
+서버는 Mac에서 직접 실행합니다. Postgres만 Docker에서 실행합니다.
+Codex 로그인 파일을 복사하지 않습니다. 개발자 본인만 이 경로를 사용합니다.
+
+1. `.env.example`을 로컬 `.env`로 복사합니다. 기존 `.env`가 있으면 필요한 항목만 추가합니다.
+2. `.env`에서 `DEVELOPMENT_SUBSCRIPTION_AI=1`로 설정합니다. 기본값은 OFF입니다.
+3. `codex login status`로 기존 ChatGPT 로그인을 확인합니다.
+4. `make dev-db`와 `make api`를 실행합니다. 기본 바인딩은 `127.0.0.1:8080`입니다.
+5. Debug 앱을 아래 실행 인자로 실행합니다.
+
+```sh
+xcrun simctl launch booted dev.smallnext.app \
+  -ios_core_flow YES -development_ai_url http://127.0.0.1:8080
+```
+
+`POST /development/suggestions`는 ON일 때만 등록됩니다. OFF면 404입니다.
+요청은 `{"state_key":"목표ID:리비전","input":AiInput}`입니다. 요청 본문 전체가 32 KiB 이하이어야 합니다.
+`state_key`가 같은 활성 요청은 409로 거부합니다. 입력이 다른 목표도 같은 키를 쓰면 동시에 실행하지 않습니다.
+수용 응답은 `{"disposition":"accepted","proposal":Proposal}`입니다.
+다른 판정의 `proposal`은 null입니다. 자동 재시도와 자동 재생성은 없습니다.
+브라우저 Origin 요청과 JSON이 아닌 요청을 거부합니다. HTTP 리다이렉트를 따라가지 않습니다.
+앱 취소 또는 연결 종료는 응답 작업과 로컬 CLI를 종료합니다.
+두 CLI 호출의 합계 시간 제한은 120초입니다. 앱 HTTP 제한은 130초입니다.
+서버 로그에는 요청·응답 본문을 기록하지 않습니다.
+
+실기기는 `.env`의 `API_BIND_ADDRESS`를 명시적 LAN 주소로 바꿉니다.
+`DEVELOPMENT_AI_TOKEN`이 없으면 LAN 개발 서버 시작을 거부합니다.
+로컬 토큰은 `openssl rand -hex 32`로 생성합니다. `.env`와 로컬 Xcode scheme의 실행 인자에만 보관합니다.
+Debug 앱의 Arguments에 `-development_ai_url http://Mac의LAN주소:8080`과 `-development_ai_token 로컬토큰`을 넣습니다.
+앱은 `Authorization: Bearer`로 토큰을 전달합니다. localhost에도 토큰을 설정하면 인증을 요구합니다.
+LAN 평문 HTTP는 신뢰하는 개발 네트워크에서 본인 검증에만 사용합니다.
+Release는 HTTP 공급자와 설정 코드를 제외합니다. 평문 HTTP 허용 설정도 Debug에만 넣습니다.
+
+공급자는 목표·확정 완료 조건·선택 발췌·링크 식별자·알려진 막힘·완료 행동·보류 행동을 전송합니다.
+링크 본문은 읽지 않습니다. 막힘 원인은 모든 요청에 필요한 맥락으로 전달합니다.
+막힘 원인이 2 KiB를 넘으면 전송하지 않고 거부 사유를 표시합니다. 본문 전체에도 32 KiB 한도를 적용합니다.
+목표 입력에서 막힘 원인을 작성합니다. 확인 질문의 새 답으로 막힘 원인을 교체합니다. 목표 삭제로 앱 내 막힘 원인을 제거합니다.
+미완료 분할 원본은 이후 다음 행동 요청과 재실행 뒤에도 `remaining_work`에 유지합니다.
+더 작게 요청은 분할 원본과 현재 행동을 `previous_proposals`로 전달합니다.
+`need_info`는 확인 질문으로, `minimum`은 최소 행동으로 매핑합니다. 이미 답한 질문은 진행 흐름에서 거부합니다.
+`goal_summary`는 사용자 확인 전 완료 조건 초안입니다. `no_action`은 대체 요청에만 허용합니다.
+선택한 가용 시간이 없으면 개발 요청의 임시 한도로 15분을 사용합니다. 사용자 가용 시간을 확인한 값은 아닙니다.
+연결 끊김·시간 초과·거절·판정 불가·예산 한도는 공급자 오류로 매핑합니다.
+
+개발 엔드포인트는 `contracts/openapi.json`에 추가하지 않습니다.
+이 계약은 제품 API의 공개 계약입니다. 로컬 CLI 경로는 운영·Release에 제공하지 않으므로 Rust `AiInput`·`Proposal`과 공급자 테스트를 개발 계약의 기준으로 사용합니다.
 
 ## iOS
 
@@ -149,7 +202,8 @@ Debug 빌드에서만 실행 인자로 로컬 확인용 ON을 지정할 수 있�
 xcrun simctl launch booted dev.smallnext.app -ios_core_flow YES
 ```
 
-Debug 빌드는 고정 제안 공급자를 사용합니다. Release 빌드는 아직 공급자가 없어 `사용 불가`를 반환합니다.
+Debug 빌드는 서버 주소가 없으면 고정 제안 공급자를 사용합니다. 서버 주소가 있으면 위 HTTP 공급자를 사용합니다.
+Release 빌드는 아직 공급자가 없어 `사용 불가`를 반환합니다.
 
 ## Android
 
