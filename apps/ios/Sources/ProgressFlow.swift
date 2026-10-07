@@ -35,6 +35,14 @@ enum SmallerStatus: Equatable, Sendable {
     case problem(SuggestionProblem)
 }
 
+/// 보류 중 화면의 대체 행동 요청 상태다.
+enum HoldStatus: Equatable, Sendable {
+    case waiting
+    case problem(SuggestionProblem)
+    /// 공급자가 선행 조건이 준비된 다른 행동이 없다고 답했다.
+    case noAction
+}
+
 /// 대기 화면의 `problem`이 nil이면 제안을 기다리는 중이다. 값이 있으면 '다시 시도'를 기다린다.
 /// 현재 행동의 `smaller`가 nil이면 더 작게 요청이 없다. 기다리는 중은 `.waiting`이다.
 enum ProgressScreen: Equatable, Sendable {
@@ -44,6 +52,8 @@ enum ProgressScreen: Equatable, Sendable {
     case currentAction(ActionCard, smaller: SmallerStatus?)
     /// 완료 후 다음 행동을 받기 전이다. 완료 기록을 유지한다.
     case awaitingNextAction(problem: SuggestionProblem?)
+    /// 현재 행동이 없고 보류한 행동이 있다. 보류한 행동을 생성 순서대로 담아 재개할 수 있게 한다.
+    case onHold(deferred: [ActionCard], status: HoldStatus)
 }
 
 enum ProgressFlowError: Error {
@@ -51,6 +61,7 @@ enum ProgressFlowError: Error {
     case goalNotFound
     case emptyAnswer
     case splitSourceNotFound
+    case deferredActionNotFound
 }
 
 /// 화면이 호출하는 진행 흐름의 유일한 진입점이다.
@@ -165,14 +176,65 @@ final class ProgressFlow {
         }
     }
 
-    /// 실패·중단·취소한 제안만 다시 요청한다. 기다리는 중이면 무시한다.
-    func retrySuggestion() throws {
-        guard screen.suggestionProblem != nil else { return }
+    /// 현재 행동을 보류하고 대체 행동을 요청한다. 완료 기록을 만들지 않고 행동 결과를 지우지 않는다.
+    func deferAction() throws {
+        guard case .currentAction(let card, _) = screen else { return }
         try perform { db in
             guard let goalID = try Self.selectedGoalID(db) else { return nil }
+            try db.execute(
+                sql: "UPDATE action SET status = 'deferred' WHERE id = ? AND goal_id = ? AND status = 'current'",
+                arguments: [card.id, goalID]
+            )
+            guard db.changesCount == 1 else { return nil }
+            try Self.bumpRevision(db, goalID: goalID)
+            // 보류한 행동에 대한 대기 요청은 이전 상태에 대한 요청이다.
+            try Self.endPendingRequests(db, goalID: goalID, status: "interrupted")
+            return try Self.insertRequest(db, goalID: goalID, kind: .replacement)
+        }
+    }
+
+    /// 보류 중 화면에서 보류한 행동 하나를 현재 행동으로 되돌린다.
+    /// 재개를 선행 조건 해결로 기록하지 않는다.
+    func resume(_ actionID: Int64) throws {
+        guard case .onHold = screen else { return }
+        defer {
+            // 재개한 뒤 결과를 버릴 대체 요청 작업은 취소한다.
+            if case .currentAction(let current, _) = screen, current.id == actionID { suggestionTask?.cancel() }
+        }
+        try perform { db in
+            guard let goalID = try Self.selectedGoalID(db) else { return nil }
+            try db.execute(
+                sql: "UPDATE action SET status = 'current' WHERE id = ? AND goal_id = ? AND status = 'deferred'",
+                arguments: [actionID, goalID]
+            )
+            guard db.changesCount == 1 else { throw ProgressFlowError.deferredActionNotFound }
+            try Self.bumpRevision(db, goalID: goalID)
+            try Self.endPendingRequests(db, goalID: goalID, status: "interrupted")
+            return nil
+        }
+    }
+
+    /// 실패·중단·취소한 제안과 대체 후보가 없는 보류 중 화면만 다시 요청한다. 기다리는 중이면 무시한다.
+    func retrySuggestion() throws {
+        switch screen {
+        case .onHold(_, .noAction), .onHold(_, .problem): break
+        case _ where screen.suggestionProblem != nil: break
+        default: return
+        }
+        try perform { db in
+            guard let goalID = try Self.selectedGoalID(db) else { return nil }
+            let latest = try String.fetchOne(
+                db, sql: "SELECT kind FROM suggestion_request WHERE goal_id = ? ORDER BY id DESC LIMIT 1", arguments: [goalID]
+            ).flatMap(SuggestionKind.init(rawValue:))
             // 결과 저장에 실패해 pending으로 남은 요청을 끝낸다. 늦게 온 결과는 적용하지 않는다.
             try Self.endPendingRequests(db, goalID: goalID, status: "interrupted")
-            return try Self.insertRequest(db, goalID: goalID, kind: Self.hasCompletion(db, goalID: goalID) ? .nextAction : .firstAction)
+            // 첫 행동·다음 행동은 같은 종류로 다시 요청해 분할 원본 문맥을 유지한다.
+            // 그 밖에는 현재 행동이 없을 때 대체 요청이다. 모든 요청은 보류한 행동을 제외한다.
+            let kind: SuggestionKind = switch latest {
+            case .firstAction, .nextAction, nil: try Self.hasCompletion(db, goalID: goalID) ? .nextAction : .firstAction
+            case .smaller, .replacement: .replacement
+            }
+            return try Self.insertRequest(db, goalID: goalID, kind: kind)
         }
     }
 
@@ -240,6 +302,8 @@ final class ProgressFlow {
                 screen = .awaitingNextAction(problem: .failure(.failed))
             case .currentAction(let card, .waiting):
                 screen = .currentAction(card, smaller: .problem(.failure(.failed)))
+            case .onHold(let deferred, .waiting):
+                screen = .onHold(deferred: deferred, status: .problem(.failure(.failed)))
             default:
                 break
             }
@@ -267,6 +331,12 @@ final class ProgressFlow {
         switch outcome {
         case .failure(let failure):
             return try finishRequest(db, pending.id, status: "failed", reason: failure.rawValue)
+        case .success(.noAction):
+            // 대체 후보 없음은 대체 요청에서만 받는다. 보류 중 화면을 보여준다.
+            guard pending.request.kind == .replacement else {
+                return try finishRequest(db, pending.id, status: "failed", reason: unsuitableReason)
+            }
+            return try finishRequest(db, pending.id, status: "applied", reason: nil)
         case .success(.question(let text)):
             // 확인 질문은 더 작게 요청에서만 받는다.
             let question = text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -286,9 +356,10 @@ final class ProgressFlow {
         case .success(.action(let candidate)), .success(.minimalAction(let candidate)):
             proposed = candidate
         }
-        guard let action = try validated(db, proposed, goalID: pending.goalID),
-              action.task != pending.request.currentAction?.task || !isSmaller
-        else {
+        // 더 작게는 현재 행동을, 다른 요청은 보류한 행동을 그대로 다시 제안하면 적용하지 않는다.
+        // 더 작게는 되돌린 작은 행동을 다시 제안할 수 있다(#55).
+        let excluded = isSmaller ? [pending.request.currentAction?.task].compactMap { $0 } : pending.request.deferredTasks
+        guard let action = try validated(db, proposed, goalID: pending.goalID), !excluded.contains(action.task) else {
             return try finishRequest(db, pending.id, status: "failed", reason: unsuitableReason)
         }
         // 분할 원본은 내용을 바꾸지 않고 `split`으로 남긴다. 남은 범위와 목표의 완료 조건을 유지한다.
@@ -381,9 +452,18 @@ final class ProgressFlow {
                 currentAction: try contextAction(db, goalID: goalID, kind: kind),
                 completedTasks: completed,
                 blocker: goal["blocker"],
-                splitSources: kind == .smaller ? try splitSources(db, goalID: goalID) : []
+                splitSources: kind == .smaller ? try splitSources(db, goalID: goalID) : [],
+                deferredTasks: try deferredCards(db, goalID: goalID).map(\.task)
             )
         )
+    }
+
+    private nonisolated static func deferredCards(_ db: Database, goalID: Int64) throws -> [ActionCard] {
+        try Row.fetchAll(
+            db,
+            sql: "SELECT id, task, done_when, estimated_minutes FROM action WHERE goal_id = ? AND status = 'deferred' ORDER BY sequence",
+            arguments: [goalID]
+        ).map { ActionCard(id: $0["id"], task: $0["task"], doneWhen: $0["done_when"], estimatedMinutes: $0["estimated_minutes"]) }
     }
 
     private nonisolated static func splitSources(_ db: Database, goalID: Int64) throws -> [String] {
@@ -466,7 +546,8 @@ final class ProgressFlow {
             db,
             sql: """
             SELECT a.id, a.task, a.done_when, a.estimated_minutes, a.split_from_id, p.task AS source_task, g.revision
-            FROM action a JOIN goal g ON g.id = a.goal_id LEFT JOIN action p ON p.id = a.split_from_id
+            FROM action a JOIN goal g ON g.id = a.goal_id
+            LEFT JOIN action p ON p.id = a.split_from_id AND p.status = 'split'
             WHERE a.goal_id = ? AND a.status = 'current'
             """,
             arguments: [goalID]
@@ -476,7 +557,8 @@ final class ProgressFlow {
                 task: row["task"],
                 doneWhen: row["done_when"],
                 estimatedMinutes: row["estimated_minutes"],
-                origin: (row["split_from_id"] as Int64?).map { ActionCard.Origin(id: $0, task: row["source_task"]) }
+                // 분할 원본이 `split`일 때만 되돌릴 수 있다. 보류·완료한 원본은 관계에서 뺀다.
+                origin: (row["source_task"] as String?).map { ActionCard.Origin(id: row["split_from_id"], task: $0) }
             )
             // 같은 리비전의 더 작게 요청만 현재 행동에 대한 요청이다.
             var smaller: SmallerStatus?
@@ -492,6 +574,14 @@ final class ProgressFlow {
             return .currentAction(card, smaller: smaller)
         }
         let problem = latest.map(requestProblem) ?? .interrupted
+        // 보류한 행동이 있으면 어떤 요청을 기다리거나 실패해도 재개할 수 있게 보류 목록을 보여준다.
+        let deferred = try deferredCards(db, goalID: goalID)
+        if !deferred.isEmpty {
+            let status: HoldStatus = if let problem { .problem(problem) }
+                else if latest?["status"] as String? == "pending" { .waiting }
+                else { .noAction }
+            return .onHold(deferred: deferred, status: status)
+        }
         if try hasCompletion(db, goalID: goalID) { return .awaitingNextAction(problem: problem) }
         let goal = try String.fetchOne(db, sql: "SELECT statement FROM goal WHERE id = ?", arguments: [goalID]) ?? ""
         return .awaitingFirstAction(goal: goal, problem: problem)
@@ -502,7 +592,7 @@ extension ProgressScreen {
     /// 제안을 기다리는 중인지 나타낸다.
     var isWaitingForSuggestion: Bool {
         switch self {
-        case .awaitingFirstAction(_, nil), .awaitingNextAction(nil), .currentAction(_, .waiting): true
+        case .awaitingFirstAction(_, nil), .awaitingNextAction(nil), .currentAction(_, .waiting), .onHold(_, .waiting): true
         default: false
         }
     }
@@ -511,7 +601,8 @@ extension ProgressScreen {
     var suggestionProblem: SuggestionProblem? {
         switch self {
         case .awaitingFirstAction(_, let problem), .awaitingNextAction(let problem): problem
-        case .goalInput, .currentAction: nil
+        case .onHold(_, .problem(let problem)): problem
+        case .goalInput, .currentAction, .onHold: nil
         }
     }
 }

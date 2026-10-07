@@ -535,6 +535,169 @@ final class ProgressFlowTests: XCTestCase {
         XCTAssertEqual(try status(ofTask: first.task), "current")
     }
 
+    // MARK: - 나중에·보류 중·재개 (#56)
+
+    private func firstCard(_ flow: ProgressFlow) async throws -> ActionCard {
+        try flow.createGoal("주간 업무 보고서 초안 쓰기")
+        await flow.waitForSuggestion()
+        guard case .currentAction(let card, nil) = flow.screen else { XCTFail("\(flow.screen)"); throw CancellationError() }
+        return card
+    }
+
+    func testDeferRequestsReplacementAndKeepsDeferredAction() async throws {
+        let provider = ScriptedProvider([.action(first), .action(second)])
+        let flow = try makeFlow(provider)
+        let deferred = try await firstCard(flow)
+        try await AppDatabase(path: path).writer.write { db in
+            try db.execute(
+                sql: "INSERT INTO action_note (action_id, body, is_draft, updated_at) VALUES (?, '메모 위치 확인', 0, CURRENT_TIMESTAMP)",
+                arguments: [deferred.id]
+            )
+        }
+
+        try flow.deferAction()
+        XCTAssertEqual(flow.screen, .onHold(deferred: [deferred], status: .waiting))
+        await flow.waitForSuggestion()
+        guard case .currentAction(let replacement, nil) = flow.screen else { return XCTFail("\(flow.screen)") }
+        XCTAssertEqual(replacement.task, second.task)
+        XCTAssertNil(replacement.origin)
+        XCTAssertEqual(try status(ofTask: first.task), "deferred")
+        XCTAssertEqual(try count("SELECT COUNT(*) FROM completion"), 0)
+        XCTAssertEqual(try count("SELECT COUNT(*) FROM action_note"), 1)
+
+        let requests = await provider.requests
+        XCTAssertEqual(requests.map(\.kind), [.firstAction, .replacement])
+        XCTAssertEqual(requests[1].deferredTasks, [first.task])
+    }
+
+    func testDeferWithoutReplacementShowsOnHoldWithoutSwitchingGoal() async throws {
+        let flow = try makeFlow(ScriptedProvider([.action(third), .action(first), .noAction, .action(first)]))
+        try flow.createGoal("다른 목표")
+        await flow.waitForSuggestion()
+        let deferred = try await firstCard(flow)
+
+        try flow.deferAction()
+        await flow.waitForSuggestion()
+        XCTAssertEqual(flow.screen, .onHold(deferred: [deferred], status: .noAction))
+        XCTAssertEqual(try count("SELECT COUNT(*) FROM app_metadata WHERE key = 'selected_goal_id' AND value = (SELECT MAX(id) FROM goal)"), 1)
+
+        // 같은 행동을 대체 후보로 받으면 적용하지 않는다.
+        try flow.retrySuggestion()
+        XCTAssertEqual(flow.screen, .onHold(deferred: [deferred], status: .waiting))
+        await flow.waitForSuggestion()
+        XCTAssertEqual(flow.screen, .onHold(deferred: [deferred], status: .problem(.unsuitable)))
+    }
+
+    func testResumeRestoresDeferredActionWithoutResolvingAnything() async throws {
+        let flow = try makeFlow(ScriptedProvider([.action(first), .noAction]))
+        let deferred = try await firstCard(flow)
+        try await AppDatabase(path: path).writer.write { db in
+            try db.execute(sql: "UPDATE goal SET blocker = '자료가 없음'")
+        }
+        try flow.deferAction()
+        await flow.waitForSuggestion()
+
+        try flow.resume(deferred.id)
+        XCTAssertEqual(flow.screen, .currentAction(deferred, smaller: nil))
+        XCTAssertEqual(try status(ofTask: first.task), "current")
+        XCTAssertEqual(try count("SELECT COUNT(*) FROM goal WHERE blocker = '자료가 없음'"), 1)
+        XCTAssertEqual(try count("SELECT COUNT(*) FROM completion"), 0)
+    }
+
+    func testOnHoldSurvivesReopenAndPendingReplacementCanBeRetried() async throws {
+        let deferred: ActionCard
+        do {
+            let flow = try makeFlow(ScriptedProvider([.action(first), .noAction]))
+            deferred = try await firstCard(flow)
+            try flow.deferAction()
+            await flow.waitForSuggestion()
+        }
+        XCTAssertEqual(try makeFlow(SuspendedProvider()).screen, .onHold(deferred: [deferred], status: .noAction))
+
+        do {
+            let flow = try makeFlow(SuspendedProvider())
+            try flow.resume(deferred.id)
+            try flow.deferAction()
+            XCTAssertEqual(flow.screen, .onHold(deferred: [deferred], status: .waiting))
+        }
+        let provider = ScriptedProvider([.action(second)])
+        let reopened = try makeFlow(provider)
+        XCTAssertEqual(reopened.screen, .onHold(deferred: [deferred], status: .problem(.interrupted)))
+        try reopened.retrySuggestion()
+        await reopened.waitForSuggestion()
+        guard case .currentAction(let card, nil) = reopened.screen else { return XCTFail("\(reopened.screen)") }
+        XCTAssertEqual(card.task, second.task)
+        let requests = await provider.requests
+        XCTAssertEqual(requests.map(\.kind), [.replacement])
+    }
+
+    func testDeferredActionCanBeResumedAfterNextActionFails() async throws {
+        let flow = try makeFlow(ScriptedProvider([.success(.action(first)), .success(.action(second)), .failure(.timedOut)]))
+        let deferred = try await firstCard(flow)
+        try flow.deferAction()
+        await flow.waitForSuggestion()
+        try flow.complete()
+        // 다음 행동을 기다리는 동안에도 보류한 행동을 보여준다.
+        XCTAssertEqual(flow.screen, .onHold(deferred: [deferred], status: .waiting))
+        await flow.waitForSuggestion()
+        XCTAssertEqual(flow.screen, .onHold(deferred: [deferred], status: .problem(.failure(.timedOut))))
+        XCTAssertEqual(try makeFlow(SuspendedProvider()).screen, .onHold(deferred: [deferred], status: .problem(.failure(.timedOut))))
+
+        try flow.resume(deferred.id)
+        XCTAssertEqual(flow.screen, .currentAction(deferred, smaller: nil))
+        XCTAssertEqual(try count("SELECT COUNT(*) FROM completion"), 1)
+    }
+
+    func testFailedNextActionIsRetriedAsNextActionWhileOnHold() async throws {
+        let provider = ScriptedProvider([.success(.action(first)), .success(.action(second)), .failure(.timedOut), .success(.action(third))])
+        let flow = try makeFlow(provider)
+        _ = try await firstCard(flow)
+        try flow.deferAction()
+        await flow.waitForSuggestion()
+        try flow.complete()
+        await flow.waitForSuggestion()
+        try flow.retrySuggestion()
+        await flow.waitForSuggestion()
+        guard case .currentAction(let card, nil) = flow.screen else { return XCTFail("\(flow.screen)") }
+        XCTAssertEqual(card.task, third.task)
+        // 실패한 다음 행동은 같은 종류로 다시 요청한다. 보류 목록은 계속 담는다.
+        let requests = await provider.requests
+        XCTAssertEqual(requests.map(\.kind), [.firstAction, .replacement, .nextAction, .nextAction])
+        XCTAssertEqual(requests[3].deferredTasks, [first.task])
+    }
+
+    func testNextActionMatchingDeferredActionIsNotApplied() async throws {
+        let provider = ScriptedProvider([.action(first), .action(second), .action(first)])
+        let flow = try makeFlow(provider)
+        let deferred = try await firstCard(flow)
+        try flow.deferAction()
+        await flow.waitForSuggestion()
+        try flow.complete()
+        await flow.waitForSuggestion()
+        XCTAssertEqual(flow.screen, .onHold(deferred: [deferred], status: .problem(.unsuitable)))
+        let requests = await provider.requests
+        XCTAssertEqual(requests[2].kind, .nextAction)
+        XCTAssertEqual(requests[2].deferredTasks, [first.task])
+    }
+
+    func testResumedUndoneSmallActionHasNoUndo() async throws {
+        let flow = try makeFlow(ScriptedProvider([.action(first), .action(smaller), .noAction]))
+        _ = try await firstCard(flow)
+        try flow.makeSmaller()
+        await flow.waitForSuggestion()
+        guard case .currentAction(let small, nil) = flow.screen else { return XCTFail("\(flow.screen)") }
+        try flow.undoSplit()
+        try flow.deferAction()
+        await flow.waitForSuggestion()
+        guard case .onHold(let deferred, .noAction) = flow.screen else { return XCTFail("\(flow.screen)") }
+        XCTAssertEqual(deferred.map(\.task), [first.task, smaller.task])
+
+        // 분할 원본이 이미 보류라서 작은 행동을 재개해도 되돌릴 원본이 없다.
+        try flow.resume(small.id)
+        guard case .currentAction(let resumed, nil) = flow.screen else { return XCTFail("\(flow.screen)") }
+        XCTAssertNil(resumed.origin)
+    }
+
     func testProductMigrationKeepsBootstrapMetadata() throws {
         _ = try makeFlow(UnavailableSuggestionProvider())
         let value = try AppDatabase(path: path).writer.read { db in

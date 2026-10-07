@@ -25,6 +25,8 @@ struct SuggestionRequest: Sendable, Equatable {
     /// 더 작게 요청에서 현재 행동을 나눈 분할 원본의 할 일. 가장 처음 원본부터 담는다.
     /// 비어 있지 않으면 같은 작업을 이미 나눴다. 공급자는 이 값으로 반복 막힘을 판단한다.
     var splitSources: [String] = []
+    /// 보류한 행동의 할 일. 생성 순서로 담는다. 공급자는 이 행동을 다시 제안하지 않는다.
+    var deferredTasks: [String] = []
 }
 
 struct ProposedAction: Sendable, Equatable {
@@ -41,6 +43,8 @@ enum SuggestionCandidate: Sendable, Equatable {
     case action(ProposedAction)
     case question(String)
     case minimalAction(ProposedAction)
+    /// 선행 조건이 준비된 다른 행동이 없다. 대체 요청에서만 쓴다.
+    case noAction
 }
 
 enum SuggestionFailure: String, Error, Sendable, CaseIterable {

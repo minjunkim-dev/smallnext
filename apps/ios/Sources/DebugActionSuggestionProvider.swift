@@ -13,6 +13,12 @@ struct DebugActionSuggestionProvider: ActionSuggestionProvider {
 
     func suggest(_ request: SuggestionRequest) async throws -> SuggestionCandidate {
         try await Task.sleep(for: delay)
+        // 대체: 대체 행동 하나를 돌려준다. 그 행동도 보류했으면 후보가 없다.
+        if request.kind == .replacement {
+            let replacement = Self.step("목표에 대해 떠오르는 생각 한 줄 적기", "생각 한 줄이 남는다", 3)
+            let used = request.deferredTasks.contains(replacement.task) || request.completedTasks.contains(replacement.task)
+            return used ? .noAction : .action(replacement)
+        }
         // 더 작게: 이미 나눈 행동을 막힘 원인 없이 다시 나누면 확인 질문을 돌려준다.
         if request.kind == .smaller, let current = request.currentAction {
             if request.blocker == nil, !request.splitSources.isEmpty {
