@@ -29,6 +29,174 @@ final class ProgressFlowTests: XCTestCase {
         try AppDatabase(path: path).writer.read { db in try Int.fetchOne(db, sql: sql) ?? 0 }
     }
 
+    func testGoalInputDraftSurvivesReopenBeforeSubmission() throws {
+        let input = GoalInput(statement: "화분 옮기기", deadline: "이번 주", currentState: "화분은 골랐다",
+                              blocker: "흙이 있는지 모른다", materialLinks: "https://example.com/plant",
+                              materialExcerpt: "사용자가 고른 요약", availableMinutes: "15")
+        do {
+            let flow = try makeFlow(UnavailableSuggestionProvider())
+            try flow.updateGoalInput(input)
+            XCTAssertEqual(flow.screen, .goalInput)
+        }
+        let reopened = try makeFlow(UnavailableSuggestionProvider())
+        XCTAssertEqual(reopened.goalInput, input)
+        XCTAssertNil(reopened.goalDetails)
+    }
+
+    func testGoalContextIsSentAndFirstActionWaitsForConfirmation() async throws {
+        let provider = ScriptedProvider([.goalSummary("화분 하나를 옮겼다"), .action(first)])
+        let flow = try makeFlow(provider)
+        let input = GoalInput(statement: " 화분 옮기기 ", deadline: "이번 주", currentState: "화분은 골랐다",
+                              blocker: "흙이 있는지 모른다", materialLinks: "https://example.com/plant",
+                              materialExcerpt: "고른 발췌만 보낸다", availableMinutes: "15")
+        try flow.updateGoalInput(input)
+        try flow.prepareGoal()
+        await flow.waitForSuggestion()
+        XCTAssertEqual(flow.screen, .preparingGoal(question: nil, completionCriteria: "화분 하나를 옮겼다", problem: nil))
+        XCTAssertNil(flow.goalDetails?.completionCriteria)
+        var requests = await provider.requests
+        XCTAssertEqual(requests.map(\.kind), [.goalPreparation])
+        XCTAssertEqual(requests[0].context.currentState, "화분은 골랐다")
+        XCTAssertEqual(requests[0].context.deadline, "이번 주")
+        XCTAssertEqual(requests[0].context.materialLinks, [URL(string: "https://example.com/plant")!])
+        XCTAssertEqual(requests[0].context.materialExcerpt, "고른 발췌만 보낸다")
+        XCTAssertEqual(requests[0].context.availableMinutes, 15)
+        XCTAssertEqual(requests[0].blocker, "흙이 있는지 모른다")
+        try flow.confirmGoal(completionCriteria: "화분 하나가 새 자리에 있다")
+        await flow.waitForSuggestion()
+        guard case .currentAction = flow.screen else { return XCTFail("\(flow.screen)") }
+        requests = await provider.requests
+        XCTAssertEqual(requests.map(\.kind), [.goalPreparation, .firstAction])
+        XCTAssertEqual(requests[1].completionCriteria, "화분 하나가 새 자리에 있다")
+        XCTAssertEqual(requests[1].context, requests[0].context)
+        let reopened = try makeFlow(UnavailableSuggestionProvider())
+        XCTAssertEqual(reopened.goalDetails?.statement, "화분 옮기기")
+        XCTAssertEqual(reopened.goalDetails?.completionCriteria, "화분 하나가 새 자리에 있다")
+        XCTAssertEqual(reopened.goalDetails?.context, requests[0].context)
+    }
+
+    func testGoalQuestionAnswerSurvivesReopenAndIsNotAskedAgain() async throws {
+        let question = "무엇을 정리하려고 하나요?"
+        do {
+            let flow = try makeFlow(ScriptedProvider([.question(question)]))
+            try flow.updateGoalInput(GoalInput(statement: "정리하기"))
+            try flow.prepareGoal()
+            await flow.waitForSuggestion()
+            XCTAssertEqual(flow.screen, .preparingGoal(question: question, completionCriteria: nil, problem: nil))
+        }
+        let provider = ScriptedProvider([.question(question), .goalSummary("화분 자리를 정했다")])
+        let reopened = try makeFlow(provider)
+        XCTAssertEqual(reopened.screen, .preparingGoal(question: question, completionCriteria: nil, problem: nil))
+        XCTAssertThrowsError(try reopened.answerGoalQuestion(" \n"))
+        try reopened.answerGoalQuestion("화분 자리")
+        await reopened.waitForSuggestion()
+        XCTAssertEqual(reopened.screen, .preparingGoal(question: nil, completionCriteria: nil, problem: .unsuitable))
+        try reopened.retrySuggestion()
+        await reopened.waitForSuggestion()
+        XCTAssertEqual(reopened.screen, .preparingGoal(question: nil, completionCriteria: "화분 자리를 정했다", problem: nil))
+        let requests = await provider.requests
+        XCTAssertEqual(requests.map(\.kind), [.goalPreparation, .goalPreparation])
+        XCTAssertEqual(requests[1].context.answers, [GoalAnswer(question: question, answer: "화분 자리")])
+        XCTAssertNil(requests[1].context.currentState)
+        XCTAssertNil(requests[1].blocker)
+        let again = try makeFlow(UnavailableSuggestionProvider())
+        XCTAssertEqual(again.screen, reopened.screen)
+        XCTAssertEqual(again.goalDetails?.context.answers, requests[1].context.answers)
+        XCTAssertNil(again.goalDetails?.completionCriteria)
+    }
+
+    func testGoalPreparationInterruptedOnReopenKeepsInputAndCanRetry() async throws {
+        let input = GoalInput(statement: "기초 단원 학습하기", availableMinutes: "10")
+        let held = HeldProvider(.goalSummary("기초 개념을 설명할 수 있다"))
+        let flow = try makeFlow(held)
+        try flow.updateGoalInput(input)
+        try flow.prepareGoal()
+        XCTAssertTrue(flow.screen.isWaitingForSuggestion)
+        XCTAssertThrowsError(try flow.confirmGoal(completionCriteria: "아직 확인하지 않았다"))
+        let provider = ScriptedProvider([.goalSummary("학습한 내용을 설명할 수 있다")])
+        let reopened = try makeFlow(provider)
+        XCTAssertEqual(reopened.goalInput, input)
+        XCTAssertEqual(reopened.screen, .preparingGoal(question: nil, completionCriteria: nil, problem: .interrupted))
+        let before = await provider.requests
+        XCTAssertTrue(before.isEmpty)
+        await held.release()
+        await flow.waitForSuggestion()
+        XCTAssertEqual(flow.screen, reopened.screen)
+        try reopened.retrySuggestion()
+        await reopened.waitForSuggestion()
+        XCTAssertEqual(reopened.screen, .preparingGoal(question: nil, completionCriteria: "학습한 내용을 설명할 수 있다", problem: nil))
+        XCTAssertNil(reopened.goalDetails?.context.currentState)
+        XCTAssertNil(reopened.goalDetails?.completionCriteria)
+    }
+
+    func testInvalidOptionalInputStaysInDraftWithoutRequestingProvider() async throws {
+        let provider = ScriptedProvider([.goalSummary("정리를 마쳤다")])
+        let flow = try makeFlow(provider)
+        for input in [GoalInput(statement: "정리", materialLinks: "file:///private/tmp/file"),
+                      GoalInput(statement: "정리", availableMinutes: "-3"),
+                      GoalInput(statement: "정리", availableMinutes: "abc")] {
+            try flow.updateGoalInput(input)
+            XCTAssertThrowsError(try flow.prepareGoal())
+            XCTAssertEqual(flow.goalInput, input)
+            XCTAssertEqual(flow.screen, .goalInput)
+        }
+        let requests = await provider.requests
+        XCTAssertTrue(requests.isEmpty)
+    }
+
+    func testWhitespaceOnlyOptionalLinkIsTreatedAsEmpty() async throws {
+        let provider = ScriptedProvider([.goalSummary("메모를 정리했다")])
+        let flow = try makeFlow(provider)
+        try flow.updateGoalInput(GoalInput(statement: "메모 정리", materialLinks: " \n\t "))
+        try flow.prepareGoal()
+        await flow.waitForSuggestion()
+        let requests = await provider.requests
+        XCTAssertEqual(requests.count, 1)
+        XCTAssertTrue(try XCTUnwrap(requests.first).context.materialLinks.isEmpty)
+    }
+
+    func testGoalPreparationCannotApplyActionBeforeConfirmation() async throws {
+        let provider = ScriptedProvider([.action(first), .goalSummary("메모를 정리했다")])
+        let flow = try makeFlow(provider)
+        try flow.updateGoalInput(GoalInput(statement: "메모 정리"))
+        try flow.prepareGoal()
+        await flow.waitForSuggestion()
+        XCTAssertEqual(flow.screen, .preparingGoal(question: nil, completionCriteria: nil, problem: .unsuitable))
+        XCTAssertThrowsError(try flow.confirmGoal(completionCriteria: "확인되지 않은 조건"))
+        try flow.retrySuggestion()
+        await flow.waitForSuggestion()
+        XCTAssertEqual(flow.screen, .preparingGoal(question: nil, completionCriteria: "메모를 정리했다", problem: nil))
+        XCTAssertNil(flow.goalDetails?.context.currentState)
+        XCTAssertNil(flow.goalDetails?.completionCriteria)
+    }
+
+    func testGoalConfirmationFailureKeepsReviewAndInputAndCanRetry() async throws {
+        let provider = ScriptedProvider([.goalSummary("메모를 정리했다"), .action(first)])
+        let flow = try makeFlow(provider)
+        let input = GoalInput(statement: "메모 정리", materialExcerpt: "선택한 한 줄")
+        try flow.updateGoalInput(input)
+        try flow.prepareGoal()
+        await flow.waitForSuggestion()
+        let before = flow.screen
+        let database = try AppDatabase(path: path)
+        try await database.writer.write { db in
+            try db.execute(sql: "CREATE TRIGGER fail_goal_confirmation BEFORE INSERT ON suggestion_request WHEN NEW.kind = 'first_action' BEGIN SELECT RAISE(ABORT, 'test failure'); END")
+        }
+        XCTAssertThrowsError(try flow.confirmGoal(completionCriteria: "사용자가 확인한 조건"))
+        XCTAssertEqual(flow.screen, before)
+        XCTAssertEqual(flow.goalInput, input)
+        XCTAssertNil(flow.goalDetails?.completionCriteria)
+        let reopened = try makeFlow(UnavailableSuggestionProvider())
+        XCTAssertEqual(reopened.screen, before)
+        XCTAssertEqual(reopened.goalInput, input)
+        try await database.writer.write { db in try db.execute(sql: "DROP TRIGGER fail_goal_confirmation") }
+        try flow.confirmGoal(completionCriteria: "사용자가 확인한 조건")
+        await flow.waitForSuggestion()
+        XCTAssertEqual(flow.goalDetails?.completionCriteria, "사용자가 확인한 조건")
+        XCTAssertEqual(flow.goalInput, GoalInput())
+        guard case .currentAction = flow.screen else { return XCTFail("\(flow.screen)") }
+    }
+
     func testGoalToFirstActionToCompletionToNextActionSurvivesReopen() async throws {
         let provider = ScriptedProvider([.action(first), .action(second)])
         let secondCard: ActionCard
