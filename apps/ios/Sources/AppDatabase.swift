@@ -95,6 +95,15 @@ struct AppDatabase {
                 table.add(column: "proposed_completion_criteria", .text)
             }
         }
+        // 확인 중인 목표 입력과 새 목표 입력을 분리한다. 기존 입력은 해당 목표로 옮긴다.
+        migrator.registerMigration("progress_v5_goal_input_scope") { db in
+            try db.execute(sql: """
+                UPDATE app_metadata SET key = 'goal_input:' || (SELECT value FROM app_metadata WHERE key = 'selected_goal_id')
+                WHERE key = 'goal_input' AND EXISTS (
+                    SELECT 1 FROM goal WHERE id = (SELECT value FROM app_metadata WHERE key = 'selected_goal_id') AND NOT is_confirmed
+                )
+                """)
+        }
         try migrator.migrate(writer)
     }
 
