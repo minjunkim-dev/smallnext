@@ -171,6 +171,9 @@ Release는 HTTP 공급자와 설정 코드를 제외합니다. 평문 HTTP 허�
 서명 팀 없이 시뮬레이터에서 실행할 수 있습니다.
 GRDB 버전과 Git 커밋은 `Package.resolved`에 고정했습니다.
 
+사용자 iPhone에서 핵심 흐름을 확인할 때는 [실기기 검증 절차](IOS_DEVICE_VALIDATION.md)를 따릅니다.
+설치, 저장 복구, 접근성과 모션 값의 결과는 [#61](https://github.com/minjunkim-dev/smallnext/issues/61)에 기록합니다.
+
 CLI 검사에서는 설치한 시뮬레이터 이름을 지정합니다.
 
 ```sh
