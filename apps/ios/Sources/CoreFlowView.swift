@@ -211,13 +211,15 @@ struct CoreFlowView: View {
             }
             .padding(24)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color(.secondarySystemGroupedBackground),
-                        in: RoundedRectangle(cornerRadius: 18))
+            .background {
+                RoundedRectangle(cornerRadius: 18)
+                    .fill(Color(.secondarySystemGroupedBackground))
+                    .shadow(color: accent.opacity(0.10), radius: 0, x: 0, y: 5)
+            }
             .overlay {
                 RoundedRectangle(cornerRadius: 18)
                     .strokeBorder(Color(.separator), lineWidth: 1)
             }
-            .shadow(color: accent.opacity(0.10), radius: 0, x: 0, y: 5)
             .overlay {
                 if let splitGhost, !reduceMotion {
                     SplitGhostView(ghost: splitGhost) { self.splitGhost = nil }
