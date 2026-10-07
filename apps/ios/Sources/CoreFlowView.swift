@@ -12,6 +12,8 @@ struct CoreFlowView: View {
 
     @State private var goalText = ""
     @State private var answerText = ""
+    @State private var draftText = ""
+    @State private var detailsExpanded = false
     @State private var storageFailed = false
     /// 분할 직전 행동의 할 일이다. 값이 있는 동안 나뉘는 움직임을 보여준다.
     @State private var splitGhost: SplitGhost?
@@ -50,7 +52,16 @@ struct CoreFlowView: View {
         }
         .background(Color(.systemGroupedBackground))
         .tint(accent)
+        .onAppear { restoreDraft() }
         .onChange(of: flow.screen) { oldScreen, newScreen in
+            if case .currentAction(let oldCard, let oldSmaller) = oldScreen,
+               case .currentAction(let newCard, let newSmaller) = newScreen,
+               oldCard.id == newCard.id {
+                // 초안 자동 저장은 같은 질문의 답과 펼친 설명을 지우거나 상태를 다시 알리지 않는다.
+                if oldSmaller == newSmaller { return }
+            } else {
+                restoreDraft()
+            }
             // 답 입력은 지금 보이는 질문에만 쓴다.
             answerText = ""
             startSplitMotion(from: oldScreen, to: newScreen)
@@ -192,6 +203,11 @@ struct CoreFlowView: View {
             }
 
             VStack(alignment: .leading, spacing: 24) {
+                if let targetName = card.targetName {
+                    Text("대상: \(targetName)")
+                        .font(.headline)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
                 Label("약 \(card.estimatedMinutes)분 · 예상", systemImage: "clock")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
@@ -207,6 +223,47 @@ struct CoreFlowView: View {
                     Text(card.doneWhen)
                         .font(.body)
                         .fixedSize(horizontal: false, vertical: true)
+                }
+                if card.targetDescription != nil || !card.materialLinks.isEmpty {
+                    DisclosureGroup("설명과 자료", isExpanded: $detailsExpanded) {
+                        VStack(alignment: .leading, spacing: 12) {
+                            if let description = card.targetDescription {
+                                Text(description)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                            ForEach(card.materialLinks, id: \.self) { link in
+                                Link(link.absoluteString, destination: link)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+                    }
+                }
+                resultSection("앞서 남긴 결과", results: card.previousResults)
+                resultSection("이 행동에 남긴 결과", results: card.results)
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("행동 결과")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                    TextField("문장이나 메모를 적어 주세요.", text: Binding(
+                        get: { draftText },
+                        set: { saveDraft($0, for: card.id) }
+                    ), axis: .vertical)
+                        .lineLimit(3...8)
+                        .padding(12)
+                        .background(Color(.tertiarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 10))
+                        .accessibilityLabel("행동 결과 입력")
+                    Text("작성 중인 내용은 자동 저장돼요.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    commandButton("결과 남기기", prominent: false) {
+                        try flow.recordResult(draftText, for: card.id)
+                        draftText = ""
+                    }
+                    .disabled(draftText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    if storageFailed && draftText != card.draft {
+                        commandButton("입력 다시 저장", prominent: false) { }
+                    }
                 }
             }
             .padding(24)
@@ -301,9 +358,49 @@ struct CoreFlowView: View {
         }
     }
 
+    @ViewBuilder
+    private func resultSection(_ title: String, results: [ActionResult]) -> some View {
+        if !results.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+                Text(title)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                ForEach(results) { result in
+                    Text(result.body)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
+    }
+
+    private func restoreDraft() {
+        if case .currentAction(let card, _) = flow.screen { draftText = card.draft }
+        else { draftText = "" }
+        detailsExpanded = false
+    }
+
+    private func saveDraft(_ text: String, for actionID: Int64) {
+        // 사라지는 카드의 늦은 입력이 새 카드의 입력란에 섞이지 않게 한다.
+        guard case .currentAction(let card, _) = flow.screen, card.id == actionID else { return }
+        draftText = text
+        do {
+            try flow.updateDraft(text, for: actionID)
+            storageFailed = false
+        } catch {
+            if !storageFailed {
+                AccessibilityNotification.Announcement("저장하지 못했어요. 다시 시도해 주세요.").post()
+            }
+            storageFailed = true
+        }
+    }
+
     private func run(_ command: @MainActor () throws -> Void) {
         storageFailed = false
         do {
+            // 자동 저장에 실패한 입력이 있으면 화면을 떠나기 전에 다시 저장한다.
+            if case .currentAction(let card, _) = flow.screen, card.draft != draftText {
+                try flow.updateDraft(draftText, for: card.id)
+            }
             try withAnimation(.easeInOut(duration: Motion.nextCard)) {
                 try command()
             }
