@@ -432,11 +432,6 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Config/Debug.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Smallnext;
-				INFOPLIST_KEY_SmallnextAPIBaseURL = "$(SMALLNEXT_API_BASE_URL)";
-				INFOPLIST_KEY_SmallnextFirebaseAPIKey = "$(SMALLNEXT_FIREBASE_API_KEY)";
-				INFOPLIST_KEY_SmallnextFirebaseAppID = "$(SMALLNEXT_FIREBASE_APP_ID)";
-				INFOPLIST_KEY_SmallnextFirebaseProjectID = "$(SMALLNEXT_FIREBASE_PROJECT_ID)";
-				INFOPLIST_KEY_SmallnextFirebaseSenderID = "$(SMALLNEXT_FIREBASE_SENDER_ID)";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -455,12 +450,8 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Config/Release.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Smallnext;
-				INFOPLIST_KEY_SmallnextAPIBaseURL = "$(SMALLNEXT_API_BASE_URL)";
-				INFOPLIST_KEY_SmallnextFirebaseAPIKey = "$(SMALLNEXT_FIREBASE_API_KEY)";
-				INFOPLIST_KEY_SmallnextFirebaseAppID = "$(SMALLNEXT_FIREBASE_APP_ID)";
-				INFOPLIST_KEY_SmallnextFirebaseProjectID = "$(SMALLNEXT_FIREBASE_PROJECT_ID)";
-				INFOPLIST_KEY_SmallnextFirebaseSenderID = "$(SMALLNEXT_FIREBASE_SENDER_ID)";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
