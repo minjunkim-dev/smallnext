@@ -11,6 +11,9 @@ settings:
     CURRENT_PROJECT_VERSION: "1"
     CODE_SIGN_STYLE: Automatic
 packages:
+  Firebase:
+    url: https://github.com/firebase/firebase-ios-sdk.git
+    exactVersion: 12.19.2
   GRDB:
     url: https://github.com/groue/GRDB.swift.git
     exactVersion: 7.11.1
@@ -30,11 +33,20 @@ targets:
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
         TARGETED_DEVICE_FAMILY: "1,2"
+        INFOPLIST_KEY_SmallnextAPIBaseURL: "$(SMALLNEXT_API_BASE_URL)"
+        INFOPLIST_KEY_SmallnextFirebaseAppID: "$(SMALLNEXT_FIREBASE_APP_ID)"
+        INFOPLIST_KEY_SmallnextFirebaseSenderID: "$(SMALLNEXT_FIREBASE_SENDER_ID)"
+        INFOPLIST_KEY_SmallnextFirebaseProjectID: "$(SMALLNEXT_FIREBASE_PROJECT_ID)"
+        INFOPLIST_KEY_SmallnextFirebaseAPIKey: "$(SMALLNEXT_FIREBASE_API_KEY)"
       configs:
         Debug:
           INFOPLIST_FILE: Config/Debug.plist
     dependencies:
       - package: GRDB
+      - package: Firebase
+        product: FirebaseAuth
+      - package: Firebase
+        product: FirebaseCore
   SmallnextTests:
     type: bundle.unit-test
     platform: iOS

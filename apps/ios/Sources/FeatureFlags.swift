@@ -11,16 +11,24 @@ enum FeatureFlags {
     }
 
     static var iosCoreFlow: Bool {
+        configured("ios_core_flow")
+    }
+
+    static var userServerAI: Bool {
+        configured("user_server_ai")
+    }
+
+    private static func configured(_ key: String) -> Bool {
         #if DEBUG
         // 실행 인자 `-ios_core_flow YES`는 문자열로 들어온다. bool(forKey:)가 YES/NO/1/0을 해석한다.
-        if UserDefaults.standard.object(forKey: "ios_core_flow") != nil {
-            return UserDefaults.standard.bool(forKey: "ios_core_flow")
+        if UserDefaults.standard.object(forKey: key) != nil {
+            return UserDefaults.standard.bool(forKey: key)
         }
         #endif
         let registry = Bundle.main
             .url(forResource: "feature-flags", withExtension: "json")
             .flatMap { try? Data(contentsOf: $0) }
-        return isEnabled("ios_core_flow", registry: registry)
+        return isEnabled(key, registry: registry)
     }
 
     private struct Registry: Decodable {

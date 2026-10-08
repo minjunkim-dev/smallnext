@@ -51,10 +51,149 @@
           }
         }
       }
+    },
+    "/v1/suggestions": {
+      "post": {
+        "tags": [
+          "user_ai"
+        ],
+        "operationId": "suggest",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SuggestionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Checked disposition; only accepted includes a proposal",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuggestionResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "401": {
+            "description": "Invalid or revoked identity"
+          },
+          "403": {
+            "description": "UID is not allowed, or browser origin"
+          },
+          "404": {
+            "description": "Feature is OFF"
+          },
+          "409": {
+            "description": "Same user, state and request kind is already active"
+          },
+          "413": {
+            "description": "Body exceeds 32 KiB"
+          },
+          "415": {
+            "description": "JSON required"
+          },
+          "429": {
+            "description": "Two-call reservation exceeds budget"
+          },
+          "503": {
+            "description": "Authentication, database or request capacity unavailable"
+          },
+          "504": {
+            "description": "Authentication deadline exceeded"
+          }
+        },
+        "security": [
+          {
+            "firebaseIdToken": []
+          }
+        ]
+      }
     }
   },
   "components": {
     "schemas": {
+      "AiInput": {
+        "type": "object",
+        "required": [
+          "goal",
+          "current_blocker",
+          "user_request",
+          "available",
+          "unknown",
+          "available_minutes",
+          "knowledge",
+          "energy",
+          "remaining_work",
+          "completed_ids",
+          "previous_proposals"
+        ],
+        "properties": {
+          "available": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "available_minutes": {
+            "type": "number",
+            "format": "double"
+          },
+          "completed_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "current_blocker": {
+            "type": "string"
+          },
+          "energy": {
+            "type": "string"
+          },
+          "goal": {
+            "type": "string"
+          },
+          "knowledge": {
+            "type": "string"
+          },
+          "previous_proposals": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Proposal"
+            }
+          },
+          "remaining_work": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "request_kind": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "unknown": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "user_request": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
       "HealthResponse": {
         "type": "object",
         "required": [
@@ -65,6 +204,170 @@
             "type": "string"
           }
         }
+      },
+      "Proposal": {
+        "type": "object",
+        "required": [
+          "status",
+          "action",
+          "completion_condition",
+          "estimated_minutes",
+          "reason",
+          "remaining_work",
+          "goal_completed",
+          "current_action_completed",
+          "preserved_completed_ids"
+        ],
+        "properties": {
+          "action": {
+            "type": "string"
+          },
+          "completion_condition": {
+            "type": "string"
+          },
+          "current_action_completed": {
+            "type": "boolean"
+          },
+          "estimated_minutes": {
+            "type": "number",
+            "format": "double"
+          },
+          "goal_completed": {
+            "type": "boolean"
+          },
+          "preserved_completed_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "reason": {
+            "type": "string"
+          },
+          "remaining_work": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "status": {
+            "$ref": "#/components/schemas/ProposalStatus"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ProposalStatus": {
+        "type": "string",
+        "enum": [
+          "action",
+          "need_info",
+          "minimum",
+          "goal_summary",
+          "no_action"
+        ]
+      },
+      "SuggestionRequest": {
+        "type": "object",
+        "required": [
+          "state_key",
+          "input"
+        ],
+        "properties": {
+          "input": {
+            "$ref": "#/components/schemas/AiInput"
+          },
+          "state_key": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "SuggestionResponse": {
+        "type": "object",
+        "required": [
+          "disposition",
+          "usage",
+          "elapsed_ms"
+        ],
+        "properties": {
+          "disposition": {
+            "type": "string"
+          },
+          "elapsed_ms": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "proposal": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Proposal"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "usage": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Usage"
+            }
+          }
+        }
+      },
+      "Usage": {
+        "type": "object",
+        "required": [
+          "role",
+          "input_tokens",
+          "output_tokens",
+          "cached_tokens",
+          "cache_write_tokens",
+          "reasoning_tokens",
+          "cost_micro_usd"
+        ],
+        "properties": {
+          "cache_write_tokens": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "cached_tokens": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "cost_micro_usd": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "input_tokens": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "output_tokens": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "reasoning_tokens": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "role": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "firebaseIdToken": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "Firebase ID token"
       }
     }
   }

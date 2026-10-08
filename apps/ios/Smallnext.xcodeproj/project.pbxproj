@@ -12,10 +12,15 @@
 		2D265947424569D25EE96146 /* ActionSuggestionProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1CF338F09FA620EF90A9CA8 /* ActionSuggestionProvider.swift */; };
 		30A8576C772C36E2E2FC18A4 /* SmallnextApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF3E8B07B08AD16D7D946A22 /* SmallnextApp.swift */; };
 		4300C21671B204C2CC1D47FC /* DebugActionSuggestionProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = D865871F50B31C31045FC496 /* DebugActionSuggestionProvider.swift */; };
+		4B3D518AA511412203F9F4EA /* ServerActionSuggestionProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = B141040C3D5DF570CF60E1DB /* ServerActionSuggestionProvider.swift */; };
 		4E6A9ABB211804439CD23ABF /* AppDatabaseTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5408342363FFE1BED5721F7A /* AppDatabaseTests.swift */; };
+		62418C5B7C2DB829B83CF9AE /* HTTPActionSuggestionProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F095C939EDD73F78CC2EF0E /* HTTPActionSuggestionProvider.swift */; };
+		74BEFAD9B514886F592F8ED9 /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = 52EAF431181CEA24090DCD37 /* FirebaseAuth */; };
 		7869651E9B8FEA5180779875 /* ProgressFlowTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CF3BBFF7EDE37F5CAD944BA /* ProgressFlowTests.swift */; };
 		85842A91C296A982B2900C11 /* APIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A760D43D9A97C207911C6F56 /* APIClient.swift */; };
+		87CE3C69884D3E573BE2D8E7 /* ServerActionSuggestionProviderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACC244E714C64A60826F3DD2 /* ServerActionSuggestionProviderTests.swift */; };
 		A0124FEBDF2CB8A51826648F /* FeatureFlags.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4907685C03FA261E1DA37D9C /* FeatureFlags.swift */; };
+		A8DEFD6028B1AD5A9F8C75B2 /* FirebaseCore in Frameworks */ = {isa = PBXBuildFile; productRef = 45E3C1CD17348250C2572F8B /* FirebaseCore */; };
 		A9CF16D2206FF500083EBDC6 /* feature-flags.json in Resources */ = {isa = PBXBuildFile; fileRef = 11C1F69DF05E9AE74CF34A04 /* feature-flags.json */; };
 		B6B0E5F26C4133A820CA8D52 /* ProgressFlow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5DC4243300950F8B770CC92F /* ProgressFlow.swift */; };
 		B71B69141C6C67E9D1493408 /* GRDB in Frameworks */ = {isa = PBXBuildFile; productRef = CAB2E1B084489C178DE23B6E /* GRDB */; };
@@ -45,9 +50,12 @@
 		50528CC70F298B20C17329B6 /* CoreFlowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoreFlowView.swift; sourceTree = "<group>"; };
 		5408342363FFE1BED5721F7A /* AppDatabaseTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDatabaseTests.swift; sourceTree = "<group>"; };
 		5DC4243300950F8B770CC92F /* ProgressFlow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProgressFlow.swift; sourceTree = "<group>"; };
+		6F095C939EDD73F78CC2EF0E /* HTTPActionSuggestionProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HTTPActionSuggestionProvider.swift; sourceTree = "<group>"; };
 		7CF3BBFF7EDE37F5CAD944BA /* ProgressFlowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProgressFlowTests.swift; sourceTree = "<group>"; };
 		A1B3B5E4145554A1FC8D297E /* DevelopmentActionSuggestionProviderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DevelopmentActionSuggestionProviderTests.swift; sourceTree = "<group>"; };
 		A760D43D9A97C207911C6F56 /* APIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIClient.swift; sourceTree = "<group>"; };
+		ACC244E714C64A60826F3DD2 /* ServerActionSuggestionProviderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerActionSuggestionProviderTests.swift; sourceTree = "<group>"; };
+		B141040C3D5DF570CF60E1DB /* ServerActionSuggestionProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerActionSuggestionProvider.swift; sourceTree = "<group>"; };
 		D865871F50B31C31045FC496 /* DebugActionSuggestionProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugActionSuggestionProvider.swift; sourceTree = "<group>"; };
 		DAE5C5E474307463B28E7442 /* AppDatabase.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDatabase.swift; sourceTree = "<group>"; };
 		DF3E8B07B08AD16D7D946A22 /* SmallnextApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SmallnextApp.swift; sourceTree = "<group>"; };
@@ -61,6 +69,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				B71B69141C6C67E9D1493408 /* GRDB in Frameworks */,
+				74BEFAD9B514886F592F8ED9 /* FirebaseAuth in Frameworks */,
+				A8DEFD6028B1AD5A9F8C75B2 /* FirebaseCore in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -78,7 +88,9 @@
 				D865871F50B31C31045FC496 /* DebugActionSuggestionProvider.swift */,
 				EBCF62E6888EE7657EE273B8 /* DevelopmentActionSuggestionProvider.swift */,
 				4907685C03FA261E1DA37D9C /* FeatureFlags.swift */,
+				6F095C939EDD73F78CC2EF0E /* HTTPActionSuggestionProvider.swift */,
 				5DC4243300950F8B770CC92F /* ProgressFlow.swift */,
+				B141040C3D5DF570CF60E1DB /* ServerActionSuggestionProvider.swift */,
 				DF3E8B07B08AD16D7D946A22 /* SmallnextApp.swift */,
 			);
 			path = Sources;
@@ -91,6 +103,7 @@
 				A1B3B5E4145554A1FC8D297E /* DevelopmentActionSuggestionProviderTests.swift */,
 				29D77D33FB48D05C179D0CF8 /* FeatureFlagsTests.swift */,
 				7CF3BBFF7EDE37F5CAD944BA /* ProgressFlowTests.swift */,
+				ACC244E714C64A60826F3DD2 /* ServerActionSuggestionProviderTests.swift */,
 			);
 			path = Tests;
 			sourceTree = "<group>";
@@ -149,6 +162,8 @@
 			name = Smallnext;
 			packageProductDependencies = (
 				CAB2E1B084489C178DE23B6E /* GRDB */,
+				52EAF431181CEA24090DCD37 /* FirebaseAuth */,
+				45E3C1CD17348250C2572F8B /* FirebaseCore */,
 			);
 			productName = Smallnext;
 			productReference = 45CC86C08E79F4BD7F4B9088 /* Smallnext.app */;
@@ -199,6 +214,7 @@
 			mainGroup = 6793D9F7101A99052B2570CD;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
+				A02804F654D57E049A886BB6 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */,
 				F458325BE9ABB122855B42A9 /* XCRemoteSwiftPackageReference "GRDB.swift" */,
 			);
 			preferredProjectObjectVersion = 77;
@@ -232,6 +248,7 @@
 				EB0D6BCE1C5287B628AF9659 /* DevelopmentActionSuggestionProviderTests.swift in Sources */,
 				2A990F296BB50B6899299801 /* FeatureFlagsTests.swift in Sources */,
 				7869651E9B8FEA5180779875 /* ProgressFlowTests.swift in Sources */,
+				87CE3C69884D3E573BE2D8E7 /* ServerActionSuggestionProviderTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -247,7 +264,9 @@
 				4300C21671B204C2CC1D47FC /* DebugActionSuggestionProvider.swift in Sources */,
 				0B9EE1C48A878327AD58B157 /* DevelopmentActionSuggestionProvider.swift in Sources */,
 				A0124FEBDF2CB8A51826648F /* FeatureFlags.swift in Sources */,
+				62418C5B7C2DB829B83CF9AE /* HTTPActionSuggestionProvider.swift in Sources */,
 				B6B0E5F26C4133A820CA8D52 /* ProgressFlow.swift in Sources */,
+				4B3D518AA511412203F9F4EA /* ServerActionSuggestionProvider.swift in Sources */,
 				30A8576C772C36E2E2FC18A4 /* SmallnextApp.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -413,6 +432,11 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Config/Debug.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Smallnext;
+				INFOPLIST_KEY_SmallnextAPIBaseURL = "$(SMALLNEXT_API_BASE_URL)";
+				INFOPLIST_KEY_SmallnextFirebaseAPIKey = "$(SMALLNEXT_FIREBASE_API_KEY)";
+				INFOPLIST_KEY_SmallnextFirebaseAppID = "$(SMALLNEXT_FIREBASE_APP_ID)";
+				INFOPLIST_KEY_SmallnextFirebaseProjectID = "$(SMALLNEXT_FIREBASE_PROJECT_ID)";
+				INFOPLIST_KEY_SmallnextFirebaseSenderID = "$(SMALLNEXT_FIREBASE_SENDER_ID)";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -432,6 +456,11 @@
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = Smallnext;
+				INFOPLIST_KEY_SmallnextAPIBaseURL = "$(SMALLNEXT_API_BASE_URL)";
+				INFOPLIST_KEY_SmallnextFirebaseAPIKey = "$(SMALLNEXT_FIREBASE_API_KEY)";
+				INFOPLIST_KEY_SmallnextFirebaseAppID = "$(SMALLNEXT_FIREBASE_APP_ID)";
+				INFOPLIST_KEY_SmallnextFirebaseProjectID = "$(SMALLNEXT_FIREBASE_PROJECT_ID)";
+				INFOPLIST_KEY_SmallnextFirebaseSenderID = "$(SMALLNEXT_FIREBASE_SENDER_ID)";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -494,6 +523,14 @@
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
+		A02804F654D57E049A886BB6 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/firebase/firebase-ios-sdk.git";
+			requirement = {
+				kind = exactVersion;
+				version = 12.19.2;
+			};
+		};
 		F458325BE9ABB122855B42A9 /* XCRemoteSwiftPackageReference "GRDB.swift" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/groue/GRDB.swift.git";
@@ -505,6 +542,16 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		45E3C1CD17348250C2572F8B /* FirebaseCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A02804F654D57E049A886BB6 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseCore;
+		};
+		52EAF431181CEA24090DCD37 /* FirebaseAuth */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A02804F654D57E049A886BB6 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseAuth;
+		};
 		CAB2E1B084489C178DE23B6E /* GRDB */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = F458325BE9ABB122855B42A9 /* XCRemoteSwiftPackageReference "GRDB.swift" */;

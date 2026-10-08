@@ -122,12 +122,16 @@ async fn suggest(State(server): State<Server>, headers: HeaderMap, body: Bytes) 
             .to_string(),
         )
     });
+    deferred_response(future)
+}
+
+pub(crate) fn deferred_response(future: impl Future<Output = Bytes> + Send + 'static) -> Response {
     (
         [
             (header::CONTENT_TYPE, "application/json"),
             (header::CACHE_CONTROL, "no-store"),
         ],
-        Body::new(SuggestionBody(Some(future))),
+        Body::new(SuggestionBody(Some(Box::pin(future)))),
     )
         .into_response()
 }
