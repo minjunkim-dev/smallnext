@@ -77,6 +77,7 @@ final class DevelopmentActionSuggestionProviderTests: XCTestCase {
         task.cancel()
         do { _ = try await task.value; XCTFail("must cancel") }
         catch { XCTAssertTrue(error is CancellationError) }
+        for _ in 0..<200 where !DevelopmentTransport.store.stopped { try await Task.sleep(for: .milliseconds(10)) }
         XCTAssertTrue(DevelopmentTransport.store.stopped)
     }
 
