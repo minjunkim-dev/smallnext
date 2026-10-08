@@ -15,8 +15,9 @@
 첫 기능 검증 플랫폼은 iOS입니다.
 Android는 기본 실행과 저장 검증을 함께 수행합니다.
 현재 두 앱에는 시작 화면과 DB 초기화만 있습니다.
-앱의 목표·행동 기능, AI 연결, 실제 Firebase 인증, 동기화는 다음 작업 범위입니다.
-현재 API에는 사용자 데이터를 다루는 경로가 없습니다.
+iOS 핵심 흐름과 개발 AI 연결은 기본 OFF로 구현했습니다.
+사용자용 서버 AI와 Firebase 익명 인증의 설정·검증은 [SERVER_AI](SERVER_AI.md)를 따릅니다.
+실제 Firebase 연결·API 평가·동기화·배포는 별도 작업입니다.
 
 ## 필요한 도구
 
@@ -206,7 +207,8 @@ xcrun simctl launch booted dev.smallnext.app -ios_core_flow YES
 ```
 
 Debug 빌드는 서버 주소가 없으면 고정 제안 공급자를 사용합니다. 서버 주소가 있으면 위 HTTP 공급자를 사용합니다.
-Release 빌드는 아직 공급자가 없어 `사용 불가`를 반환합니다.
+사용자용 서버 AI가 OFF인 Release 빌드는 `사용 불가`를 반환합니다.
+사용자용 서버 AI의 별도 플래그와 HTTPS·Firebase 설정은 [SERVER_AI](SERVER_AI.md)를 따릅니다.
 
 ## Android
 

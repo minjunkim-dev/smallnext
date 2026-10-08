@@ -104,7 +104,7 @@ final class DevelopmentActionSuggestionProviderTests: XCTestCase {
     }
 }
 
-private final class DevelopmentTransport: URLProtocol, @unchecked Sendable {
+final class DevelopmentTransport: URLProtocol, @unchecked Sendable {
     static let store = Store()
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }

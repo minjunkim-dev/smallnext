@@ -16,6 +16,7 @@ use tokio::{
     process::Command,
     sync::watch,
 };
+use utoipa::ToSchema;
 
 pub const MODEL: &str = "gpt-6.1-sol";
 const INPUT_LIMIT: usize = 32 * 1024;
@@ -23,7 +24,7 @@ const OUTPUT_LIMIT: u64 = 128 * 1024;
 // The checker receives both the original input and the bounded generator result.
 const CHECK_INPUT_LIMIT: usize = 192 * 1024;
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ProposalStatus {
     Action,
@@ -33,7 +34,7 @@ pub enum ProposalStatus {
     NoAction,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Proposal {
     pub status: ProposalStatus,
@@ -47,7 +48,7 @@ pub struct Proposal {
     pub preserved_completed_ids: Vec<String>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct AiInput {
     pub goal: String,
@@ -235,65 +236,18 @@ impl SubscriptionAi {
         }
     }
     async fn pipeline(&self, input: &AiInput) -> Result<Proposal, Disposition> {
-        let original = serde_json::to_value(input).map_err(|_| Disposition::InvalidInput)?;
-        let size = serde_json::to_vec(&original)
-            .map_err(|_| Disposition::InvalidInput)?
-            .len();
-        if size > INPUT_LIMIT
-            || input.goal.trim().is_empty()
-            || input.user_request.trim().is_empty()
-            || !input.available_minutes.is_finite()
-            || input.available_minutes < 0.0
-            || input.current_blocker.len() > 2048
-            || input.request_kind.as_deref().is_some_and(|kind| {
-                !matches!(
-                    kind,
-                    "goal_preparation" | "first_action" | "next_action" | "smaller" | "replacement"
-                )
-            })
-        {
-            return Err(Disposition::InvalidInput);
-        }
+        let original = validate_input(input)?;
         let proposal: Proposal = serde_json::from_value(self.call("generate", &original).await?)
             .map_err(|_| Disposition::InvalidProposal)?;
-        if proposal.action.trim().is_empty()
-            || proposal.completion_condition.trim().is_empty()
-            || proposal.reason.trim().is_empty()
-            || !proposal.estimated_minutes.is_finite()
-            || proposal.estimated_minutes < 0.0
-            || proposal.estimated_minutes > input.available_minutes
-            || proposal.goal_completed
-            || proposal.current_action_completed
-            || proposal.remaining_work != input.remaining_work
-            || proposal.preserved_completed_ids != input.completed_ids
-            || (proposal.status == ProposalStatus::GoalSummary
-                && input.request_kind.as_deref() != Some("goal_preparation"))
-            || (proposal.status == ProposalStatus::NoAction
-                && input.request_kind.as_deref() != Some("replacement"))
-        {
-            return Err(Disposition::InvalidProposal);
-        }
-        let check: Check = serde_json::from_value(
+        validate_proposal(input, &proposal)?;
+        validate_check(
             self.call(
                 "check",
                 &json!({"original_request": original, "candidate": proposal}),
             )
             .await?,
-        )
-        .map_err(|_| Disposition::Failed)?;
-        if check.evidence.trim().is_empty()
-            || check.reason.trim().is_empty()
-            || check.criteria.is_empty()
-            || check.criteria.iter().any(|c| !(1..=5).contains(c))
-        {
-            return Err(Disposition::Failed);
-        }
-        match check.verdict {
-            Verdict::Accept if (1..=5).all(|c| check.criteria.contains(&c)) => Ok(proposal),
-            Verdict::Accept => Err(Disposition::Failed),
-            Verdict::Reject => Err(Disposition::Rejected),
-            Verdict::Uncertain => Err(Disposition::Uncertain),
-        }
+        )?;
+        Ok(proposal)
     }
     async fn call(&self, role: &str, payload: &Value) -> Result<Value, Disposition> {
         let input = serde_json::to_vec(payload).map_err(|_| Disposition::InvalidInput)?;
@@ -468,6 +422,67 @@ fn parse_events(bytes: &[u8]) -> Result<Value, Disposition> {
         return Err(Disposition::Failed);
     }
     result.ok_or(Disposition::Failed)
+}
+
+pub(crate) fn validate_input(input: &AiInput) -> Result<Value, Disposition> {
+    let original = serde_json::to_value(input).map_err(|_| Disposition::InvalidInput)?;
+    let size = serde_json::to_vec(&original)
+        .map_err(|_| Disposition::InvalidInput)?
+        .len();
+    if size > INPUT_LIMIT
+        || input.goal.trim().is_empty()
+        || input.user_request.trim().is_empty()
+        || !input.available_minutes.is_finite()
+        || input.available_minutes < 0.0
+        || input.current_blocker.len() > 2048
+        || input.request_kind.as_deref().is_some_and(|kind| {
+            !matches!(
+                kind,
+                "goal_preparation" | "first_action" | "next_action" | "smaller" | "replacement"
+            )
+        })
+    {
+        return Err(Disposition::InvalidInput);
+    }
+    Ok(original)
+}
+
+pub(crate) fn validate_proposal(input: &AiInput, proposal: &Proposal) -> Result<(), Disposition> {
+    if proposal.action.trim().is_empty()
+        || proposal.completion_condition.trim().is_empty()
+        || proposal.reason.trim().is_empty()
+        || !proposal.estimated_minutes.is_finite()
+        || proposal.estimated_minutes < 0.0
+        || proposal.estimated_minutes > input.available_minutes
+        || proposal.goal_completed
+        || proposal.current_action_completed
+        || proposal.remaining_work != input.remaining_work
+        || proposal.preserved_completed_ids != input.completed_ids
+        || (proposal.status == ProposalStatus::GoalSummary
+            && input.request_kind.as_deref() != Some("goal_preparation"))
+        || (proposal.status == ProposalStatus::NoAction
+            && input.request_kind.as_deref() != Some("replacement"))
+    {
+        return Err(Disposition::InvalidProposal);
+    }
+    Ok(())
+}
+
+pub(crate) fn validate_check(value: Value) -> Result<(), Disposition> {
+    let check: Check = serde_json::from_value(value).map_err(|_| Disposition::Failed)?;
+    if check.evidence.trim().is_empty()
+        || check.reason.trim().is_empty()
+        || check.criteria.is_empty()
+        || check.criteria.iter().any(|c| !(1..=5).contains(c))
+    {
+        return Err(Disposition::Failed);
+    }
+    match check.verdict {
+        Verdict::Accept if (1..=5).all(|c| check.criteria.contains(&c)) => Ok(()),
+        Verdict::Accept => Err(Disposition::Failed),
+        Verdict::Reject => Err(Disposition::Rejected),
+        Verdict::Uncertain => Err(Disposition::Uncertain),
+    }
 }
 
 // Codex exec exposes only an error message, not a structured error code.
