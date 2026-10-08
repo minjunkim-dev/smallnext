@@ -45,27 +45,34 @@ pub(super) async fn reserve(
             .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
     sqlx::query("INSERT INTO ai_budget(singleton, month, charged_micro_usd) VALUES(TRUE, $1, 0) ON CONFLICT DO NOTHING")
         .bind(&month).execute(&mut *transaction).await.map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
-    let (previous, mut charged): (String, i64) =
-        sqlx::query_as("SELECT month, charged_micro_usd FROM ai_budget WHERE singleton FOR UPDATE")
-            .fetch_one(&mut *transaction)
-            .await
-            .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
+    let (previous, mut charged, mut blocked): (String, i64, bool) = sqlx::query_as(
+        "SELECT month, charged_micro_usd, blocked FROM ai_budget WHERE singleton FOR UPDATE",
+    )
+    .fetch_one(&mut *transaction)
+    .await
+    .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
     if previous > month {
         return Err(StatusCode::SERVICE_UNAVAILABLE);
     }
     if previous != month {
         charged = 0;
+        blocked = false;
+    }
+    if blocked {
+        return Err(StatusCode::TOO_MANY_REQUESTS);
     }
     let total = charged
         .checked_add(amount)
         .filter(|n| amount > 0 && *n <= limit)
         .ok_or(StatusCode::TOO_MANY_REQUESTS)?;
-    sqlx::query("UPDATE ai_budget SET month=$1, charged_micro_usd=$2 WHERE singleton")
-        .bind(&month)
-        .bind(total)
-        .execute(&mut *transaction)
-        .await
-        .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
+    sqlx::query(
+        "UPDATE ai_budget SET month=$1, charged_micro_usd=$2, blocked=FALSE WHERE singleton",
+    )
+    .bind(&month)
+    .bind(total)
+    .execute(&mut *transaction)
+    .await
+    .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
     transaction
         .commit()
         .await
@@ -90,10 +97,10 @@ impl Reservation {
         }
         if overrun {
             // A violated VERIFIED ceiling exhausts the remaining budget; never refund it.
-            sqlx::query("UPDATE ai_budget SET charged_micro_usd=GREATEST(charged_micro_usd,$1) WHERE singleton AND month=$2")
+            sqlx::query("UPDATE ai_budget SET charged_micro_usd=GREATEST(charged_micro_usd,$1), blocked=TRUE WHERE singleton AND month=$2")
                 .bind(limit).bind(&self.month).execute(pool).await.map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
         } else {
-            sqlx::query("UPDATE ai_budget SET charged_micro_usd=charged_micro_usd-$1 WHERE singleton AND month=$2")
+            sqlx::query("UPDATE ai_budget SET charged_micro_usd=charged_micro_usd-$1 WHERE singleton AND month=$2 AND NOT blocked")
                 .bind(self.amount-actual).bind(&self.month).execute(pool).await.map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
         }
         // Drop rolls back the advisory-lock transaction. Charged aggregate is already durable.

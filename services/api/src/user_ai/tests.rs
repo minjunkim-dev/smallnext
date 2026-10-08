@@ -180,10 +180,10 @@ async fn disabled_revoked_and_lookup_failure_never_spend_ai_budget() {
         StatusCode::UNAUTHORIZED
     );
     fixture.remote.disabled.store(false, Ordering::SeqCst);
-    fixture
-        .remote
-        .revoked_after
-        .store(jsonwebtoken::get_current_timestamp() + 1, Ordering::SeqCst);
+    fixture.remote.revoked_after.store(
+        jsonwebtoken::get_current_timestamp() + 3600,
+        Ordering::SeqCst,
+    );
     assert_eq!(
         fixture.request("allowed", "revoked").await.status(),
         StatusCode::UNAUTHORIZED
@@ -342,8 +342,8 @@ async fn wrong_project_signature_algorithm_expiry_and_subject_never_authorize() 
         ("aud", json!(["test-project"])),
         ("iss", json!("https://securetoken.google.com/wrong")),
         ("exp", json!(now - 1)),
-        ("iat", json!(now + 1)),
-        ("auth_time", json!(now + 1)),
+        ("iat", json!(now + 3600)),
+        ("auth_time", json!(now + 3600)),
         ("sub", json!("")),
         ("user_id", json!("other")),
     ] {
@@ -422,6 +422,44 @@ async fn concurrent_last_balance_is_reserved_once_and_usage_ceiling_overrun_exha
         fixture.request("allowed", "blocked").await.status(),
         StatusCode::TOO_MANY_REQUESTS
     );
+    fixture.close().await;
+}
+
+#[tokio::test]
+#[ignore = "requires TEST_DATABASE_URL; HTTP against real isolated PostgreSQL"]
+async fn overrun_remains_blocked_after_other_instances_refund_and_restart() {
+    let mut fixture = Fixture::new().await;
+    fixture.config.budget_limit = 128_000;
+    fixture.app = super::router(Some(fixture.config.clone()), fixture.database.clone());
+    let overrun = fixture.request("allowed", "overrun").await;
+    let normal = fixture.request("other", "normal").await;
+    // A second API instance has its own capacity, but shares the durable monthly budget.
+    let mut replica = super::router(Some(fixture.config.clone()), fixture.database.clone());
+    std::mem::swap(&mut replica, &mut fixture.app);
+    let other_normal = fixture.request("other", "other-normal").await;
+    std::mem::swap(&mut replica, &mut fixture.app);
+    assert_eq!(overrun.status(), StatusCode::OK);
+    assert_eq!(normal.status(), StatusCode::OK);
+    assert_eq!(other_normal.status(), StatusCode::OK);
+    *fixture.remote.mode.lock().unwrap() = "overrun".into();
+    assert_eq!(result(overrun).await["disposition"], "failed");
+    *fixture.remote.mode.lock().unwrap() = String::new();
+    assert_eq!(result(normal).await["disposition"], "accepted");
+    assert_eq!(result(other_normal).await["disposition"], "accepted");
+    drop(replica);
+    fixture.app = super::router(Some(fixture.config.clone()), fixture.database.clone());
+    assert_eq!(
+        fixture.request("allowed", "after-refund").await.status(),
+        StatusCode::TOO_MANY_REQUESTS
+    );
+    // A later configuration increase cannot silently clear an overrun either.
+    fixture.config.budget_limit = 256_000;
+    fixture.app = super::router(Some(fixture.config.clone()), fixture.database.clone());
+    assert_eq!(
+        fixture.request("allowed", "after-increase").await.status(),
+        StatusCode::TOO_MANY_REQUESTS
+    );
+    assert_eq!(fixture.remote.calls.lock().unwrap().len(), 5);
     fixture.close().await;
 }
 

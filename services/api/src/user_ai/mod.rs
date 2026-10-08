@@ -64,7 +64,12 @@ impl Config {
                     .collect();
                 matches.len() == 1 && matches[0]["default"] == true
             });
-        if !enabled && std::env::var("USER_SERVER_AI").as_deref() != Ok("1") {
+        let enabled = match std::env::var("USER_SERVER_AI") {
+            Ok(value) => value == "1",
+            Err(std::env::VarError::NotPresent) => enabled,
+            Err(_) => false,
+        };
+        if !enabled {
             return Ok(None);
         }
         let project = required("FIREBASE_PROJECT_ID")?;
