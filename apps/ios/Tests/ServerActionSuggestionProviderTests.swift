@@ -4,6 +4,13 @@ import XCTest
 
 @MainActor
 final class ServerActionSuggestionProviderTests: XCTestCase {
+    func testAppBundleIncludesServerConfigurationKeys() {
+        for key in ["SmallnextAPIBaseURL", "SmallnextFirebaseAppID", "SmallnextFirebaseSenderID",
+                    "SmallnextFirebaseProjectID", "SmallnextFirebaseAPIKey"] {
+            XCTAssertNotNil(Bundle.main.object(forInfoDictionaryKey: key) as? String, key)
+        }
+    }
+
     func testPlainHTTPOrCredentialURLNeverObtainsIdentity() async throws {
         for address in ["http://api.example.invalid", "https://name:pass@api.example.invalid", "https://api.example.invalid?token=x"] {
             let provider = ServerActionSuggestionProvider(baseURL: URL(string: address)!, token: {

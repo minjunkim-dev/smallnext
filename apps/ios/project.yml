@@ -29,15 +29,11 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dev.smallnext.app
         GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_FILE: Config/Release.plist
         INFOPLIST_KEY_CFBundleDisplayName: Smallnext
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
         TARGETED_DEVICE_FAMILY: "1,2"
-        INFOPLIST_KEY_SmallnextAPIBaseURL: "$(SMALLNEXT_API_BASE_URL)"
-        INFOPLIST_KEY_SmallnextFirebaseAppID: "$(SMALLNEXT_FIREBASE_APP_ID)"
-        INFOPLIST_KEY_SmallnextFirebaseSenderID: "$(SMALLNEXT_FIREBASE_SENDER_ID)"
-        INFOPLIST_KEY_SmallnextFirebaseProjectID: "$(SMALLNEXT_FIREBASE_PROJECT_ID)"
-        INFOPLIST_KEY_SmallnextFirebaseAPIKey: "$(SMALLNEXT_FIREBASE_API_KEY)"
       configs:
         Debug:
           INFOPLIST_FILE: Config/Debug.plist
