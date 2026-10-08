@@ -53,6 +53,11 @@ async fn external_provider(
     if mode == "overrun" {
         response["usage"]["output_tokens"] = json!(1001);
     }
+    if (mode == "wrong_generate_model" && body["text"]["format"]["name"] == "generate")
+        || (mode == "wrong_check_model" && body["text"]["format"]["name"] == "check")
+    {
+        response["model"] = json!("unconfirmed-model");
+    }
     Json(response)
 }
 
@@ -230,6 +235,28 @@ async fn missing_usage_stays_charged_after_restart_and_budget_rejection_never_ca
     );
     assert_eq!(fixture.remote.calls.lock().unwrap().len(), 4);
     fixture.close().await;
+}
+
+#[tokio::test]
+#[ignore = "requires TEST_DATABASE_URL; HTTP against real isolated PostgreSQL"]
+async fn unconfirmed_model_with_usage_blocks_budget_after_restart() {
+    for (mode, calls) in [("wrong_generate_model", 1), ("wrong_check_model", 2)] {
+        let mut fixture = Fixture::new().await;
+        *fixture.remote.mode.lock().unwrap() = mode.into();
+        assert_eq!(
+            result(fixture.request("allowed", "wrong-model").await).await["disposition"],
+            "failed"
+        );
+        assert_eq!(fixture.remote.calls.lock().unwrap().len(), calls);
+        *fixture.remote.mode.lock().unwrap() = String::new();
+        fixture.app = super::router(Some(fixture.config.clone()), fixture.database.clone());
+        assert_eq!(
+            fixture.request("allowed", "after-restart").await.status(),
+            StatusCode::TOO_MANY_REQUESTS
+        );
+        assert_eq!(fixture.remote.calls.lock().unwrap().len(), calls);
+        fixture.close().await;
+    }
 }
 
 #[tokio::test]

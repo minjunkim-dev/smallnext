@@ -158,6 +158,10 @@ impl Provider {
             Ok(value) => value,
             Err(()) => return (Err(Disposition::Failed), None, false),
         };
+        if value["model"] != MODEL {
+            // An unconfirmed model has no verified price or ceiling. Block this month.
+            return (Err(Disposition::Failed), None, true);
+        }
         let overrun = value["usage"]["input_tokens"]
             .as_u64()
             .is_some_and(|n| n > self.context_tokens)
@@ -165,12 +169,8 @@ impl Provider {
                 .as_u64()
                 .is_some_and(|n| n > self.output_tokens);
         let usage = self.usage(role, &value["usage"]);
-        // Missing usage remains charged at the ceiling. A changed model fails closed.
-        if overrun
-            || value["model"] != MODEL
-            || value["status"] != "completed"
-            || !value["error"].is_null()
-        {
+        // Missing usage remains charged at the verified model's ceiling.
+        if overrun || value["status"] != "completed" || !value["error"].is_null() {
             return (Err(Disposition::Failed), usage, overrun);
         }
         let Some(output) = value["output"].as_array() else {

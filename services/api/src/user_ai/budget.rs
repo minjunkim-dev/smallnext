@@ -96,7 +96,7 @@ impl Reservation {
             return Err(StatusCode::SERVICE_UNAVAILABLE);
         }
         if overrun {
-            // A violated VERIFIED ceiling exhausts the remaining budget; never refund it.
+            // A violated or unconfirmed ceiling exhausts the budget; never refund it.
             sqlx::query("UPDATE ai_budget SET charged_micro_usd=GREATEST(charged_micro_usd,$1), blocked=TRUE WHERE singleton AND month=$2")
                 .bind(limit).bind(&self.month).execute(pool).await.map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
         } else {
