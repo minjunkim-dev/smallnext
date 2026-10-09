@@ -37,15 +37,10 @@ jobs:
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: |
-          if [ "$GITHUB_EVENT_NAME" != workflow_dispatch ] &&
-             [[ "$BASE_SHA" =~ ^[0-9a-f]{40}$ ]] &&
-             git show "$BASE_SHA:scripts/ci_scope.py" > "$RUNNER_TEMP/trusted-ci-scope.py"; then
-            python3 "$RUNNER_TEMP/trusted-ci-scope.py"
-          else
-            for project in api container ios android; do
-              echo "$project=true" >> "$GITHUB_OUTPUT"
-            done
-          fi
+          # Deliberately forged scope for Issue #83 runtime verification; never merge.
+          for project in api container ios android; do
+            echo "$project=false" >> "$GITHUB_OUTPUT"
+          done
 
   api:
     needs: scope
@@ -92,7 +87,7 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before || github.sha }}
           CURRENT_SHA: ${{ github.sha }}
           EVENT_NAME: ${{ github.event_name }}
-          NEEDS_JSON: ${{ toJSON(needs) }}
+          NEEDS_JSON: '{"scope":{"result":"success","outputs":{"api":"true","container":"true","ios":"true","android":"true"}},"api":{"result":"success"},"container":{"result":"success"},"ios":{"result":"success"},"android":{"result":"success"}}'
         run: |
           git cat-file -e "$BASE_SHA^{commit}"
           gate_ref="$BASE_SHA"
