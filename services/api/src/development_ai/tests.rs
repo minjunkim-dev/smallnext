@@ -69,6 +69,33 @@ fn request_status_contract() {
 }
 
 #[test]
+fn input_contract_rejects_missing_scope_invalid_kinds_and_time() {
+    assert!(validate_input(&input()).is_ok());
+    for field in ["goal", "user_request", "current_blocker", "request_kind"] {
+        let mut data = input();
+        match field {
+            "goal" => data.goal = " ".into(),
+            "user_request" => data.user_request = " ".into(),
+            "current_blocker" => data.current_blocker = "x".repeat(2049),
+            _ => data.request_kind = Some("unsupported".into()),
+        }
+        assert_eq!(
+            validate_input(&data),
+            Err(Disposition::InvalidInput),
+            "{field}"
+        );
+    }
+    for minutes in [-1.0, f64::NAN, f64::INFINITY] {
+        let mut data = input();
+        data.available_minutes = minutes;
+        assert_eq!(validate_input(&data), Err(Disposition::InvalidInput));
+    }
+    let mut data = input();
+    data.available_minutes = 0.0;
+    assert!(validate_input(&data).is_ok());
+}
+
+#[test]
 fn candidate_preserves_exact_scope_ids_and_incomplete_state() {
     let mut data = input();
     data.remaining_work = vec!["첫 범위".into(), "둘째 범위".into()];
