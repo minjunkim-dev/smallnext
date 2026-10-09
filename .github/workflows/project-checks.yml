@@ -87,6 +87,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - name: Check selected job results
+        id: check-selected-jobs
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before || github.sha }}
           CURRENT_SHA: ${{ github.sha }}
