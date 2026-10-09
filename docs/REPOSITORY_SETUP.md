@@ -121,6 +121,11 @@ HTTP 401 또는 SDK `authentication_failed`가 발생하면 해당 리뷰를 미
 동료 승인은 필수가 아닙니다. 2026-10-06 `gh api repos/minjunkim-dev/smallnext/branches/main/protection`의 `required_pull_request_reviews`에서 `required_approving_review_count: 0`, `require_code_owner_reviews: false`를 확인했습니다. 병합은 [병합 조건](WORKFLOW.md#병합-조건)을 따릅니다.
 비공개일 때 ruleset 요청이 HTTP 403으로 거절된 기록은 현재 공개 저장소의 보호 상태를 나타내지 않습니다.
 
+PR의 workflow는 집계 입력과 플랫폼 검사 정의를 변경할 수 있습니다.
+독립 집계를 병합 판단 근거로 사용하는 설계는 [ADR-0001](adr/0001-trusted-ci-aggregation.md)에 있습니다.
+집계 workflow의 구현과 실제 도입 검증은 아직 완료하지 않았습니다.
+구현 완료 조건과 도입 순서는 [Issue #83의 확정 답](https://github.com/minjunkim-dev/smallnext/issues/83#issuecomment-6078139109)을 따릅니다.
+
 ## 연결 상태와 검증 근거
 
 2026-10-03 확인 결과입니다. 계정 설정 저장과 실제 봇 응답을 구분합니다.
