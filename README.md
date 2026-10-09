@@ -57,6 +57,7 @@ python3 -m unittest discover -s scripts -p 'test_*.py'
 | [REPOSITORY_SETUP](docs/REPOSITORY_SETUP.md) | 자동화, 계정 연결, 현재 제한과 실행 증거 |
 | [CONTEXT](CONTEXT.md) | 진행 상태, 입력 초안, 완료·보류·중단·삭제의 용어 |
 | [PRODUCT](docs/PRODUCT.md) · [DECISIONS](docs/DECISIONS.md) | 제품 가설과 미결정 항목. 확정 답은 해당 Issue |
+| [AI 연결 연구](docs/research/ai-connections.md) · [모바일 모션 연구](docs/research/mobile-motion.md) | 2026-10-03의 조사 기록과 출처. 현재 설정과 확정 결정은 각 문서가 연결한 기준 문서와 Issue |
 | [SECURITY](SECURITY.md) | 비밀정보 처리와 비공개 문제 보고 |
 | [CONTRIBUTING](CONTRIBUTING.md) | 기여를 시작할 때 확인할 기준 문서 |
 
