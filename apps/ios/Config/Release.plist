@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>FirebaseCrashlyticsCollectionEnabled</key>
+    <false/>
+    <key>FirebaseDataCollectionDefaultEnabled</key>
+    <false/>
+    <key>SmallnextAPIBaseURL</key>
+    <string>$(SMALLNEXT_API_BASE_URL)</string>
+    <key>SmallnextFirebaseAppID</key>
+    <string>$(SMALLNEXT_FIREBASE_APP_ID)</string>
+    <key>SmallnextFirebaseSenderID</key>
+    <string>$(SMALLNEXT_FIREBASE_SENDER_ID)</string>
+    <key>SmallnextFirebaseProjectID</key>
+    <string>$(SMALLNEXT_FIREBASE_PROJECT_ID)</string>
+    <key>SmallnextFirebaseAPIKey</key>
+    <string>$(SMALLNEXT_FIREBASE_API_KEY)</string>
+</dict>
+</plist>

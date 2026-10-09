@@ -1,4 +1,5 @@
-//! Local development only. The HTTP server never exposes this subscription adapter.
+//! Developer's Mac only. HTTP access requires the local development flag.
+pub mod http;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{
@@ -15,6 +16,7 @@ use tokio::{
     process::Command,
     sync::watch,
 };
+use utoipa::ToSchema;
 
 pub const MODEL: &str = "gpt-6.1-sol";
 const INPUT_LIMIT: usize = 32 * 1024;
@@ -22,15 +24,17 @@ const OUTPUT_LIMIT: u64 = 128 * 1024;
 // The checker receives both the original input and the bounded generator result.
 const CHECK_INPUT_LIMIT: usize = 192 * 1024;
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ProposalStatus {
     Action,
     NeedInfo,
     Minimum,
+    GoalSummary,
+    NoAction,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Proposal {
     pub status: ProposalStatus,
@@ -44,7 +48,7 @@ pub struct Proposal {
     pub preserved_completed_ids: Vec<String>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct AiInput {
     pub goal: String,
@@ -58,6 +62,8 @@ pub struct AiInput {
     pub remaining_work: Vec<String>,
     pub completed_ids: Vec<String>,
     pub previous_proposals: Vec<Proposal>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub request_kind: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -89,6 +95,8 @@ pub enum Disposition {
     Failed,
     TimedOut,
     Superseded,
+    BudgetLimit,
+    ConnectionLost,
 }
 
 /// Only the evaluator can construct a candidate that has passed both stages.
@@ -166,6 +174,7 @@ impl ActionState {
     }
 }
 
+#[derive(Clone)]
 pub struct SubscriptionAi {
     enabled: bool,
     executable: PathBuf,
@@ -191,7 +200,7 @@ impl Default for SubscriptionAi {
     }
 }
 impl SubscriptionAi {
-    /// Explicit local override. Never used by the API server or mobile apps.
+    /// Explicit override for the developer's local CLI or development HTTP server.
     pub fn for_local_development() -> Self {
         Self {
             enabled: true,
@@ -227,54 +236,18 @@ impl SubscriptionAi {
         }
     }
     async fn pipeline(&self, input: &AiInput) -> Result<Proposal, Disposition> {
-        let original = serde_json::to_value(input).map_err(|_| Disposition::InvalidInput)?;
-        let size = serde_json::to_vec(&original)
-            .map_err(|_| Disposition::InvalidInput)?
-            .len();
-        if size > INPUT_LIMIT
-            || input.goal.trim().is_empty()
-            || input.user_request.trim().is_empty()
-            || !input.available_minutes.is_finite()
-            || input.available_minutes < 0.0
-        {
-            return Err(Disposition::InvalidInput);
-        }
+        let original = validate_input(input)?;
         let proposal: Proposal = serde_json::from_value(self.call("generate", &original).await?)
             .map_err(|_| Disposition::InvalidProposal)?;
-        if proposal.action.trim().is_empty()
-            || proposal.completion_condition.trim().is_empty()
-            || proposal.reason.trim().is_empty()
-            || !proposal.estimated_minutes.is_finite()
-            || proposal.estimated_minutes < 0.0
-            || proposal.estimated_minutes > input.available_minutes
-            || proposal.goal_completed
-            || proposal.current_action_completed
-            || proposal.remaining_work != input.remaining_work
-            || proposal.preserved_completed_ids != input.completed_ids
-        {
-            return Err(Disposition::InvalidProposal);
-        }
-        let check: Check = serde_json::from_value(
+        validate_proposal(input, &proposal)?;
+        validate_check(
             self.call(
                 "check",
                 &json!({"original_request": original, "candidate": proposal}),
             )
             .await?,
-        )
-        .map_err(|_| Disposition::Failed)?;
-        if check.evidence.trim().is_empty()
-            || check.reason.trim().is_empty()
-            || check.criteria.is_empty()
-            || check.criteria.iter().any(|c| !(1..=5).contains(c))
-        {
-            return Err(Disposition::Failed);
-        }
-        match check.verdict {
-            Verdict::Accept if (1..=5).all(|c| check.criteria.contains(&c)) => Ok(proposal),
-            Verdict::Accept => Err(Disposition::Failed),
-            Verdict::Reject => Err(Disposition::Rejected),
-            Verdict::Uncertain => Err(Disposition::Uncertain),
-        }
+        )?;
+        Ok(proposal)
     }
     async fn call(&self, role: &str, payload: &Value) -> Result<Value, Disposition> {
         let input = serde_json::to_vec(payload).map_err(|_| Disposition::InvalidInput)?;
@@ -329,6 +302,16 @@ impl SubscriptionAi {
                 "skills.max_context_tokens=1",
                 "-c",
                 "model_reasoning_effort=\"medium\"",
+                "-c",
+                "model_provider=\"smallnext-development\"",
+                "-c",
+                "model_providers.smallnext-development.name=\"OpenAI\"",
+                "-c",
+                "model_providers.smallnext-development.requires_openai_auth=true",
+                "-c",
+                "model_providers.smallnext-development.request_max_retries=0",
+                "-c",
+                "model_providers.smallnext-development.stream_max_retries=0",
             ])
             .arg("-c")
             .arg(format!(
@@ -382,15 +365,16 @@ impl SubscriptionAi {
         if output.len() as u64 > OUTPUT_LIMIT {
             return Err(Disposition::Failed);
         }
+        let parsed = parse_events(&output);
         if !child
             .wait()
             .await
             .map_err(|_| Disposition::Failed)?
             .success()
         {
-            return Err(Disposition::Failed);
+            return Err(parsed.err().unwrap_or(Disposition::Failed));
         }
-        parse_events(&output)
+        parsed
     }
 }
 
@@ -401,7 +385,8 @@ fn parse_events(bytes: &[u8]) -> Result<Value, Disposition> {
     for line in text.lines().filter(|s| !s.trim().is_empty()) {
         let event: Value = serde_json::from_str(line).map_err(|_| Disposition::Failed)?;
         match event["type"].as_str() {
-            Some("turn.failed" | "error") => return Err(Disposition::Failed),
+            Some("turn.failed") => return Err(cli_failure(&event["error"])),
+            Some("error") => return Err(cli_failure(&event)),
             Some("turn.completed") => {
                 if completed {
                     return Err(Disposition::Failed);
@@ -425,6 +410,7 @@ fn parse_events(bytes: &[u8]) -> Result<Value, Disposition> {
                     // Codex reports this intentional catalog removal as an error item.
                     // Accept only the exact no-skills notice; configuration/tool errors fail.
                     Some("error") if empty_skills_notice(&event["item"]) => (),
+                    Some("error") => return Err(cli_failure(&event["item"])),
                     _ => return Err(Disposition::Failed),
                 }
             }
@@ -436,6 +422,92 @@ fn parse_events(bytes: &[u8]) -> Result<Value, Disposition> {
         return Err(Disposition::Failed);
     }
     result.ok_or(Disposition::Failed)
+}
+
+pub(crate) fn validate_input(input: &AiInput) -> Result<Value, Disposition> {
+    let original = serde_json::to_value(input).map_err(|_| Disposition::InvalidInput)?;
+    let size = serde_json::to_vec(&original)
+        .map_err(|_| Disposition::InvalidInput)?
+        .len();
+    if size > INPUT_LIMIT
+        || input.goal.trim().is_empty()
+        || input.user_request.trim().is_empty()
+        || !input.available_minutes.is_finite()
+        || input.available_minutes < 0.0
+        || input.current_blocker.len() > 2048
+        || input.request_kind.as_deref().is_some_and(|kind| {
+            !matches!(
+                kind,
+                "goal_preparation" | "first_action" | "next_action" | "smaller" | "replacement"
+            )
+        })
+    {
+        return Err(Disposition::InvalidInput);
+    }
+    Ok(original)
+}
+
+pub(crate) fn validate_proposal(input: &AiInput, proposal: &Proposal) -> Result<(), Disposition> {
+    if proposal.action.trim().is_empty()
+        || proposal.completion_condition.trim().is_empty()
+        || proposal.reason.trim().is_empty()
+        || !proposal.estimated_minutes.is_finite()
+        || proposal.estimated_minutes < 0.0
+        || proposal.estimated_minutes > input.available_minutes
+        || proposal.goal_completed
+        || proposal.current_action_completed
+        || proposal.remaining_work != input.remaining_work
+        || proposal.preserved_completed_ids != input.completed_ids
+        || (proposal.status == ProposalStatus::GoalSummary
+            && input.request_kind.as_deref() != Some("goal_preparation"))
+        || (proposal.status == ProposalStatus::NoAction
+            && input.request_kind.as_deref() != Some("replacement"))
+    {
+        return Err(Disposition::InvalidProposal);
+    }
+    Ok(())
+}
+
+pub(crate) fn validate_check(value: Value) -> Result<(), Disposition> {
+    let check: Check = serde_json::from_value(value).map_err(|_| Disposition::Failed)?;
+    if check.evidence.trim().is_empty()
+        || check.reason.trim().is_empty()
+        || check.criteria.is_empty()
+        || check.criteria.iter().any(|c| !(1..=5).contains(c))
+    {
+        return Err(Disposition::Failed);
+    }
+    match check.verdict {
+        Verdict::Accept if (1..=5).all(|c| check.criteria.contains(&c)) => Ok(()),
+        Verdict::Accept => Err(Disposition::Failed),
+        Verdict::Reject => Err(Disposition::Rejected),
+        Verdict::Uncertain => Err(Disposition::Uncertain),
+    }
+}
+
+// Codex exec exposes only an error message, not a structured error code.
+// Match known upstream prefixes; unknown or changed messages still fail closed.
+fn cli_failure(error: &Value) -> Disposition {
+    let message = error["message"].as_str().unwrap_or("");
+    if message.starts_with("You've hit your usage limit")
+        || message.starts_with("You’ve hit your usage limit")
+        || message.starts_with("You hit your spend cap")
+        || message.starts_with("Quota exceeded.")
+    {
+        Disposition::BudgetLimit
+    } else if message.starts_with("Connection failed:")
+        || message.starts_with("stream disconnected before completion:")
+    {
+        if message.contains("reason: content_filter") {
+            Disposition::Rejected
+        } else {
+            Disposition::ConnectionLost
+        }
+    } else if message == "request timed out" {
+        Disposition::TimedOut
+    } else {
+        Disposition::Failed
+    }
 }
 
 fn empty_skills_notice(item: &Value) -> bool {

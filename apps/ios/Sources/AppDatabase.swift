@@ -83,6 +83,27 @@ struct AppDatabase {
                 table.add(column: "answer", .text)
             }
         }
+        migrator.registerMigration("progress_v3_material_links") { db in
+            try db.alter(table: "action") { table in
+                table.add(column: "material_links", .text).notNull().defaults(to: "[]")
+            }
+        }
+        migrator.registerMigration("progress_v4_goal_preparation") { db in
+            try db.alter(table: "goal") { table in
+                table.add(column: "material_excerpt", .text)
+                table.add(column: "is_confirmed", .boolean).notNull().defaults(to: true)
+                table.add(column: "proposed_completion_criteria", .text)
+            }
+        }
+        // 확인 중인 목표 입력과 새 목표 입력을 분리한다. 기존 입력은 해당 목표로 옮긴다.
+        migrator.registerMigration("progress_v5_goal_input_scope") { db in
+            try db.execute(sql: """
+                UPDATE app_metadata SET key = 'goal_input:' || (SELECT value FROM app_metadata WHERE key = 'selected_goal_id')
+                WHERE key = 'goal_input' AND EXISTS (
+                    SELECT 1 FROM goal WHERE id = (SELECT value FROM app_metadata WHERE key = 'selected_goal_id') AND NOT is_confirmed
+                )
+                """)
+        }
         try migrator.migrate(writer)
     }
 

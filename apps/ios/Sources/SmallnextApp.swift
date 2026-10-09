@@ -3,6 +3,8 @@ import OSLog
 
 @main
 struct SmallnextApp: App {
+    init() { CrashReporting.start() }
+
     @State private var database: AppDatabase?
     @State private var flow: ProgressFlow?
     @State private var storageFailed = false
@@ -34,10 +36,13 @@ struct SmallnextApp: App {
     }
 
     private static var suggestionProvider: any ActionSuggestionProvider {
+        if FeatureFlags.userServerAI {
+            return ServerActionSuggestionProvider.configured() ?? UnavailableSuggestionProvider()
+        }
         #if DEBUG
-        DebugActionSuggestionProvider()
+        return DevelopmentActionSuggestionProvider.configured() ?? DebugActionSuggestionProvider()
         #else
-        UnavailableSuggestionProvider()
+        return UnavailableSuggestionProvider()
         #endif
     }
 }

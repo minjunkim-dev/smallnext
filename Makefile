@@ -27,7 +27,8 @@ api-check:
 
 api-test-db:
 	set -eu; if [ -z "$${TEST_DATABASE_URL:-}" ]; then set -a; source .env; set +a; export TEST_DATABASE_URL="$$DATABASE_URL"; fi; \
-	cargo test --locked --manifest-path $(API_MANIFEST) --test database -- --ignored
+	cargo test --locked --manifest-path $(API_MANIFEST) --test database -- --ignored; \
+	cargo test --locked --manifest-path $(API_MANIFEST) --lib user_ai -- --ignored
 
 api-spec:
 	cargo run --quiet --locked --manifest-path $(API_MANIFEST) --bin export-openapi > contracts/openapi.json

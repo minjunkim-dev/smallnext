@@ -3,7 +3,7 @@
 자체 코드의 권리 방침은 [COPYRIGHT](COPYRIGHT.md)에 있습니다.
 아래 구성 요소에는 해당 권리자의 라이선스가 적용됩니다. 이 목록은 그 조건을 변경하지 않습니다.
 
-확인 기준: 2026-10-04의 소스와 잠금 파일. 출시 패키지의 전체 고지를 완료했다는 뜻은 아닙니다.
+확인 기준: 2026-10-09의 소스와 잠금 파일. 출시 패키지의 전체 고지를 완료했다는 뜻은 아닙니다.
 
 ## 저장소에 포함된 도구
 
@@ -16,6 +16,10 @@
 | 구성 요소 | 잠금 버전 | 조건과 출처 |
 | --- | --- | --- |
 | GRDB.swift | 7.11.1, `b83108d10f42680d78f23fe4d4d80fc88dab3212` | MIT. Copyright 2015–2025 Gwendal Roué. [해당 커밋의 LICENSE](https://github.com/groue/GRDB.swift/blob/b83108d10f42680d78f23fe4d4d80fc88dab3212/LICENSE) |
+| FirebaseCore / FirebaseAuth / FirebaseCrashlytics | 12.19.2, `8c29ca981990a32e626c8617544fa65d22b1834f` | Apache-2.0. [해당 커밋의 LICENSE](https://github.com/firebase/firebase-ios-sdk/blob/8c29ca981990a32e626c8617544fa65d22b1834f/LICENSE) |
+
+Firebase의 전이 의존성은 `Package.resolved`에 고정합니다. 앱은 FirebaseCore, FirebaseAuth와 FirebaseCrashlytics를 연결합니다.
+Analytics와 광고 제품은 연결하지 않습니다. 출시 시 실제 포함된 전이 의존성의 고지를 확인합니다.
 
 ## Rust API의 직접 의존성
 
@@ -25,6 +29,9 @@ Cargo.lock과 `cargo metadata --locked`의 패키지 메타데이터를 확인�
 | 구성 요소 | 잠금 버전 | 라이선스 | 출처 |
 | --- | --- | --- | --- |
 | axum | 0.8.9 | MIT | [tokio-rs/axum](https://github.com/tokio-rs/axum) |
+| http-body | 1.1.0 | MIT | [hyperium/http-body](https://github.com/hyperium/http-body) |
+| jsonwebtoken | 11.1.0 | MIT | [Keats/jsonwebtoken](https://github.com/Keats/jsonwebtoken) |
+| reqwest | 0.13.5 | MIT OR Apache-2.0 | [seanmonstar/reqwest](https://github.com/seanmonstar/reqwest) |
 | serde | 1.0.229 | MIT OR Apache-2.0 | [serde-rs/serde](https://github.com/serde-rs/serde) |
 | serde_json | 1.0.151 | MIT OR Apache-2.0 | [serde-rs/json](https://github.com/serde-rs/json) |
 | sqlx | 0.8.6 | MIT OR Apache-2.0 | [launchbadge/sqlx](https://github.com/launchbadge/sqlx) |

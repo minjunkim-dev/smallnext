@@ -13,6 +13,22 @@ struct DebugActionSuggestionProvider: ActionSuggestionProvider {
 
     func suggest(_ request: SuggestionRequest) async throws -> SuggestionCandidate {
         try await Task.sleep(for: delay)
+        if request.kind == .goalPreparation {
+            if ["정리하기", "준비하기", "공부하기"].contains(request.goal),
+               request.context.currentState == nil, request.blocker == nil,
+               request.context.materialExcerpt == nil, request.context.answers.isEmpty {
+                return .question("무엇을 하려는지 한 가지 알려 주세요.")
+            }
+            return .goalSummary("‘\(request.goal)’을 마쳤다고 확인한다.")
+        }
+        // 대체: 대체 행동 하나를 돌려준다. 그 행동도 보류했으면 후보가 없다.
+        if request.kind == .replacement {
+            var replacement = Self.step("목표에 대해 떠오르는 생각 한 줄 적기", "생각 한 줄이 남는다", 3)
+            replacement.targetName = "떠오른 생각"
+            replacement.targetDescription = "지금 목표에 대해 떠오르는 생각을 적는 메모예요."
+            let used = request.deferredTasks.contains(replacement.task) || request.completedTasks.contains(replacement.task)
+            return used ? .noAction : .action(replacement)
+        }
         // 더 작게: 이미 나눈 행동을 막힘 원인 없이 다시 나누면 확인 질문을 돌려준다.
         if request.kind == .smaller, let current = request.currentAction {
             if request.blocker == nil, !request.splitSources.isEmpty {
@@ -21,8 +37,11 @@ struct DebugActionSuggestionProvider: ActionSuggestionProvider {
             return .action(Self.step(Self.smallerPrefix + current.task, "첫 부분 하나를 끝낸다", max(1, current.estimatedMinutes / 2)))
         }
         let count = request.completedTasks.count
-        let steps = Self.examples.first { $0.goal == request.goal }?.steps ?? Self.general
-        let action = count < steps.count ? steps[count] : Self.continued(count)
+        let example = Self.examples.first { $0.goal == request.goal }
+        let steps = example?.steps ?? Self.general
+        var action = count < steps.count ? steps[count] : Self.continued(count)
+        action.targetName = example?.target ?? "선택한 자료"
+        action.targetDescription = example?.description ?? "앞에서 고른 한 자료로 이어서 진행해요."
         return .action(action)
     }
 
@@ -41,9 +60,11 @@ struct DebugActionSuggestionProvider: ActionSuggestionProvider {
         step("실행한 결과를 한 줄로 남기기", "결과 한 줄이 남는다", 5),
     ]
 
-    private static let examples: [(goal: String, steps: [ProposedAction])] = [
+    private static let examples: [(goal: String, target: String, description: String, steps: [ProposedAction])] = [
         (
             "이력서 정리하기",
+            "이력서",
+            "지금 고른 이력서 파일 하나를 정리해요.",
             [
                 step("이력서 파일 하나 열기", "파일이 화면에 보인다", 3),
                 step("최근 경력 한 항목의 기간 확인하기", "기간을 확인했다", 5),
@@ -53,6 +74,8 @@ struct DebugActionSuggestionProvider: ActionSuggestionProvider {
         ),
         (
             "분기 업무 보고서 초안 쓰기",
+            "업무 보고서",
+            "지금 고른 업무 보고서 문서에 초안을 남겨요.",
             [
                 step("업무 보고서 문서 하나 열기", "문서가 화면에 보인다", 3),
                 step("이번 분기에 끝낸 업무 하나 적기", "업무 이름이 한 줄 남는다", 8),
@@ -62,6 +85,8 @@ struct DebugActionSuggestionProvider: ActionSuggestionProvider {
         ),
         (
             "통계 기초 단원 하나 학습하기",
+            "학습 단원",
+            "지금 연 학습 자료의 한 단원으로 이어서 진행해요.",
             [
                 step("학습 자료에서 다음 단원 열기", "단원이 화면에 보인다", 3),
                 step("그 단원의 첫 소제목 읽기", "소제목을 읽었다", 8),
@@ -71,6 +96,8 @@ struct DebugActionSuggestionProvider: ActionSuggestionProvider {
         ),
         (
             "개인 프로젝트로 베란다 화분 옮겨 심기",
+            "화분",
+            "앞에서 정한 화분 하나를 새 자리로 옮겨요.",
             [
                 step("옮길 화분 하나 정하기", "화분 하나가 정해진다", 3),
                 step("새 자리와 흙이 있는지 확인하기", "자리와 흙의 유무를 확인했다", 5),
