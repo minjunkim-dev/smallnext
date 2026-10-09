@@ -337,7 +337,7 @@ async fn allowed_user_receives_only_independently_checked_proposal_and_usage() {
     for (index, request) in calls.into_iter().enumerate() {
         assert_eq!(request["model"], "claude-haiku-5-5");
         assert_eq!(request["tools"], json!([]));
-        assert_eq!(request["output_config"]["effort"], "medium");
+        assert_eq!(request["output_config"]["effort"], "xhigh");
         assert_eq!(request["thinking"]["type"], "adaptive");
         assert_eq!(request["service_tier"], "standard_only");
         assert_eq!(request["messages"].as_array().unwrap().len(), 1);
