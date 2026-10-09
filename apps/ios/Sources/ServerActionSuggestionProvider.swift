@@ -38,22 +38,12 @@ struct ServerActionSuggestionProvider: ActionSuggestionProvider {
         address = defaults.string(forKey: "server_ai_url") ?? address
         #endif
         guard let address, let url = URL(string: address),
-              let bundleID = bundle.bundleIdentifier,
-              let appID = value("SmallnextFirebaseAppID"),
-              let sender = value("SmallnextFirebaseSenderID"),
-              let project = value("SmallnextFirebaseProjectID"),
-              let key = value("SmallnextFirebaseAPIKey"),
-              appID.range(of: #"^1:[0-9]+:ios:[0-9a-f]+$"#, options: .regularExpression) != nil,
-              appID.split(separator: ":")[1] == Substring(sender), key.hasPrefix("AIza")
+              let options = FirebaseClientConfiguration.options(info: bundle.infoDictionary ?? [:])
         else { return UnavailableSuggestionProvider() }
         // Validate the endpoint before creating even an anonymous Firebase identity.
         guard Self(baseURL: url, token: { "" }).validURL else { return UnavailableSuggestionProvider() }
         let name = "SmallnextUserAI"
         if FirebaseApp.app(name: name) == nil {
-            let options = FirebaseOptions(googleAppID: appID, gcmSenderID: sender)
-            options.projectID = project
-            options.apiKey = key
-            options.bundleID = bundleID
             FirebaseApp.configure(name: name, options: options)
         }
         guard let app = FirebaseApp.app(name: name) else { return UnavailableSuggestionProvider() }
