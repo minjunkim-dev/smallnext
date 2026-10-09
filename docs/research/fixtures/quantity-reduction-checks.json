@@ -1,0 +1,390 @@
+{
+  "description": "Issue #90 synthetic fixed candidates. Expected verdicts are evaluation metadata, never model input. Three checks per case. No automatic retry in product.",
+  "model": "claude-haiku-5-5",
+  "effort": "xhigh",
+  "repetitions": 3,
+  "cases": [
+    {
+      "id": "report-useful-title",
+      "expected": "accept",
+      "original_request": {
+        "goal": "분기 업무 보고서 초안 쓰기",
+        "current_blocker": "",
+        "user_request": "현재 행동을 실질적으로 줄인다. 반복 막힘이면 알려진 답을 다시 묻지 않고 첫 막힘 한 가지를 확인한다.",
+        "available": [
+          "확정 완료 조건: 분기 업무 보고서 문서에 목차 항목 3개와 핵심 성과 3줄이 작성되어 저장된 상태",
+          "현재 상태: 빈 보고서 문서가 열려 있다. 목차 세 개와 핵심 성과 세 줄을 작성하려고 한다."
+        ],
+        "unknown": [],
+        "available_minutes": 15,
+        "knowledge": "사용자가 제공한 정보 외에는 모름",
+        "energy": "모름",
+        "remaining_work": [
+          "분기 업무 보고서 문서에 목차 항목 3개와 핵심 성과 3줄이 작성되어 저장된 상태",
+          "열려 있는 빈 보고서 문서의 첫 줄에 목차 항목 하나(예: \"1. 분기 업무 개요\")를 입력한다."
+        ],
+        "completed_ids": [],
+        "previous_proposals": [
+          {
+            "status": "action",
+            "action": "열려 있는 빈 보고서 문서의 첫 줄에 목차 항목 하나(예: \"1. 분기 업무 개요\")를 입력한다.",
+            "completion_condition": "보고서 문서의 첫 줄에 목차 항목 1개가 입력되어 화면에 보이는 상태",
+            "estimated_minutes": 2,
+            "reason": "현재 미완료 행동",
+            "remaining_work": [
+              "분기 업무 보고서 문서에 목차 항목 3개와 핵심 성과 3줄이 작성되어 저장된 상태",
+              "열려 있는 빈 보고서 문서의 첫 줄에 목차 항목 하나(예: \"1. 분기 업무 개요\")를 입력한다."
+            ],
+            "goal_completed": false,
+            "current_action_completed": false,
+            "preserved_completed_ids": []
+          }
+        ],
+        "request_kind": "smaller"
+      },
+      "candidate": {
+        "status": "action",
+        "action": "열려 있는 빈 보고서 문서의 첫 줄에 목차 제목을 한 단어(\"개요\")만 입력한다.",
+        "completion_condition": "보고서 문서의 첫 줄에 \"개요\" 한 단어가 입력되어 화면에 보이는 상태",
+        "estimated_minutes": 1,
+        "reason": "‘개요’는 보고서의 첫 목차 항목 제목이다. 번호와 ‘분기 업무’를 쓰지 않아 입력량을 줄인다. 이 항목은 그대로 사용할 수 있으며, 나중에 원하면 제목을 바꿀 수 있다.",
+        "remaining_work": [
+          "분기 업무 보고서 문서에 목차 항목 3개와 핵심 성과 3줄이 작성되어 저장된 상태",
+          "열려 있는 빈 보고서 문서의 첫 줄에 목차 항목 하나(예: \"1. 분기 업무 개요\")를 입력한다."
+        ],
+        "goal_completed": false,
+        "current_action_completed": false,
+        "preserved_completed_ids": []
+      }
+    },
+    {
+      "id": "code-one-assertion",
+      "expected": "accept",
+      "original_request": {
+        "goal": "버튼 제목 검증 테스트 3개 추가",
+        "current_blocker": "",
+        "user_request": "현재 행동을 실질적으로 줄인다. 반복 막힘이면 알려진 답을 다시 묻지 않고 첫 막힘 한 가지를 확인한다.",
+        "available": [
+          "현재 상태: 테스트 파일이 열려 있다. 버튼 제목 세 개는 저장, 취소, 삭제다. assertion 문법은 알고 있다."
+        ],
+        "unknown": [],
+        "available_minutes": 15,
+        "knowledge": "사용자가 제공한 정보 외에는 모름",
+        "energy": "모름",
+        "remaining_work": [
+          "저장, 취소, 삭제 버튼 제목 검증 3개"
+        ],
+        "completed_ids": [],
+        "previous_proposals": [
+          {
+            "status": "action",
+            "action": "열린 테스트 파일에 저장, 취소, 삭제 버튼 제목을 검증하는 assertion 세 개를 작성한다.",
+            "completion_condition": "assertion 세 개가 저장되어 있다.",
+            "estimated_minutes": 3,
+            "reason": "현재 미완료 행동",
+            "remaining_work": [
+              "저장, 취소, 삭제 버튼 제목 검증 3개"
+            ],
+            "goal_completed": false,
+            "current_action_completed": false,
+            "preserved_completed_ids": []
+          }
+        ],
+        "request_kind": "smaller"
+      },
+      "candidate": {
+        "status": "action",
+        "action": "열린 테스트 파일에 저장 버튼 제목만 검증하는 assertion 하나를 작성한다.",
+        "completion_condition": "저장 버튼 제목 검증 assertion 하나가 파일에 있다.",
+        "estimated_minutes": 1,
+        "reason": "검증 세 개 중 하나만 작성한다.",
+        "remaining_work": [
+          "저장, 취소, 삭제 버튼 제목 검증 3개"
+        ],
+        "goal_completed": false,
+        "current_action_completed": false,
+        "preserved_completed_ids": []
+      }
+    },
+    {
+      "id": "report-next-heading",
+      "expected": "accept",
+      "original_request": {
+        "goal": "분기 업무 보고서 초안 쓰기",
+        "current_blocker": "",
+        "user_request": "완료한 행동을 반복하지 않고 남은 범위의 다음 행동 하나를 제안한다.",
+        "available": [
+          "확정 완료 조건: 분기 업무 보고서 문서에 목차 항목 3개와 핵심 성과 3줄이 작성되어 저장된 상태",
+          "현재 상태: 빈 보고서 문서가 열려 있다. 목차 세 개와 핵심 성과 세 줄을 작성하려고 한다.",
+          "이미 완료한 행동: 열려 있는 빈 보고서 문서의 첫 줄에 목차 항목 하나(예: \"1. 분기 업무 개요\")를 입력한다."
+        ],
+        "unknown": [],
+        "available_minutes": 15,
+        "knowledge": "사용자가 제공한 정보 외에는 모름",
+        "energy": "모름",
+        "remaining_work": [
+          "분기 업무 보고서 문서에 목차 항목 3개와 핵심 성과 3줄이 작성되어 저장된 상태"
+        ],
+        "completed_ids": [
+          "1"
+        ],
+        "previous_proposals": [],
+        "request_kind": "next_action"
+      },
+      "candidate": {
+        "status": "action",
+        "action": "열려 있는 보고서 문서의 둘째 줄에 목차 항목 \"2. 핵심 성과\"를 입력한다.",
+        "completion_condition": "보고서 문서의 둘째 줄에 \"2. 핵심 성과\" 목차 항목이 입력되어 화면에 보이는 상태",
+        "estimated_minutes": 1,
+        "reason": "완료한 첫 항목 다음에 남은 목차 항목 하나를 추가한다.",
+        "remaining_work": [
+          "분기 업무 보고서 문서에 목차 항목 3개와 핵심 성과 3줄이 작성되어 저장된 상태"
+        ],
+        "goal_completed": false,
+        "current_action_completed": false,
+        "preserved_completed_ids": [
+          "1"
+        ]
+      }
+    },
+    {
+      "id": "same-selected-word",
+      "expected": "reject",
+      "original_request": {
+        "goal": "분기 업무 보고서 초안 쓰기",
+        "current_blocker": "",
+        "user_request": "현재 행동을 실질적으로 줄인다. 반복 막힘이면 알려진 답을 다시 묻지 않고 첫 막힘 한 가지를 확인한다.",
+        "available": [
+          "확정 완료 조건: 분기 업무 보고서 문서에 목차 항목 3개와 핵심 성과 3줄이 작성되어 저장된 상태",
+          "현재 상태: 빈 보고서 문서가 열려 있다. 목차 세 개와 핵심 성과 세 줄을 작성하려고 한다."
+        ],
+        "unknown": [],
+        "available_minutes": 15,
+        "knowledge": "사용자가 제공한 정보 외에는 모름",
+        "energy": "모름",
+        "remaining_work": [
+          "분기 업무 보고서 문서에 목차 항목 3개와 핵심 성과 3줄이 작성되어 저장된 상태",
+          "열려 있는 빈 보고서 문서의 첫 줄에 목차 제목을 한 단어(\"개요\")만 입력한다."
+        ],
+        "completed_ids": [],
+        "previous_proposals": [
+          {
+            "status": "action",
+            "action": "열려 있는 빈 보고서 문서의 첫 줄에 목차 제목을 한 단어(\"개요\")만 입력한다.",
+            "completion_condition": "보고서 문서의 첫 줄에 \"개요\" 한 단어가 입력되어 화면에 보이는 상태",
+            "estimated_minutes": 1,
+            "reason": "‘개요’는 보고서의 첫 목차 항목 제목이다. 번호와 ‘분기 업무’를 쓰지 않아 입력량을 줄인다. 이 항목은 그대로 사용할 수 있으며, 나중에 원하면 제목을 바꿀 수 있다.",
+            "remaining_work": [
+              "분기 업무 보고서 문서에 목차 항목 3개와 핵심 성과 3줄이 작성되어 저장된 상태",
+              "열려 있는 빈 보고서 문서의 첫 줄에 목차 제목을 한 단어(\"개요\")만 입력한다."
+            ],
+            "goal_completed": false,
+            "current_action_completed": false,
+            "preserved_completed_ids": []
+          }
+        ],
+        "request_kind": "smaller"
+      },
+      "candidate": {
+        "status": "action",
+        "action": "열려 있는 빈 보고서 문서의 첫 줄에 목차 제목을 한 단어(\"개요\")만 입력한다.",
+        "completion_condition": "보고서 문서의 첫 줄에 \"개요\" 한 단어가 입력되어 화면에 보이는 상태",
+        "estimated_minutes": 0.5,
+        "reason": "같은 ‘개요’ 한 단어를 더 편하게 쓴다.",
+        "remaining_work": [
+          "분기 업무 보고서 문서에 목차 항목 3개와 핵심 성과 3줄이 작성되어 저장된 상태",
+          "열려 있는 빈 보고서 문서의 첫 줄에 목차 제목을 한 단어(\"개요\")만 입력한다."
+        ],
+        "goal_completed": false,
+        "current_action_completed": false,
+        "preserved_completed_ids": []
+      }
+    },
+    {
+      "id": "word-limit-overrun",
+      "expected": "reject",
+      "original_request": {
+        "goal": "만화 첫 칸 대사 작성",
+        "current_blocker": "",
+        "user_request": "한 단어만 쓰는 행동으로 줄여줘.",
+        "available": [
+          "현재 상태: 빈 첫 칸이 열려 있다. 한 단어만 쓸 수 있다."
+        ],
+        "unknown": [],
+        "available_minutes": 15,
+        "knowledge": "사용자가 제공한 정보 외에는 모름",
+        "energy": "모름",
+        "remaining_work": [
+          "만화 첫 칸 대사 작성"
+        ],
+        "completed_ids": [],
+        "previous_proposals": [
+          {
+            "status": "action",
+            "action": "첫 칸에 대사 한 문장을 쓴다.",
+            "completion_condition": "첫 칸에 대사 한 문장이 있다.",
+            "estimated_minutes": 2,
+            "reason": "현재 미완료 행동",
+            "remaining_work": [
+              "만화 첫 칸 대사 작성"
+            ],
+            "goal_completed": false,
+            "current_action_completed": false,
+            "preserved_completed_ids": []
+          }
+        ],
+        "request_kind": "smaller"
+      },
+      "candidate": {
+        "status": "action",
+        "action": "첫 칸에 \"오늘 출발\"을 쓴다.",
+        "completion_condition": "첫 칸에 \"오늘 출발\"이 있다.",
+        "estimated_minutes": 1,
+        "reason": "두 단어지만 짧다.",
+        "remaining_work": [
+          "만화 첫 칸 대사 작성"
+        ],
+        "goal_completed": false,
+        "current_action_completed": false,
+        "preserved_completed_ids": []
+      }
+    },
+    {
+      "id": "invented-past-role",
+      "expected": "reject",
+      "original_request": {
+        "goal": "과거 프로젝트에서 맡은 역할을 근거로 정리",
+        "current_blocker": "",
+        "user_request": "현재 행동을 실질적으로 줄인다. 반복 막힘이면 알려진 답을 다시 묻지 않고 첫 막힘 한 가지를 확인한다.",
+        "available": [
+          "프로젝트 참여 사실만 안다. 맡은 역할과 근거 기록 위치는 모른다."
+        ],
+        "unknown": [
+          "과거 역할",
+          "기록 위치"
+        ],
+        "available_minutes": 15,
+        "knowledge": "사용자가 제공한 정보 외에는 모름",
+        "energy": "모름",
+        "remaining_work": [
+          "과거 역할의 근거 확인"
+        ],
+        "completed_ids": [],
+        "previous_proposals": [],
+        "request_kind": "smaller"
+      },
+      "candidate": {
+        "status": "action",
+        "action": "역할 칸에 \"리더\"를 임시로 쓴다.",
+        "completion_condition": "역할 칸에 \"리더\"가 있다.",
+        "estimated_minutes": 1,
+        "reason": "임시로 리더 역할을 정하고 나중에 바꿀 수 있다.",
+        "remaining_work": [
+          "과거 역할의 근거 확인"
+        ],
+        "goal_completed": false,
+        "current_action_completed": false,
+        "preserved_completed_ids": []
+      }
+    },
+    {
+      "id": "repeated-blocker-bypass",
+      "expected": "reject",
+      "original_request": {
+        "goal": "책상에 이름 쓰기",
+        "current_blocker": "선택한 파란 펜을 집는 행동을 두 번 제안받았지만 시작하지 못했다. 이유는 아직 모른다.",
+        "user_request": "현재 행동을 실질적으로 줄인다. 반복 막힘이면 알려진 답을 다시 묻지 않고 첫 막힘 한 가지를 확인한다.",
+        "available": [
+          "파란 펜이 책상 위에 있다. 파란 펜을 이미 선택했다."
+        ],
+        "unknown": [],
+        "available_minutes": 15,
+        "knowledge": "사용자가 제공한 정보 외에는 모름",
+        "energy": "모름",
+        "remaining_work": [
+          "이름 쓰기"
+        ],
+        "completed_ids": [],
+        "previous_proposals": [
+          {
+            "status": "action",
+            "action": "선택한 파란 펜을 집는다.",
+            "completion_condition": "파란 펜을 손에 들고 있다.",
+            "estimated_minutes": 1,
+            "reason": "첫 제안",
+            "remaining_work": [
+              "이름 쓰기"
+            ],
+            "goal_completed": false,
+            "current_action_completed": false,
+            "preserved_completed_ids": []
+          },
+          {
+            "status": "action",
+            "action": "선택한 파란 펜을 집는다.",
+            "completion_condition": "파란 펜을 손에 들고 있다.",
+            "estimated_minutes": 1,
+            "reason": "두 번째 제안",
+            "remaining_work": [
+              "이름 쓰기"
+            ],
+            "goal_completed": false,
+            "current_action_completed": false,
+            "preserved_completed_ids": []
+          }
+        ],
+        "request_kind": "smaller"
+      },
+      "candidate": {
+        "status": "action",
+        "action": "선택한 파란 펜에 손가락을 댄다.",
+        "completion_condition": "파란 펜에 손가락이 닿아 있다.",
+        "estimated_minutes": 0.5,
+        "reason": "더 작은 신체 동작이면 시작할 수 있다.",
+        "remaining_work": [
+          "이름 쓰기"
+        ],
+        "goal_completed": false,
+        "current_action_completed": false,
+        "preserved_completed_ids": []
+      }
+    },
+    {
+      "id": "lost-completed-scope",
+      "expected": "reject",
+      "original_request": {
+        "goal": "분기 업무 보고서 초안 쓰기",
+        "current_blocker": "",
+        "user_request": "완료한 행동을 반복하지 않고 남은 범위의 다음 행동 하나를 제안한다.",
+        "available": [
+          "확정 완료 조건: 분기 업무 보고서 문서에 목차 항목 3개와 핵심 성과 3줄이 작성되어 저장된 상태",
+          "현재 상태: 빈 보고서 문서가 열려 있다. 목차 세 개와 핵심 성과 세 줄을 작성하려고 한다.",
+          "이미 완료한 행동: 열려 있는 빈 보고서 문서의 첫 줄에 목차 항목 하나(예: \"1. 분기 업무 개요\")를 입력한다."
+        ],
+        "unknown": [],
+        "available_minutes": 15,
+        "knowledge": "사용자가 제공한 정보 외에는 모름",
+        "energy": "모름",
+        "remaining_work": [
+          "분기 업무 보고서 문서에 목차 항목 3개와 핵심 성과 3줄이 작성되어 저장된 상태"
+        ],
+        "completed_ids": [
+          "1"
+        ],
+        "previous_proposals": [],
+        "request_kind": "next_action"
+      },
+      "candidate": {
+        "status": "action",
+        "action": "열려 있는 보고서 문서의 둘째 줄에 목차 항목 \"2. 핵심 성과\"를 입력한다.",
+        "completion_condition": "보고서 문서의 둘째 줄에 \"2. 핵심 성과\" 목차 항목이 입력되어 화면에 보이는 상태",
+        "estimated_minutes": 1,
+        "reason": "완료한 첫 항목 다음에 남은 목차 항목 하나를 추가한다.",
+        "remaining_work": [],
+        "goal_completed": false,
+        "current_action_completed": false,
+        "preserved_completed_ids": []
+      }
+    }
+  ]
+}
