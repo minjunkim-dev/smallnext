@@ -150,7 +150,7 @@ impl Provider {
             "messages":[{"role":"user","content":payload.to_string()}],
             "thinking":{"type":"adaptive"},"max_tokens":self.output_tokens,
             "stream":false,"tools":[],"service_tier":"standard_only",
-            "output_config":{"effort":"medium","format":{"type":"json_schema","schema":schema}}});
+            "output_config":{"effort":"xhigh","format":{"type":"json_schema","schema":schema}}});
         let response = self
             .http
             .post(&self.endpoint)

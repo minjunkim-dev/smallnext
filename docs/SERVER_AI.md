@@ -4,6 +4,7 @@
 코드는 기본 OFF입니다. 서버 배포와 실제 Firebase 연결은 아직 검증하지 않았습니다.
 실제 API 품질·청구·지연은 [#47](https://github.com/minjunkim-dev/smallnext/issues/47)에서 검증합니다.
 사용자용 서버 모델 변경은 [#47의 Haiku 결정](https://github.com/minjunkim-dev/smallnext/issues/47#issuecomment-6074604866)을 따릅니다.
+추론 강도 변경은 [#47의 xhigh 승인과 검증 범위](https://github.com/minjunkim-dev/smallnext/issues/47#issuecomment-6075071867)를 따릅니다.
 제한 구독 평가의 결과와 남은 오수용은 [Haiku 평가 기록](research/haiku-server-ai-evaluation.md)에 있습니다.
 [#61의 실기기 검증](https://github.com/minjunkim-dev/smallnext/issues/61#issuecomment-6049652307)은 보류 상태입니다.
 
@@ -25,7 +26,7 @@ Firebase 공개 키와 서버 OAuth access token만 유효기간 동안 메모�
 정상 경로는 생성 1회와 의미 검사 1회입니다. 자동 재시도·재생성·모델 대체는 없습니다.
 서버는 개발 실행기의 입력·후보·의미 검사 규칙을 재사용합니다. CLI를 실행하지 않습니다.
 사용자용 생성과 별도 검사는 Anthropic `claude-haiku-5-5`를 사용합니다.
-두 역할은 adaptive thinking과 `medium`으로 고정합니다. 개발 전용 구독 모델은 유지합니다.
+두 역할은 adaptive thinking과 `xhigh`로 고정합니다. 개발 전용 구독 모델은 유지합니다.
 반복해서 시작하지 못하고 원인을 모르면 첫 실제 걸림돌을 직접 묻게 하는 서버 지침을 추가합니다.
 이 경우 더 작은 신체 동작을 제안하는 후보도 검사에서 거부하게 합니다.
 알려진 제목 복사를 근거 확보로 취급하지 않습니다. 이 지침이 모든 의미 오류를 막는다고 보장하지 않습니다.
@@ -70,13 +71,14 @@ cargo run --locked --manifest-path services/api/Cargo.toml --bin purge-ai-budget
 1. `.env.example`의 사용자용 항목을 로컬 비밀정보 제공 경로에 설정합니다. 기존 `.env`를 덮어쓰지 마십시오.
 2. `FIREBASE_PROJECT_ID`와 실제 허용 UID 목록을 설정합니다. `AI_ALLOWED_FIREBASE_UIDS`는 쉼표로 구분합니다.
 3. 같은 프로젝트의 서비스 계정 파일 경로를 설정합니다. 최소 권한 `firebaseauth.users.get`을 확인합니다. 파일을 앱·이미지·Git에 넣지 마십시오.
-4. #47에서 `claude-haiku-5-5 / medium`의 계정 API 접근, 현재 단가와 전송·보관 조건을 확인합니다. `ANTHROPIC_API_KEY`는 서버에만 설정합니다.
+4. #47에서 `claude-haiku-5-5 / xhigh`의 계정 API 접근, 현재 단가와 전송·보관 조건을 확인합니다. `ANTHROPIC_API_KEY`는 서버에만 설정합니다.
 5. 확인 근거를 남긴 뒤 `AI_MODEL_CONFIRMED=1`과 `USER_SERVER_AI=1`을 설정합니다. 첫 평가 합계는 3 USD 이하로 유지합니다.
 
 `AI_INPUT_MICRO_USD_PER_MILLION`은 캐시 쓰기를 포함한 입력의 최대 단가를 사용합니다.
 캐시 읽기 할인으로 예산을 줄이지 않습니다. 출력 단가는 reasoning 토큰을 포함합니다.
 2026-10-09 공식 모델 문서에서 전체 context 1,000,000·최대 출력 128,000을 확인했습니다.
 서버는 전체 context를 1,000,000으로 고정 검증합니다. 예제 출력 제한은 thinking을 포함해 8,192입니다.
+`xhigh`의 실제 API 출력·시간 제한 적합성은 미확인입니다. [제한 평가](research/haiku-server-ai-evaluation.md)의 결과와 별도로 실제 API 제한을 검증하기 전까지 서버를 OFF로 준비합니다.
 짧은 입력의 할인 단가로 예약하지 않습니다. 긴 입력의 1시간 cache write 최대 단가 $1/MTok과 출력 $2.50/MTok을 최소 예약 단가로 사용합니다.
 예제 설정의 두 호출 예약은 2.040960 USD입니다. 이는 API 청구 예상액이 아닙니다.
 구성 단가가 이 최소값보다 낮으면 시작을 거부합니다. 가격이 바뀌면 최소값과 확인 기록을 함께 갱신합니다.
