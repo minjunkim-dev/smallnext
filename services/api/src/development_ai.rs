@@ -259,7 +259,7 @@ impl SubscriptionAi {
         if input.len() > input_limit {
             return Err(Disposition::InvalidInput);
         }
-        let workspace = Workspace::new(role)?;
+        let workspace = Workspace::new(role, payload["request_kind"].as_str())?;
         let mut command = Command::new(&self.executable);
         command
             .args([
@@ -447,6 +447,22 @@ pub(crate) fn validate_input(input: &AiInput) -> Result<Value, Disposition> {
     Ok(original)
 }
 
+fn allowed_statuses(kind: Option<&str>) -> &'static [ProposalStatus] {
+    use ProposalStatus::*;
+    match kind {
+        Some("goal_preparation") => &[GoalSummary, NeedInfo],
+        Some("replacement") => &[Action, NeedInfo, Minimum, NoAction],
+        _ => &[Action, NeedInfo, Minimum],
+    }
+}
+
+pub(crate) fn generation_schema(kind: Option<&str>) -> Value {
+    let mut schema: Value = serde_json::from_str(include_str!("development_ai/generate.json"))
+        .expect("committed schema");
+    schema["properties"]["status"]["enum"] = json!(allowed_statuses(kind));
+    schema
+}
+
 pub(crate) fn validate_proposal(input: &AiInput, proposal: &Proposal) -> Result<(), Disposition> {
     if proposal.action.trim().is_empty()
         || proposal.completion_condition.trim().is_empty()
@@ -458,10 +474,7 @@ pub(crate) fn validate_proposal(input: &AiInput, proposal: &Proposal) -> Result<
         || proposal.current_action_completed
         || proposal.remaining_work != input.remaining_work
         || proposal.preserved_completed_ids != input.completed_ids
-        || (proposal.status == ProposalStatus::GoalSummary
-            && input.request_kind.as_deref() != Some("goal_preparation"))
-        || (proposal.status == ProposalStatus::NoAction
-            && input.request_kind.as_deref() != Some("replacement"))
+        || !allowed_statuses(input.request_kind.as_deref()).contains(&proposal.status)
     {
         return Err(Disposition::InvalidProposal);
     }
@@ -529,7 +542,7 @@ fn empty_skills_notice(item: &Value) -> bool {
 
 struct Workspace(PathBuf);
 impl Workspace {
-    fn new(role: &str) -> Result<Self, Disposition> {
+    fn new(role: &str, kind: Option<&str>) -> Result<Self, Disposition> {
         static NEXT: AtomicU64 = AtomicU64::new(0);
         let path = std::env::temp_dir().join(format!(
             "smallnext-subscription-{}-{}",
@@ -556,6 +569,11 @@ impl Workspace {
             _ => return Err(Disposition::Failed),
         };
         std::fs::write(workspace.0.join("system.md"), system).map_err(|_| Disposition::Failed)?;
+        let schema = if role == "generate" {
+            generation_schema(kind).to_string()
+        } else {
+            schema.to_owned()
+        };
         std::fs::write(workspace.0.join("schema.json"), schema).map_err(|_| Disposition::Failed)?;
         Ok(workspace)
     }

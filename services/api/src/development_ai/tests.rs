@@ -18,6 +18,154 @@ fn proposal() -> Proposal {
     }
 }
 
+#[test]
+fn request_status_contract() {
+    for kind in [
+        None,
+        Some("goal_preparation"),
+        Some("first_action"),
+        Some("next_action"),
+        Some("smaller"),
+        Some("replacement"),
+    ] {
+        for status in [
+            ProposalStatus::Action,
+            ProposalStatus::NeedInfo,
+            ProposalStatus::Minimum,
+            ProposalStatus::GoalSummary,
+            ProposalStatus::NoAction,
+        ] {
+            let mut data = input();
+            data.request_kind = kind.map(str::to_owned);
+            let mut candidate = proposal();
+            candidate.status = status.clone();
+            let allowed = match kind {
+                Some("goal_preparation") => matches!(
+                    status,
+                    ProposalStatus::GoalSummary | ProposalStatus::NeedInfo
+                ),
+                Some("replacement") => status != ProposalStatus::GoalSummary,
+                _ => matches!(
+                    status,
+                    ProposalStatus::Action | ProposalStatus::NeedInfo | ProposalStatus::Minimum
+                ),
+            };
+            assert_eq!(
+                validate_proposal(&data, &candidate).is_ok(),
+                allowed,
+                "{kind:?}: {status:?}"
+            );
+            let schema = generation_schema(kind);
+            assert_eq!(
+                schema["properties"]["status"]["enum"]
+                    .as_array()
+                    .unwrap()
+                    .contains(&json!(status)),
+                allowed,
+                "schema {kind:?}: {status:?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn input_contract_rejects_missing_scope_invalid_kinds_and_time() {
+    assert!(validate_input(&input()).is_ok());
+    for field in ["goal", "user_request", "current_blocker", "request_kind"] {
+        let mut data = input();
+        match field {
+            "goal" => data.goal = " ".into(),
+            "user_request" => data.user_request = " ".into(),
+            "current_blocker" => data.current_blocker = "x".repeat(2049),
+            _ => data.request_kind = Some("unsupported".into()),
+        }
+        assert_eq!(
+            validate_input(&data),
+            Err(Disposition::InvalidInput),
+            "{field}"
+        );
+    }
+    for minutes in [-1.0, f64::NAN, f64::INFINITY] {
+        let mut data = input();
+        data.available_minutes = minutes;
+        assert_eq!(validate_input(&data), Err(Disposition::InvalidInput));
+    }
+    let mut data = input();
+    data.available_minutes = 0.0;
+    assert!(validate_input(&data).is_ok());
+}
+
+#[test]
+fn candidate_preserves_exact_scope_ids_and_incomplete_state() {
+    let mut data = input();
+    data.remaining_work = vec!["첫 범위".into(), "둘째 범위".into()];
+    data.completed_ids = vec!["done-1".into(), "done-2".into()];
+    let mut good = proposal();
+    good.remaining_work = data.remaining_work.clone();
+    good.preserved_completed_ids = data.completed_ids.clone();
+    assert!(validate_proposal(&data, &good).is_ok());
+    for field in [
+        "action",
+        "completion_condition",
+        "reason",
+        "remaining_work",
+        "preserved_completed_ids",
+        "goal_completed",
+        "current_action_completed",
+        "estimated_minutes",
+    ] {
+        let mut value = json!(good);
+        value[field] = match field {
+            "remaining_work" => json!(["둘째 범위", "첫 범위"]),
+            "preserved_completed_ids" => json!(["done-2", "done-1"]),
+            "goal_completed" | "current_action_completed" => json!(true),
+            "estimated_minutes" => json!(data.available_minutes + 1.0),
+            _ => json!("  "),
+        };
+        let candidate = serde_json::from_value(value).unwrap();
+        assert_eq!(
+            validate_proposal(&data, &candidate),
+            Err(Disposition::InvalidProposal),
+            "{field}"
+        );
+    }
+    for minutes in [-1.0, f64::NAN, f64::INFINITY] {
+        good.estimated_minutes = minutes;
+        assert_eq!(
+            validate_proposal(&data, &good),
+            Err(Disposition::InvalidProposal)
+        );
+    }
+}
+
+#[test]
+fn check_response_contract_never_promotes_missing_or_invalid_evidence() {
+    let good = json!({"verdict":"accept","criteria":[1,2,3,4,5],"evidence":"원본과 후보 인용", "reason":"다섯 기준과 일치"});
+    assert_eq!(validate_check(good.clone()), Ok(()));
+    for (field, value) in [
+        ("evidence", json!(" ")),
+        ("reason", json!("")),
+        ("criteria", json!([])),
+        ("criteria", json!([1, 2, 3, 4])),
+        ("criteria", json!([1, 2, 3, 4, 6])),
+        ("verdict", json!("unsupported")),
+        ("extra", json!(true)),
+    ] {
+        let mut check = good.clone();
+        check[field] = value;
+        assert_eq!(validate_check(check), Err(Disposition::Failed), "{field}");
+    }
+    for (verdict, expected) in [
+        ("reject", Disposition::Rejected),
+        ("uncertain", Disposition::Uncertain),
+    ] {
+        let mut check = good.clone();
+        check["verdict"] = json!(verdict);
+        check["criteria"] = json!([1]);
+        assert_eq!(validate_check(check), Err(expected));
+    }
+}
+
 fn events(value: &Value) -> Vec<u8> {
     format!(
         "{}\n{}\n",
@@ -58,7 +206,7 @@ struct Fixture {
 impl Fixture {
     fn new(candidate: Value, check: Value, delay: bool) -> Self {
         use std::os::unix::fs::PermissionsExt;
-        let dir = Workspace::new("generate").unwrap();
+        let dir = Workspace::new("generate", None).unwrap();
         let executable = dir.0.join("fake-codex");
         std::fs::write(dir.0.join("candidate.json"), candidate.to_string()).unwrap();
         std::fs::write(dir.0.join("check.json"), check.to_string()).unwrap();
@@ -70,7 +218,7 @@ schema = json.loads(pathlib.Path(args[args.index('--output-schema')+1]).read_tex
 role = 'check' if 'verdict' in schema['properties'] else 'candidate'
 payload = json.load(sys.stdin)
 with (root/'calls.jsonl').open('a') as log:
-    log.write(json.dumps({'role':role,'payload':payload,'args':args,'pid':os.getpid(),'keys':[k for k in ['OPENAI_API_KEY','CODEX_API_KEY','OPENAI_BASE_URL','GH_TOKEN','GITHUB_TOKEN','ANTHROPIC_API_KEY','ANTHROPIC_AUTH_TOKEN'] if k in os.environ]})+'\n')
+    log.write(json.dumps({'role':role,'payload':payload,'schema':schema,'system':(pathlib.Path.cwd()/'system.md').read_text(),'args':args,'pid':os.getpid(),'keys':[k for k in ['OPENAI_API_KEY','CODEX_API_KEY','OPENAI_BASE_URL','GH_TOKEN','GITHUB_TOKEN','ANTHROPIC_API_KEY','ANTHROPIC_AUTH_TOKEN'] if k in os.environ]})+'\n')
 if (root/'mode').exists():
     mode = (root/'mode').read_text()
     if mode == 'exit': sys.exit(1)
@@ -421,6 +569,37 @@ async fn invalid_generation_never_starts_checker() {
         assert_eq!(result.disposition, Disposition::InvalidProposal);
         assert!(!state.finish(result));
         assert_eq!(f.calls().len(), 1);
+    }
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn wrong_context_status_never_starts_checker_or_changes_current_action() {
+    for (kind, status) in [
+        ("goal_preparation", ProposalStatus::Action),
+        ("goal_preparation", ProposalStatus::Minimum),
+        ("smaller", ProposalStatus::NoAction),
+        ("smaller", ProposalStatus::GoalSummary),
+        ("next_action", ProposalStatus::NoAction),
+        ("first_action", ProposalStatus::NoAction),
+        ("replacement", ProposalStatus::GoalSummary),
+    ] {
+        let mut data = input();
+        data.request_kind = Some(kind.into());
+        let mut candidate = proposal();
+        candidate.status = status;
+        let f = Fixture::new(json!(candidate), json!({}), false);
+        let old = proposal();
+        let mut state = ActionState::new(Some(old.clone()));
+        let ticket = state.begin().unwrap();
+        let result = f.ai.evaluate(&data, ticket).await;
+        assert_eq!(result.disposition, Disposition::InvalidProposal);
+        assert!(!state.finish(result));
+        assert_eq!(state.current(), &Some(old));
+        let calls = f.calls();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0]["schema"], generation_schema(Some(kind)));
+        assert_eq!(calls[0]["system"], include_str!("generate.md"));
     }
 }
 
