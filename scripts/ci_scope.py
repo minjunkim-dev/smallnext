@@ -50,6 +50,11 @@ def scopes(event):
         ).splitlines()
     except subprocess.CalledProcessError:
         return dict.fromkeys(PROJECTS, True)
+    return select(paths)
+
+
+def select(paths):
+    """Apply the same policy to local Git paths and trusted API diff paths."""
     selected = dict.fromkeys(PROJECTS, False)
     for path in paths:
         if path.endswith(".md") or path.startswith("docs/"):

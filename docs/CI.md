@@ -45,6 +45,40 @@ scope가 성공하고 네 프로젝트의 선택 출력이 모두 `true` 또는 
 
 작업 절차는 [협업 규칙](WORKFLOW.md), 연결과 리뷰 근거는 [자동화 설정](REPOSITORY_SETUP.md)을 따릅니다.
 
+## 기준 브랜치의 독립 집계
+
+`Trusted CI aggregation`은 기본 브랜치의 `workflow_run`에서 실행합니다.
+`Project checks`의 완료 이벤트를 받습니다. 선행 실행의 실패·취소도 검증합니다.
+checkout은 집계 실행의 `github.sha`로 고정합니다. PR 코드와 artifact는 실행하지 않습니다.
+토큰은 contents·actions·pull-requests 읽기 권한만 사용합니다. Secret과 쓰기 권한은 추가하지 않습니다.
+
+`scripts/trusted_ci.py`는 GitHub API로 workflow ID/path, run ID, repository, event, head, 최신 attempt를 확인합니다.
+열린 같은 저장소의 `main` PR 하나와 head SHA·브랜치를 연결합니다.
+run의 `referenced_workflows` 네 개가 같은 PR merge ref와 같은 SHA를 사용해야 합니다.
+Git commit API에서 해당 merge SHA의 두 부모가 현재 base·PR head인지 확인합니다.
+참조가 없거나 서로 다르거나 이전 base를 검사했으면 거부합니다. 이전 실행의 전체 재실행은 새 base 검사의 증거가 아닙니다.
+PR 변경 파일의 전체 목록에 기준 브랜치의 `ci_scope.select` 정책을 적용합니다.
+이동한 파일의 이전 경로도 포함합니다. PR의 scope 출력과 `NEEDS_JSON`은 사용하지 않습니다.
+최신 attempt의 `scope`, `Project checks`와 선택한 플랫폼 job을 모두 확인합니다.
+선택하지 않은 플랫폼의 실제 job은 `skipped`여야 합니다.
+Android를 선택하면 `android / build`와 `android / device-tests`가 모두 성공해야 합니다.
+job 이름의 중복·누락·예상 밖 변경, 불완전한 API 목록과 API 오류를 거부합니다.
+부분 재실행에 필요한 job이 없으면 전체 재실행을 요구합니다. 이전 attempt 결과는 합치지 않습니다.
+수집 후 run attempt, PR head·base와 현재 `main`을 다시 확인합니다.
+
+집계 실행의 Summary에는 판정과 대상 run ID·attempt, workflow ID/path, PR head·base·merge SHA, 정책 SHA, job ID를 기록합니다.
+`accepted`만 병합 근거입니다. `rejected`는 실패로 끝납니다.
+push·수동 실행·fork·닫힌 PR과 삭제한 브랜치는 `out_of_scope`로 기록합니다.
+`out_of_scope` 실행의 초록색 상태는 PR 집계 통과를 뜻하지 않습니다.
+검사 이름만 확인하지 마십시오. 대상 run과 연결된 실제 집계 실행 ID를 확인하십시오.
+집계 완료 후 head·base·attempt가 바뀌면 새 전체 검사와 집계가 필요합니다.
+
+첫 구현 PR에는 기본 브랜치의 집계 실행이 없습니다.
+기존 필수 검사와 최신 SHA의 리뷰로 bootstrap PR을 검증합니다.
+병합 후 별도 PR에서 실제 집계를 확인한 뒤 병합 절차에 적용합니다.
+현재 구현 PR의 합성 테스트는 실제 도입 증거를 대신하지 않습니다.
+확정 범위와 신뢰 한계는 [ADR-0001](adr/0001-trusted-ci-aggregation.md)을 따릅니다.
+
 ## 도구와 공통 명령
 
 API·Android는 Ubuntu 24.04, iOS는 [GitHub의 `xcode-27` 실행기](https://github.com/actions/runner-images/blob/main/images/macos/xcode-27-arm64-Readme.md)를 사용합니다. iOS 실행기의 OS와 설치 도구 목록은 이 공식 문서를 따릅니다.
