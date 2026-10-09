@@ -1,5 +1,11 @@
 # AI 연결 경로와 실제 제약
 
+**보존된 조사 기록입니다.** 2026-10-03의 조사 원문을 2026-10-09에 main으로 복원했습니다.
+본문의 현재·미정·미검증 표현과 가격·지원 조건은 조사일 기준입니다.
+현재 연결 설정과 검증 범위는 [서버 AI](../SERVER_AI.md)를 따릅니다.
+확정 결정은 [Issue #10](https://github.com/minjunkim-dev/smallnext/issues/10)과 [Issue #47](https://github.com/minjunkim-dev/smallnext/issues/47)에 있습니다.
+다른 연결 경로를 채택할 때는 공식 출처를 다시 확인합니다.
+
 확인일: 2026-10-03. 조사 대상: [이슈 #9](https://github.com/minjunkim-dev/smallnext/issues/9).
 이 문서는 첫 버전 개발 사양을 정하기 위한 조사 기록입니다.
 공급자, 모델, 앱 형태는 아직 선택하지 않았습니다.

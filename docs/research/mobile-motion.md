@@ -1,5 +1,10 @@
 # 현재 행동 화면의 모바일 모션·접근성 근거
 
+**보존된 조사 기록입니다.** 2026-10-03의 조사 원문을 2026-10-09에 main으로 복원했습니다.
+설계 후보와 지원 조건은 조사일 기준입니다.
+모션의 확정 결정은 [Issue #8](https://github.com/minjunkim-dev/smallnext/issues/8)을 따릅니다.
+현재 기기 검증 절차와 미확인 범위는 [iOS 기기 검증](../IOS_DEVICE_VALIDATION.md)과 [Issue #61](https://github.com/minjunkim-dev/smallnext/issues/61)을 따릅니다.
+
 - 조사 티켓: [Issue #7](https://github.com/minjunkim-dev/smallnext/issues/7)
 - 확인일: **2026-10-03**. 아래 출처는 모두 이 날짜에 확인했습니다.
 - 범위: 본인의 업무·학습·개인 프로젝트. 휴대폰에서 현재 행동 하나를 봅니다.
