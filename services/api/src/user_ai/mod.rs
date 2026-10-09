@@ -109,7 +109,7 @@ impl Config {
             oauth: format!("{url}/oauth"),
             lookup: format!("{url}/accounts"),
         };
-        self.provider.endpoint = format!("{url}/responses");
+        self.provider.endpoint = format!("{url}/messages");
         self
     }
 }

@@ -26,8 +26,12 @@ struct Remote {
 
 async fn external_provider(
     State(remote): State<Arc<Remote>>,
+    headers: axum::http::HeaderMap,
     Json(body): Json<serde_json::Value>,
 ) -> Json<serde_json::Value> {
+    assert_eq!(headers["x-api-key"], "test-provider");
+    assert_eq!(headers["anthropic-version"], "2023-06-01");
+    assert!(!headers.contains_key("authorization"));
     remote.calls.lock().unwrap().push(body.clone());
     let delay = remote.delay_ms.load(Ordering::SeqCst);
     if delay > 0 {
@@ -35,28 +39,44 @@ async fn external_provider(
     }
     let mode = remote.mode.lock().unwrap().clone();
     let original: serde_json::Value =
-        serde_json::from_str(body["input"].as_str().unwrap()).unwrap();
-    let value = if body["text"]["format"]["name"] == "generate" {
+        serde_json::from_str(body["messages"][0]["content"].as_str().unwrap()).unwrap();
+    let generating = body["output_config"]["format"]["schema"]["properties"]
+        .get("action")
+        .is_some();
+    let value = if generating {
         json!({"status":"action","action":"펜 하나 옮기기","completion_condition":"펜이 펜꽂이에 있다",
             "estimated_minutes":1,"reason":"한 물건만 옮긴다","remaining_work":original["remaining_work"],
             "preserved_completed_ids":original["completed_ids"],"goal_completed":mode=="invalid","current_action_completed":false})
     } else {
         json!({"verdict":if mode=="reject" || mode=="uncertain" { mode.as_str() } else { "accept" },"criteria":[1,2,3,4,5],"evidence":"원본과 일치","reason":"판정"})
     };
-    let mut response = json!({"status":"completed","model":"gpt-6.1-sol","error":null,
-        "output":[{"type":"message","role":"assistant","status":"completed","content":[{"type":"output_text","text":value.to_string()}]}],
-        "usage":{"input_tokens":11,"output_tokens":7,"total_tokens":18,
-            "input_tokens_details":{"cached_tokens":3,"cache_write_tokens":0},"output_tokens_details":{"reasoning_tokens":2}}});
+    let mut response = json!({"type":"message","role":"assistant","model":"claude-haiku-5-5","stop_reason":"end_turn",
+        "content":[{"type":"thinking","thinking":"합성","signature":"test"},{"type":"text","text":value.to_string()}],
+        "usage":{"input_tokens":8,"output_tokens":7,"cache_read_input_tokens":3,"cache_creation_input_tokens":0,
+            "output_tokens_details":{"thinking_tokens":2}}});
     if mode == "missing_usage" {
         response["usage"] = serde_json::Value::Null;
     }
     if mode == "overrun" {
         response["usage"]["output_tokens"] = json!(1001);
     }
-    if (mode == "wrong_generate_model" && body["text"]["format"]["name"] == "generate")
-        || (mode == "wrong_check_model" && body["text"]["format"]["name"] == "check")
+    if (mode == "wrong_generate_model" && generating)
+        || (mode == "wrong_check_model" && !generating)
     {
         response["model"] = json!("unconfirmed-model");
+    }
+    match mode.as_str() {
+        "truncated" => response["stop_reason"] = json!("max_tokens"),
+        "refusal" => response["stop_details"] = json!({"type":"refusal"}),
+        "tool" => {
+            response["content"][0] =
+                json!({"type":"tool_use","id":"tool-test","name":"unexpected","input":{}})
+        }
+        "cache_overrun" => {
+            response["usage"]["cache_creation_input_tokens"] = json!(20_000);
+            response["usage"]["cache_read_input_tokens"] = json!(0);
+        }
+        _ => {}
     }
     Json(response)
 }
@@ -106,7 +126,7 @@ impl Fixture {
         .route("/accounts", post(|State(remote): State<Arc<Remote>>, Json(body): Json<serde_json::Value>| async move {
             Json(json!({"users":[{"localId":body["localId"][0],"disabled":remote.disabled.load(Ordering::SeqCst),
                 "validSince":remote.revoked_after.load(Ordering::SeqCst).to_string()}]}))
-        })).route("/responses", post(external_provider)).with_state(remote.clone());
+        })).route("/messages", post(external_provider)).with_state(remote.clone());
         let server = tokio::spawn(async move {
             axum::serve(listener, upstream).await.unwrap();
         });
@@ -164,6 +184,9 @@ async fn checker_reject_uncertain_and_structural_failure_never_return_a_candidat
         ("reject", "rejected", 2),
         ("uncertain", "uncertain", 2),
         ("invalid", "invalid_proposal", 1),
+        ("truncated", "failed", 1),
+        ("refusal", "rejected", 1),
+        ("tool", "rejected", 1),
     ] {
         *fixture.remote.mode.lock().unwrap() = mode.into();
         fixture.remote.calls.lock().unwrap().clear();
@@ -311,12 +334,44 @@ async fn allowed_user_receives_only_independently_checked_proposal_and_usage() {
     assert!(body["elapsed_ms"].as_u64().is_some());
     let calls = fixture.remote.calls.lock().unwrap().clone();
     assert_eq!(calls.len(), 2);
-    for request in calls {
-        assert_eq!(request["store"], false);
+    for (index, request) in calls.into_iter().enumerate() {
+        assert_eq!(request["model"], "claude-haiku-5-5");
         assert_eq!(request["tools"], json!([]));
-        assert_eq!(request["reasoning"]["effort"], "medium");
-        assert!(request.get("previous_response_id").is_none());
+        assert_eq!(request["output_config"]["effort"], "medium");
+        assert_eq!(request["thinking"]["type"], "adaptive");
+        assert_eq!(request["service_tier"], "standard_only");
+        assert_eq!(request["messages"].as_array().unwrap().len(), 1);
+        assert_eq!(request["messages"][0]["role"], "user");
+        assert_eq!(request["max_tokens"], 1000);
+        assert_eq!(request["stream"], false);
+        assert!(request.get("store").is_none());
+        assert!(request.get("cache_control").is_none());
+        if index == 1 {
+            assert_eq!(
+                request["output_config"]["format"]["schema"]["properties"]["criteria"]["items"],
+                json!({"type":"integer","enum":[1,2,3,4,5]})
+            );
+        }
     }
+    fixture.close().await;
+}
+
+#[tokio::test]
+#[ignore = "requires TEST_DATABASE_URL; HTTP against real isolated PostgreSQL"]
+async fn cache_tokens_beyond_full_context_block_budget_after_restart() {
+    let mut fixture = Fixture::new().await;
+    *fixture.remote.mode.lock().unwrap() = "cache_overrun".into();
+    assert_eq!(
+        result(fixture.request("allowed", "cache-overrun").await).await["disposition"],
+        "failed"
+    );
+    assert_eq!(fixture.remote.calls.lock().unwrap().len(), 1);
+    fixture.app = super::router(Some(fixture.config.clone()), fixture.database.clone());
+    assert_eq!(
+        fixture.request("allowed", "after-restart").await.status(),
+        StatusCode::TOO_MANY_REQUESTS
+    );
+    assert_eq!(fixture.remote.calls.lock().unwrap().len(), 1);
     fixture.close().await;
 }
 
