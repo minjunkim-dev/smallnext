@@ -385,6 +385,83 @@
         "current_action_completed": false,
         "preserved_completed_ids": []
       }
+    },
+    {
+      "id": "nested-split-without-failure",
+      "expected": "accept",
+      "original_request": {
+        "goal": "분기 업무 보고서 초안 쓰기",
+        "current_blocker": "",
+        "user_request": "현재 행동을 실질적으로 줄인다. 반복 막힘이면 알려진 답을 다시 묻지 않고 첫 막힘 한 가지를 확인한다.",
+        "available": [
+          "확정 완료 조건: 분기 업무 보고서 문서에 목차 항목 3개와 핵심 성과 3줄이 작성되어 저장된 상태",
+          "현재 상태: 빈 보고서 문서가 열려 있다. 목차 세 개와 핵심 성과 세 줄을 작성하려고 한다.",
+          "이미 완료한 행동: 첫 목차 항목을 작성했다.",
+          "보류한 행동(재제안 금지): 보고서에 핵심 성과 첫 줄을 작성한다."
+        ],
+        "unknown": [],
+        "available_minutes": 15,
+        "knowledge": "사용자가 제공한 정보 외에는 모름",
+        "energy": "모름",
+        "remaining_work": [
+          "분기 업무 보고서 문서에 목차 항목 3개와 핵심 성과 3줄이 작성되어 저장된 상태",
+          "목차 항목 나머지 두 개와 핵심 성과 세 줄 작성"
+        ],
+        "completed_ids": [
+          "1"
+        ],
+        "previous_proposals": [
+          {
+            "status": "action",
+            "action": "목차 항목 나머지 두 개와 핵심 성과 세 줄 작성",
+            "completion_condition": "원본 범위를 아직 완료하지 않음",
+            "estimated_minutes": 0,
+            "reason": "미완료 분할 원본",
+            "remaining_work": [
+              "분기 업무 보고서 문서에 목차 항목 3개와 핵심 성과 3줄이 작성되어 저장된 상태",
+              "목차 항목 나머지 두 개와 핵심 성과 세 줄 작성"
+            ],
+            "goal_completed": false,
+            "current_action_completed": false,
+            "preserved_completed_ids": [
+              "1"
+            ]
+          },
+          {
+            "status": "action",
+            "action": "열려 있는 보고서 문서의 둘째 줄에 목차 항목 하나(예: \"2. 주요 업무 성과\")를 입력한다.",
+            "completion_condition": "둘째 줄에 목차 항목 한 개가 보이는 상태",
+            "estimated_minutes": 2,
+            "reason": "현재 미완료 행동",
+            "remaining_work": [
+              "분기 업무 보고서 문서에 목차 항목 3개와 핵심 성과 3줄이 작성되어 저장된 상태",
+              "목차 항목 나머지 두 개와 핵심 성과 세 줄 작성"
+            ],
+            "goal_completed": false,
+            "current_action_completed": false,
+            "preserved_completed_ids": [
+              "1"
+            ]
+          }
+        ],
+        "request_kind": "smaller"
+      },
+      "candidate": {
+        "status": "action",
+        "action": "보고서 둘째 줄에 목차 항목 제목 한 단어 \"성과\"를 입력한다.",
+        "completion_condition": "둘째 줄에 \"성과\"가 보이는 상태",
+        "estimated_minutes": 1,
+        "reason": "열린 목차 항목 선택을 유용한 한 단어로 좁힌다. 그대로 사용할 수 있고, 원하면 나중에 바꿀 수 있다.",
+        "remaining_work": [
+          "분기 업무 보고서 문서에 목차 항목 3개와 핵심 성과 3줄이 작성되어 저장된 상태",
+          "목차 항목 나머지 두 개와 핵심 성과 세 줄 작성"
+        ],
+        "goal_completed": false,
+        "current_action_completed": false,
+        "preserved_completed_ids": [
+          "1"
+        ]
+      }
     }
   ]
 }
