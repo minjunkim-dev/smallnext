@@ -19,6 +19,7 @@ PROJECT_JOBS = {
     "ios": ("ios / test",),
     "android": ("android / build", "android / device-tests"),
 }
+PROJECT_WORKFLOWS = ("api-checks.yml", "api-container.yml", "ios-checks.yml", "android-checks.yml")
 
 
 def require(condition, reason):
@@ -61,6 +62,23 @@ def validate_run(run, event_run, repo, workflow):
     require(run["status"] == "completed", "Run is not completed")
 
 
+def source_merge(run, pr, repo, get):
+    references = run.get("referenced_workflows", [])
+    expected = {f"{repo}/.github/workflows/{file}" for file in PROJECT_WORKFLOWS}
+    require(len(references) == len(expected) and
+            {item["path"].partition("@")[0] for item in references} == expected,
+            "Cannot prove source merge: missing or unexpected workflow references")
+    require(all(item.get("ref") == f"refs/pull/{pr['number']}/merge" for item in references),
+            "Source workflows did not use the PR merge ref")
+    commits = {sha(item["sha"]) for item in references}
+    require(len(commits) == 1, "Source workflows used different merge commits")
+    merge_sha = commits.pop()
+    commit = get(f"git/commits/{merge_sha}")
+    require(commit["sha"] == merge_sha and [parent["sha"] for parent in commit["parents"]] ==
+            [pr["base"]["sha"], pr["head"]["sha"]], "Source merge base or head is stale; start fresh PR checks")
+    return merge_sha
+
+
 def aggregate(event, repo, get):
     require(event["repository"]["full_name"] == repo and
             event["repository"]["default_branch"] == "main", "Wrong event repository or default branch")
@@ -93,6 +111,7 @@ def aggregate(event, repo, get):
             "PR changed or is outside the trusted scope")
     base = sha(pr["base"]["sha"])
     require(get("branches/main")["commit"]["sha"] == base, "PR base is not current main")
+    merge_sha = source_merge(run, pr, repo, get)
 
     files = pages(get, f"pulls/{pr['number']}/files")
     require(len(files) == pr["changed_files"], "Incomplete PR diff")
@@ -124,6 +143,7 @@ def aggregate(event, repo, get):
     fresh_run = get(f"actions/runs/{run_id}")
     validate_run(fresh_run, event_run, repo, workflow)
     require(fresh_run["conclusion"] == "success", "Source result changed during collection")
+    require(source_merge(fresh_run, pr, repo, get) == merge_sha, "Source merge changed during collection")
     fresh_pr = get(f"pulls/{pr['number']}")
     require(fresh_pr["state"] == "open" and
             all(fresh_pr[side][key] == pr[side][key] for side in ("head", "base") for key in ("sha", "ref")) and
@@ -131,7 +151,7 @@ def aggregate(event, repo, get):
             get("branches/main")["commit"]["sha"] == base,
             "PR head or base changed during collection")
     return dict(evidence, verdict="accepted", pr=pr["number"], base_branch="main", base_sha=base,
-                head_branch=run["head_branch"], selected=selected,
+                merge_sha=merge_sha, head_branch=run["head_branch"], selected=selected,
                 jobs=[{key: job[key] for key in ("id", "name", "conclusion")} for job in jobs])
 
 

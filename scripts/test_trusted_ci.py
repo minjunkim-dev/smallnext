@@ -14,6 +14,7 @@ from trusted_ci import aggregate, main
 REPO = "minjunkim-dev/smallnext"
 HEAD = "a" * 40
 BASE = "b" * 40
+MERGE = "d" * 40
 
 
 class AggregationTests(unittest.TestCase):
@@ -24,6 +25,9 @@ class AggregationTests(unittest.TestCase):
             "head_sha": HEAD, "head_branch": "ci/83-example",
             "repository": {"full_name": REPO}, "head_repository": {"full_name": REPO},
             "status": "completed", "conclusion": "success", "pull_requests": [],
+            "referenced_workflows": [
+                {"path": f"{REPO}/.github/workflows/{file}@{MERGE}", "sha": MERGE, "ref": "refs/pull/30/merge"}
+                for file in ("api-checks.yml", "api-container.yml", "ios-checks.yml", "android-checks.yml")],
         }
         self.event = {"repository": {"full_name": REPO, "default_branch": "main"},
                       "workflow_run": deepcopy(self.run)}
@@ -42,6 +46,7 @@ class AggregationTests(unittest.TestCase):
             "pulls/30": self.pr,
             "pulls/30/files?per_page=100&page=1": [{"filename": "docs/CI.md", "status": "modified"}],
             "branches/main": {"commit": {"sha": BASE}},
+            "git/commits/" + MERGE: {"sha": MERGE, "parents": [{"sha": BASE}, {"sha": HEAD}]},
             "actions/workflows/20/runs?event=pull_request&branch=ci%2F83-example&head_sha=" + HEAD + "&per_page=1": {"workflow_runs": [self.run]},
             "actions/runs/10/attempts/1/jobs?per_page=100&page=1": {"total_count": 6, "jobs": self.jobs},
         }
@@ -68,6 +73,28 @@ class AggregationTests(unittest.TestCase):
         self.run["path"] = ".github/workflows/other.yml@main"
         with self.assertRaisesRegex(ValueError, "Wrong workflow"):
             aggregate(self.event, REPO, self.get)
+
+    def test_original_merge_base_must_match_current_base_even_after_full_rerun(self):
+        self.data["git/commits/" + MERGE]["parents"][0]["sha"] = "c" * 40
+        with self.assertRaisesRegex(ValueError, "Source merge base or head"):
+            aggregate(self.event, REPO, self.get)
+
+    def test_source_base_proof_cannot_be_missing_mixed_or_an_external_ref(self):
+        baseline = deepcopy(self.run["referenced_workflows"])
+        cases = [[], baseline[:3], deepcopy(baseline), deepcopy(baseline)]
+        cases[2][0]["sha"] = "c" * 40
+        cases[3][0]["ref"] = "refs/heads/main"
+        for references in cases:
+            self.run["referenced_workflows"] = references
+            with self.subTest(references=references):
+                with self.assertRaises(ValueError):
+                    aggregate(self.event, REPO, self.get)
+
+    def test_source_merge_parent_order_and_head_are_verified(self):
+        for parents in ([HEAD, BASE], [BASE, "c" * 40], [BASE]):
+            self.data["git/commits/" + MERGE]["parents"] = [{"sha": value} for value in parents]
+            with self.assertRaisesRegex(ValueError, "Source merge base or head"):
+                aggregate(self.event, REPO, self.get)
 
     def select_ios(self):
         self.data["pulls/30/files?per_page=100&page=1"] = [{"filename": "apps/ios/Sources/App.swift"}]

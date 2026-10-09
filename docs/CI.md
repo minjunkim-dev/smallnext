@@ -54,6 +54,9 @@ checkout은 집계 실행의 `github.sha`로 고정합니다. PR 코드와 artif
 
 `scripts/trusted_ci.py`는 GitHub API로 workflow ID/path, run ID, repository, event, head, 최신 attempt를 확인합니다.
 열린 같은 저장소의 `main` PR 하나와 head SHA·브랜치를 연결합니다.
+run의 `referenced_workflows` 네 개가 같은 PR merge ref와 같은 SHA를 사용해야 합니다.
+Git commit API에서 해당 merge SHA의 두 부모가 현재 base·PR head인지 확인합니다.
+참조가 없거나 서로 다르거나 이전 base를 검사했으면 거부합니다. 이전 실행의 전체 재실행은 새 base 검사의 증거가 아닙니다.
 PR 변경 파일의 전체 목록에 기준 브랜치의 `ci_scope.select` 정책을 적용합니다.
 이동한 파일의 이전 경로도 포함합니다. PR의 scope 출력과 `NEEDS_JSON`은 사용하지 않습니다.
 최신 attempt의 `scope`, `Project checks`와 선택한 플랫폼 job을 모두 확인합니다.
@@ -63,7 +66,7 @@ job 이름의 중복·누락·예상 밖 변경, 불완전한 API 목록과 API 
 부분 재실행에 필요한 job이 없으면 전체 재실행을 요구합니다. 이전 attempt 결과는 합치지 않습니다.
 수집 후 run attempt, PR head·base와 현재 `main`을 다시 확인합니다.
 
-집계 실행의 Summary에는 판정과 대상 run ID·attempt, workflow ID, PR head·base, 정책 SHA, job ID를 기록합니다.
+집계 실행의 Summary에는 판정과 대상 run ID·attempt, workflow ID/path, PR head·base·merge SHA, 정책 SHA, job ID를 기록합니다.
 `accepted`만 병합 근거입니다. `rejected`는 실패로 끝납니다.
 push·수동 실행·fork·닫힌 PR과 삭제한 브랜치는 `out_of_scope`로 기록합니다.
 `out_of_scope` 실행의 초록색 상태는 PR 집계 통과를 뜻하지 않습니다.
