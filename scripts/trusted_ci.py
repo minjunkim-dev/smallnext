@@ -2,6 +2,7 @@
 """Validate Project checks through read-only GitHub APIs from the default branch."""
 
 import json
+from datetime import datetime
 import os
 from pathlib import Path
 import re
@@ -30,6 +31,13 @@ def require(condition, reason):
 def sha(value):
     require(isinstance(value, str) and re.fullmatch(r"[0-9a-f]{40}", value), "Invalid SHA")
     return value
+
+
+def timestamp(value):
+    require(isinstance(value, str), "Missing execution timestamp")
+    result = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    require(result.tzinfo is not None, "Execution timestamp must include a timezone")
+    return result
 
 
 def pages(get, endpoint, key=None):
@@ -130,11 +138,17 @@ def aggregate(event, repo, get):
     missing = expected.keys() - set(names)
     require(not missing, "Required jobs missing from latest attempt; re-run all jobs")
     require(set(names) == expected.keys(), "Unexpected job inventory; review workflow definitions")
+    attempt_started = timestamp(run["run_started_at"])
     for job in jobs:
         require(job["run_id"] == run_id and job["run_attempt"] == run["run_attempt"] and
                 job["head_sha"] == run["head_sha"], "Wrong job run, attempt or SHA")
         require(job["status"] == "completed" and job["conclusion"] == expected[job["name"]],
                 f"{job['name']}: expected {expected[job['name']]}")
+        if expected[job["name"]] == "success":
+            # GitHub can copy old successes into a new attempt with new job IDs.
+            started = timestamp(job["started_at"])
+            require(started >= attempt_started and timestamp(job["completed_at"]) >= started,
+                    f"{job['name']}: copied result from earlier attempt; re-run all jobs")
     require(run["conclusion"] == "success", "Source run failed or was cancelled")
 
     latest = get(f"actions/workflows/{workflow['id']}/runs?event=pull_request&branch="
@@ -151,7 +165,7 @@ def aggregate(event, repo, get):
             get("branches/main")["commit"]["sha"] == base,
             "PR head or base changed during collection")
     return dict(evidence, verdict="accepted", pr=pr["number"], base_branch="main", base_sha=base,
-                merge_sha=merge_sha, head_branch=run["head_branch"], selected=selected,
+                merge_sha=merge_sha, run_started_at=run["run_started_at"], head_branch=run["head_branch"], selected=selected,
                 jobs=[{key: job[key] for key in ("id", "name", "conclusion")} for job in jobs])
 
 

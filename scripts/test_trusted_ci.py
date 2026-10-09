@@ -25,6 +25,7 @@ class AggregationTests(unittest.TestCase):
             "head_sha": HEAD, "head_branch": "ci/83-example",
             "repository": {"full_name": REPO}, "head_repository": {"full_name": REPO},
             "status": "completed", "conclusion": "success", "pull_requests": [],
+            "run_started_at": "2026-10-09T10:12:38Z",
             "referenced_workflows": [
                 {"path": f"{REPO}/.github/workflows/{file}@{MERGE}", "sha": MERGE, "ref": "refs/pull/30/merge"}
                 for file in ("api-checks.yml", "api-container.yml", "ios-checks.yml", "android-checks.yml")],
@@ -53,7 +54,8 @@ class AggregationTests(unittest.TestCase):
 
     def job(self, name, result):
         return {"id": len(name), "name": name, "run_id": 10, "run_attempt": 1,
-                "head_sha": HEAD, "status": "completed", "conclusion": result}
+                "head_sha": HEAD, "status": "completed", "conclusion": result,
+                "started_at": "2026-10-09T10:12:42Z", "completed_at": "2026-10-09T10:12:47Z"}
 
     def get(self, endpoint):
         return deepcopy(self.data[endpoint])
@@ -223,6 +225,19 @@ class AggregationTests(unittest.TestCase):
         self.data["actions/runs/10/attempts/2/jobs?per_page=100&page=1"] = {
             "total_count": 1, "jobs": [dict(self.job("Project checks", "success"), run_attempt=2)]}
         with self.assertRaisesRegex(ValueError, "re-run all jobs"):
+            aggregate(self.event, REPO, self.get)
+
+    def test_api_copied_success_with_new_job_id_and_attempt_is_not_a_fresh_result(self):
+        self.run["run_attempt"] = self.event["workflow_run"]["run_attempt"] = 2
+        self.run["run_started_at"] = "2026-10-09T10:13:36Z"
+        inherited = deepcopy(self.jobs)
+        for job in inherited:
+            job.update(id=job["id"] + 100, run_attempt=2,
+                       started_at="2026-10-09T10:13:41Z", completed_at="2026-10-09T10:13:45Z")
+        inherited[0].update(started_at="2026-10-09T10:12:42Z", completed_at="2026-10-09T10:12:47Z")
+        self.data["actions/runs/10/attempts/2/jobs?per_page=100&page=1"] = {
+            "total_count": 6, "jobs": inherited}
+        with self.assertRaisesRegex(ValueError, "earlier attempt.*re-run all jobs"):
             aggregate(self.event, REPO, self.get)
 
     def test_api_failure_is_reported_as_rejected_with_nonzero_exit(self):
