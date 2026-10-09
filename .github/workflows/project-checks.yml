@@ -82,18 +82,27 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 2
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
       - name: Check selected job results
         env:
-          SCOPE_RESULT: ${{ needs.scope.result }}
-          API_RESULT: ${{ needs.api.result }}
-          CONTAINER_RESULT: ${{ needs.container.result }}
-          IOS_RESULT: ${{ needs.ios.result }}
-          ANDROID_RESULT: ${{ needs.android.result }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before || github.sha }}
+          CURRENT_SHA: ${{ github.sha }}
+          EVENT_NAME: ${{ github.event_name }}
+          NEEDS_JSON: ${{ toJSON(needs) }}
         run: |
-          test "$SCOPE_RESULT" = success
-          for result in "$API_RESULT" "$CONTAINER_RESULT" "$IOS_RESULT" "$ANDROID_RESULT"; do
-            case "$result" in
-              success|skipped) ;;
-              *) exit 1 ;;
-            esac
-          done
+          git cat-file -e "$BASE_SHA^{commit}"
+          gate_ref="$BASE_SHA"
+          if ! git cat-file -e "$gate_ref:scripts/ci_gate.py"; then
+            if [ "$EVENT_NAME" = pull_request ]; then
+              # First PR uses this reviewed, immutable ancestor commit.
+              gate_ref=547fdc9bf908ed36d155259a83052102d7c139c3
+            else
+              # First main push uses the reviewed squash commit, after branch deletion.
+              gate_ref="$CURRENT_SHA"
+            fi
+          fi
+          git show "$gate_ref:scripts/ci_gate.py" > "$RUNNER_TEMP/trusted-ci-gate.py"
+          python3 "$RUNNER_TEMP/trusted-ci-gate.py"
