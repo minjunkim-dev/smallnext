@@ -44,7 +44,7 @@ async fn external_provider(
         .get("action")
         .is_some();
     let value = if generating {
-        json!({"status":"action","action":"펜 하나 옮기기","completion_condition":"펜이 펜꽂이에 있다",
+        json!({"status": match mode.as_str() { "minimum" | "no_action" | "goal_summary" | "need_info" => mode.as_str(), _ => "action" },"action":"펜 하나 옮기기","completion_condition":"펜이 펜꽂이에 있다",
             "estimated_minutes":1,"reason":"한 물건만 옮긴다","remaining_work":original["remaining_work"],
             "preserved_completed_ids":original["completed_ids"],"goal_completed":mode=="invalid","current_action_completed":false})
     } else {
@@ -143,8 +143,19 @@ impl Fixture {
         }
     }
     async fn request(&self, uid: &str, key: &str) -> axum::response::Response {
-        let input: serde_json::Value =
+        self.request_kind(uid, key, None).await
+    }
+    async fn request_kind(
+        &self,
+        uid: &str,
+        key: &str,
+        kind: Option<&str>,
+    ) -> axum::response::Response {
+        let mut input: serde_json::Value =
             serde_json::from_str(include_str!("../../examples/development-ai-input.json")).unwrap();
+        if let Some(kind) = kind {
+            input["request_kind"] = json!(kind);
+        }
         self.app
             .clone()
             .oneshot(
@@ -346,11 +357,70 @@ async fn allowed_user_receives_only_independently_checked_proposal_and_usage() {
         assert_eq!(request["stream"], false);
         assert!(request.get("store").is_none());
         assert!(request.get("cache_control").is_none());
+        assert_eq!(
+            request["system"],
+            if index == 0 {
+                include_str!("../development_ai/generate.md")
+            } else {
+                include_str!("../development_ai/check.md")
+            }
+        );
+        if index == 0 {
+            assert_eq!(
+                request["output_config"]["format"]["schema"],
+                crate::development_ai::generation_schema(None)
+            );
+        }
         if index == 1 {
             assert_eq!(
                 request["output_config"]["format"]["schema"]["properties"]["criteria"]["items"],
                 json!({"type":"integer","enum":[1,2,3,4,5]})
             );
+        }
+    }
+    fixture.close().await;
+}
+
+#[tokio::test]
+#[ignore = "requires TEST_DATABASE_URL; HTTP against real isolated PostgreSQL"]
+async fn request_status_contract_and_schema_match_through_real_database_and_http() {
+    let fixture = Fixture::new().await;
+    for (index, (kind, mode, expected, calls)) in [
+        ("goal_preparation", "", "invalid_proposal", 1),
+        ("goal_preparation", "minimum", "invalid_proposal", 1),
+        ("goal_preparation", "goal_summary", "accepted", 2),
+        ("goal_preparation", "need_info", "accepted", 2),
+        ("smaller", "no_action", "invalid_proposal", 1),
+        ("smaller", "minimum", "accepted", 2),
+        ("replacement", "no_action", "accepted", 2),
+        ("next_action", "goal_summary", "invalid_proposal", 1),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        *fixture.remote.mode.lock().unwrap() = mode.into();
+        fixture.remote.calls.lock().unwrap().clear();
+        let body = result(
+            fixture
+                .request_kind("allowed", &format!("status-{index}"), Some(kind))
+                .await,
+        )
+        .await;
+        assert_eq!(body["disposition"], expected, "{kind}/{mode}");
+        assert_eq!(body["proposal"].is_null(), expected != "accepted");
+        let sent = fixture.remote.calls.lock().unwrap().clone();
+        assert_eq!(sent.len(), calls);
+        assert_eq!(
+            sent[0]["output_config"]["format"]["schema"],
+            crate::development_ai::generation_schema(Some(kind))
+        );
+        if calls == 2 {
+            let checked: serde_json::Value =
+                serde_json::from_str(sent[1]["messages"][0]["content"].as_str().unwrap()).unwrap();
+            let original: serde_json::Value =
+                serde_json::from_str(sent[0]["messages"][0]["content"].as_str().unwrap()).unwrap();
+            assert_eq!(checked["original_request"], original);
+            assert_eq!(checked["candidate"], body["proposal"]);
         }
     }
     fixture.close().await;

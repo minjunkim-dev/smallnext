@@ -1,5 +1,7 @@
 use super::{client, read_json, required};
-use crate::development_ai::{AiInput, Disposition, Proposal, validate_check, validate_proposal};
+use crate::development_ai::{
+    AiInput, Disposition, Proposal, generation_schema, validate_check, validate_proposal,
+};
 use serde::Serialize;
 use serde_json::{Value, json};
 use utoipa::ToSchema;
@@ -9,8 +11,6 @@ const MODEL: &str = "claude-haiku-5-5";
 const CONTEXT_TOKENS: u64 = 1_000_000;
 const INPUT_RATE_FLOOR: u64 = 1_000_000;
 const OUTPUT_RATE_FLOOR: u64 = 2_500_000;
-const GENERATE_POLICY: &str = "For request_kind=smaller, if the input explicitly says repeated proposals still cannot start and the first actual impediment is unknown, return need_info asking that impediment directly. Even picking up, touching, looking at, or preparing an already selected item is not a substitute for that question. Do not guess the cause. Copying a known title into a memo is not new evidence and does not resolve unknown past facts; ask one missing evidence source instead.";
-const CHECK_POLICY: &str = "For request_kind=smaller, when repeated proposals still cannot start and the actual impediment is unknown, reject any action or minimum candidate instead of a direct need_info question about the first actual impediment. A smaller physical motion does not override this rule. Reject copying a known title or label as alleged evidence progress when the evidence source is unknown. Do not infer that a smaller motion addresses an unknown cause.";
 
 #[derive(Clone)]
 pub(super) struct Provider {
@@ -136,17 +136,15 @@ impl Provider {
             ),
         };
         let mut schema: Value = serde_json::from_str(schema).expect("committed schema");
+        if role == "generate" {
+            schema = generation_schema(payload["request_kind"].as_str());
+        }
         if role == "check" {
             // Messages JSON Schema does not support numeric bounds. Keep the exact domain as enum.
             schema["properties"]["criteria"]["items"] =
                 json!({"type":"integer","enum":[1,2,3,4,5]});
         }
-        let policy = if role == "generate" {
-            GENERATE_POLICY
-        } else {
-            CHECK_POLICY
-        };
-        let body = json!({"model":MODEL,"system":format!("{instructions}\n\n{policy}"),
+        let body = json!({"model":MODEL,"system":instructions,
             "messages":[{"role":"user","content":payload.to_string()}],
             "thinking":{"type":"adaptive"},"max_tokens":self.output_tokens,
             "stream":false,"tools":[],"service_tier":"standard_only",
