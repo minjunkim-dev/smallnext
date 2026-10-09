@@ -60,6 +60,15 @@ class AggregationTests(unittest.TestCase):
                          (30, 10, 1, BASE))
         self.assertEqual(result["selected"], {"api": False, "container": False, "ios": False, "android": False})
 
+    def test_run_path_ref_suffix_and_bare_event_path_identify_the_same_workflow(self):
+        self.run["path"] += "@main"
+        self.assertEqual(aggregate(self.event, REPO, self.get)["verdict"], "accepted")
+        self.event["workflow_run"]["path"] += "@refs/pull/30/merge"
+        self.assertEqual(aggregate(self.event, REPO, self.get)["verdict"], "accepted")
+        self.run["path"] = ".github/workflows/other.yml@main"
+        with self.assertRaisesRegex(ValueError, "Wrong workflow"):
+            aggregate(self.event, REPO, self.get)
+
     def select_ios(self):
         self.data["pulls/30/files?per_page=100&page=1"] = [{"filename": "apps/ios/Sources/App.swift"}]
         self.jobs[4] = self.job("ios / test", "success")

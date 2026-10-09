@@ -48,9 +48,13 @@ def pages(get, endpoint, key=None):
 
 def validate_run(run, event_run, repo, workflow):
     require(run["repository"]["full_name"] == repo, "Wrong run repository")
-    require(run["workflow_id"] == workflow["id"] and run["path"] == WORKFLOW_PATH,
+    # The run API can append @ref; workflow ID remains the authoritative identity.
+    require(run["workflow_id"] == workflow["id"] and isinstance(run["path"], str) and
+            run["path"].partition("@")[0] == WORKFLOW_PATH,
             "Wrong workflow ID or path")
-    for key in ("id", "workflow_id", "path", "event", "head_sha", "head_branch", "run_attempt"):
+    require(isinstance(event_run["path"], str) and event_run["path"].partition("@")[0] == WORKFLOW_PATH,
+            "Wrong event workflow path")
+    for key in ("id", "workflow_id", "event", "head_sha", "head_branch", "run_attempt"):
         require(run[key] == event_run[key], f"Stale or mismatched run {key}")
     sha(run["head_sha"])
     require(type(run["run_attempt"]) is int and run["run_attempt"] > 0, "Invalid attempt")
@@ -68,7 +72,7 @@ def aggregate(event, repo, get):
     run = get(f"actions/runs/{run_id}")
     validate_run(run, event_run, repo, workflow)
     evidence = {"verdict": "out_of_scope", "run_id": run_id, "attempt": run["run_attempt"],
-                "workflow_id": workflow["id"], "head_sha": run["head_sha"]}
+                "workflow_id": workflow["id"], "workflow_path": run["path"], "head_sha": run["head_sha"]}
     if run["event"] != "pull_request":
         return dict(evidence, reason="Only pull_request runs provide merge evidence")
     if run["head_repository"]["full_name"] != repo:
