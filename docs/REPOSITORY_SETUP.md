@@ -123,7 +123,8 @@ HTTP 401 또는 SDK `authentication_failed`가 발생하면 해당 리뷰를 미
 
 PR의 workflow는 집계 입력과 플랫폼 검사 정의를 변경할 수 있습니다.
 독립 집계를 병합 판단 근거로 사용하는 설계는 [ADR-0001](adr/0001-trusted-ci-aggregation.md)에 있습니다.
-집계 workflow의 구현과 실제 도입 검증은 아직 완료하지 않았습니다.
+집계 workflow의 구현과 bootstrap 절차는 [CI](CI.md#기준-브랜치의-독립-집계)에 있습니다.
+실제 도입 검증은 아직 완료하지 않았습니다. 후속 PR의 실제 집계를 확인한 뒤 병합 절차에 적용합니다.
 구현 완료 조건과 도입 순서는 [Issue #83의 확정 답](https://github.com/minjunkim-dev/smallnext/issues/83#issuecomment-6078139109)을 따릅니다.
 
 ## 연결 상태와 검증 근거

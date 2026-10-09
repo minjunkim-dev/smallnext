@@ -1,0 +1,26 @@
+name: Trusted CI aggregation
+
+on:
+  workflow_run:
+    workflows: [Project checks]
+    types: [completed]
+
+permissions:
+  contents: read
+  actions: read
+  pull-requests: read
+
+jobs:
+  aggregate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          # workflow_run resolves github.sha to the default branch, never the PR.
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Validate actual run and latest attempt
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/trusted_ci.py

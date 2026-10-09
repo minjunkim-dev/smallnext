@@ -18,6 +18,7 @@ fork PR 지원과 필수 검사 출처의 독립 강제는 후속 범위입니�
 
 2026-10-09 사용자가 추천안으로 설계를 확정했습니다.
 확정 답, 실패 정책, 도입 순서와 완료 조건은 [Issue #83의 설계 확정 답](https://github.com/minjunkim-dev/smallnext/issues/83#issuecomment-6078139109)에 있습니다.
-이 ADR은 설계 결정입니다. 집계 workflow의 구현과 실제 도입 검증은 아직 완료하지 않았습니다.
+구현과 bootstrap 절차는 [CI](../CI.md#기준-브랜치의-독립-집계)에 있습니다.
+실제 도입 검증 상태는 [자동화 설정](../REPOSITORY_SETUP.md#현재-제한)에서 확인합니다.
 
 근거: [GitHub 필수 검사 출처](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches/about-protected-branches#require-status-checks-before-merging), [workflow 이벤트의 실행 컨텍스트](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows).
