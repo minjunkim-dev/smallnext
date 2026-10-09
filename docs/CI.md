@@ -64,6 +64,8 @@ PR 변경 파일의 전체 목록에 기준 브랜치의 `ci_scope.select` 정�
 Android를 선택하면 `android / build`와 `android / device-tests`가 모두 성공해야 합니다.
 job 이름의 중복·누락·예상 밖 변경, 불완전한 API 목록과 API 오류를 거부합니다.
 부분 재실행에 필요한 job이 없으면 전체 재실행을 요구합니다. 이전 attempt 결과는 합치지 않습니다.
+GitHub는 이전 성공 결과를 새 job ID·attempt로 복사할 수 있습니다.
+성공해야 하는 job의 시작·완료 시각도 확인합니다. 해당 attempt의 시작보다 이전에 실행한 결과는 거부합니다.
 수집 후 run attempt, PR head·base와 현재 `main`을 다시 확인합니다.
 
 집계 실행의 Summary에는 판정과 대상 run ID·attempt, workflow ID/path, PR head·base·merge SHA, 정책 SHA, job ID를 기록합니다.
