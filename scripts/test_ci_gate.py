@@ -25,7 +25,8 @@ class GateTests(unittest.TestCase):
             **{project: {"result": "success" if project in selected else "skipped"} for project in PROJECTS},
         }
 
-    def run_gate(self, needs, base_sha="HEAD", cwd=ROOT, bootstrap_sha=None):
+    def run_gate(self, needs, base_sha="HEAD", cwd=ROOT, bootstrap_sha=None,
+                 event_name="pull_request", current_sha="HEAD"):
         # Execute the actual gate step, so dropping an output binding or replacing
         # the helper with a permissive shell loop also breaks these tests.
         workflow = (ROOT / ".github/workflows/project-checks.yml").read_text()
@@ -39,6 +40,12 @@ class GateTests(unittest.TestCase):
             elif key == "BASE_SHA":
                 self.assertEqual(expression, "github.event.pull_request.base.sha || github.event.before || github.sha")
                 env[key] = base_sha
+            elif key == "CURRENT_SHA":
+                self.assertEqual(expression, "github.sha")
+                env[key] = current_sha
+            elif key == "EVENT_NAME":
+                self.assertEqual(expression, "github.event_name")
+                env[key] = event_name
             else:
                 self.assertTrue(expression.startswith("needs."), expression)
                 value = needs
@@ -77,6 +84,14 @@ class GateTests(unittest.TestCase):
             needs = self.needs(["ios"])
             needs["ios"]["result"] = "skipped"
             self.assertNotEqual(self.run_gate(needs, cwd=clone, bootstrap_sha=bootstrap).returncode, 0)
+            # A first main push must work without the deleted PR's bootstrap object.
+            for success in (True, False):
+                candidate = self.needs() if success else needs
+                result = self.run_gate(
+                    candidate, cwd=clone, bootstrap_sha="missing-bootstrap",
+                    event_name="push", current_sha=bootstrap,
+                )
+                self.assertEqual(result.returncode == 0, success, result.stdout + result.stderr)
 
     def test_invalid_base_commit_fails_closed(self):
         self.assertNotEqual(self.run_gate(self.needs(), "missing-base-commit").returncode, 0)

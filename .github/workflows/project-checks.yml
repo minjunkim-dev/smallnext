@@ -89,13 +89,20 @@ jobs:
       - name: Check selected job results
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before || github.sha }}
+          CURRENT_SHA: ${{ github.sha }}
+          EVENT_NAME: ${{ github.event_name }}
           NEEDS_JSON: ${{ toJSON(needs) }}
         run: |
           git cat-file -e "$BASE_SHA^{commit}"
           gate_ref="$BASE_SHA"
           if ! git cat-file -e "$gate_ref:scripts/ci_gate.py"; then
-            # First adoption uses this reviewed, immutable helper commit.
-            gate_ref=547fdc9bf908ed36d155259a83052102d7c139c3
+            if [ "$EVENT_NAME" = pull_request ]; then
+              # First PR uses this reviewed, immutable ancestor commit.
+              gate_ref=547fdc9bf908ed36d155259a83052102d7c139c3
+            else
+              # First main push uses the reviewed squash commit, after branch deletion.
+              gate_ref="$CURRENT_SHA"
+            fi
           fi
           git show "$gate_ref:scripts/ci_gate.py" > "$RUNNER_TEMP/trusted-ci-gate.py"
           python3 "$RUNNER_TEMP/trusted-ci-gate.py"
