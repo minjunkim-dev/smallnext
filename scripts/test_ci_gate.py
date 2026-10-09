@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import re
 import subprocess
+import tempfile
 import unittest
 
 
@@ -24,7 +25,7 @@ class GateTests(unittest.TestCase):
             **{project: {"result": "success" if project in selected else "skipped"} for project in PROJECTS},
         }
 
-    def run_gate(self, needs):
+    def run_gate(self, needs, base_sha="HEAD", cwd=ROOT, bootstrap_sha=None):
         # Execute the actual gate step, so dropping an output binding or replacing
         # the helper with a permissive shell loop also breaks these tests.
         workflow = (ROOT / ".github/workflows/project-checks.yml").read_text()
@@ -35,6 +36,9 @@ class GateTests(unittest.TestCase):
         for key, expression in re.findall(r"^          (\w+): \$\{\{ (.+?) \}\}$", env_block, re.MULTILINE):
             if expression == "toJSON(needs)":
                 env[key] = json.dumps(needs)
+            elif key == "BASE_SHA":
+                self.assertEqual(expression, "github.event.pull_request.base.sha || github.event.before || github.sha")
+                env[key] = base_sha
             else:
                 self.assertTrue(expression.startswith("needs."), expression)
                 value = needs
@@ -42,10 +46,40 @@ class GateTests(unittest.TestCase):
                     value = value.get(part, {}) if isinstance(value, dict) else {}
                 env[key] = value if isinstance(value, str) else ""
         command = "\n".join(line[10:] for line in command.splitlines())
-        return subprocess.run(
-            ["bash", "-e", "-o", "pipefail", "-c", command], cwd=ROOT, env=env,
-            text=True, capture_output=True,
-        )
+        if bootstrap_sha is not None:
+            command = command.replace("547fdc9bf908ed36d155259a83052102d7c139c3", bootstrap_sha)
+        with tempfile.TemporaryDirectory() as runner_temp:
+            env["RUNNER_TEMP"] = runner_temp
+            return subprocess.run(
+                ["bash", "-e", "-o", "pipefail", "-c", command], cwd=cwd, env=env,
+                text=True, capture_output=True,
+            )
+
+    def test_pr_working_tree_cannot_replace_trusted_gate(self):
+        needs = self.needs(["ios"])
+        needs["ios"]["result"] = "failure"
+        with tempfile.TemporaryDirectory() as clone:
+            subprocess.run(["git", "clone", "--shared", "--quiet", str(ROOT), clone], check=True)
+            (Path(clone) / "scripts/ci_gate.py").write_text("raise SystemExit(0)\n")
+            result = self.run_gate(needs, cwd=clone)
+            self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_first_adoption_uses_reviewed_helper(self):
+        with tempfile.TemporaryDirectory() as clone:
+            subprocess.run(["git", "clone", "--shared", "--quiet", str(ROOT), clone], check=True)
+            bootstrap = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=clone, text=True).strip()
+            subprocess.run(["git", "rm", "--quiet", "scripts/ci_gate.py"], cwd=clone, check=True)
+            subprocess.run([
+                "git", "-c", "user.name=gate-test", "-c", "user.email=gate-test@example.invalid",
+                "-c", "commit.gpgsign=false", "commit", "--quiet", "-m", "test base without gate",
+            ], cwd=clone, check=True)
+            self.assertEqual(self.run_gate(self.needs(), cwd=clone, bootstrap_sha=bootstrap).returncode, 0)
+            needs = self.needs(["ios"])
+            needs["ios"]["result"] = "skipped"
+            self.assertNotEqual(self.run_gate(needs, cwd=clone, bootstrap_sha=bootstrap).returncode, 0)
+
+    def test_invalid_base_commit_fails_closed(self):
+        self.assertNotEqual(self.run_gate(self.needs(), "missing-base-commit").returncode, 0)
 
     def assert_gate(self, needs, success):
         result = self.run_gate(needs)
