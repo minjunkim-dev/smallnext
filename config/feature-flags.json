@@ -1,4 +1,37 @@
 {
   "version": 1,
-  "flags": []
+  "flags": [
+    {
+      "key": "ios_crash_reporting",
+      "default": false,
+      "phase": "development",
+      "owner": "minjunkim-dev",
+      "issue": 80,
+      "remove_by": "2026-12-31"
+    },
+    {
+      "key": "user_server_ai",
+      "default": false,
+      "phase": "development",
+      "owner": "minjunkim-dev",
+      "issue": 75,
+      "remove_by": "2026-12-31"
+    },
+    {
+      "key": "development_subscription_ai",
+      "default": false,
+      "phase": "development",
+      "owner": "minjunkim-dev",
+      "issue": 17,
+      "remove_by": "2026-11-04"
+    },
+    {
+      "key": "ios_core_flow",
+      "default": false,
+      "phase": "development",
+      "owner": "minjunkim-dev",
+      "issue": 53,
+      "remove_by": "2026-12-31"
+    }
+  ]
 }

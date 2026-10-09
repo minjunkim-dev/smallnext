@@ -3,19 +3,23 @@
 자체 코드의 권리 방침은 [COPYRIGHT](COPYRIGHT.md)에 있습니다.
 아래 구성 요소에는 해당 권리자의 라이선스가 적용됩니다. 이 목록은 그 조건을 변경하지 않습니다.
 
-확인 기준: 2026-10-04의 소스와 잠금 파일. 출시 패키지의 전체 고지를 완료했다는 뜻은 아닙니다.
+확인 기준: 2026-10-09의 소스와 잠금 파일. 출시 패키지의 전체 고지를 완료했다는 뜻은 아닙니다.
 
 ## 저장소에 포함된 도구
 
 | 구성 요소 | 버전·위치 | 조건과 출처 |
 | --- | --- | --- |
-| Gradle Wrapper | 8.13, `apps/android/gradle/wrapper/gradle-wrapper.jar`, `gradlew`, `gradlew.bat` | Apache-2.0. JAR의 `META-INF/LICENSE`와 스크립트의 원래 고지를 유지합니다. [Gradle 라이선스](https://github.com/gradle/gradle/blob/v8.13.0/LICENSE) |
+| Gradle Wrapper | 9.8.0, `apps/android/gradle/wrapper/gradle-wrapper.jar`, `gradlew`, `gradlew.bat` | Apache-2.0. JAR의 `META-INF/LICENSE`와 스크립트의 원래 고지를 유지합니다. [Gradle 라이선스](https://github.com/gradle/gradle/blob/v9.8.0/LICENSE) |
 
 ## iOS 의존성
 
 | 구성 요소 | 잠금 버전 | 조건과 출처 |
 | --- | --- | --- |
 | GRDB.swift | 7.11.1, `b83108d10f42680d78f23fe4d4d80fc88dab3212` | MIT. Copyright 2015–2025 Gwendal Roué. [해당 커밋의 LICENSE](https://github.com/groue/GRDB.swift/blob/b83108d10f42680d78f23fe4d4d80fc88dab3212/LICENSE) |
+| FirebaseCore / FirebaseAuth / FirebaseCrashlytics | 12.19.2, `8c29ca981990a32e626c8617544fa65d22b1834f` | Apache-2.0. [해당 커밋의 LICENSE](https://github.com/firebase/firebase-ios-sdk/blob/8c29ca981990a32e626c8617544fa65d22b1834f/LICENSE) |
+
+Firebase의 전이 의존성은 `Package.resolved`에 고정합니다. 앱은 FirebaseCore, FirebaseAuth와 FirebaseCrashlytics를 연결합니다.
+Analytics와 광고 제품은 연결하지 않습니다. 출시 시 실제 포함된 전이 의존성의 고지를 확인합니다.
 
 ## Rust API의 직접 의존성
 
@@ -25,6 +29,9 @@ Cargo.lock과 `cargo metadata --locked`의 패키지 메타데이터를 확인�
 | 구성 요소 | 잠금 버전 | 라이선스 | 출처 |
 | --- | --- | --- | --- |
 | axum | 0.8.9 | MIT | [tokio-rs/axum](https://github.com/tokio-rs/axum) |
+| http-body | 1.1.0 | MIT | [hyperium/http-body](https://github.com/hyperium/http-body) |
+| jsonwebtoken | 11.1.0 | MIT | [Keats/jsonwebtoken](https://github.com/Keats/jsonwebtoken) |
+| reqwest | 0.13.5 | MIT OR Apache-2.0 | [seanmonstar/reqwest](https://github.com/seanmonstar/reqwest) |
 | serde | 1.0.229 | MIT OR Apache-2.0 | [serde-rs/serde](https://github.com/serde-rs/serde) |
 | serde_json | 1.0.151 | MIT OR Apache-2.0 | [serde-rs/json](https://github.com/serde-rs/json) |
 | sqlx | 0.8.6 | MIT OR Apache-2.0 | [launchbadge/sqlx](https://github.com/launchbadge/sqlx) |
@@ -40,12 +47,12 @@ Cargo.lock과 `cargo metadata --locked`의 패키지 메타데이터를 확인�
 
 | 구성 요소 | 버전 | 조건과 출처 |
 | --- | --- | --- |
-| AndroidX Activity / Compose / Room / Test | Activity 1.12.4, Compose BOM 2026.05.00, Room 2.8.5, Test JUnit 1.3.0 / Runner 1.7.0 | Apache-2.0. [AndroidX 고지](https://android.googlesource.com/platform/frameworks/support/+/androidx-main/LICENSE.txt) |
+| AndroidX Activity / Compose / Room / Test | Activity 1.12.4, Compose BOM 2026.09.00, Room 2.8.5, Test JUnit 1.3.0 / Runner 1.7.0 | Apache-2.0. [AndroidX 고지](https://android.googlesource.com/platform/frameworks/support/+/androidx-main/LICENSE.txt) |
 | Retrofit / Gson converter | 3.0.0 | Apache-2.0. [Retrofit LICENSE](https://github.com/square/retrofit/blob/trunk/LICENSE.txt) |
 | OkHttp | 4.12.0 | Apache-2.0. [OkHttp LICENSE](https://github.com/square/okhttp/blob/parent-4.12.0/LICENSE.txt) |
 | Kotlin | 2.2.20 | Apache-2.0. [Kotlin 라이선스](https://github.com/JetBrains/kotlin/blob/v2.2.20/license/LICENSE.txt) |
-| KSP | 2.3.2 | Apache-2.0. [KSP LICENSE](https://github.com/google/ksp/blob/main/LICENSE) |
-| Android Gradle Plugin | 8.13.1 | Apache-2.0. [Android 빌드 도구 고지](https://android.googlesource.com/platform/tools/base/+/refs/heads/mirror-goog-studio-main/NOTICE) |
+| KSP | 2.3.12 | Apache-2.0. [KSP LICENSE](https://github.com/google/ksp/blob/main/LICENSE) |
+| Android Gradle Plugin | 9.4.1 | Apache-2.0. [Android 빌드 도구 고지](https://android.googlesource.com/platform/tools/base/+/refs/heads/mirror-goog-studio-main/NOTICE) |
 | JUnit (테스트용) | 4.13.2 | EPL-1.0. [JUnit LICENSE](https://github.com/junit-team/junit4/blob/r4.13.2/LICENSE-junit.txt) |
 
 ## 이미지·음악·폰트

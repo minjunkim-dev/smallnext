@@ -11,6 +11,9 @@ settings:
     CURRENT_PROJECT_VERSION: "1"
     CODE_SIGN_STYLE: Automatic
 packages:
+  Firebase:
+    url: https://github.com/firebase/firebase-ios-sdk.git
+    exactVersion: 12.19.2
   GRDB:
     url: https://github.com/groue/GRDB.swift.git
     exactVersion: 7.11.1
@@ -18,17 +21,43 @@ targets:
   Smallnext:
     type: application
     platform: iOS
-    sources: [Sources]
+    sources:
+      - Sources
+      - path: ../../config/feature-flags.json
+        buildPhase: resources
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dev.smallnext.app
         GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_FILE: Config/Release.plist
         INFOPLIST_KEY_CFBundleDisplayName: Smallnext
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
         TARGETED_DEVICE_FAMILY: "1,2"
+        DEBUG_INFORMATION_FORMAT: dwarf-with-dsym
+        OTHER_LDFLAGS: "$(inherited) -ObjC"
+        SMALLNEXT_UPLOAD_CRASHLYTICS_SYMBOLS: "NO"
+        "CODE_SIGN_ENTITLEMENTS[sdk=iphonesimulator*]": Config/Simulator.entitlements
+      configs:
+        Debug:
+          INFOPLIST_FILE: Config/Debug.plist
     dependencies:
       - package: GRDB
+      - package: Firebase
+        product: FirebaseAuth
+      - package: Firebase
+        product: FirebaseCore
+      - package: Firebase
+        product: FirebaseCrashlytics
+    postBuildScripts:
+      - name: Upload Crashlytics symbols (local opt-in)
+        path: scripts/upload-crashlytics-symbols.sh
+        basedOnDependencyAnalysis: false
+        inputFiles:
+          - "$(TARGET_BUILD_DIR)/$(INFOPLIST_PATH)"
+          - "$(DWARF_DSYM_FOLDER_PATH)/$(DWARF_DSYM_FILE_NAME)"
+          - "$(DWARF_DSYM_FOLDER_PATH)/$(DWARF_DSYM_FILE_NAME)/Contents/Info.plist"
+          - "$(DWARF_DSYM_FOLDER_PATH)/$(DWARF_DSYM_FILE_NAME)/Contents/Resources/DWARF/$(PRODUCT_NAME)"
   SmallnextTests:
     type: bundle.unit-test
     platform: iOS

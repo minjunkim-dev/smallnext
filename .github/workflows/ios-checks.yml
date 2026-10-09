@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   test:
-    runs-on: macos-latest
+    runs-on: xcode-27
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -21,6 +21,11 @@ jobs:
       - name: Identify Xcode and simulator SDK
         id: toolchain
         run: |
+          python3 scripts/environment.py github
+          developer_dir=$(python3 -c 'import json; print("/Applications/Xcode_" + json.load(open(".ci/toolchains.json"))["xcode"] + ".app/Contents/Developer")')
+          export DEVELOPER_DIR="$developer_dir"
+          echo "DEVELOPER_DIR=$DEVELOPER_DIR" >> "$GITHUB_ENV"
+          python3 scripts/environment.py ios
           python3 - <<'PY'
           import hashlib, os, subprocess
           xcode = subprocess.check_output(["xcodebuild", "-version"], text=True)
@@ -33,30 +38,23 @@ jobs:
       - name: Restore pinned Swift packages
         id: packages-cache
         if: inputs.use-cache
-        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ runner.temp }}/swift-packages
           key: swiftpm-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.fingerprint }}-${{ hashFiles('apps/ios/**/Package.resolved') }}
       - name: Restore matching iOS compiler outputs
         id: build-cache
         if: inputs.use-cache
-        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ runner.temp }}/ios-derived-data/Build
           key: xcode-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.fingerprint }}-${{ hashFiles('apps/ios/**', '.github/workflows/ios-checks.yml') }}
-      - name: Start iPhone simulator
-        run: |
-          SIMULATOR_ID="$(python3 scripts/ios_simulator.py)"
-          echo "SIMULATOR_ID=$SIMULATOR_ID" >> "$GITHUB_ENV"
-          xcrun simctl boot "$SIMULATOR_ID" || xcrun simctl bootstatus "$SIMULATOR_ID" -b
       - name: Build and test iOS
-        run: |
-          xcodebuild -project apps/ios/Smallnext.xcodeproj -scheme Smallnext \
-            -destination "platform=iOS Simulator,id=$SIMULATOR_ID" \
-            -clonedSourcePackagesDirPath "$RUNNER_TEMP/swift-packages" \
-            -derivedDataPath "$RUNNER_TEMP/ios-derived-data" \
-            -resultBundlePath "$RUNNER_TEMP/ios-results.xcresult" \
-            -onlyUsePackageVersionsFromResolvedFile CODE_SIGNING_ALLOWED=NO test
+        env:
+          IOS_PACKAGES_DIR: ${{ runner.temp }}/swift-packages
+          IOS_DERIVED_DATA: ${{ runner.temp }}/ios-derived-data
+          IOS_RESULTS: ${{ runner.temp }}/ios-results.xcresult
+        run: make ios-check
       - name: Preserve failing iOS test report
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

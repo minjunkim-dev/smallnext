@@ -1,11 +1,12 @@
 name: Claude issue and PR review
 
 on:
+  # Manual only: a review label or an explicit review comment. Codex reviews every push.
   issues:
-    types: [opened, edited, labeled]
+    types: [labeled]
   pull_request_target:
     branches: [main]
-    types: [opened, synchronize, reopened, ready_for_review, labeled]
+    types: [labeled]
   issue_comment:
     types: [created]
 
@@ -14,12 +15,14 @@ permissions:
 
 jobs:
   authorize:
-    # Ignore bot feedback and comments that are not an explicit review request.
+    # Ignore bot feedback, other labels, and comments that are not an explicit review request.
     if: >-
       github.event.sender.type == 'User' &&
-      (github.event_name != 'issue_comment' ||
-       startsWith(github.event.comment.body, '@claude review') ||
-       startsWith(github.event.comment.body, '@claude security review'))
+      ((github.event_name == 'issue_comment' &&
+        (startsWith(github.event.comment.body, '@claude review') ||
+         startsWith(github.event.comment.body, '@claude security review'))) ||
+       (github.event_name != 'issue_comment' &&
+        contains(fromJSON('["ai:review"]'), github.event.label.name)))
     runs-on: ubuntu-24.04
     timeout-minutes: 3
     permissions:
@@ -103,7 +106,7 @@ jobs:
         run: python3 scripts/review_report.py prepare
       - name: Review supplied evidence without tools
         id: claude
-        uses: anthropics/claude-code-action/base-action@12dd8d74c712f5f3669365b2369b558c495b1104 # reviewed SDK runner; no context-prompt logging
+        uses: anthropics/claude-code-action/base-action@97c53473391bff1901034d4b454b5bac7ab7a029 # reviewed SDK runner; no context-prompt logging
         env:
           CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: "1"
           # The pinned SDK runner otherwise overrides show_full_output in debug reruns.

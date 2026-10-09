@@ -16,6 +16,9 @@ Thumbs.db
 *.p12
 *.pfx
 *.keystore
+*.jks
+*.p8
+*.mobileprovision
 
 # Generated files and caches
 node_modules/
@@ -40,3 +43,6 @@ work/
 **/DerivedData/
 **/xcuserdata/
 *.xcuserstate
+
+# graft's local graph cache — regenerable, not committed (run `graft build`).
+/graft/

@@ -7,12 +7,31 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		0B9EE1C48A878327AD58B157 /* DevelopmentActionSuggestionProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = EBCF62E6888EE7657EE273B8 /* DevelopmentActionSuggestionProvider.swift */; };
+		2A990F296BB50B6899299801 /* FeatureFlagsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 29D77D33FB48D05C179D0CF8 /* FeatureFlagsTests.swift */; };
+		2D265947424569D25EE96146 /* ActionSuggestionProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1CF338F09FA620EF90A9CA8 /* ActionSuggestionProvider.swift */; };
 		30A8576C772C36E2E2FC18A4 /* SmallnextApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF3E8B07B08AD16D7D946A22 /* SmallnextApp.swift */; };
+		4300C21671B204C2CC1D47FC /* DebugActionSuggestionProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = D865871F50B31C31045FC496 /* DebugActionSuggestionProvider.swift */; };
+		4B3D518AA511412203F9F4EA /* ServerActionSuggestionProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = B141040C3D5DF570CF60E1DB /* ServerActionSuggestionProvider.swift */; };
 		4E6A9ABB211804439CD23ABF /* AppDatabaseTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5408342363FFE1BED5721F7A /* AppDatabaseTests.swift */; };
+		5CAD65A62B31DE1BA6FA24EB /* CrashReportingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 288EEEA59C7E1B88F7F39D8A /* CrashReportingTests.swift */; };
+		62418C5B7C2DB829B83CF9AE /* HTTPActionSuggestionProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F095C939EDD73F78CC2EF0E /* HTTPActionSuggestionProvider.swift */; };
+		74BEFAD9B514886F592F8ED9 /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = 52EAF431181CEA24090DCD37 /* FirebaseAuth */; };
+		7869651E9B8FEA5180779875 /* ProgressFlowTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CF3BBFF7EDE37F5CAD944BA /* ProgressFlowTests.swift */; };
+		7A5BE289278F6095E7EF0BCF /* FirebaseClientConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 23FF829BA7D4678913A15AE8 /* FirebaseClientConfiguration.swift */; };
+		7FC526E773F035A32359426D /* CrashReporting.swift in Sources */ = {isa = PBXBuildFile; fileRef = D404FD8D96A7865FE4901A10 /* CrashReporting.swift */; };
 		85842A91C296A982B2900C11 /* APIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A760D43D9A97C207911C6F56 /* APIClient.swift */; };
+		87CE3C69884D3E573BE2D8E7 /* ServerActionSuggestionProviderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACC244E714C64A60826F3DD2 /* ServerActionSuggestionProviderTests.swift */; };
+		A0124FEBDF2CB8A51826648F /* FeatureFlags.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4907685C03FA261E1DA37D9C /* FeatureFlags.swift */; };
+		A8DEFD6028B1AD5A9F8C75B2 /* FirebaseCore in Frameworks */ = {isa = PBXBuildFile; productRef = 45E3C1CD17348250C2572F8B /* FirebaseCore */; };
+		A9CF16D2206FF500083EBDC6 /* feature-flags.json in Resources */ = {isa = PBXBuildFile; fileRef = 11C1F69DF05E9AE74CF34A04 /* feature-flags.json */; };
+		B6B0E5F26C4133A820CA8D52 /* ProgressFlow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5DC4243300950F8B770CC92F /* ProgressFlow.swift */; };
 		B71B69141C6C67E9D1493408 /* GRDB in Frameworks */ = {isa = PBXBuildFile; productRef = CAB2E1B084489C178DE23B6E /* GRDB */; };
+		C72DBDF74D8A955490D29FB9 /* FirebaseCrashlytics in Frameworks */ = {isa = PBXBuildFile; productRef = C3D20393DB4C9132AA35E656 /* FirebaseCrashlytics */; };
 		CB37945C1CFCBEC01FC47960 /* AppDatabase.swift in Sources */ = {isa = PBXBuildFile; fileRef = DAE5C5E474307463B28E7442 /* AppDatabase.swift */; };
+		EB0D6BCE1C5287B628AF9659 /* DevelopmentActionSuggestionProviderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B3B5E4145554A1FC8D297E /* DevelopmentActionSuggestionProviderTests.swift */; };
 		F02449B4834E149702AE016B /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1150C4CB7EAB11488B1E454E /* ContentView.swift */; };
+		F224F8FC7FAD5CCDC4FCD8A1 /* CoreFlowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50528CC70F298B20C17329B6 /* CoreFlowView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -27,12 +46,28 @@
 
 /* Begin PBXFileReference section */
 		1150C4CB7EAB11488B1E454E /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		11C1F69DF05E9AE74CF34A04 /* feature-flags.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "feature-flags.json"; sourceTree = "<group>"; };
+		23FF829BA7D4678913A15AE8 /* FirebaseClientConfiguration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FirebaseClientConfiguration.swift; sourceTree = "<group>"; };
+		288EEEA59C7E1B88F7F39D8A /* CrashReportingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CrashReportingTests.swift; sourceTree = "<group>"; };
+		29D77D33FB48D05C179D0CF8 /* FeatureFlagsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeatureFlagsTests.swift; sourceTree = "<group>"; };
 		3E93A4009080939BA076E576 /* SmallnextTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = SmallnextTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		45CC86C08E79F4BD7F4B9088 /* Smallnext.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Smallnext.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		4907685C03FA261E1DA37D9C /* FeatureFlags.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeatureFlags.swift; sourceTree = "<group>"; };
+		50528CC70F298B20C17329B6 /* CoreFlowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoreFlowView.swift; sourceTree = "<group>"; };
 		5408342363FFE1BED5721F7A /* AppDatabaseTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDatabaseTests.swift; sourceTree = "<group>"; };
+		5DC4243300950F8B770CC92F /* ProgressFlow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProgressFlow.swift; sourceTree = "<group>"; };
+		6F095C939EDD73F78CC2EF0E /* HTTPActionSuggestionProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HTTPActionSuggestionProvider.swift; sourceTree = "<group>"; };
+		7CF3BBFF7EDE37F5CAD944BA /* ProgressFlowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProgressFlowTests.swift; sourceTree = "<group>"; };
+		A1B3B5E4145554A1FC8D297E /* DevelopmentActionSuggestionProviderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DevelopmentActionSuggestionProviderTests.swift; sourceTree = "<group>"; };
 		A760D43D9A97C207911C6F56 /* APIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIClient.swift; sourceTree = "<group>"; };
+		ACC244E714C64A60826F3DD2 /* ServerActionSuggestionProviderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerActionSuggestionProviderTests.swift; sourceTree = "<group>"; };
+		B141040C3D5DF570CF60E1DB /* ServerActionSuggestionProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerActionSuggestionProvider.swift; sourceTree = "<group>"; };
+		D404FD8D96A7865FE4901A10 /* CrashReporting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CrashReporting.swift; sourceTree = "<group>"; };
+		D865871F50B31C31045FC496 /* DebugActionSuggestionProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugActionSuggestionProvider.swift; sourceTree = "<group>"; };
 		DAE5C5E474307463B28E7442 /* AppDatabase.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDatabase.swift; sourceTree = "<group>"; };
 		DF3E8B07B08AD16D7D946A22 /* SmallnextApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SmallnextApp.swift; sourceTree = "<group>"; };
+		EBCF62E6888EE7657EE273B8 /* DevelopmentActionSuggestionProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DevelopmentActionSuggestionProvider.swift; sourceTree = "<group>"; };
+		F1CF338F09FA620EF90A9CA8 /* ActionSuggestionProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActionSuggestionProvider.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -41,6 +76,9 @@
 			buildActionMask = 2147483647;
 			files = (
 				B71B69141C6C67E9D1493408 /* GRDB in Frameworks */,
+				74BEFAD9B514886F592F8ED9 /* FirebaseAuth in Frameworks */,
+				A8DEFD6028B1AD5A9F8C75B2 /* FirebaseCore in Frameworks */,
+				C72DBDF74D8A955490D29FB9 /* FirebaseCrashlytics in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -50,9 +88,19 @@
 		314C88A527B1396A51F0EA98 /* Sources */ = {
 			isa = PBXGroup;
 			children = (
+				F1CF338F09FA620EF90A9CA8 /* ActionSuggestionProvider.swift */,
 				A760D43D9A97C207911C6F56 /* APIClient.swift */,
 				DAE5C5E474307463B28E7442 /* AppDatabase.swift */,
 				1150C4CB7EAB11488B1E454E /* ContentView.swift */,
+				50528CC70F298B20C17329B6 /* CoreFlowView.swift */,
+				D404FD8D96A7865FE4901A10 /* CrashReporting.swift */,
+				D865871F50B31C31045FC496 /* DebugActionSuggestionProvider.swift */,
+				EBCF62E6888EE7657EE273B8 /* DevelopmentActionSuggestionProvider.swift */,
+				4907685C03FA261E1DA37D9C /* FeatureFlags.swift */,
+				23FF829BA7D4678913A15AE8 /* FirebaseClientConfiguration.swift */,
+				6F095C939EDD73F78CC2EF0E /* HTTPActionSuggestionProvider.swift */,
+				5DC4243300950F8B770CC92F /* ProgressFlow.swift */,
+				B141040C3D5DF570CF60E1DB /* ServerActionSuggestionProvider.swift */,
 				DF3E8B07B08AD16D7D946A22 /* SmallnextApp.swift */,
 			);
 			path = Sources;
@@ -62,6 +110,11 @@
 			isa = PBXGroup;
 			children = (
 				5408342363FFE1BED5721F7A /* AppDatabaseTests.swift */,
+				288EEEA59C7E1B88F7F39D8A /* CrashReportingTests.swift */,
+				A1B3B5E4145554A1FC8D297E /* DevelopmentActionSuggestionProviderTests.swift */,
+				29D77D33FB48D05C179D0CF8 /* FeatureFlagsTests.swift */,
+				7CF3BBFF7EDE37F5CAD944BA /* ProgressFlowTests.swift */,
+				ACC244E714C64A60826F3DD2 /* ServerActionSuggestionProviderTests.swift */,
 			);
 			path = Tests;
 			sourceTree = "<group>";
@@ -69,6 +122,7 @@
 		6793D9F7101A99052B2570CD = {
 			isa = PBXGroup;
 			children = (
+				D29CB81A766063E3D71BD539 /* smallnext */,
 				314C88A527B1396A51F0EA98 /* Sources */,
 				3A15F3426C97DA0FF9A0CF45 /* Tests */,
 				6FD4CFE4052A9EC75A7D5BF8 /* Products */,
@@ -84,6 +138,23 @@
 			name = Products;
 			sourceTree = "<group>";
 		};
+		AE33151ADE7C8E134A2BE14F /* config */ = {
+			isa = PBXGroup;
+			children = (
+				11C1F69DF05E9AE74CF34A04 /* feature-flags.json */,
+			);
+			path = config;
+			sourceTree = "<group>";
+		};
+		D29CB81A766063E3D71BD539 /* smallnext */ = {
+			isa = PBXGroup;
+			children = (
+				AE33151ADE7C8E134A2BE14F /* config */,
+			);
+			name = smallnext;
+			path = ../..;
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -92,7 +163,9 @@
 			buildConfigurationList = 19B13D6F77B2B58967B9C430 /* Build configuration list for PBXNativeTarget "Smallnext" */;
 			buildPhases = (
 				6E7C741583199509A3FB2DAA /* Sources */,
+				E37944F27193C678F5A600DE /* Resources */,
 				660E31F9C171AC06E07AB8AA /* Frameworks */,
+				9E9B2B06BA3349926744DAFA /* Upload Crashlytics symbols (local opt-in) */,
 			);
 			buildRules = (
 			);
@@ -101,6 +174,9 @@
 			name = Smallnext;
 			packageProductDependencies = (
 				CAB2E1B084489C178DE23B6E /* GRDB */,
+				52EAF431181CEA24090DCD37 /* FirebaseAuth */,
+				45E3C1CD17348250C2572F8B /* FirebaseCore */,
+				C3D20393DB4C9132AA35E656 /* FirebaseCrashlytics */,
 			);
 			productName = Smallnext;
 			productReference = 45CC86C08E79F4BD7F4B9088 /* Smallnext.app */;
@@ -151,6 +227,7 @@
 			mainGroup = 6793D9F7101A99052B2570CD;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
+				A02804F654D57E049A886BB6 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */,
 				F458325BE9ABB122855B42A9 /* XCRemoteSwiftPackageReference "GRDB.swift" */,
 			);
 			preferredProjectObjectVersion = 77;
@@ -164,12 +241,54 @@
 		};
 /* End PBXProject section */
 
+/* Begin PBXResourcesBuildPhase section */
+		E37944F27193C678F5A600DE /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A9CF16D2206FF500083EBDC6 /* feature-flags.json in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		9E9B2B06BA3349926744DAFA /* Upload Crashlytics symbols (local opt-in) */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"$(TARGET_BUILD_DIR)/$(INFOPLIST_PATH)",
+				"$(DWARF_DSYM_FOLDER_PATH)/$(DWARF_DSYM_FILE_NAME)",
+				"$(DWARF_DSYM_FOLDER_PATH)/$(DWARF_DSYM_FILE_NAME)/Contents/Info.plist",
+				"$(DWARF_DSYM_FOLDER_PATH)/$(DWARF_DSYM_FILE_NAME)/Contents/Resources/DWARF/$(PRODUCT_NAME)",
+			);
+			name = "Upload Crashlytics symbols (local opt-in)";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "#!/usr/bin/env bash\nset -euo pipefail\nif [ \"${SMALLNEXT_UPLOAD_CRASHLYTICS_SYMBOLS:-NO}\" != YES ]; then exit 0; fi\n\napp_id=$(/usr/libexec/PlistBuddy -c 'Print :SmallnextFirebaseAppID' \"${TARGET_BUILD_DIR}/${INFOPLIST_PATH}\")\nif [[ ! \"$app_id\" =~ ^1:[0-9]+:ios:[0-9a-f]+$ ]]; then\n  echo 'error: Crashlytics symbol upload requires a valid Firebase app ID.' >&2\n  exit 1\nfi\nsdk=\"${BUILD_DIR%/Build/*}/SourcePackages/checkouts/firebase-ios-sdk\"\n\"$sdk/Crashlytics/upload-symbols\" -ai \"$app_id\" -p ios \\\n  \"${DWARF_DSYM_FOLDER_PATH}/${DWARF_DSYM_FILE_NAME}\"\n";
+		};
+/* End PBXShellScriptBuildPhase section */
+
 /* Begin PBXSourcesBuildPhase section */
 		0DBA6230B7CC90B028B28C6E /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
 				4E6A9ABB211804439CD23ABF /* AppDatabaseTests.swift in Sources */,
+				5CAD65A62B31DE1BA6FA24EB /* CrashReportingTests.swift in Sources */,
+				EB0D6BCE1C5287B628AF9659 /* DevelopmentActionSuggestionProviderTests.swift in Sources */,
+				2A990F296BB50B6899299801 /* FeatureFlagsTests.swift in Sources */,
+				7869651E9B8FEA5180779875 /* ProgressFlowTests.swift in Sources */,
+				87CE3C69884D3E573BE2D8E7 /* ServerActionSuggestionProviderTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -178,8 +297,18 @@
 			buildActionMask = 2147483647;
 			files = (
 				85842A91C296A982B2900C11 /* APIClient.swift in Sources */,
+				2D265947424569D25EE96146 /* ActionSuggestionProvider.swift in Sources */,
 				CB37945C1CFCBEC01FC47960 /* AppDatabase.swift in Sources */,
 				F02449B4834E149702AE016B /* ContentView.swift in Sources */,
+				F224F8FC7FAD5CCDC4FCD8A1 /* CoreFlowView.swift in Sources */,
+				7FC526E773F035A32359426D /* CrashReporting.swift in Sources */,
+				4300C21671B204C2CC1D47FC /* DebugActionSuggestionProvider.swift in Sources */,
+				0B9EE1C48A878327AD58B157 /* DevelopmentActionSuggestionProvider.swift in Sources */,
+				A0124FEBDF2CB8A51826648F /* FeatureFlags.swift in Sources */,
+				7A5BE289278F6095E7EF0BCF /* FirebaseClientConfiguration.swift in Sources */,
+				62418C5B7C2DB829B83CF9AE /* HTTPActionSuggestionProvider.swift in Sources */,
+				B6B0E5F26C4133A820CA8D52 /* ProgressFlow.swift in Sources */,
+				4B3D518AA511412203F9F4EA /* ServerActionSuggestionProvider.swift in Sources */,
 				30A8576C772C36E2E2FC18A4 /* SmallnextApp.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -341,8 +470,11 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				"CODE_SIGN_ENTITLEMENTS[sdk=iphonesimulator*]" = Config/Simulator.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Config/Debug.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Smallnext;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -350,8 +482,10 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
+				OTHER_LDFLAGS = "$(inherited) -ObjC";
 				PRODUCT_BUNDLE_IDENTIFIER = dev.smallnext.app;
 				SDKROOT = iphoneos;
+				SMALLNEXT_UPLOAD_CRASHLYTICS_SYMBOLS = NO;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Debug;
@@ -360,8 +494,11 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				"CODE_SIGN_ENTITLEMENTS[sdk=iphonesimulator*]" = Config/Simulator.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Config/Release.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Smallnext;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -369,8 +506,10 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
+				OTHER_LDFLAGS = "$(inherited) -ObjC";
 				PRODUCT_BUNDLE_IDENTIFIER = dev.smallnext.app;
 				SDKROOT = iphoneos;
+				SMALLNEXT_UPLOAD_CRASHLYTICS_SYMBOLS = NO;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Release;
@@ -425,6 +564,14 @@
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
+		A02804F654D57E049A886BB6 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/firebase/firebase-ios-sdk.git";
+			requirement = {
+				kind = exactVersion;
+				version = 12.19.2;
+			};
+		};
 		F458325BE9ABB122855B42A9 /* XCRemoteSwiftPackageReference "GRDB.swift" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/groue/GRDB.swift.git";
@@ -436,6 +583,21 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		45E3C1CD17348250C2572F8B /* FirebaseCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A02804F654D57E049A886BB6 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseCore;
+		};
+		52EAF431181CEA24090DCD37 /* FirebaseAuth */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A02804F654D57E049A886BB6 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseAuth;
+		};
+		C3D20393DB4C9132AA35E656 /* FirebaseCrashlytics */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A02804F654D57E049A886BB6 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseCrashlytics;
+		};
 		CAB2E1B084489C178DE23B6E /* GRDB */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = F458325BE9ABB122855B42A9 /* XCRemoteSwiftPackageReference "GRDB.swift" */;

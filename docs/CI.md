@@ -45,12 +45,34 @@ scope가 성공하고 네 프로젝트의 선택 출력이 모두 `true` 또는 
 지적을 로컬에서 수정·검증한 뒤 새 head의 CI와 리뷰를 다시 확인하고 사람이 squash 병합합니다.
 작업 절차는 [협업 규칙](WORKFLOW.md), 연결과 리뷰 근거는 [자동화 설정](REPOSITORY_SETUP.md)을 따릅니다.
 
+## 도구와 공통 명령
+
+API·Android는 Ubuntu 24.04, iOS는 [GitHub의 `xcode-27` 실행기](https://github.com/actions/runner-images/blob/main/images/macos/xcode-27-arm64-Readme.md)를 사용합니다. iOS 실행기의 OS와 설치 도구 목록은 이 공식 문서를 따릅니다.
+고정 기준은 `rust-toolchain.toml`과 `.ci/toolchains.json`입니다.
+Xcode 버전·build, simulator SDK와 runtime을 확인합니다.
+JDK는 patch와 build까지 확인합니다. Android compile SDK와 Build Tools도 명시적으로 설치합니다.
+API와 로컬 개발 PostgreSQL은 같은 이미지 digest를 사용합니다.
+버전 불일치는 앱·API 검사 전에 실패합니다.
+
+| 검사 | 로컬과 CI의 공통 명령 |
+| --- | --- |
+| API·계약 | `make api-check api-spec-check` |
+| PostgreSQL | `TEST_DATABASE_URL=... make api-test-db` |
+| iOS | `make ios-check` |
+| Android 빌드·lint·단위 테스트 | `make android-check` |
+| Android 기기 테스트 | `make android-device-check` |
+| API 이미지·템플릿 | `make api-image-build`, `make api-image-check` |
+
+수동 `Project checks`에서 `use-cache=false`를 지정하면 모든 프로젝트를 캐시 복원 없이 검사합니다.
+GitHub runner의 미리 설치한 SDK, OS 업데이트와 외부 패키지 저장소까지 고정한 환경은 아닙니다.
+상세 설치와 남은 외부 의존성은 [개발 환경](DEVELOPMENT.md)을 따릅니다.
+
 ## 캐시 조건
 
 | 대상 | 캐시 | 갱신 기준 |
 | --- | --- | --- |
 | Rust | Cargo 레지스트리·Git 의존성·Debug 컴파일 출력 | OS·CPU·Rust 도구 버전·Cargo 설정·잠금 파일 |
-| Docker | BuildKit 레이어 | OS·CPU·Dockerfile·잠금 파일·이미지 소스 |
+| Docker | BuildKit 레이어(의존성 빌드 레이어 중심) | OS·CPU·Dockerfile·Cargo.toml·잠금 파일·베이스 이미지 digest |
 | iOS 패키지 | SwiftPM 소스 | OS·CPU·Xcode·SDK·Package.resolved |
 | iOS 컴파일 | DerivedData의 Build 폴더 | 위 도구 조건과 iOS 소스·프로젝트·워크플로의 정확한 일치 |
 | Android | Gradle 의존성·작업 출력 | OS·CPU·Gradle Wrapper·빌드 설정·버전 목록; 작업 입력은 Gradle이 확인 |
@@ -63,8 +85,8 @@ Gradle configuration cache는 이번 구성에 추가하지 않았습니다.
 
 캐시에는 실제 사용자 DB, AVD 사용자 데이터, 서명 키, 운영 비밀정보와 테스트 결과를 넣지 않습니다.
 Docker 캐시는 새 디렉터리에 내보낸 후 교체해 불필요한 과거 레이어가 누적되는 것을 줄입니다.
-Rust 소스가 바뀌면 Docker의 Cargo 빌드 레이어는 다시 실행합니다.
-이미지 캐시가 주로 줄이는 비용은 동일 이미지 소스의 반복 검사입니다.
+Dockerfile은 의존성을 별도 레이어에서 먼저 빌드합니다. Rust 소스가 바뀌면 앱 빌드 레이어만 다시 실행합니다.
+이미지 캐시 키에는 소스 해시를 넣지 않습니다. 소스 변경마다 약 800MB 캐시가 새로 쌓여 저장소 캐시 한도 10GB를 넘기기 때문입니다.
 main과 PR의 캐시 접근 범위는 GitHub 규칙을 따릅니다.
 PR에서 만든 캐시는 main에서 바로 사용할 수 없으므로 main의 첫 실행도 준비 시간이 필요할 수 있습니다.
 
@@ -100,5 +122,5 @@ API 배포를 켜기 전에 운영 도메인·VM·관리형 DB·비밀정보 제
 
 - [GitHub 의존성 캐시](https://github.com/actions/cache)
 - [Java Action의 Gradle 캐시](https://github.com/actions/setup-java)
-- [Gradle 빌드 캐시](https://docs.gradle.org/8.13/userguide/build_cache.html)
+- [Gradle 빌드 캐시](https://docs.gradle.org/9.8.0/userguide/build_cache.html)
 - [Docker 로컬 캐시](https://docs.docker.com/build/cache/backends/local/)

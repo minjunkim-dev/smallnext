@@ -3,6 +3,24 @@
 이 파일은 사람, Claude Code, Codex의 공통 작업 지침입니다.
 한국어로 답합니다. 짧은 문장과 명확한 동사를 사용합니다.
 
+## Agent skills
+
+Engineering skill을 실행하기 전에 아래 설정 문서를 읽는다.
+
+### Issue tracker
+
+Issue와 사양은 `minjunkim-dev/smallnext`의 GitHub Issues에서 관리한다.
+`gh` CLI를 사용한다. [Issue tracker](docs/agents/issue-tracker.md)를 따른다.
+
+### Triage labels
+
+기본 다섯 역할의 라벨을 사용한다. [Triage labels](docs/agents/triage-labels.md)를 따른다.
+
+### Domain docs
+
+single-context를 사용한다. 루트 `CONTEXT.md`와 필요한 ADR을 읽는다.
+[Domain docs](docs/agents/domain.md)를 따른다.
+
 ## 작업 시작
 
 1. [README](README.md)에서 현재 구현 상태를 확인합니다.
@@ -29,7 +47,7 @@
 - 워크플로 변경: `actionlint`. Secret 권한, 신뢰 경계, 외부 Action 전체 SHA를 확인합니다.
 - 기능 변경: 관련 테스트, 빌드, 정상 경로, 회귀 경로를 확인합니다. 화면은 실제 변경한 흐름을 직접 확인합니다.
 - 검증 결과, 미확인 범위, 플래그 상태, 관련 Issue를 PR에 기록합니다.
-- PR을 만들고 CI를 확인합니다. 리뷰 결과를 확인한 후 사람이 squash로 병합합니다.
+- PR을 만들고 CI를 확인합니다. [병합 조건](docs/WORKFLOW.md#병합-조건)을 충족하면 squash로 병합합니다.
 
 ## AI 자동화
 

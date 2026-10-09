@@ -18,20 +18,24 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
-      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+      - name: Resolve pinned tools
+        id: tools
+        run: python3 scripts/environment.py github
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
         id: java
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: ${{ steps.tools.outputs.java }}
           cache: ${{ inputs.use-cache && 'gradle' || '' }}
           cache-dependency-path: |
             apps/android/**/*.gradle.kts
             apps/android/gradle.properties
             apps/android/gradle/libs.versions.toml
             apps/android/gradle/wrapper/gradle-wrapper.properties
+      - name: Install pinned Android SDK packages
+        run: make android-sdk
       - name: Build APKs, lint and run unit tests
-        working-directory: apps/android
-        run: ./gradlew --no-daemon --parallel --build-cache assembleDebug assembleDebugAndroidTest lintDebug testDebugUnitTest
+        run: make android-check
       - name: Preserve failing build reports
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -57,21 +61,27 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
-      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+      - name: Resolve pinned tools
+        id: tools
+        run: python3 scripts/environment.py github
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
         id: java
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: ${{ steps.tools.outputs.java }}
           cache: ${{ inputs.use-cache && 'gradle' || '' }}
           cache-dependency-path: |
             apps/android/**/*.gradle.kts
             apps/android/gradle.properties
             apps/android/gradle/libs.versions.toml
             apps/android/gradle/wrapper/gradle-wrapper.properties
+      - name: Install pinned Android SDK packages
+        run: make android-sdk
       - name: Start emulator
         env:
           ANDROID_USER_HOME: ${{ runner.temp }}/android-user
           ANDROID_AVD_HOME: ${{ runner.temp }}/android-user/avd
+          SYSTEM_IMAGE: ${{ steps.tools.outputs.android-system-image }}
         run: |
           echo "ANDROID_USER_HOME=$ANDROID_USER_HOME" >> "$GITHUB_ENV"
           echo "ANDROID_AVD_HOME=$ANDROID_AVD_HOME" >> "$GITHUB_ENV"
@@ -79,10 +89,12 @@ jobs:
           sudo chmod u+rw /dev/kvm
           mkdir -p "$ANDROID_AVD_HOME"
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
-            "system-images;android-35;google_apis;x86_64" "emulator"
+            "$SYSTEM_IMAGE" "emulator"
+          # Record mutable package revisions beside the pinned package identifiers.
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --list_installed
           echo no | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" \
             create avd --force --name SmallnextCI \
-            --package "system-images;android-35;google_apis;x86_64" \
+            --package "$SYSTEM_IMAGE" \
             --path "$ANDROID_AVD_HOME/SmallnextCI.avd"
           test -f "$ANDROID_AVD_HOME/SmallnextCI.ini"
           "$ANDROID_HOME/platform-tools/adb" start-server
@@ -104,8 +116,7 @@ jobs:
           cat "$RUNNER_TEMP/emulator.log"
           exit 1
       - name: Test Room persistence
-        working-directory: apps/android
-        run: ./gradlew --no-daemon --parallel --build-cache connectedDebugAndroidTest
+        run: make android-device-check
       - name: Preserve failing device test reports
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

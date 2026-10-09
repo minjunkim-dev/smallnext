@@ -3,6 +3,9 @@ use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use utoipa::{OpenApi, ToSchema};
 
+pub mod development_ai;
+pub mod user_ai;
+
 #[derive(Clone)]
 pub struct AppState {
     pub database: PgPool,
@@ -53,8 +56,16 @@ async fn ready(State(state): State<AppState>) -> (StatusCode, Json<HealthRespons
 #[derive(OpenApi)]
 #[openapi(
     info(title = "Smallnext API", version = "0.1.0"),
-    paths(health, ready),
-    components(schemas(HealthResponse))
+    paths(health, ready, user_ai::suggest),
+    components(schemas(
+        HealthResponse,
+        user_ai::SuggestionRequest,
+        user_ai::SuggestionResponse,
+        development_ai::AiInput,
+        development_ai::Proposal,
+        development_ai::ProposalStatus,
+        user_ai::provider::Usage
+    ))
 )]
 pub struct ApiDoc;
 
@@ -62,6 +73,20 @@ pub fn api_document() -> utoipa::openapi::OpenApi {
     let mut document = ApiDoc::openapi();
     // The project has not selected a public license yet.
     document.info.license = None;
+    use utoipa::openapi::security::{HttpAuthScheme, HttpBuilder, SecurityScheme};
+    document
+        .components
+        .as_mut()
+        .expect("declared schemas")
+        .add_security_scheme(
+            "firebaseIdToken",
+            SecurityScheme::Http(
+                HttpBuilder::new()
+                    .scheme(HttpAuthScheme::Bearer)
+                    .bearer_format("Firebase ID token")
+                    .build(),
+            ),
+        );
     document
 }
 

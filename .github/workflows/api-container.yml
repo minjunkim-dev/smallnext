@@ -18,15 +18,22 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
+      - name: Resolve base image digests
+        id: base-images
+        if: inputs.use-cache
+        run: |
+          # Include the pinned base image manifests in the cache key.
+          awk '/^FROM/ {print $2}' services/api/Dockerfile | while read -r image; do
+            docker buildx imagetools inspect "$image" --format '{{.Manifest.Digest}}'
+          done | sha256sum | cut -c1-16 | sed 's/^/digest=/' >> "$GITHUB_OUTPUT"
       - name: Restore BuildKit layers
         id: image-cache
         if: inputs.use-cache
-        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ runner.temp }}/buildx-cache
-          key: image-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('services/api/Dockerfile', 'services/api/Cargo.lock', '.dockerignore') }}-${{ hashFiles('services/api/Cargo.toml', 'services/api/src/**', 'services/api/migrations/**') }}
-          restore-keys: |
-            image-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('services/api/Dockerfile', 'services/api/Cargo.lock', '.dockerignore') }}-
+          # Key on the dependency layer inputs only: one ~800 MB entry per lock or base image change.
+          key: image-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('services/api/Dockerfile', 'services/api/Cargo.toml', 'services/api/Cargo.lock', '.dockerignore') }}-${{ steps.base-images.outputs.digest }}
       - name: Build API container
         env:
           CACHE_ENABLED: ${{ inputs.use-cache }}
@@ -39,24 +46,15 @@ jobs:
               cache_args+=(--cache-from "type=local,src=$RUNNER_TEMP/buildx-cache")
             fi
           fi
-          docker buildx build --load --progress plain \
-            --file services/api/Dockerfile --tag smallnext-api:ci \
-            "${cache_args[@]}" .
+          make api-image-build IMAGE_BUILD_ARGS="${cache_args[*]}"
           if [ "$CACHE_ENABLED" = true ]; then
             if [ -d "$RUNNER_TEMP/buildx-cache" ]; then
               mv "$RUNNER_TEMP/buildx-cache" "$RUNNER_TEMP/buildx-cache-previous"
             fi
             mv "$RUNNER_TEMP/buildx-cache-new" "$RUNNER_TEMP/buildx-cache"
           fi
-      - name: Verify runtime user
-        run: test "$(docker run --rm --entrypoint id smallnext-api:ci -u)" = 10001
-      - name: Validate container configuration
-        env:
-          API_DOMAIN: api.example.invalid
-          DATABASE_URL: postgres://example:example@database.invalid/smallnext
-        run: |
-          docker compose --env-file .env.example -f infra/dev/compose.yaml config --quiet
-          docker compose -f infra/production/compose.yaml config --quiet
+      - name: Verify runtime user and container configuration
+        run: make api-image-check
       - name: Record cache state
         if: always()
         env:

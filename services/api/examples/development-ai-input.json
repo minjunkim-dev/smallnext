@@ -1,0 +1,13 @@
+{
+  "goal": "책상 왼쪽을 정리한다",
+  "current_blocker": "어디부터 시작할지 모르겠다",
+  "user_request": "지금 할 행동 하나를 제안해 줘",
+  "available": ["책상 왼쪽에 파란 펜 하나가 있다", "오른쪽에 빈 펜꽂이가 있다"],
+  "unknown": [],
+  "available_minutes": 2,
+  "knowledge": "펜을 옮길 수 있다",
+  "energy": "낮음",
+  "remaining_work": ["책상 왼쪽 정리"],
+  "completed_ids": [],
+  "previous_proposals": []
+}

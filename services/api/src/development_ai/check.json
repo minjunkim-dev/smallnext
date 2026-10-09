@@ -1,0 +1,1 @@
+{"type":"object","properties":{"verdict":{"type":"string","enum":["accept","reject","uncertain"]},"criteria":{"type":"array","items":{"type":"integer","minimum":1,"maximum":5}},"evidence":{"type":"string"},"reason":{"type":"string"}},"required":["verdict","criteria","evidence","reason"],"additionalProperties":false}
