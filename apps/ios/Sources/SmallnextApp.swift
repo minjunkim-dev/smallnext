@@ -3,6 +3,8 @@ import OSLog
 
 @main
 struct SmallnextApp: App {
+    init() { CrashReporting.start() }
+
     @State private var database: AppDatabase?
     @State private var flow: ProgressFlow?
     @State private var storageFailed = false

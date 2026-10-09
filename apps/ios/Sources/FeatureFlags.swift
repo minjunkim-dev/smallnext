@@ -18,6 +18,8 @@ enum FeatureFlags {
         configured("user_server_ai")
     }
 
+    static var iosCrashReporting: Bool { configured("ios_crash_reporting") }
+
     private static func configured(_ key: String) -> Bool {
         #if DEBUG
         // 실행 인자 `-ios_core_flow YES`는 문자열로 들어온다. bool(forKey:)가 YES/NO/1/0을 해석한다.
