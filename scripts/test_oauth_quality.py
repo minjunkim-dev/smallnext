@@ -322,6 +322,41 @@ class FrozenEvaluationTests(unittest.TestCase):
             self.assertEqual((frozen / "results/000.json").read_bytes(), before)
             self.assertEqual((frozen / "results/001.json").read_bytes(), b'{"calls":')
 
+    def test_truncated_summary_is_recovered_without_overwriting_original(self):
+        with tempfile.TemporaryDirectory() as directory:
+            frozen = Path(directory) / "frozen"
+            qa.freeze(frozen, "latency")
+            manifest = qa.load(frozen)
+            manifest_hash = hashlib.sha256((frozen / "manifest.json").read_bytes()).hexdigest()
+            (frozen / "results").mkdir()
+            qa.save(frozen / "run-started.json", {"manifest_sha256":manifest_hash})
+            qa.save(frozen / "results/000.json", dict(manifest["schedule"][0], index=0, calls=[],
+                matched=True, legacy_matched=False, manifest_sha256=manifest_hash))
+            (frozen / "summary.json").write_bytes(b'{"passed":')
+            with contextlib.redirect_stdout(io.StringIO()):
+                qa.recover_summary(frozen)
+            recovered = json.loads((frozen / "summary-recovered.json").read_bytes())
+            self.assertEqual(recovered["recorded"], 1)
+            self.assertFalse(recovered["passed"])
+            self.assertEqual((frozen / "summary.json").read_bytes(), b'{"passed":')
+            before = (frozen / "summary-recovered.json").read_bytes()
+            with contextlib.redirect_stdout(io.StringIO()):
+                qa.recover_summary(frozen)
+            self.assertEqual((frozen / "summary-recovered.json").read_bytes(), before)
+
+    def test_interrupted_atomic_save_leaves_no_partial_target(self):
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as directory:
+            target = Path(directory) / "record.json"
+            with patch.object(qa.os, "link", side_effect=RuntimeError("interrupted")):
+                with self.assertRaises(RuntimeError):
+                    qa.save(target, {"value":1})
+            self.assertFalse(target.exists())
+            qa.save(target, {"value":1})
+            with self.assertRaises(FileExistsError):
+                qa.save(target, {"value":2})
+            self.assertEqual(json.loads(target.read_bytes()), {"value":1})
+
     def test_invalid_candidate_is_not_sent_to_checker(self):
         from unittest.mock import patch
         with tempfile.TemporaryDirectory() as directory:

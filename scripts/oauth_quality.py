@@ -32,8 +32,18 @@ def digest(raw):
 
 
 def save(path, value):
-    with path.open("xb") as stream:
-        stream.write(encoded(value))
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(dir=path.parent, prefix=path.name + ".tmp-", delete=False) as stream:
+            temporary = Path(stream.name)
+            stream.write(encoded(value))
+            stream.flush()
+            os.fsync(stream.fileno())
+        # Same-directory hard link publishes complete bytes atomically and refuses replacement.
+        os.link(temporary, path)
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
 
 
 def payload(case, role, candidate=None):
@@ -420,7 +430,7 @@ def run(directory, claude):
     return summarize(directory, manifest, records)
 
 
-def summarize(directory, manifest, records, unreadable=()):
+def summarize(directory, manifest, records, unreadable=(), target="summary.json"):
     import statistics
     indices = [record.get("index") for record in records]
     if any(type(index) is not int or not 0 <= index < len(manifest["schedule"]) for index in indices):
@@ -462,7 +472,7 @@ def summarize(directory, manifest, records, unreadable=()):
             "all_matched": len(rows) > 0 and all(r["matched"] for r in rows)}
     summary["passed"] = (not unreadable and len(records) == len(manifest["schedule"]) and all(r["matched"] for r in records)
                          and not summary["live_process_groups"] and not summary["unreaped_processes"])
-    save(directory / "summary.json", summary)
+    save(directory / target, summary)
     print(json.dumps(summary, ensure_ascii=False))
     return summary["passed"]
 
@@ -470,8 +480,19 @@ def summarize(directory, manifest, records, unreadable=()):
 def recover_summary(directory):
     manifest = load(directory)
     claim = json.loads((directory / "run-started.json").read_bytes())
-    if (directory / "summary.json").exists():
-        print((directory / "summary.json").read_text())
+    target = "summary.json"
+    if (directory / target).exists():
+        try:
+            summary = json.loads((directory / target).read_bytes())
+            if not isinstance(summary, dict) or type(summary.get("passed")) is not bool:
+                raise ValueError("invalid summary")
+        except (ValueError, UnicodeDecodeError):
+            target = "summary-recovered.json"
+        else:
+            print(json.dumps(summary))
+            return
+    if target == "summary-recovered.json" and (directory / target).exists():
+        print(json.dumps(json.loads((directory / target).read_bytes())))
         return
     if "controller_birth" in claim:
         birth = process_birth(claim["controller_pid"])
@@ -496,9 +517,9 @@ def recover_summary(directory):
     if any(record["manifest_sha256"] != claim["manifest_sha256"] for record in records):
         raise ValueError("record belongs to a different manifest")
     try:
-        summarize(directory, manifest, records, unreadable)
+        summarize(directory, manifest, records, unreadable, target)
     except FileExistsError:
-        print((directory / "summary.json").read_text())
+        print((directory / target).read_text())
 
 
 def main():
