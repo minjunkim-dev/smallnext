@@ -39,7 +39,7 @@ def events(record):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--claude", required=True)
-    parser.add_argument("--output-mode", choices=["structured", "text-json"], default="text-json")
+    parser.add_argument("--output-mode", choices=["structured", "text-json"], default="structured")
     parser.add_argument("--records", type=Path, required=True)
     options, args = parser.parse_known_args()
     raw = sys.stdin.buffer.read(192 * 1024 + 1)

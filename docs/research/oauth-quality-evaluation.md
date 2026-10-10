@@ -4,6 +4,8 @@
 [HTTP/iOS 검사 지연 진단](http-ios-checker-latency.md)을 참조한다.
 후속 형식 오류 재현과 공통 출력 지시 회귀는
 [단일 JSON 출력 형식 진단](oauth-output-format-diagnosis.md)을 참조한다.
+현재 결정 출력 계약과 후속 교차 측정은
+[결정 출력 품질·지연 검증](oauth-decision-validation.md)을 참조한다.
 
 [#97](https://github.com/minjunkim-dev/smallnext/issues/97)의 합성 회귀 실행기다.
 Python 3 표준 라이브러리와 기존 로그인된 Claude Code를 사용한다.
@@ -48,8 +50,10 @@ JSON은 같은 디렉터리의 임시 파일에 완전히 쓴 뒤 hard link로 �
 
 ## 추가 메시지 진단과 출력 방식 #96
 
-기본 출력 방식은 검증한 `text-json`이다. 과거 45/47와 Rust 13/14 기록을 바꾸지 않는다.
-이전 `StructuredOutput` 방식을 재현하려면 `--output-mode structured`를 명시한다.
+기본 출력 방식은 결정 출력 계약의 `structured`다. 과거 45/47와 Rust 13/14 기록을 바꾸지 않는다.
+이전 단일 JSON 전송 방식은 `--output-mode text-json`으로 지정한다.
+현재 실행기는 어느 전송 방식에서도 결정 출력 계약을 적용한다.
+과거 실행 전체를 재현하려면 해당 기록에 고정된 실행기 소스를 사용한다.
 `--case <기존 ID>`를 반복 지정하면 원인 점검에 필요한 사례만 호출 전에 고정한다.
 예를 들어 `freeze work/qa-probe --suite quality --case replacement-empty-invalid --case generate-next`를 사용한다.
 이 부분 평가를 전체 47개 품질 평가로 보고하지 않는다.
@@ -75,7 +79,8 @@ Claude CLI의 `--json-schema` 형식 도구를 사용하지 않는다.
 
 `trace`는 이벤트 종류·시간·동일 message ID의 중복 여부·스키마 유효성·오류 필드명·도구 오류 여부만 저장한다.
 `block_seconds`는 추론·출력 구간 시간이다. 추론 원문·오류 원문·message ID 원문·잘못된 출력 값은 저장하지 않는다.
-스키마 오류 뒤 두 번째 메시지를 관측하면 기존대로 중단한다. 이 메시지를 정상 검사로 수용하지 않는다.
+구조화 도구의 첫 인수에서 중복 키와 스키마 오류를 검출하면 즉시 중단한다.
+`--max-turns 1`과 추가 메시지 차단도 적용한다. 잘못된 출력을 자동 수정하지 않는다.
 후속 측정과 검증 경계는 [출력 오류와 검사 지연 재검증](checker-output-diagnosis.md)을 참조한다.
 기존 summary가 잘렸으면 원본을 보존하고 `summary-recovered.json`에 집계한다.
 두 해시는 실수로 변경한 파일을 검출한다. 로컬 소유자의 의도적 재작성에 대한 서명은 아니다.
