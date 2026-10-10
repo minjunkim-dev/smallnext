@@ -17748,7 +17748,7 @@
       5
     ],
     "deferred_action_reproposed": false,
-    "screenshot": "work/resolve96-ios/question.jpg",
+    "screenshot": "docs/research/fixtures/oauth-decision-ios.jpg",
     "ui_timing_limit": "Observation upper bound includes HTTP completion, UI rendering and screenshot polling; no exact frame timestamp.",
     "network_timing_limit": "Pure network time unavailable: BPF packet capture permission denied; HTTP adapter guard residual is measured separately."
   },
