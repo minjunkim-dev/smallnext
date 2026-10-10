@@ -299,6 +299,29 @@ class FrozenEvaluationTests(unittest.TestCase):
                 qa.summarize(frozen, manifest, [row] * 4)
             self.assertFalse((frozen / "summary.json").exists())
 
+    def test_truncated_result_preserves_valid_results_without_retry(self):
+        with tempfile.TemporaryDirectory() as directory:
+            frozen = Path(directory) / "frozen"
+            qa.freeze(frozen, "latency")
+            manifest = qa.load(frozen)
+            manifest_hash = hashlib.sha256((frozen / "manifest.json").read_bytes()).hexdigest()
+            (frozen / "results").mkdir()
+            qa.save(frozen / "run-started.json", {"manifest_sha256":manifest_hash})
+            good = dict(manifest["schedule"][0], index=0, calls=[], matched=True, legacy_matched=False,
+                        manifest_sha256=manifest_hash)
+            qa.save(frozen / "results/000.json", good)
+            (frozen / "results/001.json").write_bytes(b'{"calls":')
+            before = (frozen / "results/000.json").read_bytes()
+            with contextlib.redirect_stdout(io.StringIO()):
+                qa.recover_summary(frozen)
+            summary = json.loads((frozen / "summary.json").read_bytes())
+            self.assertEqual(summary["recorded"], 1)
+            self.assertEqual(summary["unreadable_records"], ["001.json"])
+            self.assertEqual(summary["missing_cases"], 3)
+            self.assertFalse(summary["passed"])
+            self.assertEqual((frozen / "results/000.json").read_bytes(), before)
+            self.assertEqual((frozen / "results/001.json").read_bytes(), b'{"calls":')
+
     def test_invalid_candidate_is_not_sent_to_checker(self):
         from unittest.mock import patch
         with tempfile.TemporaryDirectory() as directory:

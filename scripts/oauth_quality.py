@@ -420,7 +420,7 @@ def run(directory, claude):
     return summarize(directory, manifest, records)
 
 
-def summarize(directory, manifest, records):
+def summarize(directory, manifest, records, unreadable=()):
     import statistics
     indices = [record.get("index") for record in records]
     if any(type(index) is not int or not 0 <= index < len(manifest["schedule"]) for index in indices):
@@ -432,6 +432,8 @@ def summarize(directory, manifest, records):
     calls = [call for record in records for call in record["calls"]]
     pipelines = [record for record in records if any(c["role"] == "generate" for c in record["calls"])]
     summary = {"scheduled": len(manifest["schedule"]), "recorded": len(records),
+               "missing_cases": len(manifest["schedule"]) - len(records),
+               "unreadable_records": list(unreadable),
                "matched": sum(r["matched"] for r in records),
                "failed_cases": sum("error" in r or any("error" in c for c in r["calls"]) for r in records),
                "reference_mismatches": sum(not r["matched"] and "error" not in r
@@ -458,7 +460,7 @@ def summarize(directory, manifest, records):
         summary["timings"][variant] = {"checker_api_seconds": values,
             "median": statistics.median(values) if values else None, "samples": len(values),
             "all_matched": len(rows) > 0 and all(r["matched"] for r in rows)}
-    summary["passed"] = (len(records) == len(manifest["schedule"]) and all(r["matched"] for r in records)
+    summary["passed"] = (not unreadable and len(records) == len(manifest["schedule"]) and all(r["matched"] for r in records)
                          and not summary["live_process_groups"] and not summary["unreaped_processes"])
     save(directory / "summary.json", summary)
     print(json.dumps(summary, ensure_ascii=False))
@@ -482,11 +484,19 @@ def recover_summary(directory):
             pass
         else:
             raise ValueError("controller still alive; do not summarize an active run")
-    records = [json.loads(path.read_bytes()) for path in sorted((directory / "results").glob("*.json"))]
+    records = []
+    unreadable = []
+    for path in sorted((directory / "results").glob("*.json")):
+        try:
+            record = json.loads(path.read_bytes())
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            unreadable.append(path.name)
+            continue
+        records.append(record)
     if any(record["manifest_sha256"] != claim["manifest_sha256"] for record in records):
         raise ValueError("record belongs to a different manifest")
     try:
-        summarize(directory, manifest, records)
+        summarize(directory, manifest, records, unreadable)
     except FileExistsError:
         print((directory / "summary.json").read_text())
 
