@@ -1,0 +1,97 @@
+{
+  "version": 1,
+  "issue": 96,
+  "issue_state": "OPEN",
+  "base_sha": "60d7f78b45dfcc947170db96c075e64ff45f93be",
+  "authentication": "Claude Code subscription OAuth",
+  "actual_model": "claude-haiku-5-5",
+  "requested_effort": "xhigh",
+  "applied_internal_effort_verified": false,
+  "runner_sha256": "45f841eea4fa89df2d8b58d9ec688e25dcb19d3d7527b4198115b4d77cfd6f14",
+  "bridge_sha256": "f9d709b4cddede7a4fad411cf57754bed9f860b86274861e17dd1ba6030c5849",
+  "preserved_receipts": {
+    "oauth-quality-results.json": "e02868c72fc222eabf72003a134cab9885eda6918cc2db0685557a49f830e50b",
+    "http-ios-checker-results.json": "ee2fc3a1451e1170877964a302f9f2f7948ffa250ed1204debf405a434a060b5"
+  },
+  "reproduction": {
+    "directory": "work/format96-probe",
+    "target_cases": ["useful-minimum-unknown-invalid", "generate-missing-evidence", "useful-minimum-unknown", "useful-minimum-known"],
+    "http_requests": 32,
+    "live_roles": 56,
+    "schema_valid_roles": 55,
+    "new_failure": {"case": "useful-minimum-unknown", "repeat": 6, "role": "check", "kind": "additional", "path": "$", "http_seconds": 23.240},
+    "fixed_checker_trials": 11,
+    "additional_live_generation_trials": 4,
+    "fixed_failure": {"kind": "json_syntax", "fenced": true, "assistant_result_same_text_after_strip": true, "api_seconds": 8.955, "cli_seconds": 10.272, "http_seconds": 10.394, "provider_messages": 1},
+    "fixed_payload_sha256": "58f3843a785c14c88e76dbceb2a5d3d384f5fed6dda059b1261a509e28d43e8e",
+    "fixed_prompt_sha256": "b2c180faf3caeaedde0c4f6ff61895079e5c3cd9de321c36841b5bad0b6c98e6",
+    "fixed_schema_sha256": "e5f80c4068234fcebb54847cf1b6dd3da5a677aac60b8647e64ce3a81c150297",
+    "attribution": "Raw rows preserved. One overlapping request and an injection-file cleanup race are excluded from fixed-trial attribution using unique role files and payload hashes.",
+    "historical_four_error_fields": "unknown; historical invalid values were not saved"
+  },
+  "bounded_postfix_fixed_http": {
+    "trials": 20,
+    "accepted": 20,
+    "format_errors": 0,
+    "additional_provider_requests": 0,
+    "wording": "first framing draft; before clarification preserving literal source inside strings"
+  },
+  "quality_boundary": {"cases": 47, "fixed_direct_cli_checkers": 33, "actual_rust_http_generators": 14, "parallelism": 2, "reference_schema_and_role_contracts_changed": false},
+  "quality_runs": [
+    {
+      "directory": "work/format96-quality",
+      "manifest_sha256": "da30f7950a3eb1e1bf56602d70301aa19525fe2e85192a4666bfd46ce04075b0",
+      "runner_sha256": "032ee5ed2289289eaa27c8861daef71ccb0317dde8df049f5dc4c9c8dcefdbf1",
+      "wording": "first framing draft",
+      "matched": 47, "direct_matched": 33, "http_matched": 14,
+      "live_roles": 61, "schema_valid_roles": 61, "provider_messages": 61,
+      "additional_provider_requests": 0, "max_tokens": 0, "live_process_groups": 0,
+      "failures": []
+    },
+    {
+      "directory": "work/format96-quality-final",
+      "manifest_sha256": "0f281fbc2e7b481e3b47c58aaef82935dfd922770c9bb15a69f837ca29ea1429",
+      "runner_sha256": "7eaa4944547705a6701c6c060d8a4daf7e2fb55da0f88aa3cef17176c29a5b52",
+      "wording": "final framing; before domain field observer",
+      "matched": 46, "direct_matched": 33, "http_matched": 13,
+      "live_roles": 60, "schema_valid_roles": 60, "provider_messages": 60,
+      "additional_provider_requests": 0, "max_tokens": 0, "live_process_groups": 0,
+      "failures": [{"case": "original-report-smaller-repeat", "error": "invalid_proposal", "http_seconds": 26.218, "checker_called": false, "field": "unknown; value not retained", "resolved": false}]
+    },
+    {
+      "directory": "work/format96-quality-observed",
+      "manifest_sha256": "07aa976d3c6fee4a7b7f34042bad26482e27df75b4c1c51bb93c85d1dd4fa7a7",
+      "runner_sha256": "45f841eea4fa89df2d8b58d9ec688e25dcb19d3d7527b4198115b4d77cfd6f14",
+      "wording": "final source with safe domain field observer",
+      "matched": 46, "direct_matched": 32, "http_matched": 14,
+      "live_roles": 61, "schema_valid_roles": 61, "provider_messages": 61,
+      "additional_provider_requests": 0, "max_tokens": 0, "live_process_groups": 0,
+      "failures": [{"case": "report-useful-title", "kind": "reference_mismatch", "expected": "accept", "actual": "reject", "criteria": [4], "payload_sha256": "947bdbe1634c0045c00dbd54c8785ad0959bb0f19e79707f90e1b52fd50d07ed", "checker_api_seconds": 16.382, "checker_cli_seconds": 17.468, "resolved": false}]
+    }
+  ],
+  "original_input_timing": {
+    "directory": "work/format96-domain",
+    "input_sha256": "50ac8ea677b9f8c64fa526dd480b9666ac8801365d54912106bb0e642c91e728",
+    "isolated_sequential": true,
+    "accepted": 4,
+    "live_roles": 8,
+    "provider_messages": 8,
+    "additional_provider_requests": 0,
+    "invalid_proposal_fields": [],
+    "samples": [
+      {"repeat": 0, "generate_cli_seconds": 21.276, "generate_api_seconds": 20.253, "check_cli_seconds": 23.330, "check_api_seconds": 22.397, "http_seconds": 44.996, "http_minus_cli_seconds": 0.390},
+      {"repeat": 1, "generate_cli_seconds": 16.965, "generate_api_seconds": 15.945, "check_cli_seconds": 38.648, "check_api_seconds": 37.644, "http_seconds": 55.768, "http_minus_cli_seconds": 0.155},
+      {"repeat": 2, "generate_cli_seconds": 35.613, "generate_api_seconds": 34.503, "check_cli_seconds": 29.202, "check_api_seconds": 28.085, "http_seconds": 64.985, "http_minus_cli_seconds": 0.170},
+      {"repeat": 3, "generate_cli_seconds": 19.691, "generate_api_seconds": 18.695, "check_cli_seconds": 27.893, "check_api_seconds": 26.877, "http_seconds": 47.738, "http_minus_cli_seconds": 0.154}
+    ],
+    "latency_reduction_proven": false,
+    "boundary": "Same original generation input; candidates regenerated. API times include provider/network/inference. HTTP-minus-CLI includes preparation, processes, adapter, parsing and loopback; not pure transmission. No fresh iOS timing."
+  },
+  "regression": {"python": 140, "oauth_harness": 28, "oauth_bridge": 5, "rust_passed": 30, "rust_db_ignored_locally": 11},
+  "flags_default": "OFF",
+  "production_provider_changed": false,
+  "criteria_weakened": false,
+  "provider_retries_added": false,
+  "fresh_ios_or_device_validation": false,
+  "limits": "Final quality 46/47; semantic mismatch remains. Intermediate native guard failure has no identified field. Original four bad fields remain unknown. Finite successes do not prove removal of rare format failures or a general model defect."
+}

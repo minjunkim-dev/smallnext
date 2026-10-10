@@ -269,16 +269,25 @@ def numeric(value, divisor=1):
     return value / divisor if type(value) in (int, float) and math.isfinite(value) and value >= 0 else None
 
 
+class OutputError(ValueError):
+    """Only schema paths and fixed codes may leave an invalid provider output."""
+    def __init__(self, kind, path=None):
+        super().__init__("invalid_output")
+        self.detail = {"kind": kind}
+        if path is not None:
+            self.detail["path"] = path
+
+
 def unique_object(pairs):
     value = {}
     for key, item in pairs:
         if key in value:
-            raise ValueError("invalid_output")
+            raise OutputError("duplicate_key")
         value[key] = item
     return value
 
 
-def validate(value, schema):
+def validate(value, schema, path="$"):
     """Validate the small committed schemas, rejecting unknown schema features."""
     if set(schema) - {"type", "properties", "required", "additionalProperties", "items",
                       "enum", "minimum", "maximum"}:
@@ -288,21 +297,25 @@ def validate(value, schema):
              "string": type(value) is str, "boolean": type(value) is bool,
              "number": type(value) in (int, float) and math.isfinite(value),
              "integer": type(value) is int}.get(kind, False)
-    if not valid or ("enum" in schema and value not in schema["enum"]):
-        raise ValueError("invalid_output")
+    if not valid:
+        raise OutputError("type", path)
+    if "enum" in schema and value not in schema["enum"]:
+        raise OutputError("enum", path)
     if kind == "object":
         properties = schema["properties"]
-        if not set(schema["required"]).issubset(value) or (
-                schema["additionalProperties"] is False and set(value) - set(properties)):
-            raise ValueError("invalid_output")
+        for key in schema["required"]:
+            if key not in value:
+                raise OutputError("required", path + "." + key)
+        if schema["additionalProperties"] is False and set(value) - set(properties):
+            raise OutputError("additional", path)
         for key in value:
-            validate(value[key], properties[key])
+            validate(value[key], properties[key], path + "." + key)
     if kind == "array":
         for item in value:
-            validate(item, schema["items"])
+            validate(item, schema["items"], path + "[]")
     if kind in {"number", "integer"}:
         if value < schema.get("minimum", -math.inf) or value > schema.get("maximum", math.inf):
-            raise ValueError("invalid_output")
+            raise OutputError("range", path)
 
 
 def environment():
@@ -318,7 +331,11 @@ def call(claude, prompt, schema, data, deadline, cancelled, output_mode="structu
     started = monotonic()
     child = None
     if output_mode == "text-json":
-        prompt += "\nReturn exactly one JSON object with these field types. No markdown or extra text. Output schema: " + json.dumps(schema)
+        prompt += ("\nOutput only a JSON object, starting with { and ending with }. "
+                   "Do not wrap the object in backticks or code fences. No preamble or trailing text. "
+                   "Preserve source text inside JSON strings using JSON escaping. Use exactly these top-level keys: "
+                   + json.dumps(list(schema["properties"]))
+                   + ". Escape quotes and line breaks inside JSON strings. Output schema: " + json.dumps(schema))
     record = {"output_mode": output_mode, "payload_sha256": digest(encoded(data)), "prompt_sha256": digest(prompt.encode()),
               "schema_sha256": digest(encoded(schema)), "process_reaped": False}
     command = [claude, "-p", "--model", MODEL, "--effort", EFFORT, "--tools", "",
@@ -378,8 +395,10 @@ def call(claude, prompt, schema, data, deadline, cancelled, output_mode="structu
         if output_mode == "text-json":
             try:
                 output = json.loads(result.get("result"), object_pairs_hook=unique_object)
-            except (ValueError, TypeError):
-                raise ValueError("invalid_output") from None
+            except json.JSONDecodeError:
+                raise OutputError("json_syntax") from None
+            except TypeError:
+                raise OutputError("text_type") from None
         validate(output, schema)
         record["output"] = output
     except ValueError as error:
@@ -388,6 +407,8 @@ def call(claude, prompt, schema, data, deadline, cancelled, output_mode="structu
                    "unverified_message_count", "unsupported_schema", "invalid_output", "provider_retry",
                    "additional_provider_request", "max_tokens", "duplicate_result"}
         record["error"] = str(error) if str(error) in allowed else "invalid_stream"
+        if isinstance(error, OutputError):
+            record["output_error"] = error.detail
     except subprocess.TimeoutExpired:
         record["error"] = "timed_out"
     except (OSError, TypeError, KeyError, AttributeError):
@@ -436,12 +457,18 @@ def schema_for(manifest, original):
     return schema
 
 
+def proposal_invalid_fields(original, proposal):
+    failures = {key: not proposal[key].strip() for key in ("action", "completion_condition", "reason")}
+    failures.update(estimated_minutes=not 0 <= proposal["estimated_minutes"] <= original["available_minutes"],
+                    remaining_work=proposal["remaining_work"] != original["remaining_work"],
+                    preserved_completed_ids=proposal["preserved_completed_ids"] != original["completed_ids"],
+                    goal_completed=proposal["goal_completed"] is not False,
+                    current_action_completed=proposal["current_action_completed"] is not False)
+    return [key for key, failed in failures.items() if failed]
+
+
 def proposal_valid(original, proposal):
-    return (all(proposal[key].strip() for key in ("action", "completion_condition", "reason"))
-            and 0 <= proposal["estimated_minutes"] <= original["available_minutes"]
-            and proposal["remaining_work"] == original["remaining_work"]
-            and proposal["preserved_completed_ids"] == original["completed_ids"]
-            and proposal["goal_completed"] is False and proposal["current_action_completed"] is False)
+    return not proposal_invalid_fields(original, proposal)
 
 
 def evaluate(directory, manifest, index, row, claude, cancelled):
@@ -460,6 +487,7 @@ def evaluate(directory, manifest, index, row, claude, cancelled):
             candidate = generated.get("output")
             if candidate is not None and not proposal_valid(case["input"], candidate):
                 record["error"] = "invalid_proposal"
+                record["invalid_proposal_fields"] = proposal_invalid_fields(case["input"], candidate)
                 candidate = None
         if "input" not in case or candidate is not None:
             checked = call(claude, manifest["variants"][row["variant"]], manifest["schemas"]["check"],

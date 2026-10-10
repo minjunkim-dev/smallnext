@@ -60,6 +60,31 @@ class OAuthBridgeTests(unittest.TestCase):
             self.assertNotIn("turn.completed", result.stdout)
             self.assertNotIn("PRIVATE", result.stdout)
         self.assertNotIn("PRIVATE", "".join(p.read_text() for p in (self.root / "records").glob("*.json")))
+        records = [json.loads(p.read_text()) for p in (self.root / "records").glob("*.json")]
+        invalid = next(r for r in records if r.get("error") == "invalid_output")
+        self.assertEqual(invalid["output_error"], {"kind": "type", "path": "$.ok"})
+        self.assertNotIn("output", invalid)
+
+    def test_domain_guard_reports_only_field_names_without_repairing_output(self):
+        schema = Path(bridge.__file__).parent.parent / "services/api/src/development_ai/generate.json"
+        self.schema.write_text(schema.read_text())
+        candidate = {"status": "need_info", "action": "Question?", "completion_condition": "Answered",
+                     "reason": "Missing fact", "estimated_minutes": 1, "remaining_work": ["PRIVATE"],
+                     "preserved_completed_ids": [], "goal_completed": False, "current_action_completed": False}
+        self.fake.write_text("#!/usr/bin/env python3\nimport json\n"
+            "print(json.dumps({'type':'stream_event','event':{'type':'message_start'}}))\n"
+            "print(json.dumps({'type':'result','subtype':'success','is_error':False,"
+            "'modelUsage':{'claude-haiku-5-5':{}},'result':" + repr(json.dumps(candidate)) + "}))\n")
+        data = {"available_minutes": 5, "remaining_work": ["required work"], "completed_ids": ["done"]}
+        result = subprocess.run(self.command, input=json.dumps(data), text=True, capture_output=True, timeout=5)
+        self.assertEqual(result.returncode, 0)
+        # Rust still owns the guard; the adapter must not repair or accept its proposal itself.
+        item = json.loads(result.stdout.splitlines()[0])["item"]
+        self.assertEqual(json.loads(item["text"]), candidate)
+        record = json.loads(next((self.root / "records").glob("*.json")).read_text())
+        self.assertEqual(record["invalid_proposal_fields"], ["remaining_work", "preserved_completed_ids"])
+        self.assertNotIn("PRIVATE", json.dumps(record))
+        self.assertNotIn("output", record)
 
     def test_adapter_kill_reaps_claude_without_parent_handler(self):
         marker = self.root / "pid"

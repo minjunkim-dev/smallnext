@@ -81,6 +81,9 @@ class FrozenEvaluationTests(unittest.TestCase):
             fake.write_text("#!/usr/bin/env python3\nimport json,sys\n"
                 "assert '--json-schema' not in sys.argv\n"
                 "assert 'Output schema:' in sys.argv[-1]\n"
+                "assert 'starting with { and ending with }' in sys.argv[-1]\n"
+                "assert 'Do not wrap the object in backticks or code fences' in sys.argv[-1]\n"
+                "assert 'Use exactly these top-level keys: [\"ok\"]' in sys.argv[-1]\n"
                 "print(json.dumps({'type':'stream_event','event':{'type':'message_start'}}))\n"
                 "print(json.dumps({'type':'result','subtype':'success','is_error':False,"
                 "'modelUsage':{'claude-haiku-5-5':{}},'result':json.dumps({'ok':True})}))\n")
@@ -99,6 +102,23 @@ class FrozenEvaluationTests(unittest.TestCase):
             self.assertNotIn("output", result)
             self.assertNotIn("PRIVATE", json.dumps(result))
 
+    def test_json_string_source_text_survives_output_framing(self):
+        source = 'quoted "line"\n`source`\n```literal```'
+        schema = {"type": "object", "properties": {"text": {"type": "string"}},
+                  "required": ["text"], "additionalProperties": False}
+        with tempfile.TemporaryDirectory() as directory:
+            fake = Path(directory) / "claude"
+            fake.write_text("#!/usr/bin/env python3\nimport json,sys\n"
+                "assert 'Do not wrap the object in backticks or code fences' in sys.argv[-1]\n"
+                "print(json.dumps({'type':'stream_event','event':{'type':'message_start'}}))\n"
+                "print(json.dumps({'type':'result','subtype':'success','is_error':False,"
+                "'modelUsage':{'claude-haiku-5-5':{}},'result':"
+                + repr(json.dumps({"text": source})) + "}))\n")
+            fake.chmod(0o700)
+            record = qa.call(str(fake), "preserve source text", schema, {"source": source},
+                             qa.monotonic()+2, threading.Event(), output_mode="text-json")
+            self.assertEqual(record.get("output"), {"text": source})
+
     def test_text_json_rejects_duplicate_keys_and_wrapped_or_multiple_objects(self):
         with tempfile.TemporaryDirectory() as directory:
             fake = Path(directory) / "claude"
@@ -116,6 +136,53 @@ class FrozenEvaluationTests(unittest.TestCase):
                 self.assertEqual(result.get("error"), "invalid_output")
                 self.assertNotIn("output", result)
                 self.assertEqual(result["provider_messages"], 1)
+
+    def test_output_error_classification_keeps_values_and_unknown_keys_private(self):
+        schema = {"type": "object", "properties": {"ok": {"type": "boolean"}},
+                  "required": ["ok"], "additionalProperties": False}
+        cases = [
+            (None, {"kind": "text_type"}),
+            ('```json\n{"ok":true}\n```', {"kind": "json_syntax"}),
+            ('{"ok":false,"ok":true}', {"kind": "duplicate_key"}),
+            ('{"ok":"PRIVATE"}', {"kind": "type", "path": "$.ok"}),
+            ('{}', {"kind": "required", "path": "$.ok"}),
+            ('{"ok":true,"PRIVATE":42}', {"kind": "additional", "path": "$"}),
+            ('[]', {"kind": "type", "path": "$"}),
+        ]
+        with tempfile.TemporaryDirectory() as directory:
+            fake = Path(directory) / "claude"
+            for answer, expected in cases:
+                with self.subTest(kind=expected["kind"]):
+                    fake.write_text("#!/usr/bin/env python3\nimport json\n"
+                        "print(json.dumps({'type':'stream_event','event':{'type':'message_start'}}))\n"
+                        "print(json.dumps({'type':'result','subtype':'success','is_error':False,"
+                        "'modelUsage':{'claude-haiku-5-5':{}},'result':" + repr(answer) + "}))\n")
+                    fake.chmod(0o700)
+                    record = qa.call(str(fake), "prompt", schema, {}, qa.monotonic()+2,
+                                     threading.Event(), output_mode="text-json")
+                    self.assertEqual(record.get("error"), "invalid_output")
+                    self.assertEqual(record.get("output_error"), expected)
+                    self.assertNotIn("output", record)
+                    self.assertNotIn("PRIVATE", json.dumps(record))
+                    self.assertEqual(record["provider_messages"], 1)
+                    self.assertTrue(record["process_reaped"])
+                    self.assertFalse(record["process_group_alive"])
+
+    def test_output_error_paths_cover_nested_items_enums_and_numeric_bounds(self):
+        schema = {"type": "object", "properties": {
+            "criteria": {"type": "array", "items": {"type": "integer", "minimum": 1, "maximum": 5}},
+            "verdict": {"type": "string", "enum": ["accept", "reject", "uncertain"]}},
+            "required": ["criteria", "verdict"], "additionalProperties": False}
+        for value, expected in [
+            ({"criteria": [True], "verdict": "accept"}, {"kind": "type", "path": "$.criteria[]"}),
+            ({"criteria": [6], "verdict": "accept"}, {"kind": "range", "path": "$.criteria[]"}),
+            ({"criteria": [1], "verdict": "PRIVATE"}, {"kind": "enum", "path": "$.verdict"}),
+        ]:
+            with self.subTest(kind=expected["kind"]), self.assertRaises(qa.OutputError) as caught:
+                qa.validate(value, schema)
+            self.assertEqual(caught.exception.detail, expected)
+            self.assertEqual(str(caught.exception), "invalid_output")
+            self.assertNotIn("PRIVATE", json.dumps(caught.exception.detail))
 
     def test_stream_failure_never_saves_reasoning_or_credentials(self):
         tracker = qa.Tracker()

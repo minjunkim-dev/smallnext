@@ -2,6 +2,8 @@
 
 실제 Rust HTTP/iOS 경로의 어댑터와 검증 경계는
 [HTTP/iOS 검사 지연 진단](http-ios-checker-latency.md)을 참조한다.
+후속 형식 오류 재현과 공통 출력 지시 회귀는
+[단일 JSON 출력 형식 진단](oauth-output-format-diagnosis.md)을 참조한다.
 
 [#97](https://github.com/minjunkim-dev/smallnext/issues/97)의 합성 회귀 실행기다.
 Python 3 표준 라이브러리와 기존 로그인된 Claude Code를 사용한다.
