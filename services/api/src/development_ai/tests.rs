@@ -1,5 +1,21 @@
 use super::*;
 
+#[test]
+fn both_roles_receive_one_shared_contract_and_keep_their_role() {
+    let contract = include_str!("contract.md");
+    for role in ["generate", "check"] {
+        let workspace = Workspace::new(role, Some("smaller")).unwrap();
+        let system = std::fs::read_to_string(workspace.0.join("system.md")).unwrap();
+        assert_eq!(system.matches(contract).count(), 1, "{role}");
+        assert!(system.starts_with(if role == "generate" {
+            "Generate one candidate"
+        } else {
+            "Independently check"
+        }));
+    }
+    assert!(Workspace::new("other", None).is_err());
+}
+
 fn input() -> AiInput {
     serde_json::from_str(include_str!("../../examples/development-ai-input.json")).unwrap()
 }
@@ -599,7 +615,7 @@ async fn wrong_context_status_never_starts_checker_or_changes_current_action() {
         let calls = f.calls();
         assert_eq!(calls.len(), 1);
         assert_eq!(calls[0]["schema"], generation_schema(Some(kind)));
-        assert_eq!(calls[0]["system"], include_str!("generate.md"));
+        assert_eq!(calls[0]["system"], model_instructions("generate").unwrap());
     }
 }
 
