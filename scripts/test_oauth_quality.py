@@ -93,7 +93,8 @@ class FrozenEvaluationTests(unittest.TestCase):
             tracker.consume({"type": "stream_event", "event": {"type": "message_start",
                              "message": {"id": "PRIVATE-ID"}}}, 7)
         metadata = tracker.metadata()
-        self.assertIn({"event": "structured_output", "schema_valid": False, "seconds": 5}, metadata["trace"])
+        self.assertIn({"event": "structured_output", "schema_valid": False, "invalid_fields": ["ok"],
+                       "seconds": 5}, metadata["trace"])
         self.assertIn({"event": "tool_result", "is_error": True, "seconds": 6}, metadata["trace"])
         self.assertTrue(metadata["trace"][-1]["duplicate_id"])
         self.assertEqual(metadata["block_seconds"]["thinking"], 2)

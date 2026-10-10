@@ -215,14 +215,26 @@ class Tracker:
                 if block.get("type") == "tool_use":
                     known = block.get("name") == "StructuredOutput"
                     valid = None
+                    invalid_fields = []
                     if known and self.schema is not None:
                         try:
                             validate(block.get("input"), self.schema)
                             valid = True
                         except ValueError:
                             valid = False
+                            value = block.get("input")
+                            if type(value) is dict and self.schema["type"] == "object":
+                                if set(value) - set(self.schema["properties"]):
+                                    invalid_fields.append("$extra")
+                                for key, rule in self.schema["properties"].items():
+                                    try:
+                                        validate(value.get(key), rule)
+                                    except ValueError:
+                                        invalid_fields.append(key)
+                            else:
+                                invalid_fields.append("$type")
                     self.trace.append({"event": "structured_output" if known else "other_tool",
-                                       "schema_valid": valid, "seconds": seconds})
+                                       "schema_valid": valid, "invalid_fields": invalid_fields, "seconds": seconds})
                 if block.get("type") == "tool_result":
                     self.trace.append({"event": "tool_result", "is_error": block.get("is_error") is True,
                                        "seconds": seconds})
