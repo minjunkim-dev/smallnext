@@ -58,6 +58,7 @@ def freeze(directory, suite, comparison=None, repetitions=2):
         sources[name] = {"sha256": digest(raw), "utf8": raw.decode("utf-8")}
         return json.loads(raw) if parse else raw.decode("utf-8")
 
+    source("scripts/oauth_quality.py", False)
     base = "docs/research/fixtures/"
     contracts = source(base + "generation-check-contracts.json")
     quantity = source(base + "quantity-reduction-checks.json")
@@ -124,6 +125,9 @@ def load(directory):
     for source in manifest["sources"].values():
         if digest(source["utf8"].encode()) != source["sha256"]:
             raise ValueError("frozen source bytes changed")
+    runner = manifest["sources"].get("scripts/oauth_quality.py")
+    if runner is not None and digest(Path(__file__).read_bytes()) != runner["sha256"]:
+        raise ValueError("runner differs from frozen version")
     return manifest
 
 
@@ -139,11 +143,15 @@ class Tracker:
         self.result = None
 
     def consume(self, event, seconds):
+        if not isinstance(event, dict):
+            raise ValueError("invalid_stream")
         if event.get("type") == "system" and event.get("subtype") == "api_retry":
             self.retries += 1
             raise ValueError("provider_retry")
         if event.get("type") == "stream_event":
             detail = event.get("event", {})
+            if not isinstance(detail, dict) or not isinstance(detail.get("delta", {}), dict):
+                raise ValueError("invalid_stream")
             if detail.get("type") == "message_start":
                 self.messages += 1
                 if self.first_response is None:
@@ -168,12 +176,13 @@ class Tracker:
 
     def metadata(self):
         result = self.result or {}
-        usage = result.get("usage", {})
+        usage = result.get("usage") if isinstance(result.get("usage"), dict) else {}
+        models = result.get("modelUsage") if isinstance(result.get("modelUsage"), dict) else {}
         return {"provider_messages": self.messages, "provider_retries": self.retries,
                 "additional_provider_requests": max(0, self.messages - 1) + self.retries,
                 "max_tokens": self.max_tokens, "first_response_seconds": self.first_response,
                 "last_thinking_seconds": self.last_thinking, "delta_characters": self.characters,
-                "actual_models": sorted(result.get("modelUsage", {})),
+                "actual_models": sorted({name if name == MODEL else "unexpected_model" for name in models}),
                 "api_seconds": numeric(result.get("duration_api_ms"), 1000),
                 "usage": {key: numeric(usage.get(key)) for key in (
                     "input_tokens", "output_tokens", "cache_read_input_tokens", "cache_creation_input_tokens")}}
@@ -272,7 +281,7 @@ def call(claude, prompt, schema, data, deadline, cancelled):
         result = tracker.result or {}
         if child.returncode != 0 or result.get("subtype") != "success" or result.get("is_error") is not False:
             raise ValueError("provider_failed")
-        if set(result.get("modelUsage", {})) != {MODEL}:
+        if not isinstance(result.get("modelUsage"), dict) or set(result["modelUsage"]) != {MODEL}:
             raise ValueError("wrong_model")
         if tracker.messages != 1:
             raise ValueError("unverified_message_count")
@@ -287,7 +296,7 @@ def call(claude, prompt, schema, data, deadline, cancelled):
         record["error"] = str(error) if str(error) in allowed else "invalid_stream"
     except subprocess.TimeoutExpired:
         record["error"] = "timed_out"
-    except (OSError, TypeError, KeyError):
+    except (OSError, TypeError, KeyError, AttributeError):
         record["error"] = "runner_failed"
     finally:
         if child is not None:
@@ -401,12 +410,15 @@ def summarize(directory, manifest, records):
     pipelines = [record for record in records if any(c["role"] == "generate" for c in record["calls"])]
     summary = {"scheduled": len(manifest["schedule"]), "recorded": len(records),
                "matched": sum(r["matched"] for r in records),
+               "failed_cases": sum("error" in r or any("error" in c for c in r["calls"]) for r in records),
+               "reference_mismatches": sum(not r["matched"] and "error" not in r
+                                           and not any("error" in c for c in r["calls"]) for r in records),
                "pipeline_accepted": sum(r.get("accepted", False) for r in pipelines),
                "pipeline_reference_matched": sum(r["matched"] for r in pipelines),
                "pipeline_legacy_matched": sum(r["legacy_matched"] for r in pipelines),
                "legacy_baseline": manifest["legacy_baseline"], "role_calls": len(calls),
                "completed_role_calls": sum("output" in c for c in calls),
-               "failed_role_calls": sum("error" in c for c in calls),
+               "failed_role_calls": sum("error" in c and c["error"] not in {"cancelled", "timed_out"} for c in calls),
                "cancelled_role_calls": sum(c.get("error") == "cancelled" for c in calls),
                "timed_out_role_calls": sum(c.get("error") == "timed_out" for c in calls),
                "provider_messages": sum(c["provider_messages"] for c in calls),

@@ -166,6 +166,74 @@ class FrozenEvaluationTests(unittest.TestCase):
                     else:
                         self.assertNotIn("goal_summary", schema["properties"]["status"]["enum"])
 
+    def test_malformed_stream_and_usage_fail_without_losing_failure_record(self):
+        tracker = qa.Tracker()
+        with self.assertRaisesRegex(ValueError, "invalid_stream"):
+            tracker.consume(["unexpected event"], 1)
+        tracker.consume({"type":"result", "usage":None, "modelUsage":None}, 2)
+        self.assertEqual(tracker.metadata()["actual_models"], [])
+
+    def test_summary_separates_provider_failure_from_reference_mismatch(self):
+        with tempfile.TemporaryDirectory() as directory:
+            frozen = Path(directory) / "frozen"
+            qa.freeze(frozen, "latency")
+            manifest = qa.load(frozen)
+            call = qa.Tracker().metadata() | {"role":"check", "error":"cancelled", "process_reaped":False}
+            records = [{"calls":[call], "variant":"baseline", "matched":False, "legacy_matched":False}]
+            qa.summarize(frozen, manifest, records)
+            summary = json.loads((frozen / "summary.json").read_bytes())
+            self.assertEqual(summary["failed_cases"], 1)
+            self.assertEqual(summary["reference_mismatches"], 0)
+            self.assertEqual(summary["cancelled_role_calls"], 1)
+            self.assertEqual(summary["failed_role_calls"], 0)
+
+    def test_frozen_artifact_is_portable_and_runner_drift_is_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            frozen = root / "frozen"
+            qa.freeze(frozen, "latency")
+            result = subprocess.run([sys.executable, str(qa.REPO / "scripts/oauth_quality.py"),
+                                     "verify", str(frozen)], cwd=root, capture_output=True, timeout=10)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            manifest = qa.load(frozen)
+            source = manifest["sources"]["scripts/oauth_quality.py"]
+            source["utf8"] += "\n# changed runner\n"
+            source["sha256"] = hashlib.sha256(source["utf8"].encode()).hexdigest()
+            (frozen / "manifest.json").write_bytes(qa.encoded(manifest))
+            (frozen / "integrity.json").write_bytes(qa.encoded({
+                "manifest_sha256": hashlib.sha256((frozen / "manifest.json").read_bytes()).hexdigest()}))
+            with self.assertRaisesRegex(ValueError, "runner differs"):
+                qa.load(frozen)
+
+    def test_generation_and_checker_share_one_deadline(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            frozen = root / "frozen"
+            qa.freeze(frozen, "quality")
+            manifest = qa.load(frozen)
+            manifest["pipeline_seconds"] = 1
+            (frozen / "results").mkdir()
+            fake = root / "claude"
+            fake.write_text("#!/usr/bin/env python3\nimport json,sys,time\ndata=json.load(sys.stdin)\n"
+                "time.sleep(.6)\n"
+                "out={'verdict':'accept','criteria':[1,2,3,4,5],'evidence':'quote','reason':'fits'}\n"
+                "if 'candidate' not in data:\n"
+                " out={'status':'action','action':'두 손으로 책 한 권을 아래 칸에 놓는다.',"
+                "'completion_condition':'책 한 권이 아래 칸에 있다.','estimated_minutes':1,'reason':'막힘 해결',"
+                "'remaining_work':data['remaining_work'],'preserved_completed_ids':data['completed_ids'],"
+                "'goal_completed':False,'current_action_completed':False}\n"
+                "print(json.dumps({'type':'stream_event','event':{'type':'message_start'}}))\n"
+                "print(json.dumps({'type':'result','subtype':'success','is_error':False,"
+                "'modelUsage':{'claude-haiku-5-5':{}},'structured_output':out}))\n")
+            fake.chmod(0o700)
+            record = qa.evaluate(frozen, manifest, 0,
+                {"case":"useful-minimum-known", "variant":"baseline", "repeat":0}, str(fake), threading.Event())
+            self.assertEqual(len(record["calls"]), 2)
+            self.assertIn("output", record["calls"][0])
+            self.assertEqual(record["calls"][1]["error"], "timed_out")
+            self.assertTrue(record["calls"][1]["process_reaped"])
+            self.assertFalse(record["matched"])
+
     def test_invalid_candidate_is_not_sent_to_checker(self):
         from unittest.mock import patch
         with tempfile.TemporaryDirectory() as directory:
