@@ -356,32 +356,44 @@ def evaluate(directory, manifest, index, row, claude, cancelled):
     record = dict(row, index=index, calls=[], matched=False, legacy_matched=False,
                   manifest_sha256=digest((directory / "manifest.json").read_bytes()))
     candidate = None
-    if "input" in case:
-        generated = call(claude, manifest["prompts"]["generate"], schema_for(manifest, case["input"]),
-                         payload(case, "generate"), deadline, cancelled)
-        record["calls"].append(dict(generated, role="generate"))
-        candidate = generated.get("output")
-        if candidate is not None and not proposal_valid(case["input"], candidate):
-            record["error"] = "invalid_proposal"
-            candidate = None
-    if "input" not in case or candidate is not None:
-        checked = call(claude, manifest["variants"][row["variant"]], manifest["schemas"]["check"],
-                       payload(case, "check", candidate), deadline, cancelled)
-        record["calls"].append(dict(checked, role="check"))
-        output = checked.get("output")
-        if check_valid(output):
-            if "input" in case:
-                record["accepted"] = output["verdict"] == "accept"
-                record["matched"] = record["accepted"] and candidate["status"] in case["expected_statuses"]
-                record["legacy_matched"] = record["accepted"] and candidate["status"] in case["legacy_statuses"]
-            else:
-                record["matched"] = output["verdict"] == case["expected"]
-        elif output is not None:
-            record["error"] = "invalid_check"
+    try:
+        if "input" in case:
+            generated = call(claude, manifest["prompts"]["generate"], schema_for(manifest, case["input"]),
+                             payload(case, "generate"), deadline, cancelled)
+            record["calls"].append(dict(generated, role="generate"))
+            candidate = generated.get("output")
+            if candidate is not None and not proposal_valid(case["input"], candidate):
+                record["error"] = "invalid_proposal"
+                candidate = None
+        if "input" not in case or candidate is not None:
+            checked = call(claude, manifest["variants"][row["variant"]], manifest["schemas"]["check"],
+                           payload(case, "check", candidate), deadline, cancelled)
+            record["calls"].append(dict(checked, role="check"))
+            output = checked.get("output")
+            if check_valid(output):
+                if "input" in case:
+                    record["accepted"] = output["verdict"] == "accept"
+                    record["matched"] = record["accepted"] and candidate["status"] in case["expected_statuses"]
+                    record["legacy_matched"] = record["accepted"] and candidate["status"] in case["legacy_statuses"]
+                else:
+                    record["matched"] = output["verdict"] == case["expected"]
+            elif output is not None:
+                record["error"] = "invalid_check"
+    except Exception:
+        # Preserve paid partial calls and classify the case without leaking exception text.
+        record["error"] = "runner_failed"
     record["seconds"] = round(monotonic() - started, 3)
     save(directory / "results" / f"{index:03d}.json", record)
     print(json.dumps({key: record[key] for key in ("index", "case", "variant", "matched", "seconds")}), flush=True)
     return record
+
+
+def process_birth(pid):
+    result = subprocess.run(["ps", "-p", str(pid), "-o", "lstart="], capture_output=True,
+                            env={"PATH": os.environ.get("PATH", ""), "LC_ALL": "C"}, timeout=5)
+    if result.returncode not in (0, 1):
+        raise ValueError("process identity unavailable")
+    return result.stdout.decode().strip()
 
 
 def run(directory, claude):
@@ -394,7 +406,7 @@ def run(directory, claude):
         raise ValueError("Claude Code subscription OAuth login required")
     # Exclusive claim prevents retries, concurrent runs and replacement of failed measurements.
     save(directory / "run-started.json", {"manifest_sha256": digest((directory / "manifest.json").read_bytes()),
-                                          "controller_pid": os.getpid()})
+                                          "controller_pid": os.getpid(), "controller_birth": process_birth(os.getpid())})
     (directory / "results").mkdir(mode=0o700)
     cancelled = threading.Event()
     previous = {sig: signal.signal(sig, lambda *_: cancelled.set()) for sig in (signal.SIGINT, signal.SIGTERM)}
@@ -410,6 +422,13 @@ def run(directory, claude):
 
 def summarize(directory, manifest, records):
     import statistics
+    indices = [record.get("index") for record in records]
+    if any(type(index) is not int or not 0 <= index < len(manifest["schedule"]) for index in indices):
+        raise ValueError("invalid record identity")
+    if len(set(indices)) != len(indices) or any(
+            any(record.get(key) != manifest["schedule"][record["index"]][key]
+                for key in ("case", "variant", "repeat")) for record in records):
+        raise ValueError("duplicate or unrelated record")
     calls = [call for record in records for call in record["calls"]]
     pipelines = [record for record in records if any(c["role"] == "generate" for c in record["calls"])]
     summary = {"scheduled": len(manifest["schedule"]), "recorded": len(records),
@@ -449,20 +468,27 @@ def summarize(directory, manifest, records):
 def recover_summary(directory):
     manifest = load(directory)
     claim = json.loads((directory / "run-started.json").read_bytes())
-    if "controller_pid" in claim:
+    if (directory / "summary.json").exists():
+        print((directory / "summary.json").read_text())
+        return
+    if "controller_birth" in claim:
+        birth = process_birth(claim["controller_pid"])
+        if birth and birth == claim["controller_birth"]:
+            raise ValueError("controller still alive; do not summarize an active run")
+    elif "controller_pid" in claim:
         try:
             os.kill(claim["controller_pid"], 0)
         except ProcessLookupError:
             pass
         else:
             raise ValueError("controller still alive; do not summarize an active run")
-    if (directory / "summary.json").exists():
-        print((directory / "summary.json").read_text())
-        return
     records = [json.loads(path.read_bytes()) for path in sorted((directory / "results").glob("*.json"))]
     if any(record["manifest_sha256"] != claim["manifest_sha256"] for record in records):
         raise ValueError("record belongs to a different manifest")
-    summarize(directory, manifest, records)
+    try:
+        summarize(directory, manifest, records)
+    except FileExistsError:
+        print((directory / "summary.json").read_text())
 
 
 def main():

@@ -183,7 +183,7 @@ class FrozenEvaluationTests(unittest.TestCase):
             qa.freeze(frozen, "latency")
             manifest = qa.load(frozen)
             call = qa.Tracker().metadata() | {"role":"check", "error":"cancelled", "process_reaped":False}
-            records = [{"calls":[call], "variant":"baseline", "matched":False, "legacy_matched":False}]
+            records = [dict(manifest["schedule"][0], index=0, calls=[call], matched=False, legacy_matched=False)]
             qa.summarize(frozen, manifest, records)
             summary = json.loads((frozen / "summary.json").read_bytes())
             self.assertEqual(summary["failed_cases"], 1)
@@ -235,7 +235,8 @@ class FrozenEvaluationTests(unittest.TestCase):
             self.assertEqual(len(record["calls"]), 2)
             self.assertIn("output", record["calls"][0])
             self.assertEqual(record["calls"][1]["error"], "timed_out")
-            self.assertTrue(record["calls"][1]["process_reaped"])
+            if "cli_pid" in record["calls"][1]:
+                self.assertTrue(record["calls"][1]["process_reaped"])
             self.assertFalse(record["matched"])
 
     def test_partial_summary_recovery_never_retries_provider_calls(self):
@@ -254,6 +255,49 @@ class FrozenEvaluationTests(unittest.TestCase):
             with contextlib.redirect_stdout(io.StringIO()):
                 qa.recover_summary(frozen)
             self.assertEqual((frozen / "summary.json").read_bytes(), before)
+
+    def test_unexpected_evaluator_failure_keeps_a_failed_case_record(self):
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as directory:
+            frozen = Path(directory) / "frozen"
+            qa.freeze(frozen, "quality")
+            manifest = qa.load(frozen)
+            (frozen / "results").mkdir()
+            candidate = next(c["candidate"] for c in manifest["cases"] if c["id"] == "known-blocker-action-valid")
+            row = {"case":"useful-minimum-known", "variant":"baseline", "repeat":0}
+            with patch.object(qa, "call", side_effect=[{"output":candidate}, RuntimeError("PRIVATE")]):
+                record = qa.evaluate(frozen, manifest, 0, row, "unused", threading.Event())
+            self.assertEqual(record["error"], "runner_failed")
+            self.assertFalse(record["matched"])
+            self.assertEqual(len(record["calls"]), 1)
+            self.assertNotIn("PRIVATE", (frozen / "results/000.json").read_text())
+
+    def test_recovery_checks_birth_identity_and_manifest_identity(self):
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as directory:
+            frozen = Path(directory) / "frozen"
+            qa.freeze(frozen, "latency")
+            (frozen / "results").mkdir()
+            claim = {"manifest_sha256": hashlib.sha256((frozen / "manifest.json").read_bytes()).hexdigest(),
+                     "controller_pid": 123, "controller_birth": "original"}
+            qa.save(frozen / "run-started.json", claim)
+            with patch.object(qa, "process_birth", return_value="original"):
+                with self.assertRaisesRegex(ValueError, "still alive"):
+                    qa.recover_summary(frozen)
+            qa.save(frozen / "results/000.json", {"manifest_sha256":"different"})
+            with patch.object(qa, "process_birth", return_value="reused PID"):
+                with self.assertRaisesRegex(ValueError, "different manifest"):
+                    qa.recover_summary(frozen)
+
+    def test_duplicate_results_cannot_turn_partial_execution_into_a_pass(self):
+        with tempfile.TemporaryDirectory() as directory:
+            frozen = Path(directory) / "frozen"
+            qa.freeze(frozen, "latency")
+            manifest = qa.load(frozen)
+            row = dict(manifest["schedule"][0], index=0, calls=[], matched=True, legacy_matched=False)
+            with self.assertRaisesRegex(ValueError, "duplicate or unrelated"):
+                qa.summarize(frozen, manifest, [row] * 4)
+            self.assertFalse((frozen / "summary.json").exists())
 
     def test_invalid_candidate_is_not_sent_to_checker(self):
         from unittest.mock import patch
