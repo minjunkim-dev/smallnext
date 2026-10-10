@@ -51,6 +51,18 @@ class FrozenEvaluationTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "manifest changed"):
                 qa.load(frozen)
 
+    def test_targeted_freeze_pins_only_known_cases_without_payload_metadata(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            qa.freeze(root / "probe", "quality", case_ids=["replacement-empty-invalid", "generate-next"])
+            manifest = qa.load(root / "probe")
+            self.assertEqual({c["id"] for c in manifest["cases"]}, {"replacement-empty-invalid", "generate-next"})
+            self.assertEqual(len(manifest["schedule"]), 2)
+            self.assertNotIn("case_ids", qa.payload(manifest["cases"][0], "check"))
+            with self.assertRaisesRegex(ValueError, "unknown case"):
+                qa.freeze(root / "invalid", "quality", case_ids=["unknown"])
+            self.assertFalse((root / "invalid").exists())
+
     def test_stream_failure_never_saves_reasoning_or_credentials(self):
         tracker = qa.Tracker()
         tracker.consume({"type": "stream_event", "event": {"type": "message_start"}}, 1)
@@ -63,6 +75,30 @@ class FrozenEvaluationTests(unittest.TestCase):
         self.assertNotIn("PRIVATE", record)
         self.assertEqual(tracker.metadata()["provider_messages"], 2)
         self.assertEqual(tracker.metadata()["additional_provider_requests"], 1)
+
+    def test_safe_trace_identifies_schema_repair_before_second_message(self):
+        schema = {"type": "object", "properties": {"ok": {"type": "boolean"}},
+                  "required": ["ok"], "additionalProperties": False}
+        tracker = qa.Tracker(schema)
+        tracker.consume({"type": "stream_event", "event": {"type": "message_start",
+                         "message": {"id": "PRIVATE-ID"}}}, 1)
+        tracker.consume({"type": "stream_event", "event": {"type": "content_block_start",
+                         "index": 0, "content_block": {"type": "thinking", "thinking": "SECRET"}}}, 2)
+        tracker.consume({"type": "stream_event", "event": {"type": "content_block_stop", "index": 0}}, 4)
+        tracker.consume({"type": "assistant", "message": {"content": [
+            {"type": "tool_use", "name": "StructuredOutput", "input": {"ok": "SECRET"}}]}}, 5)
+        tracker.consume({"type": "user", "message": {"content": [
+            {"type": "tool_result", "is_error": True, "content": "PRIVATE-error"}]}}, 6)
+        with self.assertRaisesRegex(ValueError, "additional_provider_request"):
+            tracker.consume({"type": "stream_event", "event": {"type": "message_start",
+                             "message": {"id": "PRIVATE-ID"}}}, 7)
+        metadata = tracker.metadata()
+        self.assertIn({"event": "structured_output", "schema_valid": False, "seconds": 5}, metadata["trace"])
+        self.assertIn({"event": "tool_result", "is_error": True, "seconds": 6}, metadata["trace"])
+        self.assertTrue(metadata["trace"][-1]["duplicate_id"])
+        self.assertEqual(metadata["block_seconds"]["thinking"], 2)
+        self.assertNotIn("PRIVATE", json.dumps(metadata))
+        self.assertNotIn("SECRET", json.dumps(metadata))
 
     def test_runner_verifies_effective_model_and_reaps_timeout(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -56,7 +56,7 @@ def payload(case, role, candidate=None):
     raise ValueError("unknown role")
 
 
-def freeze(directory, suite, comparison=None, repetitions=2):
+def freeze(directory, suite, comparison=None, repetitions=2, case_ids=()):
     if suite not in {"quality", "latency"} or repetitions < 1:
         raise ValueError("invalid suite or repetition count")
     if suite == "quality" and comparison is not None:
@@ -105,6 +105,10 @@ def freeze(directory, suite, comparison=None, repetitions=2):
     cases = checkers + generators if suite == "quality" else [
         dict(deepcopy(c), original_request=deepcopy(latency["original_request"]))
         for c in latency["cases"]]
+    if case_ids:
+        if set(case_ids) - {case["id"] for case in cases}:
+            raise ValueError("unknown case")
+        cases = [case for case in cases if case["id"] in case_ids]
     schedule = []
     for repeat in range(1 if suite == "quality" else repetitions):
         for index, case in enumerate(cases):
@@ -143,7 +147,7 @@ def load(directory):
 
 class Tracker:
     """Retain timings and counts, never provider text or error messages."""
-    def __init__(self):
+    def __init__(self, schema=None):
         self.messages = 0
         self.retries = 0
         self.max_tokens = 0
@@ -151,6 +155,11 @@ class Tracker:
         self.last_thinking = None
         self.characters = {}
         self.result = None
+        self.schema = schema
+        self.trace = []
+        self.message_ids = set()
+        self.blocks = {}
+        self.block_seconds = {}
 
     def consume(self, event, seconds):
         if not isinstance(event, dict):
@@ -164,10 +173,30 @@ class Tracker:
                 raise ValueError("invalid_stream")
             if detail.get("type") == "message_start":
                 self.messages += 1
+                message_id = detail.get("message", {}).get("id")
+                self.trace.append({"event": "message_start", "seconds": seconds,
+                                   "duplicate_id": bool(message_id and message_id in self.message_ids)})
+                if isinstance(message_id, str):
+                    self.message_ids.add(message_id)
                 if self.first_response is None:
                     self.first_response = seconds
                 if self.messages > 1:
                     raise ValueError("additional_provider_request")
+            if detail.get("type") == "content_block_start":
+                block = detail.get("content_block", {})
+                kind = block.get("type")
+                kind = kind if kind in {"thinking", "text", "tool_use", "redacted_thinking"} else "other"
+                self.blocks[detail.get("index")] = (kind, seconds)
+                self.trace.append({"event": "block_start", "kind": kind, "seconds": seconds})
+            if detail.get("type") == "content_block_stop":
+                block = self.blocks.pop(detail.get("index"), None)
+                if block:
+                    kind, start = block
+                    self.block_seconds[kind] = round(self.block_seconds.get(kind, 0) + seconds - start, 3)
+            reason = detail.get("delta", {}).get("stop_reason")
+            if reason:
+                self.trace.append({"event": "stop", "seconds": seconds, "reason": reason if reason in {
+                    "end_turn", "tool_use", "max_tokens", "stop_sequence", "refusal", "pause_turn"} else "other"})
             if detail.get("type") == "content_block_delta":
                 delta = detail.get("delta", {})
                 for kind, key in (("thinking_delta", "thinking"), ("text_delta", "text"),
@@ -179,6 +208,25 @@ class Tracker:
             if detail.get("delta", {}).get("stop_reason") == "max_tokens":
                 self.max_tokens += 1
                 raise ValueError("max_tokens")
+        if event.get("type") in {"assistant", "user"}:
+            for block in event.get("message", {}).get("content", []):
+                if not isinstance(block, dict):
+                    continue
+                if block.get("type") == "tool_use":
+                    known = block.get("name") == "StructuredOutput"
+                    valid = None
+                    if known and self.schema is not None:
+                        try:
+                            validate(block.get("input"), self.schema)
+                            valid = True
+                        except ValueError:
+                            valid = False
+                    self.trace.append({"event": "structured_output" if known else "other_tool",
+                                       "schema_valid": valid, "seconds": seconds})
+                if block.get("type") == "tool_result":
+                    self.trace.append({"event": "tool_result", "is_error": block.get("is_error") is True,
+                                       "seconds": seconds})
+        self.trace = self.trace[:100]
         if event.get("type") == "result":
             if self.result is not None:
                 raise ValueError("duplicate_result")
@@ -192,6 +240,7 @@ class Tracker:
                 "additional_provider_requests": max(0, self.messages - 1) + self.retries,
                 "max_tokens": self.max_tokens, "first_response_seconds": self.first_response,
                 "last_thinking_seconds": self.last_thinking, "delta_characters": self.characters,
+                "trace": self.trace, "block_seconds": self.block_seconds,
                 "actual_models": sorted({name if name == MODEL else "unexpected_model" for name in models}),
                 "api_seconds": numeric(result.get("duration_api_ms"), 1000),
                 "usage": {key: numeric(usage.get(key)) for key in (
@@ -238,7 +287,7 @@ def environment():
 
 
 def call(claude, prompt, schema, data, deadline, cancelled):
-    tracker = Tracker()
+    tracker = Tracker(schema)
     started = monotonic()
     child = None
     record = {"payload_sha256": digest(encoded(data)), "prompt_sha256": digest(prompt.encode()),
@@ -530,6 +579,7 @@ def main():
     frozen.add_argument("--suite", choices=("quality", "latency"), required=True)
     frozen.add_argument("--comparison-role", type=Path)
     frozen.add_argument("--repetitions", type=int, default=2)
+    frozen.add_argument("--case", action="append", default=[], help="freeze only these existing case IDs")
     checked = sub.add_parser("verify")
     checked.add_argument("directory", type=Path)
     runner = sub.add_parser("run", help="explicitly start subscription model calls; never run by default CI")
@@ -539,7 +589,7 @@ def main():
     recovery.add_argument("directory", type=Path)
     args = parser.parse_args()
     if args.command == "freeze":
-        freeze(args.directory, args.suite, args.comparison_role, args.repetitions)
+        freeze(args.directory, args.suite, args.comparison_role, args.repetitions, args.case)
     if args.command == "run":
         if not args.claude:
             parser.error("Claude Code executable not found")
