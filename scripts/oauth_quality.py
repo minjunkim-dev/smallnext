@@ -57,7 +57,7 @@ def payload(case, role, candidate=None):
 
 
 def freeze(directory, suite, comparison=None, repetitions=2, case_ids=(),
-           output_mode="structured", comparison_output=None):
+           output_mode="text-json", comparison_output=None):
     if suite not in {"quality", "latency"} or repetitions < 1:
         raise ValueError("invalid suite or repetition count")
     if output_mode not in {"structured", "text-json"} or comparison_output not in {None, "structured", "text-json"}:
@@ -617,7 +617,7 @@ def main():
     frozen.add_argument("--comparison-role", type=Path)
     frozen.add_argument("--repetitions", type=int, default=2)
     frozen.add_argument("--case", action="append", default=[], help="freeze only these existing case IDs")
-    frozen.add_argument("--output-mode", choices=("structured", "text-json"), default="structured")
+    frozen.add_argument("--output-mode", choices=("structured", "text-json"), default="text-json")
     frozen.add_argument("--comparison-output", choices=("structured", "text-json"))
     checked = sub.add_parser("verify")
     checked.add_argument("directory", type=Path)

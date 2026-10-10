@@ -2,8 +2,9 @@
 
 [#96](https://github.com/minjunkim-dev/smallnext/issues/96)의 수동 진단 기록이다.
 기준 변경은 [공통 계약 검증](status-contract-validation.md)과 PR #95다.
-검사 기준을 유지하는 지연 개선은 아직 입증하지 못했다.
+이 초기 진단에서는 검사 기준을 유지하는 지연 개선을 입증하지 못했다.
 빠르게 보인 초기 측정만으로 프롬프트를 변경하지 않았다.
+후속 결과는 [출력 오류와 검사 지연 재검증](checker-output-diagnosis.md)에 기록한다.
 아래 수치는 작성자의 로컬 수동 측정이다. 저장소 CI의 실행 결과가 아니다.
 이 진단 당시 전체 QA 실행기는 저장소에 없었다.
 후속 [#97 수동 실행기](oauth-quality-evaluation.md)는 고정 합성 품질 회귀와 같은 보고서 후보의 검사를 다른 checkout에서 재실행한다.

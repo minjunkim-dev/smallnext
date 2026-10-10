@@ -26,7 +26,9 @@ API 키를 읽거나 토큰을 추출하지 않는다.
 실행기 소스도 동결한다. 실행기 버전이 다르면 실행을 거부한다.
 `integrity.json`은 manifest 파일 바이트의 SHA-256이다.
 각 역할 결과에는 payload·조립 프롬프트·실제 사용 스키마의 SHA-256이 있다.
-검사 프롬프트는 `check.md` 바이트 + LF 하나 + `contract.md` 바이트다.
+기본 검사 역할 지시는 `check.md` 바이트 + LF 하나 + `contract.md` 바이트다.
+`text-json` 방식은 같은 지시 뒤에 JSON 출력 형식과 같은 스키마를 붙인다.
+역할 결과의 프롬프트 해시는 이 실제 전송 지시의 해시다.
 생성 스키마의 상태는 요청 종류별 기존 허용 상태로 제한한다.
 이미 동결한 디렉터리와 이미 실행한 결과는 덮어쓰지 않는다.
 실패·취소한 실행도 다시 시작하지 않는다. 새 실행은 별도 디렉터리를 사용한다.
@@ -38,6 +40,38 @@ API 키를 읽거나 토큰을 추출하지 않는다.
 잘린 파일은 덮어쓰지 않는다. 해당 파일의 호출 수와 비용은 확인할 수 없다.
 JSON은 같은 디렉터리의 임시 파일에 완전히 쓴 뒤 hard link로 원자적으로 게시한다.
 기존 경로는 교체하지 않는다. 출력 파일시스템은 hard link를 지원해야 한다.
+
+## 추가 메시지 진단과 출력 방식 #96
+
+기본 출력 방식은 검증한 `text-json`이다. 과거 45/47와 Rust 13/14 기록을 바꾸지 않는다.
+이전 `StructuredOutput` 방식을 재현하려면 `--output-mode structured`를 명시한다.
+`--case <기존 ID>`를 반복 지정하면 원인 점검에 필요한 사례만 호출 전에 고정한다.
+예를 들어 `freeze work/qa-probe --suite quality --case replacement-empty-invalid --case generate-next`를 사용한다.
+이 부분 평가를 전체 47개 품질 평가로 보고하지 않는다.
+
+`freeze work/qa-text --suite quality --output-mode text-json`은 단일 JSON 응답을 평가한다.
+Claude CLI의 `--json-schema` 형식 도구를 사용하지 않는다.
+대신 같은 스키마를 출력 지시에 넣고 로컬에서 같은 스키마를 엄격히 검증한다.
+중복 키·Markdown·복수 JSON·잘못된 타입·누락·추가 필드를 거부한다.
+자동 수정·재생성·자동 수용을 수행하지 않는다.
+실제 모델·한 메시지·120초 전체 제한·다섯 기준·범위·완료 ID·미완료 플래그를 계속 확인한다.
+
+같은 후보의 출력 방식 교차 측정은 다음 절차를 사용한다.
+
+1. `python3 scripts/oauth_quality.py freeze work/qa-output-paired --suite latency --output-mode structured --comparison-output text-json --repetitions 3`을 실행한다.
+2. `python3 scripts/oauth_quality.py verify work/qa-output-paired`를 실행한다.
+3. `python3 scripts/oauth_quality.py run work/qa-output-paired`를 실행한다.
+4. 양쪽의 전체 판정과 실패를 확인한 뒤 각 API 중앙값을 비교한다.
+
+`output_modes`도 manifest에 고정한다. 이 대조는 같은 역할 지시·공통 계약·스키마·입력·후보를 사용한다.
+같은 기존 후보 두 개를 각 방식으로 3회 실행한다. 순서는 AB/BA로 교차한다.
+성능 측정 중 다른 실제 모델 호출을 함께 실행하지 않는다.
+출력 방식 변경은 모델·effort 변경이나 검사 기준 생략이 아니다.
+
+`trace`는 이벤트 종류·시간·동일 message ID의 중복 여부·스키마 유효성·오류 필드명·도구 오류 여부만 저장한다.
+`block_seconds`는 추론·출력 구간 시간이다. 추론 원문·오류 원문·message ID 원문·잘못된 출력 값은 저장하지 않는다.
+스키마 오류 뒤 두 번째 메시지를 관측하면 기존대로 중단한다. 이 메시지를 정상 검사로 수용하지 않는다.
+후속 측정과 검증 경계는 [출력 오류와 검사 지연 재검증](checker-output-diagnosis.md)을 참조한다.
 기존 summary가 잘렸으면 원본을 보존하고 `summary-recovered.json`에 집계한다.
 두 해시는 실수로 변경한 파일을 검출한다. 로컬 소유자의 의도적 재작성에 대한 서명은 아니다.
 manifest는 동결한 소스를 사용한다. 현재 checkout의 다른 fixture로 자동 교체하지 않는다.

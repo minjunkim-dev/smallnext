@@ -23,6 +23,7 @@ class FrozenEvaluationTests(unittest.TestCase):
             self.assertEqual(known["legacy_statuses"], ["minimum"])
             self.assertEqual(known["expected_statuses"], ["action", "minimum"])
             self.assertEqual(len(manifest["cases"]), 47)
+            self.assertEqual(manifest["output_modes"], {"baseline": "text-json"})
             self.assertEqual(sum("input" in c for c in manifest["cases"]), 14)
             self.assertEqual(qa.payload(known, "generate"), known["input"])
             candidate = {"status": "minimum"}
@@ -66,7 +67,7 @@ class FrozenEvaluationTests(unittest.TestCase):
     def test_output_transport_comparison_keeps_role_schema_and_reference_fixed(self):
         with tempfile.TemporaryDirectory() as directory:
             frozen = Path(directory) / "paired"
-            qa.freeze(frozen, "latency", repetitions=2, comparison_output="text-json")
+            qa.freeze(frozen, "latency", repetitions=2, output_mode="structured", comparison_output="text-json")
             manifest = qa.load(frozen)
             self.assertEqual(manifest["output_modes"], {"baseline": "structured", "comparison": "text-json"})
             self.assertEqual(manifest["variants"]["baseline"], manifest["variants"]["comparison"])
@@ -191,7 +192,9 @@ class FrozenEvaluationTests(unittest.TestCase):
                 "'delta':{'type':'thinking_delta','thinking':'DO-NOT-SAVE'}}}))\n"
                 "print(json.dumps({'type':'result','subtype':'success','is_error':False,"
                 "'modelUsage':{'claude-haiku-5-5':{}},'duration_api_ms':2000,"
-                "'errors':['DO-NOT-SAVE'],'structured_output':"
+                "'errors':['DO-NOT-SAVE'],'result':json.dumps("
+                "{'verdict':'accept','criteria':[1,2,3,4,5],'evidence':'one quote','reason':'fits'}),"
+                "'structured_output':"
                 "{'verdict':'accept','criteria':[1,2,3,4,5],'evidence':'one quote','reason':'fits'}}))\n")
             fake.chmod(0o700)
             command = [sys.executable, str(qa.REPO / "scripts/oauth_quality.py"),
@@ -318,7 +321,7 @@ class FrozenEvaluationTests(unittest.TestCase):
                 "'goal_completed':False,'current_action_completed':False}\n"
                 "print(json.dumps({'type':'stream_event','event':{'type':'message_start'}}))\n"
                 "print(json.dumps({'type':'result','subtype':'success','is_error':False,"
-                "'modelUsage':{'claude-haiku-5-5':{}},'structured_output':out}))\n")
+                "'modelUsage':{'claude-haiku-5-5':{}},'result':json.dumps(out),'structured_output':out}))\n")
             fake.chmod(0o700)
             record = qa.evaluate(frozen, manifest, 0,
                 {"case":"useful-minimum-known", "variant":"baseline", "repeat":0}, str(fake), threading.Event())
