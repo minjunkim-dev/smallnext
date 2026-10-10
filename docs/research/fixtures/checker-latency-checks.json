@@ -1,0 +1,90 @@
+{
+  "description": "Issue #96: fixed synthetic report input and two accepted candidates from the frozen Issue #94 run. These are manual OAuth regression references, not model instructions or a product latency SLA.",
+  "original_request": {
+    "available": [
+      "확정 완료 조건: 분기 업무 보고서 문서에 목차 항목 3개와 핵심 성과 3줄이 작성되어 저장된 상태",
+      "현재 상태: 빈 보고서 문서가 열려 있다. 목차 세 개와 핵심 성과 세 줄을 작성하려고 한다.",
+      "이미 완료한 행동: 열려 있는 빈 보고서 문서의 첫 줄에 목차 항목 하나(예: \"1. 분기 업무 개요\")를 입력한다.",
+      "보류한 행동(재제안 금지): 열려 있는 보고서 문서에서 첫 번째 목차 항목 바로 아래 다음 줄에 \"2. 주요 업무 성과\"를 입력한다."
+    ],
+    "available_minutes": 15.0,
+    "completed_ids": [
+      "1"
+    ],
+    "current_blocker": "",
+    "energy": "모름",
+    "goal": "분기 업무 보고서 초안 쓰기",
+    "knowledge": "사용자가 제공한 정보 외에는 모름",
+    "previous_proposals": [
+      {
+        "action": "열려 있는 보고서 문서에서 첫 번째 목차 항목 바로 아래 다음 줄에 목차 항목 2번 한 줄(예: \"2. 주요 업무 성과\")을 입력한다.",
+        "completion_condition": "문서에 1번 목차 항목 아래로 두 번째 목차 항목 한 줄이 입력되어 보이는 상태",
+        "current_action_completed": false,
+        "estimated_minutes": 2.0,
+        "goal_completed": false,
+        "preserved_completed_ids": [
+          "1"
+        ],
+        "reason": "현재 미완료 행동",
+        "remaining_work": [
+          "분기 업무 보고서 문서에 목차 항목 3개와 핵심 성과 3줄이 작성되어 저장된 상태",
+          "열려 있는 보고서 문서에서 첫 번째 목차 항목 바로 아래 다음 줄에 목차 항목 2번 한 줄(예: \"2. 주요 업무 성과\")을 입력한다.",
+          "열려 있는 보고서 문서에서 첫 번째 목차 항목 바로 아래 다음 줄에 \"2. 주요 업무 성과\"를 입력한다."
+        ],
+        "status": "action"
+      }
+    ],
+    "remaining_work": [
+      "분기 업무 보고서 문서에 목차 항목 3개와 핵심 성과 3줄이 작성되어 저장된 상태",
+      "열려 있는 보고서 문서에서 첫 번째 목차 항목 바로 아래 다음 줄에 목차 항목 2번 한 줄(예: \"2. 주요 업무 성과\")을 입력한다.",
+      "열려 있는 보고서 문서에서 첫 번째 목차 항목 바로 아래 다음 줄에 \"2. 주요 업무 성과\"를 입력한다."
+    ],
+    "request_kind": "smaller",
+    "unknown": [],
+    "user_request": "현재 행동을 실질적으로 줄인다. 반복 막힘이면 알려진 답을 다시 묻지 않고 첫 막힘 한 가지를 확인한다."
+  },
+  "cases": [
+    {
+      "id": "report-original",
+      "candidate": {
+        "action": "두 번째 목차 항목을 첫 번째 목차 항목 아래 줄에 입력하려 할 때 막히는 첫 번째 지점은 무엇입니까?",
+        "completion_condition": "첫 번째 막힘 한 가지가 답변으로 확인된 상태",
+        "current_action_completed": false,
+        "estimated_minutes": 1.0,
+        "goal_completed": false,
+        "preserved_completed_ids": [
+          "1"
+        ],
+        "reason": "현재 행동(첫 번째 목차 항목 아래 줄에 목차 2번 한 줄 입력)은 이미 한 줄 단위의 가장 작은 작업이라 더 줄이면 빈 자리표시나 보류된 행동의 재개가 되므로 유효한 축소가 아닙니다. current_blocker가 비어 있고 첫 막힘이 알려지지 않았으므로, 알려진 답을 다시 묻지 않고 첫 막힘 한 가지만 확인합니다. 보류된 행동은 재제안하지 않습니다.",
+        "remaining_work": [
+          "분기 업무 보고서 문서에 목차 항목 3개와 핵심 성과 3줄이 작성되어 저장된 상태",
+          "열려 있는 보고서 문서에서 첫 번째 목차 항목 바로 아래 다음 줄에 목차 항목 2번 한 줄(예: \"2. 주요 업무 성과\")을 입력한다.",
+          "열려 있는 보고서 문서에서 첫 번째 목차 항목 바로 아래 다음 줄에 \"2. 주요 업무 성과\"를 입력한다."
+        ],
+        "status": "need_info"
+      },
+      "expected": "accept"
+    },
+    {
+      "id": "report-original-repeat",
+      "candidate": {
+        "action": "지금 열려 있는 보고서 문서에서 목차 2번 한 줄을 입력하려 할 때 실제로 막히는 첫 지점은 무엇입니까?",
+        "completion_condition": "막히는 첫 지점 한 가지가 답변되어, 그 지점을 해결할 다음 행동을 정할 수 있는 상태",
+        "current_action_completed": false,
+        "estimated_minutes": 0.0,
+        "goal_completed": false,
+        "preserved_completed_ids": [
+          "1"
+        ],
+        "reason": "이전 제안은 이미 목차 2번 한 줄 입력이라는 단일 작업이고 예상 2분이어서, 이를 실질적으로 더 줄일 근거가 없습니다. 같은 줄을 의미 없는 자리표시자로 줄이는 것은 유용한 진전이 아니며, '2. 주요 업무 성과' 입력은 보류된 행동이므로 재제안할 수 없습니다. current_blocker가 비어 있고 첫 막힘을 알 수 없으므로, 중단 기준에 따라 그 막힘 한 가지를 묻습니다. 반복 실패 보고는 없습니다. 이미 알려진 사실(완료 ID 1, 보고서 문서가 열려 있음)은 다시 묻지 않았습니다.",
+        "remaining_work": [
+          "분기 업무 보고서 문서에 목차 항목 3개와 핵심 성과 3줄이 작성되어 저장된 상태",
+          "열려 있는 보고서 문서에서 첫 번째 목차 항목 바로 아래 다음 줄에 목차 항목 2번 한 줄(예: \"2. 주요 업무 성과\")을 입력한다.",
+          "열려 있는 보고서 문서에서 첫 번째 목차 항목 바로 아래 다음 줄에 \"2. 주요 업무 성과\"를 입력한다."
+        ],
+        "status": "need_info"
+      },
+      "expected": "accept"
+    }
+  ]
+}
