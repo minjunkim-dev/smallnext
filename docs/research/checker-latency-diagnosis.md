@@ -51,7 +51,7 @@ CLI 준비와 결과 처리의 전체 추가 시간은 약 1.2~1.3초다.
 | 검사 순서 명시 | 44.038 / 38.977초 | 수용 2/2. 이 표본으로 개선 판별 불가 |
 | 근거·이유 표현 축소 | 40.973 / 47.992초 | 수용 2/2. 이 표본으로 개선 판별 불가 |
 | 보존 문맥과 제안 작업 구분 | 47.187 / 49.206초 | 수용 2/2. 이 표본으로 개선 판별 불가 |
-| 후보 검증 범위 명시 | 35.462 / 31.981초 | 수용 2/2. 초기 개선처럼 보임 |
+| 후보 검증 범위 명시 | 35.462 / 31.981초 | 수용 2/2. 교차 측정에서 개선 미입증 |
 | 기존 문구를 공통 계약 뒤로 이동 | 45.432 / 48.117초 | 수용 2/2. 이 표본으로 개선 판별 불가 |
 | 기준별 판정을 명시하는 출력 스키마 | 44.131 / 25.451초 | 수용 2/2. 이 표본으로 개선 판별 불가 |
 
@@ -63,6 +63,7 @@ CLI 준비와 결과 처리의 전체 추가 시간은 약 1.2~1.3초다.
 후보 검증 범위 명시는 공통 계약과 모든 기준을 유지했다.
 가상의 계획 탐색과 이미 확인한 조건의 반복 검토를 제한하는 역할 지시였다.
 이 변형으로 고정 검사 31개를 모두 실행했다.
+이 31개 회귀 입력 집합은 위 표의 원래 보고서 후보 두 개와 다른 집합이다.
 정상 후보 수용과 잘못된 후보 거절이 31/31 참조와 일치했다.
 다섯 기준을 모두 확인한 수용만 성공으로 계산했다.
 이 변형의 검사 API 중앙값은 11.330초다. 같은 시점의 기존 지시 대조는 수행하지 않았다.
@@ -111,7 +112,9 @@ original_request["available"][1] = "현재 상태: 첫 번째 목차 항목이 �
 기존 프롬프트를 복원하고 실제 Rust 생성·독립 검사 연결 14건을 재실행했다.
 모두 독립 검사에서 수용됐고 범위·ID·두 미완료 플래그를 보존했다.
 고정 `expected_statuses`와의 일치는 **13/14**다.
+이 불일치는 미해결이다. 인수 판정은 #97의 참조 검증 후속으로 남긴다.
 `useful-minimum-known`은 `minimum` 참조에 대해 `action`을 반환했다.
+상태 참조 원본은 [기존 회귀 자료](fixtures/status-contract-checks.json)의 같은 ID에 있다.
 후보는 무거운 책 한 권을 두 손으로 들어 아래 칸에 놓는 행동이다.
 입력은 두 손으로 들 수 있다는 사실과 한 손의 막힘을 명시한다.
 작성자는 [공통 계약](../../services/api/src/development_ai/contract.md)의 criterion 4에서 `action`이 실제 막힘을 해결하는 경로로 해석했다.
@@ -137,6 +140,8 @@ original_request["available"][1] = "현재 상태: 첫 번째 목차 항목이 �
 회귀 JSON SHA-256은 `1c2ef70d7ac88590d3f517d3557403bb29480e03c2c7f816bd285eb5a1283259`다.
 첫 해시는 저장소 `check.md`와 `contract.md`를 `model_instructions`처럼 조립한 UTF-8 바이트다.
 둘째 해시는 저장소 JSON의 원본 파일 바이트다. 정규화하지 않았다.
+측정 checkout은 UTF-8/LF다. 같은 해시를 재현하려면 같은 파일 바이트를 사용해야 한다.
+checkout에서 CRLF로 바꾼 파일은 다른 바이트이므로 같은 해시의 대상이 아니다.
 저장소 루트에서 두 해시를 계산할 수 있다.
 
 ```python
@@ -144,8 +149,8 @@ import hashlib
 from pathlib import Path
 
 p = Path("services/api/src/development_ai")
-prompt = (p / "check.md").read_text() + "\n" + (p / "contract.md").read_text()
-print(hashlib.sha256(prompt.encode("utf-8")).hexdigest())
+prompt = (p / "check.md").read_bytes() + b"\n" + (p / "contract.md").read_bytes()
+print(hashlib.sha256(prompt).hexdigest())
 fixture = Path("docs/research/fixtures/checker-latency-checks.json")
 print(hashlib.sha256(fixture.read_bytes()).hexdigest())
 ```
