@@ -98,6 +98,24 @@ class FrozenEvaluationTests(unittest.TestCase):
             self.assertNotIn("output", result)
             self.assertNotIn("PRIVATE", json.dumps(result))
 
+    def test_text_json_rejects_duplicate_keys_and_wrapped_or_multiple_objects(self):
+        with tempfile.TemporaryDirectory() as directory:
+            fake = Path(directory) / "claude"
+            schema = {"type": "object", "properties": {"ok": {"type": "boolean"}},
+                      "required": ["ok"], "additionalProperties": False}
+            for answer in ('{"ok":false,"ok":true}', '```json\n{"ok":true}\n```',
+                           '{"ok":true}{"ok":true}'):
+                fake.write_text("#!/usr/bin/env python3\nimport json\n"
+                    "print(json.dumps({'type':'stream_event','event':{'type':'message_start'}}))\n"
+                    "print(json.dumps({'type':'result','subtype':'success','is_error':False,"
+                    "'modelUsage':{'claude-haiku-5-5':{}},'result':" + repr(answer) + "}))\n")
+                fake.chmod(0o700)
+                result = qa.call(str(fake), "prompt", schema, {}, qa.monotonic()+2,
+                                 threading.Event(), output_mode="text-json")
+                self.assertEqual(result.get("error"), "invalid_output")
+                self.assertNotIn("output", result)
+                self.assertEqual(result["provider_messages"], 1)
+
     def test_stream_failure_never_saves_reasoning_or_credentials(self):
         tracker = qa.Tracker()
         tracker.consume({"type": "stream_event", "event": {"type": "message_start"}}, 1)

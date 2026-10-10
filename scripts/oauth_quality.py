@@ -269,6 +269,15 @@ def numeric(value, divisor=1):
     return value / divisor if type(value) in (int, float) and math.isfinite(value) and value >= 0 else None
 
 
+def unique_object(pairs):
+    value = {}
+    for key, item in pairs:
+        if key in value:
+            raise ValueError("invalid_output")
+        value[key] = item
+    return value
+
+
 def validate(value, schema):
     """Validate the small committed schemas, rejecting unknown schema features."""
     if set(schema) - {"type", "properties", "required", "additionalProperties", "items",
@@ -368,7 +377,7 @@ def call(claude, prompt, schema, data, deadline, cancelled, output_mode="structu
         output = result.get("structured_output")
         if output_mode == "text-json":
             try:
-                output = json.loads(result.get("result"))
+                output = json.loads(result.get("result"), object_pairs_hook=unique_object)
             except (ValueError, TypeError):
                 raise ValueError("invalid_output") from None
         validate(output, schema)
