@@ -56,10 +56,13 @@ def payload(case, role, candidate=None):
     raise ValueError("unknown role")
 
 
-def freeze(directory, suite, comparison=None, repetitions=2, case_ids=()):
+def freeze(directory, suite, comparison=None, repetitions=2, case_ids=(),
+           output_mode="structured", comparison_output=None):
     if suite not in {"quality", "latency"} or repetitions < 1:
         raise ValueError("invalid suite or repetition count")
-    if suite == "quality" and comparison is not None:
+    if output_mode not in {"structured", "text-json"} or comparison_output not in {None, "structured", "text-json"}:
+        raise ValueError("invalid output mode")
+    if suite == "quality" and (comparison is not None or comparison_output is not None):
         raise ValueError("comparison is only for paired latency replay")
     sources = {}
 
@@ -100,8 +103,11 @@ def freeze(directory, suite, comparison=None, repetitions=2, case_ids=()):
         if c["id"] in references["status_overrides"]:
             c.update(deepcopy(references["status_overrides"][c["id"]]))
     variants = {"baseline": prompts["check"]}
-    if comparison is not None:
-        variants["comparison"] = Path(comparison).read_text(encoding="utf-8") + "\n" + contract
+    if comparison is not None or comparison_output is not None:
+        variants["comparison"] = (Path(comparison).read_text(encoding="utf-8") + "\n" + contract
+                                  if comparison is not None else prompts["check"])
+    output_modes = {name: comparison_output or output_mode if name == "comparison" else output_mode
+                    for name in variants}
     cases = checkers + generators if suite == "quality" else [
         dict(deepcopy(c), original_request=deepcopy(latency["original_request"]))
         for c in latency["cases"]]
@@ -120,7 +126,7 @@ def freeze(directory, suite, comparison=None, repetitions=2, case_ids=()):
     manifest = {"version": 1, "suite": suite, "model": MODEL, "effort": EFFORT,
                 "pipeline_seconds": 120, "parallelism": 2 if suite == "quality" else 1,
                 "sources": sources, "prompts": prompts, "schemas": schemas,
-                "variants": variants, "cases": cases, "schedule": schedule,
+                "variants": variants, "output_modes": output_modes, "cases": cases, "schedule": schedule,
                 "legacy_baseline": references["legacy_baseline"],
                 "boundary": "synthetic manual Claude CLI evaluation; not Rust HTTP or device validation"}
     directory.mkdir(mode=0o700, parents=True, exist_ok=False)
@@ -298,19 +304,23 @@ def environment():
     return env
 
 
-def call(claude, prompt, schema, data, deadline, cancelled):
+def call(claude, prompt, schema, data, deadline, cancelled, output_mode="structured"):
     tracker = Tracker(schema)
     started = monotonic()
     child = None
-    record = {"payload_sha256": digest(encoded(data)), "prompt_sha256": digest(prompt.encode()),
+    if output_mode == "text-json":
+        prompt += "\nReturn exactly one JSON object with these field types. No markdown or extra text. Output schema: " + json.dumps(schema)
+    record = {"output_mode": output_mode, "payload_sha256": digest(encoded(data)), "prompt_sha256": digest(prompt.encode()),
               "schema_sha256": digest(encoded(schema)), "process_reaped": False}
     command = [claude, "-p", "--model", MODEL, "--effort", EFFORT, "--tools", "",
                "--disable-slash-commands", "--strict-mcp-config", "--mcp-config", '{"mcpServers":{}}',
                "--setting-sources", "", "--settings",
                '{"forcedLoginMethod":"claudeai","disableAllHooks":true}',
                "--no-session-persistence", "--output-format", "stream-json", "--verbose",
-               "--include-partial-messages", "--json-schema", json.dumps(schema),
-               "--system-prompt", prompt]
+               "--include-partial-messages"]
+    if output_mode == "structured":
+        command.extend(["--json-schema", json.dumps(schema)])
+    command.extend(["--system-prompt", prompt])
     try:
         if cancelled.is_set():
             raise ValueError("cancelled")
@@ -356,6 +366,11 @@ def call(claude, prompt, schema, data, deadline, cancelled):
         if tracker.messages != 1:
             raise ValueError("unverified_message_count")
         output = result.get("structured_output")
+        if output_mode == "text-json":
+            try:
+                output = json.loads(result.get("result"))
+            except (ValueError, TypeError):
+                raise ValueError("invalid_output") from None
         validate(output, schema)
         record["output"] = output
     except ValueError as error:
@@ -427,10 +442,11 @@ def evaluate(directory, manifest, index, row, claude, cancelled):
     record = dict(row, index=index, calls=[], matched=False, legacy_matched=False,
                   manifest_sha256=digest((directory / "manifest.json").read_bytes()))
     candidate = None
+    output_mode = manifest["output_modes"][row["variant"]]
     try:
         if "input" in case:
             generated = call(claude, manifest["prompts"]["generate"], schema_for(manifest, case["input"]),
-                             payload(case, "generate"), deadline, cancelled)
+                             payload(case, "generate"), deadline, cancelled, output_mode=output_mode)
             record["calls"].append(dict(generated, role="generate"))
             candidate = generated.get("output")
             if candidate is not None and not proposal_valid(case["input"], candidate):
@@ -438,7 +454,7 @@ def evaluate(directory, manifest, index, row, claude, cancelled):
                 candidate = None
         if "input" not in case or candidate is not None:
             checked = call(claude, manifest["variants"][row["variant"]], manifest["schemas"]["check"],
-                           payload(case, "check", candidate), deadline, cancelled)
+                           payload(case, "check", candidate), deadline, cancelled, output_mode=output_mode)
             record["calls"].append(dict(checked, role="check"))
             output = checked.get("output")
             if check_valid(output):
@@ -592,6 +608,8 @@ def main():
     frozen.add_argument("--comparison-role", type=Path)
     frozen.add_argument("--repetitions", type=int, default=2)
     frozen.add_argument("--case", action="append", default=[], help="freeze only these existing case IDs")
+    frozen.add_argument("--output-mode", choices=("structured", "text-json"), default="structured")
+    frozen.add_argument("--comparison-output", choices=("structured", "text-json"))
     checked = sub.add_parser("verify")
     checked.add_argument("directory", type=Path)
     runner = sub.add_parser("run", help="explicitly start subscription model calls; never run by default CI")
@@ -601,7 +619,8 @@ def main():
     recovery.add_argument("directory", type=Path)
     args = parser.parse_args()
     if args.command == "freeze":
-        freeze(args.directory, args.suite, args.comparison_role, args.repetitions, args.case)
+        freeze(args.directory, args.suite, args.comparison_role, args.repetitions, args.case,
+               args.output_mode, args.comparison_output)
     if args.command == "run":
         if not args.claude:
             parser.error("Claude Code executable not found")

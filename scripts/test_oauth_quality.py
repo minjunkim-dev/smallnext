@@ -63,6 +63,41 @@ class FrozenEvaluationTests(unittest.TestCase):
                 qa.freeze(root / "invalid", "quality", case_ids=["unknown"])
             self.assertFalse((root / "invalid").exists())
 
+    def test_output_transport_comparison_keeps_role_schema_and_reference_fixed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            frozen = Path(directory) / "paired"
+            qa.freeze(frozen, "latency", repetitions=2, comparison_output="text-json")
+            manifest = qa.load(frozen)
+            self.assertEqual(manifest["output_modes"], {"baseline": "structured", "comparison": "text-json"})
+            self.assertEqual(manifest["variants"]["baseline"], manifest["variants"]["comparison"])
+            self.assertEqual(len(manifest["schedule"]), 8)
+            self.assertEqual(manifest["model"], "claude-haiku-5-5")
+            self.assertEqual(manifest["effort"], "xhigh")
+
+    def test_text_json_has_no_formatter_tool_or_repair_and_keeps_strict_schema(self):
+        with tempfile.TemporaryDirectory() as directory:
+            fake = Path(directory) / "claude"
+            fake.write_text("#!/usr/bin/env python3\nimport json,sys\n"
+                "assert '--json-schema' not in sys.argv\n"
+                "assert 'Output schema:' in sys.argv[-1]\n"
+                "print(json.dumps({'type':'stream_event','event':{'type':'message_start'}}))\n"
+                "print(json.dumps({'type':'result','subtype':'success','is_error':False,"
+                "'modelUsage':{'claude-haiku-5-5':{}},'result':json.dumps({'ok':True})}))\n")
+            fake.chmod(0o700)
+            schema = {"type": "object", "properties": {"ok": {"type": "boolean"}},
+                      "required": ["ok"], "additionalProperties": False}
+            result = qa.call(str(fake), "prompt", schema, {}, qa.monotonic()+2,
+                             threading.Event(), output_mode="text-json")
+            self.assertEqual(result["output"], {"ok": True})
+            self.assertEqual(result["provider_messages"], 1)
+            self.assertTrue(result["process_reaped"])
+            fake.write_text(fake.read_text().replace("json.dumps({'ok':True})", "json.dumps({'ok':'PRIVATE'})"))
+            result = qa.call(str(fake), "prompt", schema, {}, qa.monotonic()+2,
+                             threading.Event(), output_mode="text-json")
+            self.assertEqual(result["error"], "invalid_output")
+            self.assertNotIn("output", result)
+            self.assertNotIn("PRIVATE", json.dumps(result))
+
     def test_stream_failure_never_saves_reasoning_or_credentials(self):
         tracker = qa.Tracker()
         tracker.consume({"type": "stream_event", "event": {"type": "message_start"}}, 1)
