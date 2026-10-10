@@ -8,7 +8,7 @@ from pathlib import Path
 import sys
 from time import monotonic, time
 
-from oauth_quality import MODEL, call, digest, encoded, save, unique_object
+from oauth_quality import MODEL, call, digest, encoded, proposal_invalid_fields, save, unique_object
 
 
 class ParentCancelled:
@@ -23,7 +23,10 @@ def evaluate(args, data, claude, mode, parent):
     schema = json.loads(Path(args[args.index("--output-schema") + 1]).read_text())
     instructions = next(value for value in args if value.startswith("model_instructions_file="))
     prompt = Path(json.loads(instructions.split("=", 1)[1])).read_text()
-    return call(claude, prompt, schema, data, monotonic() + 120, ParentCancelled(parent), mode)
+    record = call(claude, prompt, schema, data, monotonic() + 120, ParentCancelled(parent), mode)
+    if "candidate" not in data and "status" in record.get("output", {}):
+        record["invalid_proposal_fields"] = proposal_invalid_fields(data, record["output"])
+    return record
 
 
 def events(record):
