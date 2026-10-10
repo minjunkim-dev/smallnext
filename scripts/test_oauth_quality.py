@@ -23,6 +23,7 @@ class FrozenEvaluationTests(unittest.TestCase):
             self.assertEqual(known["legacy_statuses"], ["minimum"])
             self.assertEqual(known["expected_statuses"], ["action", "minimum"])
             self.assertEqual(len(manifest["cases"]), 47)
+            self.assertEqual(manifest["output_modes"], {"baseline": "text-json"})
             self.assertEqual(sum("input" in c for c in manifest["cases"]), 14)
             self.assertEqual(qa.payload(known, "generate"), known["input"])
             candidate = {"status": "minimum"}
@@ -51,6 +52,71 @@ class FrozenEvaluationTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "manifest changed"):
                 qa.load(frozen)
 
+    def test_targeted_freeze_pins_only_known_cases_without_payload_metadata(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            qa.freeze(root / "probe", "quality", case_ids=["replacement-empty-invalid", "generate-next"])
+            manifest = qa.load(root / "probe")
+            self.assertEqual({c["id"] for c in manifest["cases"]}, {"replacement-empty-invalid", "generate-next"})
+            self.assertEqual(len(manifest["schedule"]), 2)
+            self.assertNotIn("case_ids", qa.payload(manifest["cases"][0], "check"))
+            with self.assertRaisesRegex(ValueError, "unknown case"):
+                qa.freeze(root / "invalid", "quality", case_ids=["unknown"])
+            self.assertFalse((root / "invalid").exists())
+
+    def test_output_transport_comparison_keeps_role_schema_and_reference_fixed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            frozen = Path(directory) / "paired"
+            qa.freeze(frozen, "latency", repetitions=2, output_mode="structured", comparison_output="text-json")
+            manifest = qa.load(frozen)
+            self.assertEqual(manifest["output_modes"], {"baseline": "structured", "comparison": "text-json"})
+            self.assertEqual(manifest["variants"]["baseline"], manifest["variants"]["comparison"])
+            self.assertEqual(len(manifest["schedule"]), 8)
+            self.assertEqual(manifest["model"], "claude-haiku-5-5")
+            self.assertEqual(manifest["effort"], "xhigh")
+
+    def test_text_json_has_no_formatter_tool_or_repair_and_keeps_strict_schema(self):
+        with tempfile.TemporaryDirectory() as directory:
+            fake = Path(directory) / "claude"
+            fake.write_text("#!/usr/bin/env python3\nimport json,sys\n"
+                "assert '--json-schema' not in sys.argv\n"
+                "assert 'Output schema:' in sys.argv[-1]\n"
+                "print(json.dumps({'type':'stream_event','event':{'type':'message_start'}}))\n"
+                "print(json.dumps({'type':'result','subtype':'success','is_error':False,"
+                "'modelUsage':{'claude-haiku-5-5':{}},'result':json.dumps({'ok':True})}))\n")
+            fake.chmod(0o700)
+            schema = {"type": "object", "properties": {"ok": {"type": "boolean"}},
+                      "required": ["ok"], "additionalProperties": False}
+            result = qa.call(str(fake), "prompt", schema, {}, qa.monotonic()+2,
+                             threading.Event(), output_mode="text-json")
+            self.assertEqual(result["output"], {"ok": True})
+            self.assertEqual(result["provider_messages"], 1)
+            self.assertTrue(result["process_reaped"])
+            fake.write_text(fake.read_text().replace("json.dumps({'ok':True})", "json.dumps({'ok':'PRIVATE'})"))
+            result = qa.call(str(fake), "prompt", schema, {}, qa.monotonic()+2,
+                             threading.Event(), output_mode="text-json")
+            self.assertEqual(result["error"], "invalid_output")
+            self.assertNotIn("output", result)
+            self.assertNotIn("PRIVATE", json.dumps(result))
+
+    def test_text_json_rejects_duplicate_keys_and_wrapped_or_multiple_objects(self):
+        with tempfile.TemporaryDirectory() as directory:
+            fake = Path(directory) / "claude"
+            schema = {"type": "object", "properties": {"ok": {"type": "boolean"}},
+                      "required": ["ok"], "additionalProperties": False}
+            for answer in ('{"ok":false,"ok":true}', '```json\n{"ok":true}\n```',
+                           '{"ok":true}{"ok":true}'):
+                fake.write_text("#!/usr/bin/env python3\nimport json\n"
+                    "print(json.dumps({'type':'stream_event','event':{'type':'message_start'}}))\n"
+                    "print(json.dumps({'type':'result','subtype':'success','is_error':False,"
+                    "'modelUsage':{'claude-haiku-5-5':{}},'result':" + repr(answer) + "}))\n")
+                fake.chmod(0o700)
+                result = qa.call(str(fake), "prompt", schema, {}, qa.monotonic()+2,
+                                 threading.Event(), output_mode="text-json")
+                self.assertEqual(result.get("error"), "invalid_output")
+                self.assertNotIn("output", result)
+                self.assertEqual(result["provider_messages"], 1)
+
     def test_stream_failure_never_saves_reasoning_or_credentials(self):
         tracker = qa.Tracker()
         tracker.consume({"type": "stream_event", "event": {"type": "message_start"}}, 1)
@@ -63,6 +129,31 @@ class FrozenEvaluationTests(unittest.TestCase):
         self.assertNotIn("PRIVATE", record)
         self.assertEqual(tracker.metadata()["provider_messages"], 2)
         self.assertEqual(tracker.metadata()["additional_provider_requests"], 1)
+
+    def test_safe_trace_identifies_schema_repair_before_second_message(self):
+        schema = {"type": "object", "properties": {"ok": {"type": "boolean"}},
+                  "required": ["ok"], "additionalProperties": False}
+        tracker = qa.Tracker(schema)
+        tracker.consume({"type": "stream_event", "event": {"type": "message_start",
+                         "message": {"id": "PRIVATE-ID"}}}, 1)
+        tracker.consume({"type": "stream_event", "event": {"type": "content_block_start",
+                         "index": 0, "content_block": {"type": "thinking", "thinking": "SECRET"}}}, 2)
+        tracker.consume({"type": "stream_event", "event": {"type": "content_block_stop", "index": 0}}, 4)
+        tracker.consume({"type": "assistant", "message": {"content": [
+            {"type": "tool_use", "name": "StructuredOutput", "input": {"ok": "SECRET"}}]}}, 5)
+        tracker.consume({"type": "user", "message": {"content": [
+            {"type": "tool_result", "is_error": True, "content": "PRIVATE-error"}]}}, 6)
+        with self.assertRaisesRegex(ValueError, "additional_provider_request"):
+            tracker.consume({"type": "stream_event", "event": {"type": "message_start",
+                             "message": {"id": "PRIVATE-ID"}}}, 7)
+        metadata = tracker.metadata()
+        self.assertIn({"event": "structured_output", "schema_valid": False, "invalid_fields": ["ok"],
+                       "seconds": 5}, metadata["trace"])
+        self.assertIn({"event": "tool_result", "is_error": True, "seconds": 6}, metadata["trace"])
+        self.assertTrue(metadata["trace"][-1]["duplicate_id"])
+        self.assertEqual(metadata["block_seconds"]["thinking"], 2)
+        self.assertNotIn("PRIVATE", json.dumps(metadata))
+        self.assertNotIn("SECRET", json.dumps(metadata))
 
     def test_runner_verifies_effective_model_and_reaps_timeout(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -101,7 +192,9 @@ class FrozenEvaluationTests(unittest.TestCase):
                 "'delta':{'type':'thinking_delta','thinking':'DO-NOT-SAVE'}}}))\n"
                 "print(json.dumps({'type':'result','subtype':'success','is_error':False,"
                 "'modelUsage':{'claude-haiku-5-5':{}},'duration_api_ms':2000,"
-                "'errors':['DO-NOT-SAVE'],'structured_output':"
+                "'errors':['DO-NOT-SAVE'],'result':json.dumps("
+                "{'verdict':'accept','criteria':[1,2,3,4,5],'evidence':'one quote','reason':'fits'}),"
+                "'structured_output':"
                 "{'verdict':'accept','criteria':[1,2,3,4,5],'evidence':'one quote','reason':'fits'}}))\n")
             fake.chmod(0o700)
             command = [sys.executable, str(qa.REPO / "scripts/oauth_quality.py"),
@@ -228,7 +321,7 @@ class FrozenEvaluationTests(unittest.TestCase):
                 "'goal_completed':False,'current_action_completed':False}\n"
                 "print(json.dumps({'type':'stream_event','event':{'type':'message_start'}}))\n"
                 "print(json.dumps({'type':'result','subtype':'success','is_error':False,"
-                "'modelUsage':{'claude-haiku-5-5':{}},'structured_output':out}))\n")
+                "'modelUsage':{'claude-haiku-5-5':{}},'result':json.dumps(out),'structured_output':out}))\n")
             fake.chmod(0o700)
             record = qa.evaluate(frozen, manifest, 0,
                 {"case":"useful-minimum-known", "variant":"baseline", "repeat":0}, str(fake), threading.Event())

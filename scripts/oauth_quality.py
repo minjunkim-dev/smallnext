@@ -56,10 +56,13 @@ def payload(case, role, candidate=None):
     raise ValueError("unknown role")
 
 
-def freeze(directory, suite, comparison=None, repetitions=2):
+def freeze(directory, suite, comparison=None, repetitions=2, case_ids=(),
+           output_mode="text-json", comparison_output=None):
     if suite not in {"quality", "latency"} or repetitions < 1:
         raise ValueError("invalid suite or repetition count")
-    if suite == "quality" and comparison is not None:
+    if output_mode not in {"structured", "text-json"} or comparison_output not in {None, "structured", "text-json"}:
+        raise ValueError("invalid output mode")
+    if suite == "quality" and (comparison is not None or comparison_output is not None):
         raise ValueError("comparison is only for paired latency replay")
     sources = {}
 
@@ -100,11 +103,18 @@ def freeze(directory, suite, comparison=None, repetitions=2):
         if c["id"] in references["status_overrides"]:
             c.update(deepcopy(references["status_overrides"][c["id"]]))
     variants = {"baseline": prompts["check"]}
-    if comparison is not None:
-        variants["comparison"] = Path(comparison).read_text(encoding="utf-8") + "\n" + contract
+    if comparison is not None or comparison_output is not None:
+        variants["comparison"] = (Path(comparison).read_text(encoding="utf-8") + "\n" + contract
+                                  if comparison is not None else prompts["check"])
+    output_modes = {name: comparison_output or output_mode if name == "comparison" else output_mode
+                    for name in variants}
     cases = checkers + generators if suite == "quality" else [
         dict(deepcopy(c), original_request=deepcopy(latency["original_request"]))
         for c in latency["cases"]]
+    if case_ids:
+        if set(case_ids) - {case["id"] for case in cases}:
+            raise ValueError("unknown case")
+        cases = [case for case in cases if case["id"] in case_ids]
     schedule = []
     for repeat in range(1 if suite == "quality" else repetitions):
         for index, case in enumerate(cases):
@@ -116,7 +126,7 @@ def freeze(directory, suite, comparison=None, repetitions=2):
     manifest = {"version": 1, "suite": suite, "model": MODEL, "effort": EFFORT,
                 "pipeline_seconds": 120, "parallelism": 2 if suite == "quality" else 1,
                 "sources": sources, "prompts": prompts, "schemas": schemas,
-                "variants": variants, "cases": cases, "schedule": schedule,
+                "variants": variants, "output_modes": output_modes, "cases": cases, "schedule": schedule,
                 "legacy_baseline": references["legacy_baseline"],
                 "boundary": "synthetic manual Claude CLI evaluation; not Rust HTTP or device validation"}
     directory.mkdir(mode=0o700, parents=True, exist_ok=False)
@@ -143,7 +153,7 @@ def load(directory):
 
 class Tracker:
     """Retain timings and counts, never provider text or error messages."""
-    def __init__(self):
+    def __init__(self, schema=None):
         self.messages = 0
         self.retries = 0
         self.max_tokens = 0
@@ -151,6 +161,11 @@ class Tracker:
         self.last_thinking = None
         self.characters = {}
         self.result = None
+        self.schema = schema
+        self.trace = []
+        self.message_ids = set()
+        self.blocks = {}
+        self.block_seconds = {}
 
     def consume(self, event, seconds):
         if not isinstance(event, dict):
@@ -164,10 +179,30 @@ class Tracker:
                 raise ValueError("invalid_stream")
             if detail.get("type") == "message_start":
                 self.messages += 1
+                message_id = detail.get("message", {}).get("id")
+                self.trace.append({"event": "message_start", "seconds": seconds,
+                                   "duplicate_id": bool(message_id and message_id in self.message_ids)})
+                if isinstance(message_id, str):
+                    self.message_ids.add(message_id)
                 if self.first_response is None:
                     self.first_response = seconds
                 if self.messages > 1:
                     raise ValueError("additional_provider_request")
+            if detail.get("type") == "content_block_start":
+                block = detail.get("content_block", {})
+                kind = block.get("type")
+                kind = kind if kind in {"thinking", "text", "tool_use", "redacted_thinking"} else "other"
+                self.blocks[detail.get("index")] = (kind, seconds)
+                self.trace.append({"event": "block_start", "kind": kind, "seconds": seconds})
+            if detail.get("type") == "content_block_stop":
+                block = self.blocks.pop(detail.get("index"), None)
+                if block:
+                    kind, start = block
+                    self.block_seconds[kind] = round(self.block_seconds.get(kind, 0) + seconds - start, 3)
+            reason = detail.get("delta", {}).get("stop_reason")
+            if reason:
+                self.trace.append({"event": "stop", "seconds": seconds, "reason": reason if reason in {
+                    "end_turn", "tool_use", "max_tokens", "stop_sequence", "refusal", "pause_turn"} else "other"})
             if detail.get("type") == "content_block_delta":
                 delta = detail.get("delta", {})
                 for kind, key in (("thinking_delta", "thinking"), ("text_delta", "text"),
@@ -179,6 +214,37 @@ class Tracker:
             if detail.get("delta", {}).get("stop_reason") == "max_tokens":
                 self.max_tokens += 1
                 raise ValueError("max_tokens")
+        if event.get("type") in {"assistant", "user"}:
+            for block in event.get("message", {}).get("content", []):
+                if not isinstance(block, dict):
+                    continue
+                if block.get("type") == "tool_use":
+                    known = block.get("name") == "StructuredOutput"
+                    valid = None
+                    invalid_fields = []
+                    if known and self.schema is not None:
+                        try:
+                            validate(block.get("input"), self.schema)
+                            valid = True
+                        except ValueError:
+                            valid = False
+                            value = block.get("input")
+                            if type(value) is dict and self.schema["type"] == "object":
+                                if set(value) - set(self.schema["properties"]):
+                                    invalid_fields.append("$extra")
+                                for key, rule in self.schema["properties"].items():
+                                    try:
+                                        validate(value.get(key), rule)
+                                    except ValueError:
+                                        invalid_fields.append(key)
+                            else:
+                                invalid_fields.append("$type")
+                    self.trace.append({"event": "structured_output" if known else "other_tool",
+                                       "schema_valid": valid, "invalid_fields": invalid_fields, "seconds": seconds})
+                if block.get("type") == "tool_result":
+                    self.trace.append({"event": "tool_result", "is_error": block.get("is_error") is True,
+                                       "seconds": seconds})
+        self.trace = self.trace[:100]
         if event.get("type") == "result":
             if self.result is not None:
                 raise ValueError("duplicate_result")
@@ -192,6 +258,7 @@ class Tracker:
                 "additional_provider_requests": max(0, self.messages - 1) + self.retries,
                 "max_tokens": self.max_tokens, "first_response_seconds": self.first_response,
                 "last_thinking_seconds": self.last_thinking, "delta_characters": self.characters,
+                "trace": self.trace, "block_seconds": self.block_seconds,
                 "actual_models": sorted({name if name == MODEL else "unexpected_model" for name in models}),
                 "api_seconds": numeric(result.get("duration_api_ms"), 1000),
                 "usage": {key: numeric(usage.get(key)) for key in (
@@ -200,6 +267,15 @@ class Tracker:
 
 def numeric(value, divisor=1):
     return value / divisor if type(value) in (int, float) and math.isfinite(value) and value >= 0 else None
+
+
+def unique_object(pairs):
+    value = {}
+    for key, item in pairs:
+        if key in value:
+            raise ValueError("invalid_output")
+        value[key] = item
+    return value
 
 
 def validate(value, schema):
@@ -237,19 +313,23 @@ def environment():
     return env
 
 
-def call(claude, prompt, schema, data, deadline, cancelled):
-    tracker = Tracker()
+def call(claude, prompt, schema, data, deadline, cancelled, output_mode="structured"):
+    tracker = Tracker(schema)
     started = monotonic()
     child = None
-    record = {"payload_sha256": digest(encoded(data)), "prompt_sha256": digest(prompt.encode()),
+    if output_mode == "text-json":
+        prompt += "\nReturn exactly one JSON object with these field types. No markdown or extra text. Output schema: " + json.dumps(schema)
+    record = {"output_mode": output_mode, "payload_sha256": digest(encoded(data)), "prompt_sha256": digest(prompt.encode()),
               "schema_sha256": digest(encoded(schema)), "process_reaped": False}
     command = [claude, "-p", "--model", MODEL, "--effort", EFFORT, "--tools", "",
                "--disable-slash-commands", "--strict-mcp-config", "--mcp-config", '{"mcpServers":{}}',
                "--setting-sources", "", "--settings",
                '{"forcedLoginMethod":"claudeai","disableAllHooks":true}',
                "--no-session-persistence", "--output-format", "stream-json", "--verbose",
-               "--include-partial-messages", "--json-schema", json.dumps(schema),
-               "--system-prompt", prompt]
+               "--include-partial-messages"]
+    if output_mode == "structured":
+        command.extend(["--json-schema", json.dumps(schema)])
+    command.extend(["--system-prompt", prompt])
     try:
         if cancelled.is_set():
             raise ValueError("cancelled")
@@ -295,6 +375,11 @@ def call(claude, prompt, schema, data, deadline, cancelled):
         if tracker.messages != 1:
             raise ValueError("unverified_message_count")
         output = result.get("structured_output")
+        if output_mode == "text-json":
+            try:
+                output = json.loads(result.get("result"), object_pairs_hook=unique_object)
+            except (ValueError, TypeError):
+                raise ValueError("invalid_output") from None
         validate(output, schema)
         record["output"] = output
     except ValueError as error:
@@ -366,10 +451,11 @@ def evaluate(directory, manifest, index, row, claude, cancelled):
     record = dict(row, index=index, calls=[], matched=False, legacy_matched=False,
                   manifest_sha256=digest((directory / "manifest.json").read_bytes()))
     candidate = None
+    output_mode = manifest["output_modes"][row["variant"]]
     try:
         if "input" in case:
             generated = call(claude, manifest["prompts"]["generate"], schema_for(manifest, case["input"]),
-                             payload(case, "generate"), deadline, cancelled)
+                             payload(case, "generate"), deadline, cancelled, output_mode=output_mode)
             record["calls"].append(dict(generated, role="generate"))
             candidate = generated.get("output")
             if candidate is not None and not proposal_valid(case["input"], candidate):
@@ -377,7 +463,7 @@ def evaluate(directory, manifest, index, row, claude, cancelled):
                 candidate = None
         if "input" not in case or candidate is not None:
             checked = call(claude, manifest["variants"][row["variant"]], manifest["schemas"]["check"],
-                           payload(case, "check", candidate), deadline, cancelled)
+                           payload(case, "check", candidate), deadline, cancelled, output_mode=output_mode)
             record["calls"].append(dict(checked, role="check"))
             output = checked.get("output")
             if check_valid(output):
@@ -530,6 +616,9 @@ def main():
     frozen.add_argument("--suite", choices=("quality", "latency"), required=True)
     frozen.add_argument("--comparison-role", type=Path)
     frozen.add_argument("--repetitions", type=int, default=2)
+    frozen.add_argument("--case", action="append", default=[], help="freeze only these existing case IDs")
+    frozen.add_argument("--output-mode", choices=("structured", "text-json"), default="text-json")
+    frozen.add_argument("--comparison-output", choices=("structured", "text-json"))
     checked = sub.add_parser("verify")
     checked.add_argument("directory", type=Path)
     runner = sub.add_parser("run", help="explicitly start subscription model calls; never run by default CI")
@@ -539,7 +628,8 @@ def main():
     recovery.add_argument("directory", type=Path)
     args = parser.parse_args()
     if args.command == "freeze":
-        freeze(args.directory, args.suite, args.comparison_role, args.repetitions)
+        freeze(args.directory, args.suite, args.comparison_role, args.repetitions, args.case,
+               args.output_mode, args.comparison_output)
     if args.command == "run":
         if not args.claude:
             parser.error("Claude Code executable not found")
