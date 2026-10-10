@@ -6,6 +6,8 @@ import tempfile
 import threading
 import subprocess
 import sys
+import contextlib
+import io
 import unittest
 
 import oauth_quality as qa
@@ -20,6 +22,8 @@ class FrozenEvaluationTests(unittest.TestCase):
             known = next(c for c in manifest["cases"] if c["id"] == "useful-minimum-known")
             self.assertEqual(known["legacy_statuses"], ["minimum"])
             self.assertEqual(known["expected_statuses"], ["action", "minimum"])
+            self.assertEqual(len(manifest["cases"]), 47)
+            self.assertEqual(sum("input" in c for c in manifest["cases"]), 14)
             self.assertEqual(qa.payload(known, "generate"), known["input"])
             candidate = {"status": "minimum"}
             self.assertEqual(qa.payload(known, "check", candidate), {
@@ -233,6 +237,23 @@ class FrozenEvaluationTests(unittest.TestCase):
             self.assertEqual(record["calls"][1]["error"], "timed_out")
             self.assertTrue(record["calls"][1]["process_reaped"])
             self.assertFalse(record["matched"])
+
+    def test_partial_summary_recovery_never_retries_provider_calls(self):
+        with tempfile.TemporaryDirectory() as directory:
+            frozen = Path(directory) / "frozen"
+            qa.freeze(frozen, "latency")
+            (frozen / "results").mkdir()
+            qa.save(frozen / "run-started.json", {
+                "manifest_sha256": hashlib.sha256((frozen / "manifest.json").read_bytes()).hexdigest()})
+            with contextlib.redirect_stdout(io.StringIO()):
+                qa.recover_summary(frozen)
+            summary = json.loads((frozen / "summary.json").read_bytes())
+            self.assertEqual(summary["recorded"], 0)
+            self.assertFalse(summary["passed"])
+            before = (frozen / "summary.json").read_bytes()
+            with contextlib.redirect_stdout(io.StringIO()):
+                qa.recover_summary(frozen)
+            self.assertEqual((frozen / "summary.json").read_bytes(), before)
 
     def test_invalid_candidate_is_not_sent_to_checker(self):
         from unittest.mock import patch

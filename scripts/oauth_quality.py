@@ -277,9 +277,8 @@ def call(claude, prompt, schema, data, deadline, cancelled):
                             tracker.consume(json.loads(line), round(monotonic() - started, 3))
                 if buffer.strip():
                     tracker.consume(json.loads(buffer), round(monotonic() - started, 3))
-            child.wait(timeout=max(.001, deadline - monotonic()))
         result = tracker.result or {}
-        if child.returncode != 0 or result.get("subtype") != "success" or result.get("is_error") is not False:
+        if result.get("subtype") != "success" or result.get("is_error") is not False:
             raise ValueError("provider_failed")
         if not isinstance(result.get("modelUsage"), dict) or set(result["modelUsage"]) != {MODEL}:
             raise ValueError("wrong_model")
@@ -303,14 +302,16 @@ def call(claude, prompt, schema, data, deadline, cancelled):
             for sig in (signal.SIGTERM, signal.SIGKILL):
                 try:
                     os.killpg(child.pid, sig)
-                except ProcessLookupError:
+                except (ProcessLookupError, PermissionError):
+                    # macOS can return EPERM for a group containing only an unreaped zombie.
                     pass
                 if sig == signal.SIGTERM:
-                    try:
-                        child.wait(timeout=.5)
-                    except subprocess.TimeoutExpired:
-                        pass
+                    # Keep the group leader unreaped until both signals to prevent PID reuse.
+                    threading.Event().wait(.05)
             child.wait()
+            if child.returncode != 0 and "error" not in record:
+                record.pop("output", None)
+                record["error"] = "provider_failed"
             child.stdout.close()
             record["process_reaped"] = True
             try:
@@ -318,6 +319,8 @@ def call(claude, prompt, schema, data, deadline, cancelled):
                 record["process_group_alive"] = True
             except ProcessLookupError:
                 record["process_group_alive"] = False
+            except PermissionError:
+                record["process_group_alive"] = True
         record.update(tracker.metadata())
         record["seconds"] = round(monotonic() - started, 3)
     return record
@@ -390,7 +393,8 @@ def run(directory, claude):
             and account.get("apiProvider") == "firstParty"):
         raise ValueError("Claude Code subscription OAuth login required")
     # Exclusive claim prevents retries, concurrent runs and replacement of failed measurements.
-    save(directory / "run-started.json", {"manifest_sha256": digest((directory / "manifest.json").read_bytes())})
+    save(directory / "run-started.json", {"manifest_sha256": digest((directory / "manifest.json").read_bytes()),
+                                          "controller_pid": os.getpid()})
     (directory / "results").mkdir(mode=0o700)
     cancelled = threading.Event()
     previous = {sig: signal.signal(sig, lambda *_: cancelled.set()) for sig in (signal.SIGINT, signal.SIGTERM)}
@@ -442,6 +446,25 @@ def summarize(directory, manifest, records):
     return summary["passed"]
 
 
+def recover_summary(directory):
+    manifest = load(directory)
+    claim = json.loads((directory / "run-started.json").read_bytes())
+    if "controller_pid" in claim:
+        try:
+            os.kill(claim["controller_pid"], 0)
+        except ProcessLookupError:
+            pass
+        else:
+            raise ValueError("controller still alive; do not summarize an active run")
+    if (directory / "summary.json").exists():
+        print((directory / "summary.json").read_text())
+        return
+    records = [json.loads(path.read_bytes()) for path in sorted((directory / "results").glob("*.json"))]
+    if any(record["manifest_sha256"] != claim["manifest_sha256"] for record in records):
+        raise ValueError("record belongs to a different manifest")
+    summarize(directory, manifest, records)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -455,6 +478,8 @@ def main():
     runner = sub.add_parser("run", help="explicitly start subscription model calls; never run by default CI")
     runner.add_argument("directory", type=Path)
     runner.add_argument("--claude", default=shutil.which("claude"))
+    recovery = sub.add_parser("summarize", help="recover an interrupted summary without any provider calls")
+    recovery.add_argument("directory", type=Path)
     args = parser.parse_args()
     if args.command == "freeze":
         freeze(args.directory, args.suite, args.comparison_role, args.repetitions)
@@ -462,6 +487,9 @@ def main():
         if not args.claude:
             parser.error("Claude Code executable not found")
         raise SystemExit(0 if run(args.directory, args.claude) else 1)
+    if args.command == "summarize":
+        recover_summary(args.directory)
+        return
     manifest = load(args.directory)
     print(json.dumps({"suite": manifest["suite"], "scheduled_cases": len(manifest["schedule"]),
                       "manifest_sha256": digest((args.directory / "manifest.json").read_bytes())}))
