@@ -1,0 +1,93 @@
+{
+  "issue": 96,
+  "kind": "manual synthetic OAuth QA through Rust development HTTP and iOS Debug",
+  "model": "claude-haiku-5-5",
+  "requested_effort": "xhigh",
+  "auth": "Claude Code claude.ai subscription OAuth",
+  "original_input_sha256": "50ac8ea677b9f8c64fa526dd480b9666ac8801365d54912106bb0e642c91e728",
+  "historical_quality_receipt_sha256": "e02868c72fc222eabf72003a134cab9885eda6918cc2db0685557a49f830e50b",
+  "historical_receipt_preserved": true,
+  "http": {
+    "structured_seconds": 66.142,
+    "text_json_seconds": 40.589,
+    "both_dispositions": "accepted",
+    "controlled_candidate_comparison": false
+  },
+  "ios_structured": {
+    "request_to_observed_state_seconds": 34.599,
+    "result": "failed",
+    "stage": "generate",
+    "error": "additional_provider_request",
+    "checker_started": false
+  },
+  "ios_text_json": {
+    "generate_cli_seconds": 24.458,
+    "generate_api_seconds": 23.301,
+    "check_cli_seconds": 22.376,
+    "check_api_seconds": 21.403,
+    "rust_pipeline_seconds": 47.201298,
+    "rust_other_seconds": 0.367298,
+    "ios_http_seconds": 47.206489,
+    "transport_other_seconds": 0.005191,
+    "request_preparation_seconds": 0.009875,
+    "post_http_state_observation_seconds": 0.047255,
+    "request_to_observed_state_seconds": 47.263619,
+    "result": "confirmation question displayed",
+    "actions_and_completions_preserved": true,
+    "restored_after_relaunch": true,
+    "observation_boundary": "CoreFlowView.onChange and runtime UI snapshot; not first physical pixel"
+  },
+  "fresh_quality": {
+    "manifest_sha256": "85a2ee961f90a5e0fa3d9257c9b8134b4b83f501b1e2916c246639626ebb0f6f",
+    "bridge_sha256": "6bc5dc3d109c73943c265e872091bed2aaad0cbc420e62215255df16fcca9fc1",
+    "cases": 47,
+    "matched": 43,
+    "direct_checker_cases": 33,
+    "direct_checker_matched": 32,
+    "rust_http_generator_cases": 14,
+    "rust_http_generator_matched": 11,
+    "legacy_reference_matched": 11,
+    "role_calls": 59,
+    "valid_output_calls": 55,
+    "provider_messages": 59,
+    "additional_provider_requests": 0,
+    "max_tokens": 0,
+    "unreaped_processes": 0,
+    "remaining_process_groups": 0,
+    "actual_models": ["claude-haiku-5-5"],
+    "failures": [
+      {"case": "useful-minimum-unknown-invalid", "stage": "check", "error": "invalid_output", "path": "direct CLI"},
+      {"case": "generate-missing-evidence", "stage": "check", "error": "invalid_output", "path": "Rust HTTP"},
+      {"case": "useful-minimum-unknown", "stage": "generate", "error": "invalid_output", "path": "Rust HTTP"},
+      {"case": "useful-minimum-known", "stage": "generate", "error": "invalid_output", "path": "Rust HTTP"}
+    ],
+    "all_invalid_outputs_blocked": true,
+    "retry_or_reference_replacement": false
+  },
+  "separate_diagnostics": {
+    "direct_calls": 6,
+    "direct_valid_outputs": 6,
+    "direct_generator_bytes_match_rust": false,
+    "rust_http_cases": 3,
+    "rust_http_accepted": 3,
+    "rust_http_role_calls": 6,
+    "rust_http_generation_payload_prompt_schema_match_first_run": true,
+    "rust_http_checker_candidates_regenerated": true,
+    "format_errors_reproduced": 0,
+    "additional_provider_requests": 0,
+    "first_quality_run_replaced": false,
+    "first_invalid_field_recovered": false
+  },
+  "offline_tests": {"bridge": 4, "existing_harness": 25, "python": 136, "rust": 30, "ios": 87},
+  "boundaries": {
+    "all_feature_flags_default_off": true,
+    "temporary_debug_instrumentation_removed": true,
+    "product_sla_defined": false,
+    "thirty_second_diagnostic_threshold_met": false,
+    "physical_device_verified": false,
+    "voiceover_verified": false,
+    "production_provider_changed": false,
+    "production_activated": false,
+    "deployment_verified": false
+  }
+}
