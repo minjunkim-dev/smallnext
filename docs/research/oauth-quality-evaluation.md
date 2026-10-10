@@ -1,5 +1,8 @@
 # 수동 구독 OAuth 품질 평가 #97
 
+실제 Rust HTTP/iOS 경로의 어댑터와 검증 경계는
+[HTTP/iOS 검사 지연 진단](http-ios-checker-latency.md)을 참조한다.
+
 [#97](https://github.com/minjunkim-dev/smallnext/issues/97)의 합성 회귀 실행기다.
 Python 3 표준 라이브러리와 기존 로그인된 Claude Code를 사용한다.
 macOS·Linux의 POSIX 프로세스 그룹을 사용한다. Windows는 지원하지 않는다.
