@@ -24,12 +24,12 @@ class OAuthBridgeTests(unittest.TestCase):
         self.prompt.write_text("original contract")
         self.fake = self.root / "claude"
         self.fake.write_text("#!/usr/bin/env python3\nimport json,sys\n"
-            "assert '--json-schema' not in sys.argv\n"
+            "assert '--json-schema' in sys.argv\n"
             "assert sys.argv[sys.argv.index('--effort')+1]=='xhigh'\n"
             "assert sys.argv[sys.argv.index('--model')+1]=='claude-haiku-5-5'\n"
             "print(json.dumps({'type':'stream_event','event':{'type':'message_start'}}))\n"
             "print(json.dumps({'type':'result','subtype':'success','is_error':False,"
-            "'modelUsage':{'claude-haiku-5-5':{}},'result':json.dumps({'ok':True})}))\n")
+            "'modelUsage':{'claude-haiku-5-5':{}},'result':json.dumps({'ok':True}),'structured_output':{'ok':True}}))\n")
         self.fake.chmod(0o700)
         self.command = [sys.executable, str(Path(bridge.__file__)), "--claude", str(self.fake),
                         "--records", str(self.root / "records"), "--output-schema", str(self.schema),
@@ -38,14 +38,14 @@ class OAuthBridgeTests(unittest.TestCase):
     def invoke(self):
         return subprocess.run(self.command, input="{}", text=True, capture_output=True, timeout=5)
 
-    def test_default_single_json_reaches_rust_event_parser(self):
+    def test_default_structured_json_reaches_rust_event_parser(self):
         result = self.invoke()
         self.assertEqual(result.returncode, 0, result.stdout)
         events = [json.loads(line) for line in result.stdout.splitlines()]
         self.assertEqual(events[-1], {"type": "turn.completed"})
         self.assertEqual(json.loads(events[0]["item"]["text"]), {"ok": True})
         record = json.loads(next((self.root / "records").glob("*.json")).read_text())
-        self.assertEqual(record["output_mode"], "text-json")
+        self.assertEqual(record["output_mode"], "structured")
         self.assertEqual(record["provider_messages"], 1)
         self.assertEqual(record["requested_effort"], "xhigh")
         self.assertNotIn("output", record)
@@ -68,37 +68,40 @@ class OAuthBridgeTests(unittest.TestCase):
     def test_domain_guard_reports_only_field_names_without_repairing_output(self):
         schema = Path(bridge.__file__).parent.parent / "services/api/src/development_ai/generate.json"
         self.schema.write_text(schema.read_text())
-        candidate = {"status": "need_info", "action": "Question?", "completion_condition": "Answered",
-                     "reason": "Missing fact", "estimated_minutes": 1, "remaining_work": ["PRIVATE"],
-                     "preserved_completed_ids": [], "goal_completed": False, "current_action_completed": False}
+        candidate = {"status": "need_info", "action": " ", "completion_condition": "Answered",
+                     "reason": "PRIVATE", "estimated_minutes": 1}
         self.fake.write_text("#!/usr/bin/env python3\nimport json\n"
             "print(json.dumps({'type':'stream_event','event':{'type':'message_start'}}))\n"
             "print(json.dumps({'type':'result','subtype':'success','is_error':False,"
-            "'modelUsage':{'claude-haiku-5-5':{}},'result':" + repr(json.dumps(candidate)) + "}))\n")
+            "'modelUsage':{'claude-haiku-5-5':{}},'structured_output':" + repr(candidate) + "}))\n")
         data = {"available_minutes": 5, "remaining_work": ["required work"], "completed_ids": ["done"]}
         result = subprocess.run(self.command, input=json.dumps(data), text=True, capture_output=True, timeout=5)
         self.assertEqual(result.returncode, 0)
         # Rust still owns the guard; the adapter must not repair or accept its proposal itself.
         item = json.loads(result.stdout.splitlines()[0])["item"]
-        self.assertEqual(json.loads(item["text"]), candidate)
+        self.assertEqual(json.loads(item["text"]), dict(candidate, remaining_work=data["remaining_work"],
+            preserved_completed_ids=data["completed_ids"], goal_completed=False, current_action_completed=False))
         record = json.loads(next((self.root / "records").glob("*.json")).read_text())
-        self.assertEqual(record["invalid_proposal_fields"], ["remaining_work", "preserved_completed_ids"])
+        self.assertEqual(record["invalid_proposal_fields"], ["action"])
         self.assertNotIn("PRIVATE", json.dumps(record))
         self.assertNotIn("output", record)
 
     def test_adapter_kill_reaps_claude_without_parent_handler(self):
-        marker = self.root / "pid"
-        self.fake.write_text("#!/usr/bin/env python3\nimport os,time\n"
-                            + f"open({str(marker)!r},'w').write(str(os.getpid()))\n"
+        marker = self.root / "pids"
+        marker.mkdir()
+        self.schema.write_bytes((Path(bridge.__file__).parent.parent /
+                                 "services/api/src/development_ai/check.json").read_bytes())
+        self.fake.write_text("#!/usr/bin/env python3\nimport os,time\nfrom pathlib import Path\n"
+                            + f"(Path({str(marker)!r})/str(os.getpid())).touch()\n"
                             + "time.sleep(20)\n")
         process = subprocess.Popen(self.command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        process.stdin.write(b"{}")
+        process.stdin.write(json.dumps({"original_request": {"request_kind":"smaller"}, "candidate": {"status":"need_info"}}).encode())
         process.stdin.close()
         limit = time.monotonic() + 3
-        while not marker.exists() and time.monotonic() < limit:
+        while len(list(marker.iterdir())) < 1 and time.monotonic() < limit:
             time.sleep(.01)
-        self.assertTrue(marker.exists())
-        pid = int(marker.read_text())
+        pids = [int(path.name) for path in marker.iterdir()]
+        self.assertEqual(len(pids), 1)
         process.kill()
         process.wait(timeout=2)
         process.stdout.close()
@@ -110,8 +113,10 @@ class OAuthBridgeTests(unittest.TestCase):
         self.assertEqual(record["error"], "cancelled")
         self.assertTrue(record["process_reaped"])
         self.assertFalse(record["process_group_alive"])
-        with self.assertRaises(ProcessLookupError):
-            os.kill(pid, 0)
+        self.assertEqual(record["provider_messages"], 0)
+        for pid in pids:
+            with self.assertRaises(ProcessLookupError):
+                os.kill(pid, 0)
 
     def test_inherited_parent_is_not_captured_after_parent_death(self):
         owner = os.getppid()

@@ -23,7 +23,7 @@ class FrozenEvaluationTests(unittest.TestCase):
             self.assertEqual(known["legacy_statuses"], ["minimum"])
             self.assertEqual(known["expected_statuses"], ["action", "minimum"])
             self.assertEqual(len(manifest["cases"]), 47)
-            self.assertEqual(manifest["output_modes"], {"baseline": "text-json"})
+            self.assertEqual(manifest["output_modes"], {"baseline": "structured"})
             self.assertEqual(sum("input" in c for c in manifest["cases"]), 14)
             self.assertEqual(qa.payload(known, "generate"), known["input"])
             candidate = {"status": "minimum"}
@@ -80,6 +80,7 @@ class FrozenEvaluationTests(unittest.TestCase):
             fake = Path(directory) / "claude"
             fake.write_text("#!/usr/bin/env python3\nimport json,sys\n"
                 "assert '--json-schema' not in sys.argv\n"
+                "assert sys.argv[sys.argv.index('--max-turns')+1]=='1'\n"
                 "assert 'Output schema:' in sys.argv[-1]\n"
                 "assert 'starting with { and ending with }' in sys.argv[-1]\n"
                 "assert 'Do not wrap the object in backticks or code fences' in sys.argv[-1]\n"
@@ -118,6 +119,85 @@ class FrozenEvaluationTests(unittest.TestCase):
             record = qa.call(str(fake), "preserve source text", schema, {"source": source},
                              qa.monotonic()+2, threading.Event(), output_mode="text-json")
             self.assertEqual(record.get("output"), {"text": source})
+
+    def test_generation_decision_keeps_system_state_out_of_model_output(self):
+        schema = json.loads((qa.REPO / "services/api/src/development_ai/generate.json").read_text())
+        data = {"remaining_work": ['quoted "work"\n`source`'], "completed_ids": ["done"], "available_minutes": 5}
+        decision = {"status": "need_info", "action": "무엇이 막혔나요?", "completion_condition": "답변 1개",
+                    "reason": "첫 막힘 확인", "estimated_minutes": 1}
+        owned = {"remaining_work": data["remaining_work"], "preserved_completed_ids": data["completed_ids"],
+                 "goal_completed": False, "current_action_completed": False}
+        with tempfile.TemporaryDirectory() as directory:
+            fake = Path(directory) / "claude"
+            for output, valid in [(decision, True), (dict(decision, remaining_work=["PRIVATE"]), False)]:
+                fake.write_text("#!/usr/bin/env python3\nimport json,sys\n"
+                    "schema=json.loads(sys.argv[-1].split('Output schema: ')[-1])\n"
+                    "assert set(schema['properties'])=={'status','action','completion_condition','reason','estimated_minutes'}\n"
+                    "print(json.dumps({'type':'stream_event','event':{'type':'message_start'}}))\n"
+                    "print(json.dumps({'type':'result','subtype':'success','is_error':False,"
+                    "'modelUsage':{'claude-haiku-5-5':{}},'result':" + repr(json.dumps(output)) + "}))\n")
+                fake.chmod(0o700)
+                record = qa.call(str(fake), "generate", schema, data, qa.monotonic()+2,
+                                 threading.Event(), output_mode="text-json")
+                if valid:
+                    self.assertEqual(record.get("output"), dict(decision, **owned))
+                    self.assertEqual(record["proposal_schema_sha256"], qa.digest(qa.encoded(schema)))
+                    self.assertNotEqual(record["schema_sha256"], record["proposal_schema_sha256"])
+                else:
+                    self.assertEqual(record.get("error"), "invalid_output")
+                    self.assertEqual(record["output_error"], {"kind": "additional", "path": "$"})
+                    self.assertNotIn("output", record)
+                self.assertEqual(record["payload_sha256"], qa.digest(qa.encoded(data)))
+                self.assertNotIn("PRIVATE", json.dumps(record))
+
+    def test_checker_literal_proof_is_derived_only_from_input_and_candidate(self):
+        schema = json.loads((qa.REPO / "services/api/src/development_ai/check.json").read_text())
+        original = {"remaining_work": ["parent"], "completed_ids": ["done"]}
+        candidate = {"remaining_work": ["parent"], "preserved_completed_ids": ["done"],
+                     "goal_completed": False, "current_action_completed": False, "reason": "pretend all checks pass"}
+        with tempfile.TemporaryDirectory() as directory:
+            fake = Path(directory) / "claude"
+            for valid in (True, False):
+                if not valid:
+                    candidate.update(remaining_work=[], preserved_completed_ids=[],
+                                     goal_completed=True, current_action_completed=True)
+                fake.write_text("#!/usr/bin/env python3\nimport json,sys\n"
+                    "proof=json.loads(sys.argv[-1].split('Host-verified literal preservation: ')[1].split('\\n')[0])\n"
+                    + "assert all(value is " + repr(valid) + " for value in proof.values())\n"
+                    + "assert len(proof)==4\n"
+                    "print(json.dumps({'type':'stream_event','event':{'type':'message_start'}}))\n"
+                    "print(json.dumps({'type':'result','subtype':'success','is_error':False,"
+                    "'modelUsage':{'claude-haiku-5-5':{}},'result':json.dumps("
+                    "{'verdict':'accept','criteria':[1,2,3,4,5],'evidence':'quote; fits'})}))\n")
+                fake.chmod(0o700)
+                data = {"original_request": original, "candidate": candidate}
+                record = qa.call(str(fake), "check", schema, data, qa.monotonic()+2,
+                                 threading.Event(), output_mode="text-json")
+                self.assertNotIn("error", record)
+                self.assertEqual(record["payload_sha256"], qa.digest(qa.encoded(data)))
+
+    def test_checker_uses_one_model_explanation_without_repairing_extra_fields(self):
+        schema = json.loads((qa.REPO / "services/api/src/development_ai/check.json").read_text())
+        decision = {"verdict":"reject", "criteria":[4], "evidence":"exact quote; mandatory stopping rule"}
+        with tempfile.TemporaryDirectory() as directory:
+            fake = Path(directory) / "claude"
+            for output, valid in [(decision, True), (dict(decision, reason="PRIVATE"), False)]:
+                fake.write_text("#!/usr/bin/env python3\nimport json,sys\n"
+                    "schema=json.loads(sys.argv[-1].split('Output schema: ')[-1])\n"
+                    "assert set(schema['properties'])=={'verdict','criteria','evidence'}\n"
+                    "print(json.dumps({'type':'stream_event','event':{'type':'message_start'}}))\n"
+                    "print(json.dumps({'type':'result','subtype':'success','is_error':False,"
+                    "'modelUsage':{'claude-haiku-5-5':{}},'result':" + repr(json.dumps(output)) + "}))\n")
+                fake.chmod(0o700)
+                record = qa.call(str(fake), "check", schema, {}, qa.monotonic()+2,
+                                 threading.Event(), output_mode="text-json")
+                if valid:
+                    self.assertEqual(record.get("output"), dict(decision, reason=decision["evidence"]))
+                    self.assertEqual(record["check_schema_sha256"], qa.digest(qa.encoded(schema)))
+                else:
+                    self.assertEqual(record.get("error"), "invalid_output")
+                    self.assertNotIn("output", record)
+                self.assertNotIn("PRIVATE", json.dumps(record))
 
     def test_text_json_rejects_duplicate_keys_and_wrapped_or_multiple_objects(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -197,7 +277,7 @@ class FrozenEvaluationTests(unittest.TestCase):
         self.assertEqual(tracker.metadata()["provider_messages"], 2)
         self.assertEqual(tracker.metadata()["additional_provider_requests"], 1)
 
-    def test_safe_trace_identifies_schema_repair_before_second_message(self):
+    def test_invalid_structured_output_stops_before_schema_repair(self):
         schema = {"type": "object", "properties": {"ok": {"type": "boolean"}},
                   "required": ["ok"], "additionalProperties": False}
         tracker = qa.Tracker(schema)
@@ -206,21 +286,34 @@ class FrozenEvaluationTests(unittest.TestCase):
         tracker.consume({"type": "stream_event", "event": {"type": "content_block_start",
                          "index": 0, "content_block": {"type": "thinking", "thinking": "SECRET"}}}, 2)
         tracker.consume({"type": "stream_event", "event": {"type": "content_block_stop", "index": 0}}, 4)
-        tracker.consume({"type": "assistant", "message": {"content": [
-            {"type": "tool_use", "name": "StructuredOutput", "input": {"ok": "SECRET"}}]}}, 5)
-        tracker.consume({"type": "user", "message": {"content": [
-            {"type": "tool_result", "is_error": True, "content": "PRIVATE-error"}]}}, 6)
-        with self.assertRaisesRegex(ValueError, "additional_provider_request"):
-            tracker.consume({"type": "stream_event", "event": {"type": "message_start",
-                             "message": {"id": "PRIVATE-ID"}}}, 7)
+        with self.assertRaisesRegex(qa.OutputError, "invalid_output"):
+            tracker.consume({"type": "assistant", "message": {"content": [
+                {"type": "tool_use", "name": "StructuredOutput", "input": {"ok": "SECRET"}}]}}, 5)
         metadata = tracker.metadata()
         self.assertIn({"event": "structured_output", "schema_valid": False, "invalid_fields": ["ok"],
                        "seconds": 5}, metadata["trace"])
-        self.assertIn({"event": "tool_result", "is_error": True, "seconds": 6}, metadata["trace"])
-        self.assertTrue(metadata["trace"][-1]["duplicate_id"])
+        self.assertEqual(metadata["provider_messages"], 1)
+        self.assertEqual(metadata["additional_provider_requests"], 0)
         self.assertEqual(metadata["block_seconds"]["thinking"], 2)
         self.assertNotIn("PRIVATE", json.dumps(metadata))
         self.assertNotIn("SECRET", json.dumps(metadata))
+
+    def test_structured_argument_stream_preserves_duplicate_key_detection(self):
+        schema = {"type": "object", "properties": {"ok": {"type": "boolean"}},
+                  "required": ["ok"], "additionalProperties": False}
+        for raw, kind in [('{"ok":true,"ok":false}', 'duplicate_key'),
+                          ('{"ok":true,"PRIVATE":1}', 'additional'),
+                          ('{"ok":"PRIVATE"}', 'type'), ('{', 'json_syntax')]:
+            tracker = qa.Tracker(schema)
+            tracker.consume({"type":"stream_event", "event":{"type":"content_block_start", "index":0,
+                             "content_block":{"type":"tool_use", "name":"StructuredOutput"}}}, 1)
+            tracker.consume({"type":"stream_event", "event":{"type":"content_block_delta", "index":0,
+                             "delta":{"type":"input_json_delta", "partial_json":raw}}}, 2)
+            with self.subTest(kind=kind):
+                with self.assertRaises(qa.OutputError) as caught:
+                    tracker.consume({"type":"stream_event", "event":{"type":"content_block_stop", "index":0}}, 3)
+                self.assertEqual(caught.exception.detail['kind'], kind)
+                self.assertNotIn("PRIVATE", json.dumps(tracker.metadata()))
 
     def test_runner_verifies_effective_model_and_reaps_timeout(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -254,15 +347,17 @@ class FrozenEvaluationTests(unittest.TestCase):
                 " sys.exit()\n"
                 "data=json.load(sys.stdin)\n"
                 "assert set(data)=={'original_request','candidate'}\n"
+                "schema=json.loads(sys.argv[sys.argv.index('--json-schema')+1])\n"
+                "criteria=schema['properties']['criteria']['items'].get('enum',[1,2,3,4,5])\n"
                 "print(json.dumps({'type':'stream_event','event':{'type':'message_start'}}))\n"
                 "print(json.dumps({'type':'stream_event','event':{'type':'content_block_delta',"
                 "'delta':{'type':'thinking_delta','thinking':'DO-NOT-SAVE'}}}))\n"
                 "print(json.dumps({'type':'result','subtype':'success','is_error':False,"
                 "'modelUsage':{'claude-haiku-5-5':{}},'duration_api_ms':2000,"
                 "'errors':['DO-NOT-SAVE'],'result':json.dumps("
-                "{'verdict':'accept','criteria':[1,2,3,4,5],'evidence':'one quote','reason':'fits'}),"
+                "{'verdict':'accept','criteria':criteria,'evidence':'one quote; fits'}),"
                 "'structured_output':"
-                "{'verdict':'accept','criteria':[1,2,3,4,5],'evidence':'one quote','reason':'fits'}}))\n")
+                "{'verdict':'accept','criteria':criteria,'evidence':'one quote; fits'}}))\n")
             fake.chmod(0o700)
             command = [sys.executable, str(qa.REPO / "scripts/oauth_quality.py"),
                        "run", str(frozen), "--claude", str(fake)]
@@ -271,7 +366,9 @@ class FrozenEvaluationTests(unittest.TestCase):
             summary = json.loads((frozen / "summary.json").read_bytes())
             self.assertEqual(summary["matched"], 4)
             self.assertEqual(summary["provider_messages"], 4)
+            self.assertEqual(summary["model_calls"], 4)
             self.assertEqual(summary["timings"]["baseline"]["median"], 2)
+            self.assertEqual(len(summary["timings"]["baseline"]["checker_wall_seconds"]), 4)
             self.assertEqual(summary["legacy_baseline"]["status_matched"], 13)
             before = (frozen / "results/000.json").read_bytes()
             again = subprocess.run(command, capture_output=True, timeout=10)
@@ -375,17 +472,15 @@ class FrozenEvaluationTests(unittest.TestCase):
             frozen = root / "frozen"
             qa.freeze(frozen, "quality")
             manifest = qa.load(frozen)
-            manifest["pipeline_seconds"] = 1
+            manifest["pipeline_seconds"] = 2
             (frozen / "results").mkdir()
             fake = root / "claude"
             fake.write_text("#!/usr/bin/env python3\nimport json,sys,time\ndata=json.load(sys.stdin)\n"
-                "time.sleep(.6)\n"
-                "out={'verdict':'accept','criteria':[1,2,3,4,5],'evidence':'quote','reason':'fits'}\n"
+                "time.sleep(.6 if 'candidate' not in data else 1.5)\n"
+                "out={'verdict':'accept','criteria':[1,2,3,4,5],'evidence':'quote; fits'}\n"
                 "if 'candidate' not in data:\n"
                 " out={'status':'action','action':'두 손으로 책 한 권을 아래 칸에 놓는다.',"
-                "'completion_condition':'책 한 권이 아래 칸에 있다.','estimated_minutes':1,'reason':'막힘 해결',"
-                "'remaining_work':data['remaining_work'],'preserved_completed_ids':data['completed_ids'],"
-                "'goal_completed':False,'current_action_completed':False}\n"
+                "'completion_condition':'책 한 권이 아래 칸에 있다.','estimated_minutes':1,'reason':'막힘 해결'}\n"
                 "print(json.dumps({'type':'stream_event','event':{'type':'message_start'}}))\n"
                 "print(json.dumps({'type':'result','subtype':'success','is_error':False,"
                 "'modelUsage':{'claude-haiku-5-5':{}},'result':json.dumps(out),'structured_output':out}))\n")
