@@ -359,11 +359,12 @@ async fn allowed_user_receives_only_independently_checked_proposal_and_usage() {
         assert!(request.get("cache_control").is_none());
         assert_eq!(
             request["system"],
-            if index == 0 {
-                include_str!("../development_ai/generate.md")
+            crate::development_ai::model_instructions(if index == 0 {
+                "generate"
             } else {
-                include_str!("../development_ai/check.md")
-            }
+                "check"
+            })
+            .unwrap()
         );
         if index == 0 {
             assert_eq!(

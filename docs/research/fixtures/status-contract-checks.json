@@ -1,0 +1,437 @@
+{
+  "model": "claude-haiku-5-5",
+  "effort": "xhigh",
+  "pipeline_seconds": 120,
+  "parallelism": 2,
+  "reference_boundary": "AI가 작성한 합성 회귀 참조다. 사람의 전수 품질 승인이나 일반화 성능이 아니다.",
+  "cases": [
+    {
+      "id": "deferred-alias",
+      "input": {
+        "goal": "빨간 펜과 파란 펜을 각 펜꽂이에 반납한다.",
+        "current_blocker": "",
+        "user_request": "보류한 행동과 다른 준비된 행동 하나를 제안한다. 없으면 no_action을 반환한다.",
+        "available": [
+          "준비된 행동은 빨간 펜 반납과 파란 펜 반납 두 가지뿐이다.",
+          "보류한 행동(재제안 금지): 빨간 펜을 펜꽂이에 넣는다.",
+          "보류한 행동(재제안 금지): 파란 펜을 펜꽂이에 넣는다.",
+          "다른 자료·준비된 대안은 없다."
+        ],
+        "unknown": [],
+        "available_minutes": 5,
+        "knowledge": "모든 필요한 정보는 아래 자료에 있다. 없는 과거 사실은 알 수 없다.",
+        "energy": "앉아서 한 행동을 할 수 있다.",
+        "remaining_work": [
+          "빨간 펜 반납",
+          "파란 펜 반납"
+        ],
+        "completed_ids": [],
+        "previous_proposals": [],
+        "request_kind": "replacement"
+      },
+      "expected_statuses": [
+        "no_action"
+      ],
+      "reference": "같은 실제 반납 작업은 표현과 무관하게 보류다. 모든 준비된 대안이 보류이므로 no_action이다.",
+      "checker_cases": [
+        {
+          "id": "deferred-alias-valid",
+          "candidate": {
+            "status": "no_action",
+            "action": "다른 행동 없음",
+            "completion_condition": "기존 보류 유지",
+            "estimated_minutes": 0,
+            "reason": "주어진 사실과 현재 막힘에 맞춘 결과다.",
+            "remaining_work": [
+              "빨간 펜 반납",
+              "파란 펜 반납"
+            ],
+            "preserved_completed_ids": [],
+            "goal_completed": false,
+            "current_action_completed": false
+          },
+          "expected": "accept",
+          "reference": "같은 실제 반납 작업은 표현과 무관하게 보류다. 모든 준비된 대안이 보류이므로 no_action이다."
+        },
+        {
+          "id": "deferred-alias-invalid",
+          "candidate": {
+            "status": "action",
+            "action": "빨간 펜을 반납한다.",
+            "completion_condition": "빨간 펜이 반납 위치에 있다.",
+            "estimated_minutes": 1,
+            "reason": "주어진 사실과 현재 막힘에 맞춘 결과다.",
+            "remaining_work": [
+              "빨간 펜 반납",
+              "파란 펜 반납"
+            ],
+            "preserved_completed_ids": [],
+            "goal_completed": false,
+            "current_action_completed": false
+          },
+          "expected": "reject",
+          "reference": "보류 행동을 반납으로 바꿔 재제안했다."
+        }
+      ]
+    },
+    {
+      "id": "different-ready",
+      "input": {
+        "goal": "빨간 펜과 파란 펜을 각 펜꽂이에 반납하고 초록 펜을 서랍에 둔다.",
+        "current_blocker": "",
+        "user_request": "보류한 행동과 다른 준비된 행동 하나를 제안한다. 없으면 no_action을 반환한다.",
+        "available": [
+          "준비된 행동은 빨간 펜 반납, 파란 펜 반납, 초록 펜을 서랍에 두기다.",
+          "보류한 행동(재제안 금지): 빨간 펜을 펜꽂이에 넣는다.",
+          "보류한 행동(재제안 금지): 파란 펜을 펜꽂이에 넣는다.",
+          "초록 펜과 열린 서랍이 손에 닿는다. 초록 펜은 보류하거나 완료하지 않았다."
+        ],
+        "unknown": [],
+        "available_minutes": 5,
+        "knowledge": "모든 필요한 정보는 아래 자료에 있다. 없는 과거 사실은 알 수 없다.",
+        "energy": "앉아서 한 행동을 할 수 있다.",
+        "remaining_work": [
+          "빨간 펜 반납",
+          "파란 펜 반납",
+          "초록 펜을 서랍에 두기"
+        ],
+        "completed_ids": [],
+        "previous_proposals": [],
+        "request_kind": "replacement"
+      },
+      "expected_statuses": [
+        "action"
+      ],
+      "reference": "보류한 두 펜을 제외해도 초록 펜의 다른 준비된 행동이 남는다.",
+      "checker_cases": [
+        {
+          "id": "different-ready-valid",
+          "candidate": {
+            "status": "action",
+            "action": "초록 펜을 서랍에 둔다.",
+            "completion_condition": "초록 펜이 서랍에 있다.",
+            "estimated_minutes": 1,
+            "reason": "주어진 사실과 현재 막힘에 맞춘 결과다.",
+            "remaining_work": [
+              "빨간 펜 반납",
+              "파란 펜 반납",
+              "초록 펜을 서랍에 두기"
+            ],
+            "preserved_completed_ids": [],
+            "goal_completed": false,
+            "current_action_completed": false
+          },
+          "expected": "accept",
+          "reference": "보류한 두 펜을 제외해도 초록 펜의 다른 준비된 행동이 남는다."
+        },
+        {
+          "id": "different-ready-invalid",
+          "candidate": {
+            "status": "no_action",
+            "action": "다른 행동 없음",
+            "completion_condition": "기존 보류 유지",
+            "estimated_minutes": 0,
+            "reason": "주어진 사실과 현재 막힘에 맞춘 결과다.",
+            "remaining_work": [
+              "빨간 펜 반납",
+              "파란 펜 반납",
+              "초록 펜을 서랍에 두기"
+            ],
+            "preserved_completed_ids": [],
+            "goal_completed": false,
+            "current_action_completed": false
+          },
+          "expected": "reject",
+          "reference": "보류하지 않은 준비된 대안을 놓쳤다."
+        }
+      ]
+    },
+    {
+      "id": "useful-minimum-unknown",
+      "input": {
+        "goal": "책상 위 책 여섯 권을 책장 아래 칸으로 옮긴다.",
+        "current_blocker": "",
+        "user_request": "현재 행동을 실질적으로 줄인다.",
+        "available": [
+          "현재 상태: 책상 위 책 여섯 권이 있고 책장 아래 칸이 비어 있다.",
+          "책상과 책장은 앉은 자리에서 손이 닿는다.",
+          "책 한 권은 더 나눠 옮길 수 없다. 책을 집거나 보는 것만으로는 옮긴 결과가 생기지 않는다. 시작을 막는 원인은 아직 모른다."
+        ],
+        "unknown": [],
+        "available_minutes": 5,
+        "knowledge": "모든 필요한 정보는 아래 자료에 있다. 없는 과거 사실은 알 수 없다.",
+        "energy": "앉아서 한 행동을 할 수 있다.",
+        "remaining_work": [
+          "책 여섯 권을 책장 아래 칸으로 옮기기"
+        ],
+        "completed_ids": [],
+        "previous_proposals": [
+          {
+            "status": "action",
+            "action": "책 한 권을 책장 아래 칸에 놓는다.",
+            "completion_condition": "책 한 권이 책장 아래 칸에 있다.",
+            "estimated_minutes": 1,
+            "reason": "제공한 자료에서 목표의 한 부분을 진행한다.",
+            "remaining_work": [
+              "책 여섯 권을 책장 아래 칸으로 옮기기"
+            ],
+            "preserved_completed_ids": [],
+            "goal_completed": false,
+            "current_action_completed": false
+          }
+        ],
+        "request_kind": "smaller"
+      },
+      "expected_statuses": [
+        "need_info"
+      ],
+      "reference": "현재 행동은 이미 한 권 옮기기다. 유용한 축소가 없으므로 첫 실제 막힘을 묻는다. 반복 실패를 임의로 가정하지 않는다.",
+      "checker_cases": [
+        {
+          "id": "useful-minimum-unknown-valid",
+          "candidate": {
+            "status": "need_info",
+            "action": "책 한 권을 옮기려 할 때 가장 먼저 막히는 지점은 무엇인가요?",
+            "completion_condition": "첫 막힘 하나를 답했다.",
+            "estimated_minutes": 1,
+            "reason": "주어진 사실과 현재 막힘에 맞춘 결과다.",
+            "remaining_work": [
+              "책 여섯 권을 책장 아래 칸으로 옮기기"
+            ],
+            "preserved_completed_ids": [],
+            "goal_completed": false,
+            "current_action_completed": false
+          },
+          "expected": "accept",
+          "reference": "현재 행동은 이미 한 권 옮기기다. 유용한 축소가 없으므로 첫 실제 막힘을 묻는다. 반복 실패를 임의로 가정하지 않는다."
+        },
+        {
+          "id": "useful-minimum-unknown-invalid",
+          "candidate": {
+            "status": "minimum",
+            "action": "책 한 권을 책장 아래 칸에 놓는다.",
+            "completion_condition": "책 한 권이 책장 아래 칸에 있다.",
+            "estimated_minutes": 1,
+            "reason": "주어진 사실과 현재 막힘에 맞춘 결과다.",
+            "remaining_work": [
+              "책 여섯 권을 책장 아래 칸으로 옮기기"
+            ],
+            "preserved_completed_ids": [],
+            "goal_completed": false,
+            "current_action_completed": false
+          },
+          "expected": "reject",
+          "reference": "같은 작업에 minimum만 붙였고 원인을 확인하지 않았다."
+        }
+      ]
+    },
+    {
+      "id": "useful-minimum-known",
+      "input": {
+        "goal": "책상 위 책 여섯 권을 책장 아래 칸으로 옮긴다.",
+        "current_blocker": "책 한 권이 무거워 한 손으로 들기 어렵다. 두 손으로 들 수 있다.",
+        "user_request": "현재 행동을 실질적으로 줄인다.",
+        "available": [
+          "현재 상태: 책상 위 책 여섯 권이 있고 책장 아래 칸이 비어 있다.",
+          "책상과 책장은 앉은 자리에서 손이 닿는다.",
+          "책 한 권은 더 나눠 옮길 수 없다. 책을 집거나 보는 것만으로는 옮긴 결과가 생기지 않는다.",
+          "책 한 권을 두 손으로 들어 아래 칸에 놓을 수 있다. 두 손이 비어 있다."
+        ],
+        "unknown": [],
+        "available_minutes": 5,
+        "knowledge": "모든 필요한 정보는 아래 자료에 있다. 없는 과거 사실은 알 수 없다.",
+        "energy": "앉아서 한 행동을 할 수 있다.",
+        "remaining_work": [
+          "책 여섯 권을 책장 아래 칸으로 옮기기"
+        ],
+        "completed_ids": [],
+        "previous_proposals": [
+          {
+            "status": "action",
+            "action": "책 한 권을 책장 아래 칸에 놓는다.",
+            "completion_condition": "책 한 권이 책장 아래 칸에 있다.",
+            "estimated_minutes": 1,
+            "reason": "제공한 자료에서 목표의 한 부분을 진행한다.",
+            "remaining_work": [
+              "책 여섯 권을 책장 아래 칸으로 옮기기"
+            ],
+            "preserved_completed_ids": [],
+            "goal_completed": false,
+            "current_action_completed": false
+          }
+        ],
+        "request_kind": "smaller"
+      },
+      "expected_statuses": [
+        "minimum"
+      ],
+      "reference": "유용한 수량 축소가 없는 상태에서 알려진 한 손 무게 문제를 두 손으로 해결한다.",
+      "checker_cases": [
+        {
+          "id": "useful-minimum-known-valid",
+          "candidate": {
+            "status": "minimum",
+            "action": "두 손으로 책 한 권을 책장 아래 칸에 놓는다.",
+            "completion_condition": "책 한 권이 책장 아래 칸에 있다.",
+            "estimated_minutes": 1,
+            "reason": "주어진 사실과 현재 막힘에 맞춘 결과다.",
+            "remaining_work": [
+              "책 여섯 권을 책장 아래 칸으로 옮기기"
+            ],
+            "preserved_completed_ids": [],
+            "goal_completed": false,
+            "current_action_completed": false
+          },
+          "expected": "accept",
+          "reference": "유용한 수량 축소가 없는 상태에서 알려진 한 손 무게 문제를 두 손으로 해결한다."
+        },
+        {
+          "id": "useful-minimum-known-invalid",
+          "candidate": {
+            "status": "need_info",
+            "action": "책을 옮길 때 가장 먼저 막히는 지점은 무엇인가요?",
+            "completion_condition": "첫 막힘 하나를 답했다.",
+            "estimated_minutes": 1,
+            "reason": "주어진 사실과 현재 막힘에 맞춘 결과다.",
+            "remaining_work": [
+              "책 여섯 권을 책장 아래 칸으로 옮기기"
+            ],
+            "preserved_completed_ids": [],
+            "goal_completed": false,
+            "current_action_completed": false
+          },
+          "expected": "reject",
+          "reference": "알려준 첫 막힘을 다시 물었다."
+        }
+      ]
+    },
+    {
+      "id": "real-reduction",
+      "input": {
+        "goal": "책상 위 책 여섯 권을 책장 아래 칸으로 옮긴다.",
+        "current_blocker": "",
+        "user_request": "현재 행동을 실질적으로 줄인다.",
+        "available": [
+          "현재 상태: 책상 위 책 여섯 권이 있고 책장 아래 칸이 비어 있다.",
+          "책상과 책장은 앉은 자리에서 손이 닿는다."
+        ],
+        "unknown": [],
+        "available_minutes": 5,
+        "knowledge": "모든 필요한 정보는 아래 자료에 있다. 없는 과거 사실은 알 수 없다.",
+        "energy": "앉아서 한 행동을 할 수 있다.",
+        "remaining_work": [
+          "책 여섯 권을 책장 아래 칸으로 옮기기"
+        ],
+        "completed_ids": [],
+        "previous_proposals": [
+          {
+            "status": "action",
+            "action": "책상 위 책 여섯 권을 모두 책장 아래 칸에 놓는다.",
+            "completion_condition": "책 여섯 권이 책장 아래 칸에 있다.",
+            "estimated_minutes": 4,
+            "reason": "제공한 자료에서 목표의 한 부분을 진행한다.",
+            "remaining_work": [
+              "책 여섯 권을 책장 아래 칸으로 옮기기"
+            ],
+            "preserved_completed_ids": [],
+            "goal_completed": false,
+            "current_action_completed": false
+          }
+        ],
+        "request_kind": "smaller"
+      },
+      "expected_statuses": [
+        "action"
+      ],
+      "reference": "여섯 권을 한 권으로 줄이면 실제 작업이 줄어든다. 막힘이 비어 있어도 질문이 필수는 아니다.",
+      "checker_cases": [
+        {
+          "id": "real-reduction-valid",
+          "candidate": {
+            "status": "action",
+            "action": "책 한 권을 책장 아래 칸에 놓는다.",
+            "completion_condition": "책 한 권이 책장 아래 칸에 있다.",
+            "estimated_minutes": 1,
+            "reason": "주어진 사실과 현재 막힘에 맞춘 결과다.",
+            "remaining_work": [
+              "책 여섯 권을 책장 아래 칸으로 옮기기"
+            ],
+            "preserved_completed_ids": [],
+            "goal_completed": false,
+            "current_action_completed": false
+          },
+          "expected": "accept",
+          "reference": "여섯 권을 한 권으로 줄이면 실제 작업이 줄어든다. 막힘이 비어 있어도 질문이 필수는 아니다."
+        },
+        {
+          "id": "real-reduction-invalid",
+          "candidate": {
+            "status": "need_info",
+            "action": "책을 옮길 때 가장 먼저 막히는 지점은 무엇인가요?",
+            "completion_condition": "첫 막힘 하나를 답했다.",
+            "estimated_minutes": 1,
+            "reason": "주어진 사실과 현재 막힘에 맞춘 결과다.",
+            "remaining_work": [
+              "책 여섯 권을 책장 아래 칸으로 옮기기"
+            ],
+            "preserved_completed_ids": [],
+            "goal_completed": false,
+            "current_action_completed": false
+          },
+          "expected": "reject",
+          "reference": "이미 유용한 축소를 지원하는데 불필요한 질문으로 대체했다."
+        }
+      ]
+    }
+  ],
+  "original_simulator": {
+    "id": "original-report-smaller",
+    "input": {
+      "available": [
+        "확정 완료 조건: 분기 업무 보고서 문서에 목차 항목 3개와 핵심 성과 3줄이 작성되어 저장된 상태",
+        "현재 상태: 빈 보고서 문서가 열려 있다. 목차 세 개와 핵심 성과 세 줄을 작성하려고 한다.",
+        "이미 완료한 행동: 열려 있는 빈 보고서 문서의 첫 줄에 목차 항목 하나(예: \"1. 분기 업무 개요\")를 입력한다.",
+        "보류한 행동(재제안 금지): 열려 있는 보고서 문서에서 첫 번째 목차 항목 바로 아래 다음 줄에 \"2. 주요 업무 성과\"를 입력한다."
+      ],
+      "available_minutes": 15.0,
+      "completed_ids": [
+        "1"
+      ],
+      "current_blocker": "",
+      "energy": "모름",
+      "goal": "분기 업무 보고서 초안 쓰기",
+      "knowledge": "사용자가 제공한 정보 외에는 모름",
+      "previous_proposals": [
+        {
+          "action": "열려 있는 보고서 문서에서 첫 번째 목차 항목 바로 아래 다음 줄에 목차 항목 2번 한 줄(예: \"2. 주요 업무 성과\")을 입력한다.",
+          "completion_condition": "문서에 1번 목차 항목 아래로 두 번째 목차 항목 한 줄이 입력되어 보이는 상태",
+          "current_action_completed": false,
+          "estimated_minutes": 2.0,
+          "goal_completed": false,
+          "preserved_completed_ids": [
+            "1"
+          ],
+          "reason": "현재 미완료 행동",
+          "remaining_work": [
+            "분기 업무 보고서 문서에 목차 항목 3개와 핵심 성과 3줄이 작성되어 저장된 상태",
+            "열려 있는 보고서 문서에서 첫 번째 목차 항목 바로 아래 다음 줄에 목차 항목 2번 한 줄(예: \"2. 주요 업무 성과\")을 입력한다.",
+            "열려 있는 보고서 문서에서 첫 번째 목차 항목 바로 아래 다음 줄에 \"2. 주요 업무 성과\"를 입력한다."
+          ],
+          "status": "action"
+        }
+      ],
+      "remaining_work": [
+        "분기 업무 보고서 문서에 목차 항목 3개와 핵심 성과 3줄이 작성되어 저장된 상태",
+        "열려 있는 보고서 문서에서 첫 번째 목차 항목 바로 아래 다음 줄에 목차 항목 2번 한 줄(예: \"2. 주요 업무 성과\")을 입력한다.",
+        "열려 있는 보고서 문서에서 첫 번째 목차 항목 바로 아래 다음 줄에 \"2. 주요 업무 성과\"를 입력한다."
+      ],
+      "request_kind": "smaller",
+      "unknown": [],
+      "user_request": "현재 행동을 실질적으로 줄인다. 반복 막힘이면 알려진 답을 다시 묻지 않고 첫 막힘 한 가지를 확인한다."
+    },
+    "expected_statuses": [
+      "need_info"
+    ],
+    "reference": "둘째 목차 쓰기는 이미 보류된 작업이다. 같은 결과의 제목을 바꾸거나 빈 줄을 만드는 것은 유용한 축소가 아니다. 가능한 유용한 축소가 없으므로 첫 실제 막힘을 질문한다."
+  }
+}

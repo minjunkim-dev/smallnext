@@ -541,6 +541,19 @@ fn empty_skills_notice(item: &Value) -> bool {
 }
 
 struct Workspace(PathBuf);
+
+pub(crate) fn model_instructions(role: &str) -> Result<String, Disposition> {
+    let instructions = match role {
+        "generate" => include_str!("development_ai/generate.md"),
+        "check" => include_str!("development_ai/check.md"),
+        _ => return Err(Disposition::Failed),
+    };
+    Ok(format!(
+        "{instructions}\n{}",
+        include_str!("development_ai/contract.md")
+    ))
+}
+
 impl Workspace {
     fn new(role: &str, kind: Option<&str>) -> Result<Self, Disposition> {
         static NEXT: AtomicU64 = AtomicU64::new(0);
@@ -557,15 +570,10 @@ impl Workspace {
         }
         builder.create(&path).map_err(|_| Disposition::Failed)?;
         let workspace = Self(path);
-        let (system, schema) = match role {
-            "generate" => (
-                include_str!("development_ai/generate.md"),
-                include_str!("development_ai/generate.json"),
-            ),
-            "check" => (
-                include_str!("development_ai/check.md"),
-                include_str!("development_ai/check.json"),
-            ),
+        let system = model_instructions(role)?;
+        let schema = match role {
+            "generate" => include_str!("development_ai/generate.json"),
+            "check" => include_str!("development_ai/check.json"),
             _ => return Err(Disposition::Failed),
         };
         std::fs::write(workspace.0.join("system.md"), system).map_err(|_| Disposition::Failed)?;

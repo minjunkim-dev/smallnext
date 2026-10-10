@@ -1,6 +1,7 @@
 use super::{client, read_json, required};
 use crate::development_ai::{
-    AiInput, Disposition, Proposal, generation_schema, validate_check, validate_proposal,
+    AiInput, Disposition, Proposal, generation_schema, model_instructions, validate_check,
+    validate_proposal,
 };
 use serde::Serialize;
 use serde_json::{Value, json};
@@ -125,15 +126,13 @@ impl Provider {
         role: &str,
         payload: &Value,
     ) -> (Result<Value, Disposition>, Option<Usage>, bool) {
-        let (instructions, schema) = match role {
-            "generate" => (
-                include_str!("../development_ai/generate.md"),
-                include_str!("../development_ai/generate.json"),
-            ),
-            _ => (
-                include_str!("../development_ai/check.md"),
-                include_str!("../development_ai/check.json"),
-            ),
+        let instructions = match model_instructions(role) {
+            Ok(instructions) => instructions,
+            Err(error) => return (Err(error), None, false),
+        };
+        let schema = match role {
+            "generate" => include_str!("../development_ai/generate.json"),
+            _ => include_str!("../development_ai/check.json"),
         };
         let mut schema: Value = serde_json::from_str(schema).expect("committed schema");
         if role == "generate" {
