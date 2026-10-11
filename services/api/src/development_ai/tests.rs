@@ -452,17 +452,22 @@ async fn http_returns_only_independently_accepted_candidates_without_retries() {
             .unwrap();
         let body = response.into_body().collect().await.unwrap().to_bytes();
         let value: Value = serde_json::from_slice(&body).unwrap();
-        assert_eq!(
-            value["_timing"]["run_id"],
-            "11111111-1111-4111-8111-111111111111"
-        );
-        let timing = &value["_timing"];
-        assert!(timing["generate_ms"].as_f64().unwrap() > 0.0);
-        assert!(timing["check_ms"].as_f64().unwrap() > 0.0);
-        assert!(
-            timing["total_ms"].as_f64().unwrap()
-                >= timing["generate_ms"].as_f64().unwrap() + timing["check_ms"].as_f64().unwrap()
-        );
+        if cfg!(debug_assertions) {
+            assert_eq!(
+                value["_timing"]["run_id"],
+                "11111111-1111-4111-8111-111111111111"
+            );
+            let timing = &value["_timing"];
+            assert!(timing["generate_ms"].as_f64().unwrap() > 0.0);
+            assert!(timing["check_ms"].as_f64().unwrap() > 0.0);
+            assert!(
+                timing["total_ms"].as_f64().unwrap()
+                    >= timing["generate_ms"].as_f64().unwrap()
+                        + timing["check_ms"].as_f64().unwrap()
+            );
+        } else {
+            assert!(value.get("_timing").is_none());
+        }
         if verdict == "accept" {
             assert_eq!(value["disposition"], "accepted");
             assert_eq!(value["proposal"], json!(proposal()));
@@ -546,7 +551,7 @@ async fn timing_is_opt_in_and_unstarted_checker_remains_unknown() {
             serde_json::from_slice(&response.into_body().collect().await.unwrap().to_bytes())
                 .unwrap();
         assert_eq!(value["disposition"], "failed");
-        if id.is_some_and(|id| id.starts_with('4')) {
+        if cfg!(debug_assertions) && id.is_some_and(|id| id.starts_with('4')) {
             assert!(value["_timing"]["generate_ms"].as_f64().unwrap() > 0.0);
             assert_eq!(value["_timing"]["check_ms"], Value::Null);
         } else {

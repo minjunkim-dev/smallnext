@@ -68,6 +68,19 @@ final class ProgressFlowTests: XCTestCase {
         await provider.releaseLock()
     }
 
+    func testTimingCancelledLateResponseCannotMarkStoppedGoal() async throws {
+        let provider = HeldProvider(.action(first))
+        let flow = try makeFlow(provider)
+        flow.timingEnabled = true
+        try flow.measuredCommand { try flow.createGoal("자료 정리") }
+        try flow.cancelSuggestion()
+        try flow.stopGoal()
+        await provider.release()
+        await flow.waitForSuggestion()
+        XCTAssertEqual(flow.screen, .stoppedGoal(nil))
+        XCTAssertNil(flow.timingSample)
+    }
+
     func testRemainingSplitWorkSurvivesTwoNextActionsAndReopen() async throws {
         let fourth = ProposedAction(task: "자료 저장하기", doneWhen: "자료가 저장됐다", estimatedMinutes: 1)
         let fifth = ProposedAction(task: "자료 위치 확인하기", doneWhen: "위치를 확인했다", estimatedMinutes: 1)

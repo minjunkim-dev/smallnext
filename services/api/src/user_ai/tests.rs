@@ -270,13 +270,17 @@ async fn timing_connects_mock_auth_provider_and_total_without_changing_contract(
     .await;
     assert_eq!(body["disposition"], "accepted");
     let timing = &body["_timing"];
-    assert_eq!(timing["run_id"], "22222222-2222-4222-8222-222222222222");
-    assert!(timing["generate_ms"].as_f64().unwrap() >= 15.0);
-    assert!(timing["check_ms"].as_f64().unwrap() >= 15.0);
-    assert!(
-        timing["total_ms"].as_f64().unwrap()
-            >= timing["generate_ms"].as_f64().unwrap() + timing["check_ms"].as_f64().unwrap()
-    );
+    if cfg!(debug_assertions) {
+        assert_eq!(timing["run_id"], "22222222-2222-4222-8222-222222222222");
+        assert!(timing["generate_ms"].as_f64().unwrap() >= 15.0);
+        assert!(timing["check_ms"].as_f64().unwrap() >= 15.0);
+        assert!(
+            timing["total_ms"].as_f64().unwrap()
+                >= timing["generate_ms"].as_f64().unwrap() + timing["check_ms"].as_f64().unwrap()
+        );
+    } else {
+        assert!(body.get("_timing").is_none());
+    }
     assert_eq!(fixture.remote.calls.lock().unwrap().len(), 2);
     fixture.close().await;
 }

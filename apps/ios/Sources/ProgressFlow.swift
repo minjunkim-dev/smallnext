@@ -666,7 +666,7 @@ final class ProgressFlow {
                 }
                 timing.finish(result, applyStart: applyStart)
                 timing.save()
-                if isCurrentRequest, ["applied", "failed", "cancelled"].contains(status) { timingSample = timing }
+                if isCurrentRequest, ["applied", "failed"].contains(status) { timingSample = timing }
             }
         } catch {
             timing?.finish("storage_failed", applyStart: applyStart)
