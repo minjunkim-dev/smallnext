@@ -1,11 +1,8 @@
 //! Model-owned decisions; preservation and the public response remain host-owned.
 use crate::development_ai::{Disposition, generation_schema, model_instructions};
-use serde::{
-    Deserialize,
-    de::{self, MapAccess, SeqAccess, Visitor},
-};
+use serde::de::{self, DeserializeSeed, MapAccess, SeqAccess, Visitor};
 use serde_json::{Value, json};
-use std::fmt;
+use std::{cell::Cell, fmt};
 
 const OWNED: [&str; 4] = [
     "remaining_work",
@@ -72,12 +69,16 @@ pub(super) fn decode(
             },
         ));
     }
-    let value = serde_json::from_str::<Unique>(text)
-        .map_err(|error| {
+    let duplicate = Cell::new(false);
+    let mut deserializer = serde_json::Deserializer::from_str(text);
+    let value = Unique(&duplicate)
+        .deserialize(&mut deserializer)
+        .and_then(|value| deserializer.end().map(|()| value))
+        .map_err(|_| {
             report(
                 role,
                 Fault {
-                    kind: if error.to_string().starts_with("duplicate_key") {
+                    kind: if duplicate.get() {
                         "duplicate_key"
                     } else {
                         "json_syntax"
@@ -85,8 +86,7 @@ pub(super) fn decode(
                     field: None,
                 },
             )
-        })?
-        .0;
+        })?;
     validate(&value, &schema(role, kind), None).map_err(|fault| report(role, fault))?;
     let fields: &[&str] = if role == "generate" {
         &["action", "completion_condition", "reason"]
@@ -199,57 +199,58 @@ fn validate(value: &Value, schema: &Value, field: Option<&'static str>) -> Resul
 }
 
 // Detect duplicates recursively during deserialization, before a map can overwrite them.
-struct Unique(Value);
-impl<'de> Deserialize<'de> for Unique {
-    fn deserialize<D: de::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        struct JsonVisitor;
-        impl<'de> Visitor<'de> for JsonVisitor {
-            type Value = Unique;
+struct Unique<'a>(&'a Cell<bool>);
+impl<'de> DeserializeSeed<'de> for Unique<'_> {
+    type Value = Value;
+    fn deserialize<D: de::Deserializer<'de>>(self, deserializer: D) -> Result<Value, D::Error> {
+        impl<'de> Visitor<'de> for Unique<'_> {
+            type Value = Value;
             fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
                 formatter.write_str("JSON")
             }
-            fn visit_bool<E: de::Error>(self, value: bool) -> Result<Unique, E> {
-                Ok(Unique(json!(value)))
+            fn visit_bool<E: de::Error>(self, value: bool) -> Result<Value, E> {
+                Ok(json!(value))
             }
-            fn visit_i64<E: de::Error>(self, value: i64) -> Result<Unique, E> {
-                Ok(Unique(json!(value)))
+            fn visit_i64<E: de::Error>(self, value: i64) -> Result<Value, E> {
+                Ok(json!(value))
             }
-            fn visit_u64<E: de::Error>(self, value: u64) -> Result<Unique, E> {
-                Ok(Unique(json!(value)))
+            fn visit_u64<E: de::Error>(self, value: u64) -> Result<Value, E> {
+                Ok(json!(value))
             }
-            fn visit_f64<E: de::Error>(self, value: f64) -> Result<Unique, E> {
+            fn visit_f64<E: de::Error>(self, value: f64) -> Result<Value, E> {
                 serde_json::Number::from_f64(value)
-                    .map(|n| Unique(Value::Number(n)))
+                    .map(Value::Number)
                     .ok_or_else(|| E::custom("number"))
             }
-            fn visit_str<E: de::Error>(self, value: &str) -> Result<Unique, E> {
-                Ok(Unique(json!(value)))
+            fn visit_str<E: de::Error>(self, value: &str) -> Result<Value, E> {
+                Ok(json!(value))
             }
-            fn visit_string<E: de::Error>(self, value: String) -> Result<Unique, E> {
-                Ok(Unique(Value::String(value)))
+            fn visit_string<E: de::Error>(self, value: String) -> Result<Value, E> {
+                Ok(Value::String(value))
             }
-            fn visit_unit<E: de::Error>(self) -> Result<Unique, E> {
-                Ok(Unique(Value::Null))
+            fn visit_unit<E: de::Error>(self) -> Result<Value, E> {
+                Ok(Value::Null)
             }
-            fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<Unique, A::Error> {
+            fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<Value, A::Error> {
                 let mut values = Vec::new();
-                while let Some(Unique(value)) = seq.next_element()? {
+                while let Some(value) = seq.next_element_seed(Unique(self.0))? {
                     values.push(value);
                 }
-                Ok(Unique(Value::Array(values)))
+                Ok(Value::Array(values))
             }
-            fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<Unique, A::Error> {
+            fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<Value, A::Error> {
                 let mut values = serde_json::Map::new();
                 while let Some(key) = map.next_key::<String>()? {
                     if values.contains_key(&key) {
+                        self.0.set(true);
                         return Err(de::Error::custom("duplicate_key"));
                     }
-                    values.insert(key, map.next_value::<Unique>()?.0);
+                    values.insert(key, map.next_value_seed(Unique(self.0))?);
                 }
-                Ok(Unique(Value::Object(values)))
+                Ok(Value::Object(values))
             }
         }
-        deserializer.deserialize_any(JsonVisitor)
+        deserializer.deserialize_any(self)
     }
 }
 

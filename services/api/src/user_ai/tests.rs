@@ -77,6 +77,8 @@ async fn external_provider(
     }
     let text = match fault {
         Some("syntax") => "{private-output".to_owned(),
+        Some("depth") => format!("{}0{}", "[".repeat(256), "]".repeat(256)),
+        Some("trailing") => format!("{} private-output", value),
         Some("duplicate") => format!(
             "{{\"{field}\":\"private-output\",{}",
             &value.to_string()[1..]
@@ -244,13 +246,25 @@ async fn result(response: axum::response::Response) -> serde_json::Value {
 #[tokio::test]
 #[ignore = "requires TEST_DATABASE_URL; HTTP against real isolated PostgreSQL"]
 async fn malformed_decisions_stop_at_the_failing_role_without_retry() {
-    use tracing::instrument::WithSubscriber;
+    let logs = LogBuffer::default();
+    let writer = logs.clone();
+    // Keep one process-wide collector for concurrent HTTP work and callsite registration.
+    tracing::subscriber::set_global_default(
+        tracing_subscriber::fmt()
+            .without_time()
+            .with_ansi(false)
+            .with_writer(move || writer.clone())
+            .finish(),
+    )
+    .unwrap();
     let fixture = Fixture::new().await;
     for role in ["generate", "check"] {
         for fault in [
             "duplicate",
             "escaped_duplicate",
             "nested_duplicate",
+            "depth",
+            "trailing",
             "syntax",
             "type",
             "required",
@@ -262,16 +276,8 @@ async fn malformed_decisions_stop_at_the_failing_role_without_retry() {
             let mode = format!("{role}_{fault}");
             *fixture.remote.mode.lock().unwrap() = mode.clone();
             fixture.remote.calls.lock().unwrap().clear();
-            let logs = LogBuffer::default();
-            let writer = logs.clone();
-            let subscriber = tracing_subscriber::fmt()
-                .without_time()
-                .with_ansi(false)
-                .with_writer(move || writer.clone())
-                .finish();
-            let body = async { result(fixture.request("allowed", &mode).await).await }
-                .with_subscriber(subscriber)
-                .await;
+            logs.0.lock().unwrap().clear();
+            let body = result(fixture.request("allowed", &mode).await).await;
             assert_eq!(
                 body["disposition"],
                 if role == "generate" {
@@ -286,7 +292,7 @@ async fn malformed_decisions_stop_at_the_failing_role_without_retry() {
             {
                 assert!(log.contains("invalid_ai_decision"), "{mode}: {log}");
                 assert!(log.contains(&format!("role=\"{role}\"")), "{mode}: {log}");
-                let classification = if fault == "syntax" {
+                let classification = if ["syntax", "depth", "trailing"].contains(&fault) {
                     "json_syntax"
                 } else if fault == "owned" {
                     "additional"
