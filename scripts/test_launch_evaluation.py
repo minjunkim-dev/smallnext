@@ -528,6 +528,47 @@ print(json.dumps({'type':'result','subtype':'success','is_error':False,'modelUsa
                     self.assertEqual(summary['roles']['unrecorded'], 2)
                     self.assertFalse(summary['automatic_passed'])
 
+    def test_partial_report_isolates_usage_aggregation_overflow(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root, _ = self.freeze(directory)
+            launch.run(root, invoke=self.response)
+            results = sorted((root/'results').glob('*.json'))
+            for index, result in enumerate(results):
+                row = json.loads(result.read_bytes())
+                row['seconds'] = 1e308
+                if index < 2:
+                    row['calls'][0]['usage']['input_tokens'] = 1e308
+                result.write_bytes(qa.encoded(row))
+            summary = launch.report(root)
+            self.assertEqual(summary['unreadable_records'], [results[1].name])
+            self.assertEqual(summary['requests']['recorded'], 32)
+            self.assertEqual(summary['roles']['unrecorded'], 2)
+            self.assertEqual(summary['server_timings']['first_action']['median'], 1e308)
+            self.assertEqual(summary['role_usage']['generate']['input_tokens']['known_total'], 1e308)
+            self.assertFalse(summary['automatic_passed'])
+            qa.encoded(summary)
+
+    def test_partial_report_rejects_fifo_and_symlink_result_files_without_waiting(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root, _ = self.freeze(directory)
+            launch.run(root, invoke=self.response)
+            extra = root/'results'/'999.json'
+            for kind in ('fifo', 'symlink'):
+                with self.subTest(kind=kind):
+                    if kind == 'fifo':
+                        os.mkfifo(extra)
+                    else:
+                        extra.symlink_to(next((root/'results').glob('*.json')))
+                    child = subprocess.run([sys.executable, '-c',
+                        'import json,sys; import launch_evaluation as l; print(json.dumps(l.report(sys.argv[1])))',
+                        str(root)], env=dict(os.environ, PYTHONPATH=str(Path(launch.__file__).parent)),
+                        capture_output=True, text=True, timeout=2, check=True)
+                    summary = json.loads(child.stdout)
+                    self.assertEqual(summary['unreadable_records'], ['999.json'])
+                    self.assertEqual(summary['requests']['recorded'], 33)
+                    self.assertFalse(summary['automatic_passed'])
+                    extra.unlink()
+
     def test_expected_rejection_is_separate_from_quality_failure_and_fast_failure_not_normal(self):
         for expected in (True, False):
             with self.subTest(expected=expected), tempfile.TemporaryDirectory() as directory:

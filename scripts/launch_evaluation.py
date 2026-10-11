@@ -249,7 +249,8 @@ class Budget:
 
 def metrics(values, measurement):
     values = sorted(values)
-    median = statistics.median(values) if values else None
+    lower = statistics.median_low(values) if values else None
+    median = lower + (statistics.median_high(values) - lower) / 2 if values else None
     p90 = values[math.ceil(.9 * len(values)) - 1] if len(values) >= measurement['minimum_p90_samples'] else None
     return {'samples': len(values), 'median': median, 'p90': p90,
             'sla_passed': None if p90 is None else median <= measurement['median_seconds']
@@ -264,10 +265,14 @@ def report(directory, *, observations=()):
         birth = qa.process_birth(claim['controller_pid'])
         if birth and birth == claim['controller_birth']:
             raise ValueError('controller still alive; do not report an active run')
-    records, unreadable = [], []
+    records, unreadable, usage_totals = [], [], Counter()
     for path in sorted((directory/'results').glob('*.json')):
         try:
-            row = json.loads(path.read_bytes())
+            descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+            with os.fdopen(descriptor, 'rb') as source:
+                if not stat.S_ISREG(os.fstat(source.fileno()).st_mode):
+                    raise ValueError('result must be a regular file')
+                row = json.load(source)
             if type(row) is not dict or any(type(row.get(key)) is not str
                     for key in ('run_id', 'manifest_sha256', 'request_id', 'flow', 'request_kind')):
                 raise ValueError('invalid result identity')
@@ -277,6 +282,7 @@ def report(directory, *, observations=()):
                 raise ValueError('unrelated result flow')
             if any(key in row and type(row[key]) is not str for key in ('error', 'verdict', 'termination')):
                 raise ValueError('invalid result outcome')
+            pending_usage = usage_totals.copy()
             for call in row['calls']:
                 if type(call) is not dict or call.get('role') not in ('generate', 'check'):
                     raise ValueError('invalid role record')
@@ -285,12 +291,17 @@ def report(directory, *, observations=()):
                 usage = call.get('usage', {})
                 if type(usage) is not dict or any(v is not None and qa.numeric(v) is None for v in usage.values()):
                     raise ValueError('invalid role usage')
+                for key, value in usage.items():
+                    pending_usage[call['role'], key] += value or 0
+                    if not math.isfinite(pending_usage[call['role'], key]):
+                        raise ValueError('role usage aggregation overflow')
                 if ('error' in call and type(call['error']) is not str
                         or 'output' in call and type(call['output']) is not dict):
                     raise ValueError('invalid role outcome')
             if row['run_id'] != claim['run_id'] or row['manifest_sha256'] != claim['manifest_sha256']:
                 raise ValueError('unrelated result')
             records.append(row)
+            usage_totals = pending_usage
         except (OSError, ValueError, KeyError, TypeError, OverflowError):
             unreadable.append(path.name)
     ids = [r['request_id'] for r in records]
@@ -391,8 +402,7 @@ def report(directory, *, observations=()):
         'costs': end.get('budget', {'actual_billing': None,
             'charged_micro_usd': started_roles * manifest['cost_policy']['role_reservation_micro_usd'],
             'conservative_roles': started_roles, 'basis': 'interrupted run conservative reservation'}),
-        'role_usage': {role: {key: {'known_total': sum(c.get('usage', {}).get(key) or 0
-                               for c in calls if c['role'] == role),
+        'role_usage': {role: {key: {'known_total': usage_totals[role, key],
                                   'unknown_calls': sum(c.get('usage', {}).get(key) is None
                                for c in calls if c['role'] == role)}
                          for key in ('input_tokens', 'output_tokens', 'thinking_tokens',
