@@ -188,14 +188,15 @@ def freeze(directory, *, owner, ends_at, delete_method, role_reservation_micro_u
     qa.save(directory / 'integrity.json', {'manifest_sha256': qa.digest(private_bytes(directory, 'manifest.json'))})
 
 
-def load(directory):
+def load(directory, *, descriptor=None):
     directory = Path(directory)
-    manifest = qa.load(directory, read_bytes=lambda path: private_bytes(directory, path.relative_to(directory)))
+    source = directory if descriptor is None else descriptor
+    manifest = qa.load(directory, read_bytes=lambda path: private_bytes(source, path.relative_to(directory)))
     if manifest.get('suite') != 'launch' or manifest.get('parallelism') != 1:
         raise ValueError('wrong launch manifest')
     if qa.digest(Path(__file__).read_bytes()) != manifest['sources']['scripts/launch_evaluation.py']['sha256']:
         raise ValueError('launch runner differs from frozen version')
-    if qa.digest(private_bytes(directory, 'regression/manifest.json')) != manifest['regression']['manifest_sha256']:
+    if qa.digest(private_bytes(source, 'regression/manifest.json')) != manifest['regression']['manifest_sha256']:
         raise ValueError('regression changed')
     return manifest
 
@@ -261,17 +262,33 @@ def metrics(values, measurement):
 
 
 @contextmanager
-def private_source(directory, path):
-    directory, path = Path(directory), Path(path)
-    if path.is_absolute() or '..' in path.parts or not path.parts or '..' in directory.parts:
+def private_directory(directory, path='.'):
+    path = Path(path)
+    if path.is_absolute() or '..' in path.parts:
         raise ValueError('private path must stay inside bundle')
     with ExitStack() as opened:
-        parent = os.open(directory.anchor or '.', os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        if type(directory) is int:
+            parent, bundle_parts = os.dup(directory), ()
+        else:
+            directory = Path(directory)
+            if '..' in directory.parts:
+                raise ValueError('private path must stay inside bundle')
+            parent = os.open(directory.anchor or '.', os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+            bundle_parts = directory.parts[1:] if directory.is_absolute() else directory.parts
         opened.callback(os.close, parent)
-        bundle_parts = directory.parts[1:] if directory.is_absolute() else directory.parts
-        for part in bundle_parts + path.parts[:-1]:
+        for part in bundle_parts + path.parts:
             parent = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent)
             opened.callback(os.close, parent)
+        yield parent
+
+
+@contextmanager
+def private_source(directory, path):
+    path = Path(path)
+    if path.is_absolute() or '..' in path.parts or not path.parts:
+        raise ValueError('private path must stay inside bundle')
+    with ExitStack() as opened:
+        parent = opened.enter_context(private_directory(directory, path.parent))
         descriptor = os.open(path.parts[-1], os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent)
         opened.callback(os.close, descriptor)
         if not stat.S_ISREG(os.fstat(descriptor).st_mode):
@@ -292,22 +309,46 @@ def private_bytes(directory, path):
     return data
 
 
-def private_json(directory, path):
-    return json.loads(private_bytes(directory, path))
+def private_json(directory, path, *, expected_type=dict):
+    value = json.loads(private_bytes(directory, path))
+    if type(value) is not expected_type:
+        raise ValueError('private JSON type invalid')
+    return value
+
+
+def private_names(directory, path):
+    with private_directory(directory, path) as descriptor:
+        return [name for name in os.listdir(descriptor) if name.endswith('.json')]
+
+
+def private_exists(directory, path):
+    try:
+        os.stat(path, dir_fd=directory)
+        return True
+    except FileNotFoundError:
+        return False
 
 
 def report(directory, *, observations=()):
+    try:
+        with private_directory(directory) as descriptor:
+            return report_bundle(Path(directory), descriptor, observations)
+    except OSError:
+        raise ValueError('private report bundle unavailable') from None
+
+
+def report_bundle(directory, descriptor, observations):
     directory = Path(directory)
-    manifest = load(directory)
-    claim = private_json(directory, 'run-started.json')
-    if not (directory/'run-ended.json').exists():
+    manifest = load(directory, descriptor=descriptor)
+    claim = private_json(descriptor, 'run-started.json')
+    if not private_exists(descriptor, 'run-ended.json'):
         birth = qa.process_birth(claim['controller_pid'])
         if birth and birth == claim['controller_birth']:
             raise ValueError('controller still alive; do not report an active run')
     records, unreadable, usage_totals = [], [], Counter()
-    for path in sorted((directory/'results').glob('*.json')):
+    for path in map(Path, sorted(private_names(descriptor, 'results'))):
         try:
-            row = private_json(directory, Path('results')/path.name)
+            row = private_json(descriptor, Path('results')/path.name)
             if type(row) is not dict or any(type(row.get(key)) is not str
                     for key in ('run_id', 'manifest_sha256', 'request_id', 'flow', 'request_kind')):
                 raise ValueError('invalid result identity')
@@ -350,14 +391,15 @@ def report(directory, *, observations=()):
         seconds = qa.numeric(item.get('observed_upper_seconds'))
         interval = qa.numeric(item.get('sample_interval_seconds'))
         evidence = item.get('evidence_sha256', '')
-        if (seconds is None or interval is None or not item.get('method', '').strip()
+        method = item.get('method')
+        if (seconds is None or interval is None or type(method) is not str or not method.strip()
                 or item.get('display_observed') is not True or len(evidence) != 64
                 or any(c not in '0123456789abcdef' for c in evidence)):
             raise ValueError('screen observation method and upper bound required')
         try:
             path = Path(item['evidence_path'])
             digest = hashlib.sha256()
-            with private_source(directory, path) as source:
+            with private_source(descriptor, path) as source:
                 for chunk in iter(lambda: source.read(65536), b''):
                     digest.update(chunk)
             if digest.hexdigest() != evidence:
@@ -373,9 +415,9 @@ def report(directory, *, observations=()):
             if (r['request_kind'] if r['request_kind'] in {'first_action', 'smaller'} else 'other') == kind
             and r['request_id'] in screens], manifest['measurement'])
     completed = {r['flow'] for r in records if r.get('termination') and not r.get('error')}
-    end = private_json(directory, 'run-ended.json') if (directory/'run-ended.json').exists() else {}
-    started_requests = len(list((directory/'requests').glob('*.json')))
-    started_roles = len(list((directory/'calls').glob('*.json')))
+    end = private_json(descriptor, 'run-ended.json') if private_exists(descriptor, 'run-ended.json') else {}
+    started_requests = len(private_names(descriptor, 'requests'))
+    started_roles = len(private_names(descriptor, 'calls'))
     errors = Counter(r['error'] for r in records if r.get('error'))
     for row in records:
         row['outcome'] = ('cancelled' if row.get('error') in {'cancelled', 'ownership_lost'} else
@@ -629,7 +671,7 @@ def main():
         elif args.command == 'report':
             if Path(args.output).name != args.output or args.output in {'manifest.json', 'integrity.json'}:
                 raise ValueError('report filename required')
-            observations = private_json(args.observations.parent, args.observations.name) if args.observations else []
+            observations = private_json(args.observations.parent, args.observations.name, expected_type=list) if args.observations else []
             summary = report(args.directory, observations=observations)
             qa.save(args.directory/args.output, summary)
         else:

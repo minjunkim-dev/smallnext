@@ -591,14 +591,8 @@ print(json.dumps({'type':'result','subtype':'success','is_error':False,'modelUsa
 
                 try:
                     with patch.object(launch.os, 'open', side_effect=replace):
-                        if target == 'results':
-                            summary = launch.report(root)
-                            self.assertEqual(summary['requests']['recorded'], 0)
-                            self.assertEqual(len(summary['unreadable_records']), 33)
-                            self.assertFalse(summary['automatic_passed'])
-                        else:
-                            with self.assertRaises(ValueError):
-                                launch.report(root)
+                        with self.assertRaises(ValueError):
+                            launch.report(root)
                     self.assertTrue(replaced)
                 finally:
                     if replaced:
@@ -745,6 +739,71 @@ print('cancelled')
                                        capture_output=True, text=True, timeout=2)
                 self.assertEqual(child.returncode, 1)
                 self.assertFalse(json.loads(child.stdout)['automatic_passed'])
+
+    def test_report_pins_bundle_when_parent_is_replaced_by_regular_copy(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root, _ = self.freeze(directory)
+            original = launch.run(root, invoke=self.response)
+            replacement = root.with_name('replacement')
+            shutil.copytree(root, replacement)
+            next((root/'results').glob('*.json')).unlink()
+            end = json.loads((replacement/'run-ended.json').read_bytes())
+            end['budget']['charged_micro_usd'] = 999999
+            (replacement/'run-ended.json').write_bytes(qa.encoded(end))
+            real_json, replaced = launch.private_json, []
+
+            def replace(bundle, name):
+                value = real_json(bundle, name)
+                if name == 'run-started.json' and not replaced:
+                    root.rename(root.with_name('original'))
+                    replacement.rename(root)
+                    replaced.append(True)
+                return value
+
+            with patch.object(launch, 'private_json', side_effect=replace):
+                summary = launch.report(root)
+            self.assertTrue(replaced)
+            self.assertEqual(summary['requests']['recorded'], 32)
+            self.assertEqual(summary['costs']['charged_micro_usd'], original['costs']['charged_micro_usd'])
+            self.assertFalse(summary['automatic_passed'])
+
+    def test_cli_rejects_wrong_top_level_json_types_with_safe_error(self):
+        for target, value in [('end', []), ('observations', {}), ('conditions', [])]:
+            with self.subTest(target=target), tempfile.TemporaryDirectory() as directory:
+                root, _ = self.freeze(directory)
+                launch.run(root, invoke=self.response)
+                argument = root/'argument.json'
+                argument.write_bytes(qa.encoded(value))
+                if target == 'end':
+                    (root/'run-ended.json').write_bytes(qa.encoded(value))
+                    args = ['report', str(root)]
+                elif target == 'observations':
+                    args = ['report', str(root), '--observations', str(argument)]
+                else:
+                    args = ['paid-preflight', '--stage', 'preparation', '--conditions', str(argument)]
+                child = subprocess.run([sys.executable, str(Path(launch.__file__)), *args],
+                                       capture_output=True, text=True, timeout=2)
+                self.assertEqual(child.returncode, 1)
+                self.assertEqual(json.loads(child.stdout), {'error': 'launch_evaluation_failed'})
+                self.assertNotIn('Traceback', child.stderr)
+
+    def test_cli_rejects_non_string_screen_method_with_safe_error(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root, _ = self.freeze(directory)
+            launch.run(root, invoke=self.response)
+            row = json.loads(next((root/'results').glob('*.json')).read_bytes())
+            observation = dict(run_id=row['run_id'], request_id=row['request_id'],
+                               observed_upper_seconds=1, sample_interval_seconds=.5,
+                               method=1, display_observed=True, evidence_path='screen.png',
+                               evidence_sha256='0'*64)
+            argument = root/'observations.json'
+            argument.write_bytes(qa.encoded([observation]))
+            child = subprocess.run([sys.executable, str(Path(launch.__file__)), 'report', str(root),
+                                    '--observations', str(argument)],
+                                   capture_output=True, text=True, timeout=2)
+            self.assertEqual(child.returncode, 1)
+            self.assertEqual(json.loads(child.stdout), {'error': 'launch_evaluation_failed'})
+            self.assertNotIn('Traceback', child.stderr)
 
     def test_expected_rejection_is_separate_from_quality_failure_and_fast_failure_not_normal(self):
         for expected in (True, False):
