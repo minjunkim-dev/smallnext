@@ -202,12 +202,13 @@ class Budget:
                 'basis': self.policy['basis'], 'actual_billing': None}
 
 
-def metrics(values):
+def metrics(values, measurement):
     values = sorted(values)
     median = statistics.median(values) if values else None
-    p90 = values[math.ceil(.9 * len(values)) - 1] if len(values) >= 10 else None
+    p90 = values[math.ceil(.9 * len(values)) - 1] if len(values) >= measurement['minimum_p90_samples'] else None
     return {'samples': len(values), 'median': median, 'p90': p90,
-            'sla_passed': None if p90 is None else median <= 20 and p90 <= 30}
+            'sla_passed': None if p90 is None else median <= measurement['median_seconds']
+                                                  and p90 <= measurement['p90_seconds']}
 
 
 def report(directory, *, observations=()):
@@ -249,13 +250,22 @@ def report(directory, *, observations=()):
     for kind in ('first_action', 'smaller', 'other'):
         timings[kind] = metrics([screens[r['request_id']] for r in normal
             if (r['request_kind'] if r['request_kind'] in {'first_action', 'smaller'} else 'other') == kind
-            and r['request_id'] in screens])
+            and r['request_id'] in screens], manifest['measurement'])
     completed = {r['flow'] for r in records if r.get('termination') and not r.get('error')}
     end = json.loads((directory/'run-ended.json').read_bytes()) if (directory/'run-ended.json').exists() else {}
     started_requests = len(list((directory/'requests').glob('*.json')))
     started_roles = len(list((directory/'calls').glob('*.json')))
     errors = Counter(r['error'] for r in records if r.get('error'))
-    outcomes = Counter(r.get('verdict', 'failed') for r in records)
+    for row in records:
+        row['outcome'] = ('cancelled' if row.get('error') in {'cancelled', 'ownership_lost'} else
+                          'timed_out' if row.get('error') == 'timed_out' else
+                          row['verdict'] if row.get('verdict') in {'reject', 'uncertain'} else
+                          'failed' if row.get('error') else row.get('verdict', 'failed'))
+    outcomes = Counter(r['outcome'] for r in records)
+    condition_timings = {condition: {kind: metrics([screens[r['request_id']] for r in normal
+        if r['flow'].rsplit('-', 1)[0] == condition and r['request_kind'] == kind and r['request_id'] in screens],
+        manifest['measurement']) for kind in ('first_action', 'smaller', 'next_action')}
+        for condition in sorted({f['id'].rsplit('-', 1)[0] for f in manifest['flows']})}
     return {'run_id': claim['run_id'], 'manifest_sha256': claim['manifest_sha256'],
         'scheduled_flows': len(manifest['flows']), 'completed_flows': len(completed),
         'unexecuted_flows': [f['id'] for f in manifest['flows'] if f['id'] not in completed],
@@ -274,11 +284,13 @@ def report(directory, *, observations=()):
         'reference_mismatches': sum(r.get('reference_matched') is False for r in records),
         'structure_passed': sum(r.get('structure_valid') is True for r in records),
         'semantic_criteria': [1, 2, 3, 4, 5], 'human_review': 'not_performed', 'quality_passed': None,
-        'timings': timings, 'screen_missing': sum(r['request_id'] not in screens for r in normal),
-        'server_timings': {kind: metrics([r['seconds'] for r in normal if r['request_kind'] == kind])
+        'timings': timings, 'condition_timings': condition_timings,
+        'screen_missing': sum(r['request_id'] not in screens for r in normal),
+        'server_timings': {kind: dict(metrics([r['seconds'] for r in normal if r['request_kind'] == kind],
+                                    manifest['measurement']), sla_passed=None)
                            for kind in ('first_action', 'smaller')},
-        'outcome_seconds': {kind: [r['seconds'] for r in records if r.get('verdict', 'failed') == kind]
-                           for kind in ('accept', 'reject', 'uncertain', 'failed')},
+        'outcome_seconds': {kind: [r['seconds'] for r in records if r['outcome'] == kind]
+                           for kind in ('accept', 'reject', 'uncertain', 'failed', 'cancelled', 'timed_out')},
         'stop_reason': end.get('reason', 'interrupted'),
         'automatic_passed': len(completed) == len(manifest['flows']) and not errors and not unreadable
                             and started_roles == len(calls) and started_requests == len(records)

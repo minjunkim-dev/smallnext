@@ -193,6 +193,9 @@ class LaunchEvaluationTests(unittest.TestCase):
             self.assertEqual(summary['timings']['first_action']['p90'], 9)
             self.assertTrue(summary['timings']['first_action']['sla_passed'])
             self.assertEqual(summary['timings']['smaller']['samples'], 0)
+            self.assertIsNone(summary['server_timings']['first_action']['sla_passed'])
+            self.assertEqual(summary['condition_timings']['fixed-ready']['first_action']['samples'], 3)
+            self.assertIsNone(summary['condition_timings']['fixed-ready']['first_action']['p90'])
             self.assertIsNone(launch.report(root, observations=screens[:9])['timings']['first_action']['p90'])
             with self.assertRaises(ValueError):
                 launch.report(root, observations=screens + screens[:1])
@@ -376,6 +379,48 @@ print(json.dumps({'type':'result','subtype':'success','is_error':False,'modelUsa
                 self.assertEqual(summary['reference_mismatches'], 0 if expected else 1)
                 self.assertEqual(summary['timings']['first_action']['samples'], 0)
                 self.assertEqual(summary['terminations'], {'expected_reject': 33} if expected else {})
+
+    def test_cancelled_request_timing_is_not_reported_as_normal_or_generic_failure(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root, _ = self.freeze(directory)
+
+            def invoke(role, *args):
+                result = self.response(role, *args)
+                result.pop('output')
+                result['error'] = 'cancelled'
+                return result
+
+            summary = launch.run(root, invoke=invoke)
+            self.assertEqual(summary['outcomes'], {'cancelled': 1})
+            self.assertEqual(len(summary['outcome_seconds']['cancelled']), 1)
+            self.assertEqual(summary['outcome_seconds']['failed'], [])
+            self.assertEqual(summary['timings']['first_action']['samples'], 0)
+
+    def test_minimum_terminates_without_retry_and_malformed_generation_never_checks(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root, _ = self.freeze(directory)
+
+            def minimum(role, *args):
+                result = self.response(role, *args)
+                if role == 'generate' and not args[2]['unknown']:
+                    result['output']['status'] = 'minimum'
+                return result
+
+            summary = launch.run(root, invoke=minimum)
+            self.assertEqual(summary['terminations'], {'minimum': 30, 'need_info': 3})
+            self.assertEqual(summary['roles']['started'], 66)
+        with tempfile.TemporaryDirectory() as directory:
+            root, _ = self.freeze(directory)
+
+            def malformed(role, *args):
+                result = self.response(role, *args)
+                result['output']['estimated_minutes'] = 'private invalid value'
+                return result
+
+            summary = launch.run(root, invoke=malformed)
+            self.assertEqual(summary['stop_reason'], 'invalid_output')
+            self.assertEqual(summary['roles']['started'], 1)
+            self.assertNotIn('private invalid value', json.dumps(summary))
 
 
 if __name__ == '__main__':
