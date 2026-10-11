@@ -544,6 +544,10 @@ print(json.dumps({'type':'result','subtype':'success','is_error':False,'modelUsa
                     trace['record_sha256'] = qa.digest(qa.encoded(row['calls'][0]))
                     receipt.write_bytes(qa.encoded(trace))
                 result.write_bytes(qa.encoded(row))
+                receipt = root/'requests'/f"{row['request_id']}.receipt"
+                trace = json.loads(receipt.read_bytes())
+                trace['record_sha256'] = qa.digest(qa.encoded(row))
+                receipt.write_bytes(qa.encoded(trace))
             summary = launch.report(root)
             self.assertEqual(summary['unreadable_records'], [results[1].name])
             self.assertEqual(summary['requests']['recorded'], 32)
@@ -852,6 +856,30 @@ print('cancelled')
             self.assertEqual(result['server_timings'], original['server_timings'])
             self.assertEqual(result['outcome_seconds'], original['outcome_seconds'])
 
+    def test_report_binds_canonical_result_to_completion_receipt(self):
+        for corruption in ('replacement', 'missing', 'hash'):
+            with self.subTest(corruption=corruption), tempfile.TemporaryDirectory() as directory:
+                root, _ = self.freeze(directory)
+                launch.run(root, invoke=self.response)
+                path = root/'results'/'000.json'
+                row = json.loads(path.read_bytes())
+                receipt = root/'requests'/f"{row['request_id']}.receipt"
+                if corruption == 'replacement':
+                    path.rename(path.with_suffix('.original'))
+                    row['seconds'] = 123
+                    path.write_bytes(qa.encoded(row))
+                elif corruption == 'missing':
+                    receipt.unlink(missing_ok=True)
+                else:
+                    data = json.loads(receipt.read_bytes()) if receipt.exists() else {}
+                    data['record_sha256'] = '0'*64
+                    receipt.write_bytes(qa.encoded(data))
+                result = launch.report(root)
+                self.assertFalse(result['automatic_passed'])
+                self.assertEqual(result['requests']['recorded'], 32)
+                self.assertEqual(result['unreadable_records'], ['000.json'])
+                self.assertNotIn(123, result['outcome_seconds']['accept'])
+
     def test_report_pins_subdirectories_and_files_before_reading_claim(self):
         for target in ('results', 'requests', 'calls', 'result', 'end'):
             with self.subTest(target=target), tempfile.TemporaryDirectory() as directory:
@@ -1022,6 +1050,10 @@ print('cancelled')
                     row = json.loads(path.read_bytes())
                     row['seconds'] = 70 if elapsed == 5670 else 40 if n == 0 else 67
                     path.write_bytes(qa.encoded(row))
+                    receipt = root/'requests'/f"{row['request_id']}.receipt"
+                    trace = json.loads(receipt.read_bytes())
+                    trace['record_sha256'] = qa.digest(qa.encoded(row))
+                    receipt.write_bytes(qa.encoded(trace))
                 self.assertEqual(launch.report(root)['automatic_passed'], allowed)
 
     def test_maximum_report_fits_256_file_descriptors(self):

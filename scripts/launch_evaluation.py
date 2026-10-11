@@ -365,7 +365,7 @@ def report(directory, *, observations=()):
                 child = opened.enter_context(private_directory(descriptor, name))
                 with os.scandir(child) as entries:
                     identities = [(entry.name, entry.inode()) for entry in entries
-                                  if entry.name.endswith('.json') or name == 'calls' and entry.name.endswith('.receipt')]
+                                  if entry.name.endswith('.json') or name in ('requests', 'calls') and entry.name.endswith('.receipt')]
                 for filename, inode in identities:
                     source = None
                     try:
@@ -443,6 +443,11 @@ def report_bundle(directory, descriptor, observations):
                     ('run_id', 'manifest_sha256', 'request_id', 'flow', 'step', 'request_kind', 'result_file'))
                     or request.get('input_sha256') != qa.digest(qa.encoded(data))):
                 raise ValueError('frozen request mismatch')
+            receipt = private_json(descriptor, f'requests/{ident}.receipt')
+            if (any(receipt.get(key) != row[key] for key in
+                    ('run_id', 'manifest_sha256', 'request_id', 'result_file'))
+                    or receipt.get('record_sha256') != qa.digest(qa.encoded(row))):
+                raise ValueError('result completion receipt mismatch')
             pending_usage = usage_totals.copy()
             for index, call in enumerate(row['calls']):
                 if type(call) is not dict or call.get('role') not in ('generate', 'check'):
@@ -785,6 +790,9 @@ def run(directory, *, claude='claude', invoke=None, cancelled=None, clock=monoto
                     if cancelled.is_set() or not owned():
                         row['error'] = 'ownership_lost' if lost.is_set() or not owned() else 'cancelled'
                     qa.save(directory/'results'/row['result_file'], row)
+                    qa.save(directory/'requests'/f'{ident}.receipt',
+                        {key: row[key] for key in ('run_id', 'manifest_sha256', 'request_id', 'result_file')}
+                        | {'record_sha256': qa.digest(qa.encoded(row))})
                     if row.get('error'):
                         reason = ('time_limit' if row['error'] == 'timed_out'
                                   and clock() - budget.started >= manifest['limits']['seconds'] else row['error'])
