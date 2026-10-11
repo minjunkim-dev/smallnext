@@ -15,6 +15,60 @@ API 키를 읽거나 토큰을 추출하지 않는다.
 기본 CI는 오프라인 회귀 테스트만 실행한다.
 `run` 명령만 실제 구독 모델 호출을 시작한다.
 
+## 출시 흐름 준비 #113
+
+`scripts/launch_evaluation.py`는 [#47의 확정 답](https://github.com/minjunkim-dev/smallnext/issues/47#issuecomment-6103771425)에 따른 순차 실행 경로다.
+기존 47건 회귀와 출시 흐름을 섞지 않는다. 기존 fixtures·참조·결과를 수정하지 않는다.
+동결 디렉터리의 `regression/`에는 기존 47건의 별도 동결 판을 저장한다. 이를 자동 호출하지 않는다.
+첫 행동부터 상태가 허용하는 축소만 수행한다. 질문·최소 작업·허용된 대안 없음에서 종료한다.
+가짜 답변·완료 기록·행동 결과·별도 smoke·계획 밖 재시도를 추가하지 않는다.
+기존 대표 목표 입력은 #3·#6의 합성 검증 맥락이다. 개인의 실제 기여나 수행을 확인한 사실이 아니다.
+추가 목표는 #47의 새 시작 시점이다. 과거 `smaller`·`next_action` 상태를 그대로 사용하지 않는다.
+
+1. `python3 -m unittest discover -s scripts -p test_launch_evaluation.py`로 모의 회귀를 실행한다.
+2. 새 `work/` 디렉터리, Issue 담당자, 평가 종료 기준 시각과 삭제 방법을 지정한다.
+3. `freeze`로 입력·기대 의미·종료·지침·공통 계약·schema·모델·실행기·측정법·상한·보관을 동결한다.
+4. #115의 착수 조건을 확인한 뒤 `run`으로 구독 OAuth 평가를 시작한다. 지금 준비 작업에서는 호출하지 않는다.
+5. `report`로 부분 결과나 화면 관측을 집계한다. 모델을 호출하거나 중단 판을 재개하지 않는다.
+
+동결 명령 예시는 다음과 같다. 비용 숫자는 오프라인 계획 가정이다. 공급자 가격·실제 청구의 확인값이 아니다.
+종료 시각은 실행 전에 미래의 기준 시각으로 지정한다. 기본 실행 경로는 구독 OAuth다.
+
+```sh
+python3 scripts/launch_evaluation.py freeze work/launch-new \
+  --owner minjunkim-dev --ends-at '<timezone-qualified future timestamp>' \
+  --delete-method '이 private 디렉터리를 삭제한다' \
+  --role-reservation-micro-usd 20000 --monthly-spent-micro-usd 0
+python3 scripts/launch_evaluation.py run work/launch-new
+python3 scripts/launch_evaluation.py report work/launch-new --observations work/screen-observations.json
+```
+
+같은 실행 판의 재실행과 덮어쓰기를 거부한다. checkout의 `work/launch-model.lock`으로 하네스 실행 소유권을 배타적으로 유지한다.
+다른 checkout이나 수동 모델 호출도 겹치지 않게 운영한다. 이 잠금이 외부 호출까지 잠그지는 않는다.
+소유권 상실·취소·timeout에서 기존 구독 실행기가 자식 프로세스 그룹을 정리한다.
+제안 요청과 역할 호출의 시작 기록을 먼저 저장한다. 잘린 결과와 누락한 결과를 성공으로 처리하지 않는다.
+예상 밖 품질·출력·모델·정산 오류와 상한에서 다음 호출을 차단한다.
+사용량이 없으면 역할 예약 비용을 유지한다. 미실행 검사 역할은 시작 호출에 넣지 않는다.
+구독 호출에서 비용 추정을 제공하지 않으면 보수적 계획 예약을 보고한다. 실제 청구는 미확인이다.
+유료 전송 구현은 없다. `paid-preflight`는 별도 서버 직전 단계와 준비 조건을 오프라인으로 확인할 뿐이다.
+이 결과로 키 생성·유료 호출·배포를 시작하지 않는다.
+
+화면 관측 파일은 JSON 배열이다. 각 항목은 `run_id`, `request_id`, `observed_upper_seconds`,
+`sample_interval_seconds`, `method`, `display_observed: true`, `evidence_sha256`을 포함한다.
+`evidence_sha256`은 실제 결과 화면 증거 파일의 SHA-256이다. 원문·화면 증거는 private 묶음에 보관한다.
+상태 변경 콜백이나 서버 응답만으로 `display_observed`를 설정하지 않는다.
+기본 보고서에는 실제 표시 증거가 없다. 화면 응답은 미확인이다.
+검사·참조를 통과한 표본과 연결한 실제 화면 관측만 정상 화면 집계에 포함한다.
+첫 행동·축소·다른 요청과 실패·거부·불확실·취소 시간을 구분한다.
+중앙값·nearest-rank p90과 표본 부족 처리는 #47의 기준을 따른다.
+구조 검사·모델의 다섯 기준·상태/판정 참조 대조·사람 검토를 구분한다. 자유 문장은 정확한 문자열로 채점하지 않는다.
+`automatic_passed`는 하네스의 자동 검사다. `quality_passed`는 사람 검토 전까지 미확인이다.
+서버 시간으로 화면 SLA를 통과시키지 않는다. `paid_budget_verified`는 항상 false다.
+
+새 원문 묶음은 Git에 넣지 않는다. 디렉터리는 0700이고 파일은 0600이다.
+평가 종료 기록의 `delete_by`는 실제 종료 후 최대 30일이다. 담당자와 삭제 방법은 manifest에 있다.
+기존 공개 합성 근거는 삭제하지 않는다. #47·#111은 종료하지 않는다. #61 실기기 보류와 기본 OFF를 유지한다.
+
 ## 재실행
 
 저장소 루트에서 실행한다. 디렉터리 이름은 매번 새로 지정한다.
