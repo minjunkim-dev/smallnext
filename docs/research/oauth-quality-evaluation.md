@@ -54,8 +54,10 @@ python3 scripts/launch_evaluation.py report work/launch-new --observations work/
 이 결과로 키 생성·유료 호출·배포를 시작하지 않는다.
 
 화면 관측 파일은 JSON 배열이다. 각 항목은 `run_id`, `request_id`, `observed_upper_seconds`,
-`sample_interval_seconds`, `method`, `display_observed: true`, `evidence_sha256`을 포함한다.
+`sample_interval_seconds`, `method`, `display_observed: true`, `evidence_path`, `evidence_sha256`을 포함한다.
 `evidence_sha256`은 실제 결과 화면 증거 파일의 SHA-256이다. 원문·화면 증거는 private 묶음에 보관한다.
+`evidence_path`는 private 묶음 안의 상대 경로다. 보고기는 파일 존재와 실제 SHA-256을 대조한다.
+파일 누락·경로 이탈·해시 차이를 거부한다. 파일 내용이 실제 결과 화면인지는 관측 담당자가 확인한다.
 상태 변경 콜백이나 서버 응답만으로 `display_observed`를 설정하지 않는다.
 기본 보고서에는 실제 표시 증거가 없다. 화면 응답은 미확인이다.
 검사·참조를 통과한 표본과 연결한 실제 화면 관측만 정상 화면 집계에 포함한다.

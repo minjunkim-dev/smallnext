@@ -184,9 +184,12 @@ class LaunchEvaluationTests(unittest.TestCase):
             root, _ = self.freeze(directory)
             launch.run(root, invoke=self.response)
             rows = [json.loads(p.read_bytes()) for p in sorted((root/'results').glob('*.json'))]
+            evidence = root/'screen.png'
+            evidence.write_bytes(b'offline screen fixture')
             screens = [dict(run_id=r['run_id'], request_id=r['request_id'], observed_upper_seconds=n+1,
                             method='first screenshot containing result', sample_interval_seconds=.5,
-                            display_observed=True, evidence_sha256='a'*64)
+                            display_observed=True, evidence_path='screen.png',
+                            evidence_sha256=qa.digest(evidence.read_bytes()))
                        for n, r in enumerate(rows[:10])]
             summary = launch.report(root, observations=screens)
             self.assertEqual(summary['timings']['first_action']['median'], 5.5)
@@ -202,6 +205,46 @@ class LaunchEvaluationTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 launch.report(root, observations=[dict(screens[0], request_id='unrelated')])
             self.assertNotIn('필요한 정보', json.dumps(summary, ensure_ascii=False))
+            (root.parent/'screen.png').write_bytes(evidence.read_bytes())
+            (root/'outside.png').symlink_to(root.parent/'screen.png')
+            for invalid in (dict(screens[0], evidence_path='missing.png'),
+                            dict(screens[0], evidence_path='../screen.png'),
+                            dict(screens[0], evidence_path='outside.png'),
+                            dict(screens[0], evidence_sha256='a'*64)):
+                with self.assertRaises(ValueError):
+                    launch.report(root, observations=[invalid])
+            evidence.write_bytes(b'changed after observation')
+            with self.assertRaises(ValueError):
+                launch.report(root, observations=screens)
+
+    def test_auth_timeout_and_ownership_loss_reap_descendants_before_unlock(self):
+        for ownership in (False, True):
+            with self.subTest(ownership=ownership), tempfile.TemporaryDirectory() as directory:
+                root, _ = self.freeze(directory)
+                fake = Path(directory)/'claude'
+                pid_file = Path(directory)/'descendant.pid'
+                fake.write_text('#!' + sys.executable + '\n' +
+                    'import subprocess,time\n' +
+                    'child=subprocess.Popen(["sleep","30"])\n' +
+                    f'open({str(pid_file)!r},"w").write(str(child.pid))\n' +
+                    'time.sleep(30)\n')
+                fake.chmod(0o700)
+                lock = Path(directory)/'model.lock'
+                if ownership:
+                    threading.Timer(.3, lambda: lock.unlink()).start()
+                    summary = launch.run(root, claude=str(fake), lock_path=lock)
+                    self.assertEqual(summary['stop_reason'], 'ownership_lost')
+                    self.assertEqual(summary['roles']['started'], 0)
+                else:
+                    with self.assertRaises(subprocess.TimeoutExpired):
+                        launch.subscription_account(str(fake), threading.Event(), timeout=.3)
+                pid = int(pid_file.read_text())
+                for _ in range(30):
+                    state = subprocess.run(['ps', '-p', str(pid), '-o', 'stat='], capture_output=True).stdout.strip()
+                    if not state or state.startswith(b'Z'):
+                        break
+                    time.sleep(.05)
+                self.assertTrue(not state or state.startswith(b'Z'), state)
 
     def test_monthly_budget_and_elapsed_deadline_stop_before_more_calls(self):
         with tempfile.TemporaryDirectory() as directory:

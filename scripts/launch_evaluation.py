@@ -10,6 +10,7 @@ import math
 import os
 from pathlib import Path
 import signal
+import selectors
 import statistics
 import subprocess
 import threading
@@ -34,6 +35,47 @@ def paid_preflight(stage, conditions):
     return {'ready': stage == 'before_separate_server' and not missing,
             'stage': stage, 'missing': missing, 'transport_enabled': False,
             'boundary': 'offline readiness only; no paid transport or billing validation'}
+
+
+def subscription_account(claude, cancelled, timeout=15):
+    command = [claude, 'auth', 'status']
+    deadline = monotonic() + timeout
+    if cancelled.is_set():
+        raise ValueError('cancelled')
+    child = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                             start_new_session=True, env=qa.environment())
+    raw = b''
+    try:
+        with selectors.DefaultSelector() as selector:
+            selector.register(child.stdout, selectors.EVENT_READ)
+            while True:
+                if cancelled.is_set():
+                    raise ValueError('cancelled')
+                if monotonic() >= deadline:
+                    raise subprocess.TimeoutExpired(command, timeout)
+                if not selector.select(min(.05, max(0, deadline-monotonic()))):
+                    continue
+                chunk = os.read(child.stdout.fileno(), 65536)
+                if not chunk:
+                    break
+                raw += chunk
+                if len(raw) > 1024 * 1024:
+                    raise ValueError('auth output limit')
+        account = json.loads(raw)
+    finally:
+        # Keep the leader unreaped until both signals, as in the role transport.
+        for sig in (signal.SIGTERM, signal.SIGKILL):
+            try:
+                os.killpg(child.pid, sig)
+            except (ProcessLookupError, PermissionError):
+                pass
+            if sig == signal.SIGTERM:
+                threading.Event().wait(.05)
+        child.wait()
+        child.stdout.close()
+    if child.returncode != 0:
+        raise ValueError('auth failed')
+    return account
 
 
 def initial(goal, available, remaining, blocker='', unknown=()):
@@ -243,6 +285,16 @@ def report(directory, *, observations=()):
                 or item.get('display_observed') is not True or len(evidence) != 64
                 or any(c not in '0123456789abcdef' for c in evidence)):
             raise ValueError('screen observation method and upper bound required')
+        try:
+            path = Path(item['evidence_path'])
+            if path.is_absolute():
+                raise ValueError('absolute evidence path')
+            path = (directory/path).resolve(strict=True)
+            path.relative_to(directory.resolve())
+            if not path.is_file() or qa.digest(path.read_bytes()) != evidence:
+                raise ValueError('screen evidence mismatch')
+        except (OSError, KeyError, TypeError, ValueError):
+            raise ValueError('private screen evidence missing or mismatched') from None
         screens[ident] = seconds
     calls = [c for r in records for c in r['calls']]
     normal = [r for r in records if r.get('verdict') == 'accept' and r.get('reference_matched') and not r.get('error')]
@@ -354,8 +406,7 @@ def run(directory, *, claude='claude', invoke=None, cancelled=None, clock=monoto
         budget = Budget(manifest, clock)
         try:
             if invoke is None:
-                account = json.loads(subprocess.check_output([claude, 'auth', 'status'],
-                    env=qa.environment(), stderr=subprocess.DEVNULL, timeout=15))
+                account = subscription_account(claude, cancelled)
                 if not (account.get('loggedIn') is True and account.get('authMethod') == 'claude.ai'
                         and account.get('apiProvider') == 'firstParty'):
                     raise ValueError('subscription OAuth login required')
@@ -460,7 +511,7 @@ def run(directory, *, claude='claude', invoke=None, cancelled=None, clock=monoto
                 if reason != 'completed':
                     break
         except Exception:
-            reason = 'runner_failed'
+            reason = 'ownership_lost' if lost.is_set() else 'cancelled' if cancelled.is_set() else 'runner_failed'
         finally:
             done.set()
             watcher.join()
