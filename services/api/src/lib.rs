@@ -4,6 +4,7 @@ use sqlx::PgPool;
 use utoipa::{OpenApi, ToSchema};
 
 pub mod development_ai;
+mod timing;
 pub mod user_ai;
 
 #[derive(Clone)]

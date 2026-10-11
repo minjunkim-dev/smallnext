@@ -70,6 +70,8 @@ pub fn router(ai: SubscriptionAi, token: Option<String>) -> Router {
 }
 
 async fn suggest(State(server): State<Server>, headers: HeaderMap, body: Bytes) -> Response {
+    let started = std::time::Instant::now();
+    let timing_id = crate::timing::run_id(&headers);
     // A web page must not spend the developer's CLI allowance through a simple localhost POST.
     if headers.contains_key(header::ORIGIN) {
         return StatusCode::FORBIDDEN.into_response();
@@ -122,7 +124,7 @@ async fn suggest(State(server): State<Server>, headers: HeaderMap, body: Bytes) 
             .to_string(),
         )
     });
-    deferred_response(future)
+    deferred_response(crate::timing::response(timing_id, started, future))
 }
 
 pub(crate) fn deferred_response(future: impl Future<Output = Bytes> + Send + 'static) -> Response {

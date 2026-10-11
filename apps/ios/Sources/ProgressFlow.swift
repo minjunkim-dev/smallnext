@@ -123,6 +123,17 @@ final class ProgressFlow {
     private(set) var goalDetails: GoalDetails?
     private(set) var goals: [GoalSummary] = []
     private(set) var suggestionInput: SuggestionInput?
+    var timingEnabled = SuggestionTiming.enabled
+    private(set) var timingSample: SuggestionTiming?
+    @ObservationIgnored private var commandStart: TimeInterval?
+
+    func measuredCommand(_ command: () throws -> Void) rethrows {
+        beginMeasuredCommand()
+        defer { endMeasuredCommand() }
+        try command()
+    }
+    func beginMeasuredCommand() { commandStart = timingEnabled ? SuggestionTiming.now : nil }
+    func endMeasuredCommand() { commandStart = nil }
 
     @ObservationIgnored private let database: AppDatabase
     @ObservationIgnored private let provider: any ActionSuggestionProvider
@@ -601,6 +612,7 @@ final class ProgressFlow {
             return (pending, screen, try Self.loadGoalInput(db), try Self.loadGoalDetails(db), try Self.loadGoals(db), try Self.loadSuggestionInput(db, screen: screen))
         }
         unsavedSuggestionID = nil
+        if self.screen != screen { timingSample = nil }
         self.screen = screen
         goalInput = input
         goalDetails = details
@@ -612,27 +624,53 @@ final class ProgressFlow {
     private func start(_ pending: PendingSuggestion) {
         let provider = provider
         suggestionTask?.cancel()
+        let timing = commandStart.map { SuggestionTiming(kind: pending.request.kind, start: $0) }
+        timingSample = nil
         suggestionTask = Task {
             let outcome: Result<SuggestionCandidate, SuggestionFailure>
             do {
-                outcome = .success(try await provider.suggest(pending.request))
+                outcome = .success(try await SuggestionTiming.$current.withValue(timing) { try await provider.suggest(pending.request) })
             } catch {
                 outcome = .failure(error as? SuggestionFailure ?? .failed)
             }
-            finish(pending, outcome)
+            finish(pending, outcome, timing: timing)
         }
     }
 
-    private func finish(_ pending: PendingSuggestion, _ outcome: Result<SuggestionCandidate, SuggestionFailure>) {
+    private func finish(_ pending: PendingSuggestion, _ outcome: Result<SuggestionCandidate, SuggestionFailure>, timing: SuggestionTiming?) {
+        let applyStart = SuggestionTiming.now
         do {
-            let (screen, input) = try database.writer.write { db in
+            let (screen, input, status, isCurrentRequest) = try database.writer.write { db in
                 try Self.apply(db, pending, outcome)
                 let screen = try Self.loadScreen(db)
-                return (screen, try Self.loadSuggestionInput(db, screen: screen))
+                let isCurrentRequest = try timing != nil && (Self.selectedGoalID(db) == pending.goalID && Int64.fetchOne(db, sql: "SELECT MAX(id) FROM suggestion_request WHERE goal_id = ?", arguments: [pending.goalID]) == pending.id)
+                let status = timing == nil ? nil : try String.fetchOne(db, sql: "SELECT status FROM suggestion_request WHERE id = ?", arguments: [pending.id])
+                return (screen, try Self.loadSuggestionInput(db, screen: screen), status, isCurrentRequest)
             }
             self.screen = screen
             suggestionInput = input
+            if let timing {
+                let result: String
+                if status == "failed" {
+                    if case .failure(let failure) = outcome { result = failure.rawValue } else { result = "unsuitable" }
+                }
+                else if Task.isCancelled || status != "applied" { result = status ?? "superseded" }
+                else {
+                    switch outcome {
+                    case .success(.action), .success(.minimalAction): result = "action"
+                    case .success(.question): result = "question"
+                    case .success(.goalSummary): result = "goal_summary"
+                    case .success(.noAction): result = "no_action"
+                    case .failure(let failure): result = failure.rawValue
+                    }
+                }
+                timing.finish(result, applyStart: applyStart)
+                timing.save()
+                if isCurrentRequest, ["applied", "failed", "cancelled"].contains(status) { timingSample = timing }
+            }
         } catch {
+            timing?.finish("storage_failed", applyStart: applyStart)
+            timing?.save()
             logger.error("Suggestion result was not saved: \(String(describing: type(of: error)), privacy: .public)")
             // 취소한 요청의 결과는 화면에 반영하지 않는다.
             guard !Task.isCancelled else { return }

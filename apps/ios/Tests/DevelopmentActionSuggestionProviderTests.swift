@@ -103,6 +103,34 @@ final class DevelopmentActionSuggestionProviderTests: XCTestCase {
         catch { XCTAssertEqual(error as? SuggestionFailure, .rejected) }
         XCTAssertTrue(DevelopmentTransport.store.requests.isEmpty)
     }
+
+    func testTimingLinksTransportWithServerAndKeepsMissingTimeUnknown() async throws {
+        let provider = provider()
+        let request = SuggestionRequest(kind: .firstAction, goal: "정리", currentAction: nil, completedTasks: [], stateKey: "1:0")
+        DevelopmentTransport.store.reset()
+        DevelopmentTransport.store.handler = { request in (200, try Self.accepted(request)) }
+        _ = try await provider.suggest(request)
+        XCTAssertNil(DevelopmentTransport.store.requests[0].value(forHTTPHeaderField: "X-Smallnext-Timing"))
+        let timing = SuggestionTiming(kind: .firstAction, start: SuggestionTiming.now)
+        DevelopmentTransport.store.reset()
+        DevelopmentTransport.store.handler = { request in
+            var data = try JSONSerialization.jsonObject(with: Self.accepted(request)) as! [String: Any]
+            data["_timing"] = ["run_id": timing.id, "generate_ms": 0.01, "check_ms": 0.01, "total_ms": 0.02]
+            return (200, try JSONSerialization.data(withJSONObject: data))
+        }
+        _ = try await SuggestionTiming.$current.withValue(timing) { try await provider.suggest(request) }
+        XCTAssertEqual(DevelopmentTransport.store.requests[0].value(forHTTPHeaderField: "X-Smallnext-Timing"), timing.id)
+        let record = timing.snapshot()
+        XCTAssertEqual(record.authApplicable, false)
+        XCTAssertNil(record.authMS)
+        XCTAssertNotNil(record.httpMS)
+        XCTAssertEqual(record.server?.run_id, timing.id)
+        XCTAssertNotNil(record.transportQueueResidualMS)
+        XCTAssertNil(record.screenUpperBoundMS)
+        let wrong = SuggestionTiming(kind: .firstAction, start: SuggestionTiming.now)
+        _ = try await SuggestionTiming.$current.withValue(wrong) { try await provider.suggest(request) }
+        XCTAssertNil(wrong.snapshot().server)
+    }
 }
 
 final class DevelopmentTransport: URLProtocol, @unchecked Sendable {

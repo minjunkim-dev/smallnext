@@ -168,6 +168,8 @@ Release는 HTTP 공급자와 설정 코드를 제외합니다. 평문 HTTP 허�
 
 ## iOS
 
+개발용 요청·화면 시간의 모의 검증은 [계측 절차](SUGGESTION_TIMING.md)를 따른다.
+
 `apps/ios/Smallnext.xcodeproj`를 Xcode에서 엽니다.
 `Smallnext` scheme과 iPhone 시뮬레이터를 선택한 뒤 실행합니다.
 서명 팀 없이 시뮬레이터에서 실행할 수 있습니다.

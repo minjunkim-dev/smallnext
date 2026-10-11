@@ -64,6 +64,7 @@ struct CoreFlowView: View {
                 // 상태별 뷰를 위쪽에 맞춰 교체한다. 이동 없이 투명도 전환만 쓴다.
                 ZStack(alignment: .topLeading) {
                     screenContent
+                        .modifier(SuggestionTimingMarker(sample: flow.timingSample))
                         .id(screenIdentity)
                         .transition(.opacity)
                 }
@@ -629,6 +630,8 @@ struct CoreFlowView: View {
 
     @discardableResult
     private func run(_ command: @MainActor () throws -> Void) -> Bool {
+        flow.beginMeasuredCommand()
+        defer { flow.endMeasuredCommand() }
         storageFailed = false
         goalInputProblem = nil
         do {

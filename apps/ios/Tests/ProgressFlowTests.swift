@@ -25,6 +25,49 @@ final class ProgressFlowTests: XCTestCase {
         try ProgressFlow(database: AppDatabase(path: path), provider: provider)
     }
 
+    func testTimingWaitsForScreenObservationAndDoesNotChangeProgress() async throws {
+        let flow = try makeFlow(ScriptedProvider([.action(first), .action(second)]))
+        flow.timingEnabled = true
+        try flow.measuredCommand { try flow.createGoal("학습 자료 정리") }
+        await flow.waitForSuggestion()
+        let firstSample = try XCTUnwrap(flow.timingSample)
+        XCTAssertEqual(firstSample.kind, .firstAction)
+        XCTAssertEqual(firstSample.outcome, "action")
+        XCTAssertNil(firstSample.snapshot().screenUpperBoundMS)
+        XCTAssertNotNil(firstSample.snapshot().applyMS)
+        XCTAssertNil(firstSample.snapshot().httpMS)
+        try flow.measuredCommand { try flow.makeSmaller() }
+        await flow.waitForSuggestion()
+        XCTAssertNotEqual(flow.timingSample?.id, firstSample.id)
+        XCTAssertEqual(flow.timingSample?.kind, .smaller)
+        XCTAssertEqual(try count("SELECT COUNT(*) FROM completion"), 0)
+    }
+
+    func testTimingCancellationAndLateResponseDoNotMarkAnotherScreen() async throws {
+        let provider = HeldProvider(.action(first))
+        let flow = try makeFlow(provider)
+        flow.timingEnabled = true
+        try flow.measuredCommand { try flow.createGoal("資料 정리") }
+        try flow.cancelSuggestion()
+        try flow.startNewGoal()
+        await provider.release()
+        await flow.waitForSuggestion()
+        XCTAssertEqual(flow.screen, .goalInput)
+        XCTAssertNil(flow.timingSample)
+        XCTAssertEqual(try count("SELECT COUNT(*) FROM completion"), 0)
+    }
+
+    func testTimingStorageFailureDoesNotBecomeNormalSample() async throws {
+        let provider = LockingProvider(path: path, candidate: .action(first))
+        let flow = try makeFlow(provider)
+        flow.timingEnabled = true
+        try flow.measuredCommand { try flow.createGoal("자료 정리") }
+        await flow.waitForSuggestion()
+        XCTAssertNil(flow.timingSample)
+        XCTAssertEqual(flow.screen, .awaitingFirstAction(goal: "자료 정리", problem: .failure(.failed)))
+        await provider.releaseLock()
+    }
+
     func testRemainingSplitWorkSurvivesTwoNextActionsAndReopen() async throws {
         let fourth = ProposedAction(task: "자료 저장하기", doneWhen: "자료가 저장됐다", estimatedMinutes: 1)
         let fifth = ProposedAction(task: "자료 위치 확인하기", doneWhen: "위치를 확인했다", estimatedMinutes: 1)

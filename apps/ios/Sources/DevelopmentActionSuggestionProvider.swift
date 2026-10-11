@@ -19,7 +19,7 @@ struct DevelopmentActionSuggestionProvider: ActionSuggestionProvider {
     func suggest(_ request: SuggestionRequest) async throws -> SuggestionCandidate {
         let value = token
         return try await HTTPActionSuggestionProvider(baseURL: baseURL, path: "development/suggestions",
-            token: { value }, session: session).suggest(request)
+            token: { value }, session: session, authApplicable: false).suggest(request)
     }
 }
 #endif

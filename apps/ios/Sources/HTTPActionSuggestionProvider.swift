@@ -8,6 +8,7 @@ struct HTTPActionSuggestionProvider: ActionSuggestionProvider {
     var rejectCompletion = false
     var session: URLSession = .shared
     var timeout: TimeInterval = 130
+    var authApplicable = true
 
     func suggest(_ request: SuggestionRequest) async throws -> SuggestionCandidate {
         try Task.checkCancellation()
@@ -20,14 +21,25 @@ struct HTTPActionSuggestionProvider: ActionSuggestionProvider {
         http.httpBody = bytes
         http.timeoutInterval = timeout
         http.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        let token = try await token()
+        let timing = SuggestionTiming.current
+        if let timing { http.setValue(timing.id, forHTTPHeaderField: "X-Smallnext-Timing") }
+        let authStart = timing.map { _ in SuggestionTiming.now }
+        let token: String?
+        do { token = try await self.token() }
+        catch {
+            if let authStart { timing?.authentication(ms: authApplicable ? (SuggestionTiming.now - authStart) * 1000 : nil, applicable: authApplicable) }
+            throw error
+        }
+        if let authStart { timing?.authentication(ms: authApplicable ? (SuggestionTiming.now - authStart) * 1000 : nil, applicable: authApplicable) }
         try Task.checkCancellation()
         if let token, !token.isEmpty { http.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
         let data: Data
         let response: URLResponse
+        let httpStart = timing.map { _ in SuggestionTiming.now }
         do {
             (data, response) = try await session.data(for: http, delegate: NoRedirect())
         } catch {
+            if let httpStart { timing?.http(ms: (SuggestionTiming.now - httpStart) * 1000) }
             if Task.isCancelled { throw CancellationError() }
             if let error = error as? URLError {
                 switch error.code {
@@ -40,6 +52,8 @@ struct HTTPActionSuggestionProvider: ActionSuggestionProvider {
             }
             throw SuggestionFailure.failed
         }
+        if let httpStart { timing?.http(ms: (SuggestionTiming.now - httpStart) * 1000) }
+        timing?.server(data: data)
         try Task.checkCancellation()
         guard let response = response as? HTTPURLResponse else { throw SuggestionFailure.failed }
         switch response.statusCode {

@@ -145,6 +145,7 @@ pub(crate) async fn suggest(
     body: Bytes,
 ) -> Response {
     let started = Instant::now();
+    let timing_id = crate::timing::run_id(&headers);
     if headers.contains_key(header::ORIGIN) {
         return StatusCode::FORBIDDEN.into_response();
     }
@@ -241,7 +242,9 @@ pub(crate) async fn suggest(
         };
         Bytes::from(serde_json::to_vec(&response).expect("finite checked response"))
     };
-    crate::development_ai::http::deferred_response(future)
+    crate::development_ai::http::deferred_response(crate::timing::response(
+        timing_id, started, future,
+    ))
 }
 
 fn required(name: &str) -> Result<String, &'static str> {

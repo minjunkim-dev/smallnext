@@ -237,13 +237,18 @@ impl SubscriptionAi {
     }
     async fn pipeline(&self, input: &AiInput) -> Result<Proposal, Disposition> {
         let original = validate_input(input)?;
-        let proposal: Proposal = serde_json::from_value(self.call("generate", &original).await?)
-            .map_err(|_| Disposition::InvalidProposal)?;
+        let proposal: Proposal = serde_json::from_value(
+            crate::timing::measure("generate", self.call("generate", &original)).await?,
+        )
+        .map_err(|_| Disposition::InvalidProposal)?;
         validate_proposal(input, &proposal)?;
         validate_check(
-            self.call(
+            crate::timing::measure(
                 "check",
-                &json!({"original_request": original, "candidate": proposal}),
+                self.call(
+                    "check",
+                    &json!({"original_request": original, "candidate": proposal}),
+                ),
             )
             .await?,
         )?;
