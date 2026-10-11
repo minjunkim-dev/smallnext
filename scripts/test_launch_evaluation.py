@@ -836,6 +836,22 @@ print('cancelled')
             self.assertEqual(result['role_usage'], original['role_usage'])
             self.assertEqual(result['timings'], original['timings'])
 
+    def test_report_keeps_canonical_record_when_modified_duplicate_sorts_first(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root, _ = self.freeze(directory)
+            original = launch.run(root, invoke=self.response)
+            source = root/'results'/'000.json'
+            row = json.loads(source.read_bytes())
+            row['seconds'] = 123
+            (root/'results'/'-1.json').write_bytes(qa.encoded(row))
+            result = launch.report(root)
+            self.assertFalse(result['automatic_passed'])
+            self.assertEqual(result['unreadable_records'], ['-1.json'])
+            self.assertEqual(result['requests']['recorded'], 33)
+            self.assertEqual(result['role_usage'], original['role_usage'])
+            self.assertEqual(result['server_timings'], original['server_timings'])
+            self.assertEqual(result['outcome_seconds'], original['outcome_seconds'])
+
     def test_report_pins_subdirectories_and_files_before_reading_claim(self):
         for target in ('results', 'requests', 'calls', 'result', 'end'):
             with self.subTest(target=target), tempfile.TemporaryDirectory() as directory:

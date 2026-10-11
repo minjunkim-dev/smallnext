@@ -421,8 +421,10 @@ def report_bundle(directory, descriptor, observations):
         try:
             row = private_json(descriptor, Path('results')/path.name)
             if type(row) is not dict or any(type(row.get(key)) is not str
-                    for key in ('run_id', 'manifest_sha256', 'request_id', 'flow', 'request_kind')):
+                    for key in ('run_id', 'manifest_sha256', 'request_id', 'flow', 'request_kind', 'result_file')):
                 raise ValueError('invalid result identity')
+            if row['result_file'] != path.name:
+                raise ValueError('noncanonical result file')
             if row['request_id'] in seen:
                 raise ValueError('duplicate result identity')
             if qa.numeric(row.get('seconds')) is None or type(row.get('calls')) is not list:
@@ -438,7 +440,7 @@ def report_bundle(directory, descriptor, observations):
                 raise ValueError('request identity or sequence mismatch')
             request = private_json(descriptor, f'requests/{ident}.json')
             if (any(request.get(key) != row[key] for key in
-                    ('run_id', 'manifest_sha256', 'request_id', 'flow', 'step', 'request_kind'))
+                    ('run_id', 'manifest_sha256', 'request_id', 'flow', 'step', 'request_kind', 'result_file'))
                     or request.get('input_sha256') != qa.digest(qa.encoded(data))):
                 raise ValueError('frozen request mismatch')
             pending_usage = usage_totals.copy()
@@ -709,7 +711,8 @@ def run(directory, *, claude='claude', invoke=None, cancelled=None, clock=monoto
                     deadline = min(started + manifest['pipeline_seconds'], budget.started + manifest['limits']['seconds'])
                     ident = f"{claim['run_id']}-{flow['id']}-{step}"
                     row = dict(run_id=claim['run_id'], manifest_sha256=claim['manifest_sha256'],
-                               request_id=ident, flow=flow['id'], step=step, request_kind=data['request_kind'], calls=[])
+                               request_id=ident, flow=flow['id'], step=step, request_kind=data['request_kind'],
+                               result_file=f'{budget.requests - 1:03d}.json', calls=[])
                     qa.save(directory/'requests'/f'{ident}.json', dict(row, input_sha256=qa.digest(qa.encoded(data))))
                     candidate = None
                     try:
@@ -781,7 +784,7 @@ def run(directory, *, claude='claude', invoke=None, cancelled=None, clock=monoto
                     row['seconds'] = clock() - started
                     if cancelled.is_set() or not owned():
                         row['error'] = 'ownership_lost' if lost.is_set() or not owned() else 'cancelled'
-                    qa.save(directory/'results'/f'{len(list((directory/"results").glob("*.json"))):03d}.json', row)
+                    qa.save(directory/'results'/row['result_file'], row)
                     if row.get('error'):
                         reason = ('time_limit' if row['error'] == 'timed_out'
                                   and clock() - budget.started >= manifest['limits']['seconds'] else row['error'])
