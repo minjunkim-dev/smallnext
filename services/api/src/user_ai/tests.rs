@@ -244,6 +244,48 @@ async fn result(response: axum::response::Response) -> serde_json::Value {
 }
 
 #[tokio::test]
+#[ignore = "requires TEST_DATABASE_URL; mock auth/provider against isolated PostgreSQL"]
+async fn timing_connects_mock_auth_provider_and_total_without_changing_contract() {
+    let fixture = Fixture::new().await;
+    fixture.remote.delay_ms.store(15, Ordering::SeqCst);
+    let input: serde_json::Value =
+        serde_json::from_str(include_str!("../../examples/development-ai-input.json")).unwrap();
+    let body = result(
+        fixture
+            .app
+            .clone()
+            .oneshot(
+                Request::post("/v1/suggestions")
+                    .header("Content-Type", "application/json")
+                    .header("Authorization", format!("Bearer {}", token("allowed")))
+                    .header("X-Smallnext-Timing", "22222222-2222-4222-8222-222222222222")
+                    .body(Body::from(
+                        json!({"state_key":"timing-test", "input":input}).to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(body["disposition"], "accepted");
+    let timing = &body["_timing"];
+    if cfg!(debug_assertions) {
+        assert_eq!(timing["run_id"], "22222222-2222-4222-8222-222222222222");
+        assert!(timing["generate_ms"].as_f64().unwrap() >= 15.0);
+        assert!(timing["check_ms"].as_f64().unwrap() >= 15.0);
+        assert!(
+            timing["total_ms"].as_f64().unwrap()
+                >= timing["generate_ms"].as_f64().unwrap() + timing["check_ms"].as_f64().unwrap()
+        );
+    } else {
+        assert!(body.get("_timing").is_none());
+    }
+    assert_eq!(fixture.remote.calls.lock().unwrap().len(), 2);
+    fixture.close().await;
+}
+
+#[tokio::test]
 #[ignore = "requires TEST_DATABASE_URL; HTTP against real isolated PostgreSQL"]
 async fn malformed_decisions_stop_at_the_failing_role_without_retry() {
     let logs = LogBuffer::default();
@@ -591,6 +633,7 @@ async fn allowed_user_receives_only_independently_checked_proposal_and_usage() {
     assert_eq!(body["proposal"]["action"], "펜 하나 옮기기");
     assert_eq!(body["usage"][0]["input_tokens"], 11);
     assert!(body["elapsed_ms"].as_u64().is_some());
+    assert!(body.get("_timing").is_none());
     let calls = fixture.remote.calls.lock().unwrap().clone();
     assert_eq!(calls.len(), 2);
     for (index, request) in calls.into_iter().enumerate() {

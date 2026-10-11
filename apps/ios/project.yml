@@ -68,7 +68,26 @@ targets:
         GENERATE_INFOPLIST_FILE: YES
     dependencies:
       - target: Smallnext
+  SmallnextTimingUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources: [TimingUITests]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.smallnext.app.timing-tests
+        GENERATE_INFOPLIST_FILE: YES
+    dependencies:
+      - target: Smallnext
 schemes:
+  TimingValidation:
+    build:
+      targets:
+        Smallnext: all
+        SmallnextTimingUITests: [test]
+    test:
+      targets: [SmallnextTimingUITests]
+      environmentVariables:
+        SMALLNEXT_TIMING_TEST_URL: "http://127.0.0.1:58114"
   Smallnext:
     build:
       targets:

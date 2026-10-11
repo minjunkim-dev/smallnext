@@ -73,6 +73,33 @@ final class ServerActionSuggestionProviderTests: XCTestCase {
         XCTAssertTrue(DevelopmentTransport.store.requests.isEmpty)
     }
 
+    func testTimingSeparatesMockAuthenticationFromHTTPAndKeepsAuthFailureUnknown() async throws {
+        DevelopmentTransport.store.reset()
+        DevelopmentTransport.store.handler = { request in (200, try Self.accepted(request)) }
+        let timing = SuggestionTiming(kind: .firstAction, start: SuggestionTiming.now)
+        let delayed = provider(token: {
+            try await Task.sleep(for: .milliseconds(20))
+            return "mock-token"
+        })
+        let request = SuggestionRequest(kind: .firstAction, goal: "정리", currentAction: nil, completedTasks: [])
+        _ = try await SuggestionTiming.$current.withValue(timing) { try await delayed.suggest(request) }
+        XCTAssertEqual(timing.snapshot().authApplicable, true)
+        XCTAssertGreaterThanOrEqual(try XCTUnwrap(timing.snapshot().authMS), 20)
+        XCTAssertNotNil(timing.snapshot().httpMS)
+        XCTAssertNil(timing.snapshot().server)
+        let failed = SuggestionTiming(kind: .firstAction, start: SuggestionTiming.now)
+        DevelopmentTransport.store.reset()
+        do {
+            _ = try await SuggestionTiming.$current.withValue(failed) {
+                try await provider(token: { throw SuggestionFailure.rejected }).suggest(request)
+            }
+            XCTFail("must fail")
+        } catch { XCTAssertEqual(error as? SuggestionFailure, .rejected) }
+        XCTAssertNotNil(failed.snapshot().authMS)
+        XCTAssertNil(failed.snapshot().httpMS)
+        XCTAssertTrue(DevelopmentTransport.store.requests.isEmpty)
+    }
+
     func testCompletionClaimsAndScopeMismatchCannotBecomeCandidates() async throws {
         for (complete,wrongScope) in [(true,false),(false,true)] {
             DevelopmentTransport.store.reset()

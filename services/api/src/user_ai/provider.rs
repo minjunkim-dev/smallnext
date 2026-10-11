@@ -75,7 +75,8 @@ impl Provider {
         let mut usage = Vec::new();
         let mut charged = 0;
         let mut overrun = false;
-        let (generated, bill, exceeded) = self.call("generate", &original).await;
+        let (generated, bill, exceeded) =
+            crate::timing::measure("generate", self.call("generate", &original)).await;
         charged += bill
             .as_ref()
             .map_or(self.role_ceiling(), |u| u.cost_micro_usd);
@@ -95,12 +96,14 @@ impl Provider {
         let result = match generated {
             Err(reason) => Err(reason),
             Ok(proposal) => {
-                let (checked, bill, exceeded) = self
-                    .call(
+                let (checked, bill, exceeded) = crate::timing::measure(
+                    "check",
+                    self.call(
                         "check",
                         &json!({"original_request":original,"candidate":proposal}),
-                    )
-                    .await;
+                    ),
+                )
+                .await;
                 charged += bill
                     .as_ref()
                     .map_or(self.role_ceiling(), |u| u.cost_micro_usd);
