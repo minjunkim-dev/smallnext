@@ -5,6 +5,7 @@ from collections import Counter
 from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 import fcntl
+import hashlib
 import json
 import math
 import os
@@ -291,7 +292,13 @@ def report(directory, *, observations=()):
                 raise ValueError('absolute evidence path')
             path = (directory/path).resolve(strict=True)
             path.relative_to(directory.resolve())
-            if not path.is_file() or qa.digest(path.read_bytes()) != evidence:
+            if not path.is_file():
+                raise ValueError('screen evidence must be a regular file')
+            digest = hashlib.sha256()
+            with path.open('rb') as source:
+                for chunk in iter(lambda: source.read(65536), b''):
+                    digest.update(chunk)
+            if digest.hexdigest() != evidence:
                 raise ValueError('screen evidence mismatch')
         except (OSError, KeyError, TypeError, ValueError):
             raise ValueError('private screen evidence missing or mismatched') from None

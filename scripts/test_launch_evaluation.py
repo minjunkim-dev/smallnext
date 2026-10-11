@@ -191,7 +191,13 @@ class LaunchEvaluationTests(unittest.TestCase):
                             display_observed=True, evidence_path='screen.png',
                             evidence_sha256=qa.digest(evidence.read_bytes()))
                        for n, r in enumerate(rows[:10])]
-            summary = launch.report(root, observations=screens)
+            original_read = Path.read_bytes
+            def bounded_read(path):
+                if path.resolve() == evidence.resolve():
+                    raise AssertionError('screen evidence must be streamed')
+                return original_read(path)
+            with patch.object(Path, 'read_bytes', bounded_read):
+                summary = launch.report(root, observations=screens)
             self.assertEqual(summary['timings']['first_action']['median'], 5.5)
             self.assertEqual(summary['timings']['first_action']['p90'], 9)
             self.assertTrue(summary['timings']['first_action']['sla_passed'])
@@ -207,9 +213,11 @@ class LaunchEvaluationTests(unittest.TestCase):
             self.assertNotIn('필요한 정보', json.dumps(summary, ensure_ascii=False))
             (root.parent/'screen.png').write_bytes(evidence.read_bytes())
             (root/'outside.png').symlink_to(root.parent/'screen.png')
+            os.mkfifo(root/'pipe')
             for invalid in (dict(screens[0], evidence_path='missing.png'),
                             dict(screens[0], evidence_path='../screen.png'),
                             dict(screens[0], evidence_path='outside.png'),
+                            dict(screens[0], evidence_path='pipe'),
                             dict(screens[0], evidence_sha256='a'*64)):
                 with self.assertRaises(ValueError):
                     launch.report(root, observations=[invalid])
@@ -231,13 +239,18 @@ class LaunchEvaluationTests(unittest.TestCase):
                 fake.chmod(0o700)
                 lock = Path(directory)/'model.lock'
                 if ownership:
-                    threading.Timer(.3, lambda: lock.unlink()).start()
+                    def lose_after_start():
+                        deadline = time.monotonic() + 5
+                        while not pid_file.exists() and time.monotonic() < deadline:
+                            time.sleep(.01)
+                        lock.unlink()
+                    threading.Thread(target=lose_after_start).start()
                     summary = launch.run(root, claude=str(fake), lock_path=lock)
                     self.assertEqual(summary['stop_reason'], 'ownership_lost')
                     self.assertEqual(summary['roles']['started'], 0)
                 else:
                     with self.assertRaises(subprocess.TimeoutExpired):
-                        launch.subscription_account(str(fake), threading.Event(), timeout=.3)
+                        launch.subscription_account(str(fake), threading.Event(), timeout=2)
                 pid = int(pid_file.read_text())
                 for _ in range(30):
                     state = subprocess.run(['ps', '-p', str(pid), '-o', 'stat='], capture_output=True).stdout.strip()
