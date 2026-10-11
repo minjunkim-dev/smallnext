@@ -50,7 +50,12 @@ final class ScreenTimingTests: XCTestCase {
                 let id = marker.identifier
                 if id != previous, id.hasSuffix(":\(kind):\(outcome)") { observed = id }
             }
-            if observed != nil { attach(app, name: "\(kind)-\(outcome)") }
+            if let id = observed {
+                // 전환 중 접근성 표식도 먼저 생긴다. 사진을 확인할 상한에 안정화 대기를 포함한다.
+                Thread.sleep(forTimeInterval: 0.5)
+                if marker.exists, marker.isHittable, marker.identifier == id { attach(app, name: "\(kind)-\(outcome)") }
+                else { observed = nil }
+            }
             let now = clock.now
             maxInterval = max(maxInterval, seconds(last.duration(to: now)))
             last = now
@@ -58,7 +63,7 @@ final class ScreenTimingTests: XCTestCase {
             Thread.sleep(forTimeInterval: 0.1)
         }
         XCTAssertNotNil(observed)
-        let report = "\(observed ?? "missing") button-before-tap-to-first-accessibility-observation-upper-bound-ms=\(seconds(started.duration(to: last)) * 1000) max-sample-interval-ms=\(maxInterval * 1000) method=XCTest-visible-accessibility+screenshot mock-only=true"
+        let report = "\(observed ?? "missing") button-before-tap-to-first-result-screenshot-upper-bound-ms=\(seconds(started.duration(to: last)) * 1000) max-sample-interval-ms=\(maxInterval * 1000) stabilization-ms=500 method=XCTest-visible-accessibility+screenshot mock-only=true"
         let attachment = XCTAttachment(string: report)
         attachment.lifetime = .keepAlways
         add(attachment)
