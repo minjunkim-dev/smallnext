@@ -559,7 +559,9 @@ def report_bundle(directory, descriptor, observations):
             and r['request_id'] in screens], manifest['measurement'])
     completed = {r['flow'] for r in records if r.get('termination') and not r.get('error')}
     end = private_json(descriptor, 'run-ended.json') if private_exists(descriptor, 'run-ended.json') else {}
-    started_requests = len(private_names(descriptor, 'requests'))
+    request_names = private_names(descriptor, 'requests')
+    started = {flow for flow in flows if f"{claim['run_id']}-{flow}-0.json" in request_names}
+    started_requests = len(request_names)
     started_roles = len(private_names(descriptor, 'calls'))
     if private_exists(descriptor, 'run-ended.json'):
         budget = end.get('budget')
@@ -605,7 +607,8 @@ def report_bundle(directory, descriptor, observations):
         for condition in sorted({f['id'].rsplit('-', 1)[0] for f in manifest['flows']})}
     return {'run_id': claim['run_id'], 'manifest_sha256': claim['manifest_sha256'],
         'scheduled_flows': len(manifest['flows']), 'completed_flows': len(completed),
-        'unexecuted_flows': [f['id'] for f in manifest['flows'] if f['id'] not in completed],
+        'incomplete_flows': [f['id'] for f in manifest['flows'] if f['id'] in started - completed],
+        'unexecuted_flows': [f['id'] for f in manifest['flows'] if f['id'] not in started],
         'requests': {'started': started_requests, 'recorded': len(records),
                      'unrecorded': started_requests - len(records),
                      'completed': sum('verdict' in r for r in records),

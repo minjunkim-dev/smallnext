@@ -533,6 +533,10 @@ def call(claude,prompt,schema,data,deadline,cancelled,output_mode='structured'):
             and data['original_request'].get('request_kind')=='smaller'):
         prompt=question_prompt(prompt)
     record=_call(claude,prompt,schema,data,deadline,cancelled,output_mode)
+    if record.get('process_group_alive') or (record.get('cli_pid') and not record.get('process_reaped')):
+        record['error']='process_cleanup'
+    if record.get('error'):
+        record.pop('output',None)
     output=record.get('output')
     if is_check and output and not check_valid(output):
         record['error']='invalid_check'
