@@ -179,22 +179,23 @@ def freeze(directory, *, owner, ends_at, delete_method, role_reservation_micro_u
         'cost_policy': {'role_reservation_micro_usd': role_reservation_micro_usd,
                         'monthly_spent_micro_usd': monthly_spent_micro_usd,
                         'basis': 'offline planning assumption; not provider pricing or billing'},
-        'regression': {'cases': 47, 'manifest_sha256': qa.digest((directory/'regression/manifest.json').read_bytes())},
+        'regression': {'cases': 47, 'manifest_sha256': qa.digest(private_bytes(directory, 'regression/manifest.json'))},
         'preserved_evidence': evidence, 'paid_transport': 'unavailable',
         'retention': {'location': str(directory), 'owner': owner, 'evaluation_ends_at': end.isoformat(),
                       'delete_by': (end + timedelta(days=30)).isoformat(), 'delete_method': delete_method},
         'boundary': 'subscription OAuth QA; paid billing, actual action and device validation unknown'}
     qa.save(directory / 'manifest.json', manifest)
-    qa.save(directory / 'integrity.json', {'manifest_sha256': qa.digest((directory/'manifest.json').read_bytes())})
+    qa.save(directory / 'integrity.json', {'manifest_sha256': qa.digest(private_bytes(directory, 'manifest.json'))})
 
 
 def load(directory):
-    manifest = qa.load(Path(directory))
+    directory = Path(directory)
+    manifest = qa.load(directory, read_bytes=lambda path: private_bytes(directory, path.relative_to(directory)))
     if manifest.get('suite') != 'launch' or manifest.get('parallelism') != 1:
         raise ValueError('wrong launch manifest')
     if qa.digest(Path(__file__).read_bytes()) != manifest['sources']['scripts/launch_evaluation.py']['sha256']:
         raise ValueError('launch runner differs from frozen version')
-    if qa.digest((Path(directory)/'regression/manifest.json').read_bytes()) != manifest['regression']['manifest_sha256']:
+    if qa.digest(private_bytes(directory, 'regression/manifest.json')) != manifest['regression']['manifest_sha256']:
         raise ValueError('regression changed')
     return manifest
 
@@ -278,7 +279,7 @@ def private_source(directory, path):
         yield opened.enter_context(os.fdopen(descriptor, 'rb', closefd=False))
 
 
-def private_json(directory, path):
+def private_bytes(directory, path):
     try:
         with private_source(directory, path) as source:
             if os.fstat(source.fileno()).st_size > REPORT_JSON_LIMIT:
@@ -288,7 +289,11 @@ def private_json(directory, path):
                 raise ValueError('report JSON grew beyond limit')
     except OSError:
         raise ValueError('private report JSON unavailable') from None
-    return json.loads(data)
+    return data
+
+
+def private_json(directory, path):
+    return json.loads(private_bytes(directory, path))
 
 
 def report(directory, *, observations=()):
@@ -408,7 +413,8 @@ def report(directory, *, observations=()):
         'outcome_seconds': {kind: [r['seconds'] for r in records if r['outcome'] == kind]
                            for kind in ('accept', 'reject', 'uncertain', 'failed', 'cancelled', 'timed_out')},
         'stop_reason': end.get('reason', 'interrupted'),
-        'automatic_passed': len(completed) == len(manifest['flows']) and not errors and not unreadable
+        'automatic_passed': end.get('reason') == 'completed'
+                            and len(completed) == len(manifest['flows']) and not errors and not unreadable
                             and started_roles == len(calls) and started_requests == len(records)
                             and all(r.get('reference_matched') is True for r in records),
         'costs': end.get('budget', {'actual_billing': None,
@@ -439,19 +445,19 @@ def run(directory, *, claude='claude', invoke=None, cancelled=None, clock=monoto
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
             raise ValueError('another launch evaluation owns the model') from None
-        claim = {'run_id': uuid.uuid4().hex, 'manifest_sha256': qa.digest((directory/'manifest.json').read_bytes()),
+        claim = {'run_id': uuid.uuid4().hex, 'manifest_sha256': qa.digest(private_bytes(directory, 'manifest.json')),
                  'controller_pid': os.getpid(), 'controller_birth': qa.process_birth(os.getpid())}
         qa.save(directory/'run-started.json', claim)
         for name in ('results', 'requests', 'calls'):
             (directory/name).mkdir(mode=0o700)
         done, lost = threading.Event(), threading.Event()
-        claim_hash = qa.digest((directory/'run-started.json').read_bytes())
+        claim_hash = qa.digest(private_bytes(directory, 'run-started.json'))
 
         def owned():
             try:
                 return (os.fstat(lock.fileno()).st_ino == lock_path.stat().st_ino
-                        and claim_hash == qa.digest((directory/'run-started.json').read_bytes()))
-            except OSError:
+                        and claim_hash == qa.digest(private_bytes(directory, 'run-started.json')))
+            except (OSError, ValueError):
                 return False
 
         def monitor():
@@ -623,16 +629,16 @@ def main():
         elif args.command == 'report':
             if Path(args.output).name != args.output or args.output in {'manifest.json', 'integrity.json'}:
                 raise ValueError('report filename required')
-            observations = json.loads(args.observations.read_bytes()) if args.observations else []
+            observations = private_json(args.observations.parent, args.observations.name) if args.observations else []
             summary = report(args.directory, observations=observations)
             qa.save(args.directory/args.output, summary)
         else:
-            summary = paid_preflight(args.stage, json.loads(args.conditions.read_bytes()))
+            summary = paid_preflight(args.stage, private_json(args.conditions.parent, args.conditions.name))
             print(json.dumps(summary))
             return 0 if summary['ready'] else 1
         print(json.dumps(summary, ensure_ascii=False))
         return 0 if summary['automatic_passed'] else 1
-    except (ValueError, OSError, KeyError, TypeError, subprocess.SubprocessError):
+    except (ValueError, OSError, KeyError, TypeError, RecursionError, subprocess.SubprocessError):
         # Paths, provider exceptions and input values belong only in the private bundle.
         print(json.dumps({'error': 'launch_evaluation_failed'}))
         return 1

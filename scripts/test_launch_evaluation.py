@@ -659,6 +659,93 @@ print(json.dumps({'type':'result','subtype':'success','is_error':False,'modelUsa
             self.assertEqual(summary['requests']['recorded'], 33)
             self.assertFalse(summary['automatic_passed'])
 
+    def test_frozen_control_json_rejects_fifo_and_symlink_without_waiting(self):
+        for name in ('manifest.json', 'integrity.json', 'regression/manifest.json'):
+            for kind in ('fifo', 'symlink'):
+                with self.subTest(name=name, kind=kind), tempfile.TemporaryDirectory() as directory:
+                    root, _ = self.freeze(directory)
+                    control = root/name
+                    preserved = control.with_name(control.name+'.original')
+                    control.rename(preserved)
+                    if kind == 'fifo':
+                        os.mkfifo(control)
+                    else:
+                        control.symlink_to(preserved)
+                    child = subprocess.run([sys.executable, '-c',
+                        'import sys; import launch_evaluation as l; l.load(sys.argv[1])', str(root)],
+                        env=dict(os.environ, PYTHONPATH=str(Path(launch.__file__).parent)),
+                        capture_output=True, timeout=2)
+                    self.assertNotEqual(child.returncode, 0)
+
+    def test_cli_observations_and_preflight_json_reject_fifo_and_symlink(self):
+        for command in ('report', 'paid-preflight'):
+            for kind in ('fifo', 'symlink'):
+                with self.subTest(command=command, kind=kind), tempfile.TemporaryDirectory() as directory:
+                    root, _ = self.freeze(directory)
+                    if command == 'report':
+                        launch.run(root, invoke=self.response)
+                    argument = root/'argument.json'
+                    preserved = root/'argument.original'
+                    preserved.write_text('[]' if command == 'report' else '{}')
+                    if kind == 'fifo':
+                        os.mkfifo(argument)
+                    else:
+                        argument.symlink_to(preserved)
+                    args = ([str(root), '--observations', str(argument)] if command == 'report'
+                            else ['--stage', 'preparation', '--conditions', str(argument)])
+                    child = subprocess.run([sys.executable, str(Path(launch.__file__)), command, *args],
+                                           capture_output=True, text=True, timeout=2)
+                    self.assertEqual(child.returncode, 1)
+                    self.assertEqual(json.loads(child.stdout), {'error': 'launch_evaluation_failed'})
+
+    def test_ownership_fifo_cancels_before_another_role_without_waiting(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root, _ = self.freeze(directory)
+            script = '''import os,sys; import launch_evaluation as l
+roles=[]
+def invoke(role,prompt,schema,data,deadline,cancelled):
+ roles.append(role)
+ claim=root/'run-started.json'; claim.rename(root/'claim.original'); os.mkfifo(claim)
+ assert cancelled.wait(1), 'ownership monitor did not cancel'
+ return {}
+from pathlib import Path
+root=Path(sys.argv[1])
+try: l.run(root,invoke=invoke)
+except ValueError: pass
+assert roles == ['generate'], roles
+print('cancelled')
+'''
+            child = subprocess.run([sys.executable, '-c', script, str(root)],
+                env=dict(os.environ, PYTHONPATH=str(Path(launch.__file__).parent)),
+                capture_output=True, text=True, timeout=3)
+            self.assertEqual(child.returncode, 0, child.stderr)
+            self.assertEqual(child.stdout.strip(), 'cancelled')
+
+    def test_missing_dangling_or_cancelled_end_cannot_pass_complete_records(self):
+        for state in ('missing', 'dangling', 'cancelled'):
+            with self.subTest(state=state), tempfile.TemporaryDirectory() as directory:
+                root, _ = self.freeze(directory)
+                launch.run(root, invoke=self.response)
+                claim = json.loads((root/'run-started.json').read_bytes())
+                claim['controller_birth'] = 'expired controller identity'
+                (root/'run-started.json').write_bytes(qa.encoded(claim))
+                end = root/'run-ended.json'
+                if state == 'cancelled':
+                    data = json.loads(end.read_bytes())
+                    data['reason'] = 'cancelled'
+                    end.write_bytes(qa.encoded(data))
+                else:
+                    end.unlink()
+                    if state == 'dangling':
+                        end.symlink_to(root/'absent.json')
+                summary = launch.report(root)
+                self.assertEqual(summary['requests']['recorded'], 33)
+                self.assertFalse(summary['automatic_passed'])
+                child = subprocess.run([sys.executable, str(Path(launch.__file__)), 'report', str(root)],
+                                       capture_output=True, text=True, timeout=2)
+                self.assertEqual(child.returncode, 1)
+                self.assertFalse(json.loads(child.stdout)['automatic_passed'])
+
     def test_expected_rejection_is_separate_from_quality_failure_and_fast_failure_not_normal(self):
         for expected in (True, False):
             with self.subTest(expected=expected), tempfile.TemporaryDirectory() as directory:

@@ -134,9 +134,9 @@ def freeze(directory, suite, comparison=None, repetitions=2, case_ids=(),
     save(directory / "integrity.json", {"manifest_sha256": digest((directory / "manifest.json").read_bytes())})
 
 
-def load(directory):
-    raw = (directory / "manifest.json").read_bytes()
-    integrity = json.loads((directory / "integrity.json").read_bytes())
+def load(directory, *, read_bytes=Path.read_bytes):
+    raw = read_bytes(directory / "manifest.json")
+    integrity = json.loads(read_bytes(directory / "integrity.json"))
     if digest(raw) != integrity["manifest_sha256"]:
         raise ValueError("frozen manifest changed")
     manifest = json.loads(raw)
