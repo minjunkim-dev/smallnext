@@ -57,7 +57,7 @@ def payload(case, role, candidate=None):
 
 
 def freeze(directory, suite, comparison=None, repetitions=2, case_ids=(),
-           output_mode="structured", comparison_output=None):
+           output_mode="structured", comparison_output=None, *, sequential=False):
     if suite not in {"quality", "latency"} or repetitions < 1:
         raise ValueError("invalid suite or repetition count")
     if output_mode not in {"structured", "text-json"} or comparison_output not in {None, "structured", "text-json"}:
@@ -124,7 +124,8 @@ def freeze(directory, suite, comparison=None, repetitions=2, case_ids=(),
             for variant in order:
                 schedule.append({"case": case["id"], "variant": variant, "repeat": repeat})
     manifest = {"version": 1, "suite": suite, "model": MODEL, "effort": EFFORT,
-                "pipeline_seconds": 120, "parallelism": 2 if suite == "quality" else 1,
+                "pipeline_seconds": 120, "parallelism": 1 if sequential or suite != "quality" else 2,
+                "stop_on_failure": sequential,
                 "sources": sources, "prompts": prompts, "schemas": schemas,
                 "variants": variants, "output_modes": output_modes, "cases": cases, "schedule": schedule,
                 "legacy_baseline": references["legacy_baseline"],
@@ -532,6 +533,10 @@ def call(claude,prompt,schema,data,deadline,cancelled,output_mode='structured'):
             and data['original_request'].get('request_kind')=='smaller'):
         prompt=question_prompt(prompt)
     record=_call(claude,prompt,schema,data,deadline,cancelled,output_mode)
+    if record.get('process_group_alive') or (record.get('cli_pid') and not record.get('process_reaped')):
+        record['error']='process_cleanup'
+    if record.get('error'):
+        record.pop('output',None)
     output=record.get('output')
     if is_check and output and not check_valid(output):
         record['error']='invalid_check'
@@ -637,9 +642,20 @@ def run(directory, claude):
     cancelled = threading.Event()
     previous = {sig: signal.signal(sig, lambda *_: cancelled.set()) for sig in (signal.SIGINT, signal.SIGTERM)}
     try:
-        with ThreadPoolExecutor(max_workers=manifest["parallelism"]) as pool:
-            records = list(pool.map(lambda indexed: evaluate(directory, manifest, *indexed, claude, cancelled),
-                                    enumerate(manifest["schedule"])))
+        if manifest.get("stop_on_failure"):
+            records = []
+            for index, row in enumerate(manifest["schedule"]):
+                record = evaluate(directory, manifest, index, row, claude, cancelled)
+                records.append(record)
+                if (not record["matched"] or record.get("error") or cancelled.is_set()
+                        or any(c.get("error") or c.get("process_group_alive")
+                               or (c.get("cli_pid") and not c.get("process_reaped"))
+                               for c in record.get("calls", []))):
+                    break
+        else:
+            with ThreadPoolExecutor(max_workers=manifest["parallelism"]) as pool:
+                records = list(pool.map(lambda indexed: evaluate(directory, manifest, *indexed, claude, cancelled),
+                                        enumerate(manifest["schedule"])))
     finally:
         for sig, handler in previous.items():
             signal.signal(sig, handler)
@@ -753,6 +769,7 @@ def main():
     frozen.add_argument("--case", action="append", default=[], help="freeze only these existing case IDs")
     frozen.add_argument("--output-mode", choices=("structured", "text-json"), default="structured")
     frozen.add_argument("--comparison-output", choices=("structured", "text-json"))
+    frozen.add_argument("--sequential", action="store_true", help="stop the sequential run at its first failure")
     checked = sub.add_parser("verify")
     checked.add_argument("directory", type=Path)
     runner = sub.add_parser("run", help="explicitly start subscription model calls; never run by default CI")
@@ -763,7 +780,7 @@ def main():
     args = parser.parse_args()
     if args.command == "freeze":
         freeze(args.directory, args.suite, args.comparison_role, args.repetitions, args.case,
-               args.output_mode, args.comparison_output)
+               args.output_mode, args.comparison_output, sequential=args.sequential)
     if args.command == "run":
         if not args.claude:
             parser.error("Claude Code executable not found")

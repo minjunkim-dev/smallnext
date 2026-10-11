@@ -164,7 +164,7 @@ def freeze(directory, *, owner, ends_at, delete_method, role_reservation_micro_u
     if directory.is_relative_to(qa.REPO.resolve()) and not directory.is_relative_to((qa.REPO/'work').resolve()):
         raise ValueError('raw bundles must be outside tracked source or in ignored work')
     directory.mkdir(parents=True, mode=0o700, exist_ok=False)
-    qa.freeze(directory / 'regression', 'quality', output_mode='text-json')
+    qa.freeze(directory / 'regression', 'quality', output_mode='text-json', sequential=True)
     regression = qa.load(directory / 'regression')
     sources = deepcopy(regression['sources'])
     for name in ['scripts/launch_evaluation.py', 'services/api/src/development_ai.rs',
@@ -559,7 +559,9 @@ def report_bundle(directory, descriptor, observations):
             and r['request_id'] in screens], manifest['measurement'])
     completed = {r['flow'] for r in records if r.get('termination') and not r.get('error')}
     end = private_json(descriptor, 'run-ended.json') if private_exists(descriptor, 'run-ended.json') else {}
-    started_requests = len(private_names(descriptor, 'requests'))
+    request_names = private_names(descriptor, 'requests')
+    started = {flow for flow in flows if f"{claim['run_id']}-{flow}-0.json" in request_names}
+    started_requests = len(request_names)
     started_roles = len(private_names(descriptor, 'calls'))
     if private_exists(descriptor, 'run-ended.json'):
         budget = end.get('budget')
@@ -605,7 +607,8 @@ def report_bundle(directory, descriptor, observations):
         for condition in sorted({f['id'].rsplit('-', 1)[0] for f in manifest['flows']})}
     return {'run_id': claim['run_id'], 'manifest_sha256': claim['manifest_sha256'],
         'scheduled_flows': len(manifest['flows']), 'completed_flows': len(completed),
-        'unexecuted_flows': [f['id'] for f in manifest['flows'] if f['id'] not in completed],
+        'incomplete_flows': [f['id'] for f in manifest['flows'] if f['id'] in started - completed],
+        'unexecuted_flows': [f['id'] for f in manifest['flows'] if f['id'] not in started],
         'requests': {'started': started_requests, 'recorded': len(records),
                      'unrecorded': started_requests - len(records),
                      'completed': sum('verdict' in r for r in records),

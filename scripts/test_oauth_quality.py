@@ -9,11 +9,64 @@ import sys
 import contextlib
 import io
 import unittest
+from unittest.mock import patch
 
 import oauth_quality as qa
 
 
 class FrozenEvaluationTests(unittest.TestCase):
+    def test_generation_cleanup_failure_never_calls_checker(self):
+        for cleanup in ({"process_group_alive": True}, {"cli_pid": 1, "process_reaped": False}):
+            with self.subTest(cleanup=cleanup), tempfile.TemporaryDirectory() as directory:
+                frozen = Path(directory) / "frozen"
+                qa.freeze(frozen, "quality", sequential=True)
+                manifest = qa.load(frozen)
+                (frozen / "results").mkdir()
+                case = next(c for c in manifest["cases"] if c["id"] == "useful-minimum-known")
+                candidate = next(c["candidate"] for c in manifest["cases"] if c["id"] == "known-blocker-action-valid")
+                with patch.object(qa, "_call", return_value=dict(output=candidate, **cleanup)) as provider:
+                    record = qa.evaluate(frozen, manifest, 0,
+                        {"case": case["id"], "variant": "baseline", "repeat": 0}, "unused", threading.Event())
+                self.assertEqual(provider.call_count, 1)
+                self.assertEqual(record["calls"][0]["error"], "process_cleanup")
+                self.assertNotIn("output", record["calls"][0])
+                self.assertFalse(record["matched"])
+
+    def test_sequential_quality_stops_on_role_failure_even_when_reference_matches(self):
+        failures = [{"matched": True, "error": "runner_failed", "calls": []},
+                    {"matched": True, "calls": [{"error": "provider_failed"}]},
+                    {"matched": True, "calls": [{"process_group_alive": True}]},
+                    {"matched": True, "calls": [{"cli_pid": 1, "process_reaped": False}]}]
+        for failed in failures:
+            with self.subTest(failed=failed), tempfile.TemporaryDirectory() as directory:
+                frozen = Path(directory) / "frozen"
+                qa.freeze(frozen, "quality", sequential=True)
+                auth = subprocess.CompletedProcess([], 0, json.dumps({"loggedIn": True,
+                    "authMethod": "claude.ai", "apiProvider": "firstParty"}).encode())
+                with patch.object(qa.subprocess, "run", return_value=auth), \
+                     patch.object(qa, "evaluate", return_value=failed) as evaluate, \
+                     patch.object(qa, "summarize", return_value=False):
+                    self.assertFalse(qa.run(frozen, "claude"))
+                self.assertEqual(evaluate.call_count, 1)
+
+    def test_sequential_quality_stops_at_first_mismatch_without_filling_missing_cases(self):
+        with tempfile.TemporaryDirectory() as directory:
+            frozen = Path(directory) / "frozen"
+            qa.freeze(frozen, "quality", output_mode="text-json", sequential=True)
+            manifest = qa.load(frozen)
+            self.assertEqual(manifest["parallelism"], 1)
+            self.assertEqual(len(manifest["schedule"]), 47)
+            auth = subprocess.CompletedProcess([], 0, json.dumps({"loggedIn": True,
+                "authMethod": "claude.ai", "apiProvider": "firstParty"}).encode())
+            with patch.object(qa.subprocess, "run", return_value=auth), \
+                 patch.object(qa, "evaluate", return_value={"matched": False}) as evaluate, \
+                 patch.object(qa, "summarize", return_value=False) as summarize:
+                self.assertFalse(qa.run(frozen, "claude"))
+            self.assertEqual(evaluate.call_count, 1)
+            self.assertEqual(len(summarize.call_args.args[2]), 1)
+            with patch.object(qa.subprocess, "run", return_value=auth), self.assertRaises(FileExistsError):
+                qa.run(frozen, "claude")
+
     def test_freeze_keeps_legacy_reference_and_excludes_answers_from_payload(self):
         with tempfile.TemporaryDirectory() as directory:
             frozen = Path(directory) / "frozen"

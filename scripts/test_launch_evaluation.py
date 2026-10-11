@@ -135,6 +135,9 @@ class LaunchEvaluationTests(unittest.TestCase):
             self.assertEqual(summary['roles']['started'], 1)
             self.assertEqual(summary['costs']['charged_micro_usd'], 20_000)
             self.assertEqual(summary['costs']['conservative_roles'], 1)
+            self.assertEqual(summary['incomplete_flows'], ['fixed-ready-1'])
+            self.assertEqual(len(summary['unexecuted_flows']), 32)
+            self.assertNotIn('fixed-ready-1', summary['unexecuted_flows'])
 
     def test_generation_failure_does_not_check_and_model_or_settlement_failure_stops(self):
         for fault, reason in [('generate', 'provider_failed'), ('model', 'model_or_call_count'),
