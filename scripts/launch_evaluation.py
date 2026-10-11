@@ -416,12 +416,15 @@ def report_bundle(directory, descriptor, observations):
     flows = {flow['id']: flow for flow in manifest['flows']}
     states = {key: deepcopy(flow['input']) for key, flow in flows.items()}
     steps = Counter()
+    seen = set()
     for path in map(Path, sorted(private_names(descriptor, 'results'))):
         try:
             row = private_json(descriptor, Path('results')/path.name)
             if type(row) is not dict or any(type(row.get(key)) is not str
                     for key in ('run_id', 'manifest_sha256', 'request_id', 'flow', 'request_kind')):
                 raise ValueError('invalid result identity')
+            if row['request_id'] in seen:
+                raise ValueError('duplicate result identity')
             if qa.numeric(row.get('seconds')) is None or type(row.get('calls')) is not list:
                 raise ValueError('invalid result structure')
             if row['flow'] not in {f['id'] for f in manifest['flows']} or row['request_kind'] not in ('first_action', 'smaller', 'next_action'):
@@ -506,6 +509,7 @@ def report_bundle(directory, descriptor, observations):
             if row['run_id'] != claim['run_id'] or row['manifest_sha256'] != claim['manifest_sha256']:
                 raise ValueError('unrelated result')
             records.append(row)
+            seen.add(row['request_id'])
             usage_totals = pending_usage
             if not row.get('error') and not row.get('termination'):
                 states[row['flow']]['previous_proposals'].append(deepcopy(row['calls'][0]['output']))
@@ -515,8 +519,6 @@ def report_bundle(directory, descriptor, observations):
         except (OSError, ValueError, KeyError, TypeError, OverflowError, RecursionError):
             unreadable.append(path.name)
     ids = [r['request_id'] for r in records]
-    if len(ids) != len(set(ids)):
-        raise ValueError('duplicate result identity')
     screens = {}
     for item in observations:
         ident = item['request_id']

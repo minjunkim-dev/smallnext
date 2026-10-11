@@ -822,6 +822,20 @@ print('cancelled')
                 self.assertEqual(result['requests']['recorded'], 32)
                 self.assertEqual(result['unreadable_records'], [path.name])
 
+    def test_report_isolates_duplicate_result_without_losing_valid_records(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root, _ = self.freeze(directory)
+            original = launch.run(root, invoke=self.response)
+            source = next((root/'results').glob('*.json'))
+            shutil.copyfile(source, root/'results'/'999.json')
+            result = launch.report(root)
+            self.assertFalse(result['automatic_passed'])
+            self.assertEqual(result['unreadable_records'], ['999.json'])
+            self.assertEqual(result['requests']['recorded'], 33)
+            self.assertEqual(result['roles']['completed'], original['roles']['completed'])
+            self.assertEqual(result['role_usage'], original['role_usage'])
+            self.assertEqual(result['timings'], original['timings'])
+
     def test_report_pins_subdirectories_and_files_before_reading_claim(self):
         for target in ('results', 'requests', 'calls', 'result', 'end'):
             with self.subTest(target=target), tempfile.TemporaryDirectory() as directory:
