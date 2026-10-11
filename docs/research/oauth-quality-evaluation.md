@@ -59,6 +59,8 @@ python3 scripts/launch_evaluation.py report work/launch-new --observations work/
 `evidence_path`는 private 묶음 안의 상대 경로다. 보고기는 파일 존재와 실제 SHA-256을 대조한다.
 파일 누락·경로 이탈·symlink·정규 파일이 아닌 증거·해시 차이를 거부한다.
 private 디렉터리 descriptor를 기준으로 열고 같은 파일 descriptor의 타입과 해시를 검사한다.
+번들 경로도 `/` 또는 현재 디렉터리 descriptor부터 각 요소를 연다. 경로의 symlink와 `..`를 거부한다.
+화면 보고에는 symlink가 없는 실제 경로를 지정한다. macOS 임시 경로 `/var`는 `/private/var`를 사용한다.
 파일 내용이 실제 결과 화면인지는 관측 담당자가 확인한다.
 상태 변경 콜백이나 서버 응답만으로 `display_observed`를 설정하지 않는다.
 기본 보고서에는 실제 표시 증거가 없다. 화면 응답은 미확인이다.

@@ -294,8 +294,14 @@ def report(directory, *, observations=()):
                 raise ValueError('evidence path must stay inside private bundle')
             digest = hashlib.sha256()
             with ExitStack() as opened:
-                parent = os.open(directory, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+                if '..' in directory.parts:
+                    raise ValueError('bundle path must not contain parent traversal')
+                parent = os.open(directory.anchor or '.', os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
                 opened.callback(os.close, parent)
+                bundle_parts = directory.parts[1:] if directory.is_absolute() else directory.parts
+                for part in bundle_parts:
+                    parent = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent)
+                    opened.callback(os.close, parent)
                 for part in path.parts[:-1]:
                     parent = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent)
                     opened.callback(os.close, parent)

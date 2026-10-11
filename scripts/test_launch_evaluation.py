@@ -18,7 +18,7 @@ import oauth_quality as qa
 
 class LaunchEvaluationTests(unittest.TestCase):
     def freeze(self, directory):
-        root = Path(directory) / "launch"
+        root = Path(directory).resolve() / "launch"
         launch.freeze(root, owner="minjunkim-dev",
                       ends_at=(datetime.now(timezone.utc) + timedelta(days=1)).isoformat(),
                       delete_method="delete this private directory")
@@ -264,7 +264,8 @@ class LaunchEvaluationTests(unittest.TestCase):
             with self.subTest(replacement=replacement), tempfile.TemporaryDirectory() as directory:
                 root, _ = self.freeze(directory)
                 summary = launch.run(root, invoke=self.response)
-                row = json.loads(next((root/'results').glob('*.json')).read_bytes())
+                row = next(r for p in sorted((root/'results').glob('*.json'))
+                           if (r := json.loads(p.read_bytes()))['request_kind'] == 'first_action')
                 (root/'screens').mkdir()
                 evidence = root/'screens/screen.png'
                 evidence.write_bytes(b'offline evidence')
@@ -296,7 +297,8 @@ class LaunchEvaluationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root, _ = self.freeze(directory)
             summary = launch.run(root, invoke=self.response)
-            row = json.loads(next((root/'results').glob('*.json')).read_bytes())
+            row = next(r for p in sorted((root/'results').glob('*.json'))
+                       if (r := json.loads(p.read_bytes()))['request_kind'] == 'first_action')
             (root/'screen.png').write_bytes(b'offline evidence')
             outside = root.parent/'outside'
             outside.mkdir()
@@ -316,11 +318,39 @@ class LaunchEvaluationTests(unittest.TestCase):
                 replace_root(path)
                 return original_resolve(path, *args, **kwargs)
             def opening(path, flags, *args, **kwargs):
-                replace_root(path)
+                replace_root(root if path == root.name else path)
                 return original_open(path, flags, *args, **kwargs)
             with patch.object(Path, 'resolve', resolve), patch.object(os, 'open', opening), self.assertRaises(ValueError):
                 launch.report(root, observations=[observation])
             self.assertEqual(replaced, [True])
+
+    def test_screen_open_rejects_writable_bundle_ancestor_replacement(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root, _ = self.freeze(directory)
+            base = root.parent
+            parent = base/'work'
+            parent.mkdir()
+            root.rename(parent/'launch')
+            root = parent/'launch'
+            summary = launch.run(root, invoke=self.response)
+            row = next(r for p in sorted((root/'results').glob('*.json'))
+                       if (r := json.loads(p.read_bytes()))['request_kind'] == 'first_action')
+            (root/'screen.png').write_bytes(b'offline evidence')
+            outside = base/'outside'
+            (outside/'launch').mkdir(parents=True)
+            (outside/'launch/screen.png').write_bytes((root/'screen.png').read_bytes())
+            observation = dict(run_id=summary['run_id'], request_id=row['request_id'],
+                observed_upper_seconds=1, sample_interval_seconds=.1, method='screen fixture',
+                display_observed=True, evidence_path='screen.png',
+                evidence_sha256=qa.digest((root/'screen.png').read_bytes()))
+            original_open = os.open
+            def opening(path, flags, *args, **kwargs):
+                if path == 'work':
+                    parent.rename(base/'original-work')
+                    parent.symlink_to(outside, target_is_directory=True)
+                return original_open(path, flags, *args, **kwargs)
+            with patch.object(os, 'open', opening), self.assertRaises(ValueError):
+                launch.report(root, observations=[observation])
 
     def test_monthly_budget_and_elapsed_deadline_stop_before_more_calls(self):
         with tempfile.TemporaryDirectory() as directory:
