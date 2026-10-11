@@ -1,6 +1,7 @@
 //! User API. The registered flag is OFF until a separate release decision.
 mod auth;
 pub mod budget;
+mod decision;
 pub(crate) mod provider;
 use crate::development_ai::{AiInput, Disposition, Proposal, validate_input};
 use axum::{

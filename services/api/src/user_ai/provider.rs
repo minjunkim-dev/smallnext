@@ -1,8 +1,5 @@
-use super::{client, read_json, required};
-use crate::development_ai::{
-    AiInput, Disposition, Proposal, generation_schema, model_instructions, validate_check,
-    validate_proposal,
-};
+use super::{client, decision, read_json, required};
+use crate::development_ai::{AiInput, Disposition, Proposal, validate_check, validate_proposal};
 use serde::Serialize;
 use serde_json::{Value, json};
 use utoipa::ToSchema;
@@ -87,6 +84,7 @@ impl Provider {
             usage.push(bill);
         }
         let generated = generated
+            .and_then(|value| decision::expand("generate", value, &original))
             .and_then(|value| {
                 serde_json::from_value::<Proposal>(value).map_err(|_| Disposition::InvalidProposal)
             })
@@ -110,7 +108,10 @@ impl Provider {
                 if let Some(bill) = bill {
                     usage.push(bill);
                 }
-                checked.and_then(validate_check).map(|()| proposal)
+                checked
+                    .and_then(|value| decision::expand("check", value, &original))
+                    .and_then(validate_check)
+                    .map(|()| proposal)
             }
         };
         Evaluation {
@@ -126,23 +127,11 @@ impl Provider {
         role: &str,
         payload: &Value,
     ) -> (Result<Value, Disposition>, Option<Usage>, bool) {
-        let instructions = match model_instructions(role) {
+        let instructions = match decision::instructions(role, payload) {
             Ok(instructions) => instructions,
             Err(error) => return (Err(error), None, false),
         };
-        let schema = match role {
-            "generate" => include_str!("../development_ai/generate.json"),
-            _ => include_str!("../development_ai/check.json"),
-        };
-        let mut schema: Value = serde_json::from_str(schema).expect("committed schema");
-        if role == "generate" {
-            schema = generation_schema(payload["request_kind"].as_str());
-        }
-        if role == "check" {
-            // Messages JSON Schema does not support numeric bounds. Keep the exact domain as enum.
-            schema["properties"]["criteria"]["items"] =
-                json!({"type":"integer","enum":[1,2,3,4,5]});
-        }
+        let schema = decision::schema(role, payload["request_kind"].as_str());
         let body = json!({"model":MODEL,"system":instructions,
             "messages":[{"role":"user","content":payload.to_string()}],
             "thinking":{"type":"adaptive"},"max_tokens":self.output_tokens,
@@ -230,11 +219,11 @@ impl Provider {
         {
             return (Err(Disposition::Rejected), usage, false);
         }
-        let result = texts[0]["text"]
-            .as_str()
-            .filter(|text| text.len() <= 128 * 1024)
-            .and_then(|text| serde_json::from_str(text).ok())
-            .ok_or(Disposition::InvalidProposal);
+        let result = decision::decode(
+            role,
+            texts[0]["text"].as_str(),
+            payload["request_kind"].as_str(),
+        );
         (result, usage, false)
     }
 

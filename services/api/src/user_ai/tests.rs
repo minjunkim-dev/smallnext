@@ -38,23 +38,71 @@ async fn external_provider(
         tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
     }
     let mode = remote.mode.lock().unwrap().clone();
-    let original: serde_json::Value =
-        serde_json::from_str(body["messages"][0]["content"].as_str().unwrap()).unwrap();
     let generating = body["output_config"]["format"]["schema"]["properties"]
         .get("action")
         .is_some();
-    let value = if generating {
+    let mut value = if generating {
         json!({"status": match mode.as_str() { "minimum" | "no_action" | "goal_summary" | "need_info" => mode.as_str(), _ => "action" },"action":"펜 하나 옮기기","completion_condition":"펜이 펜꽂이에 있다",
-            "estimated_minutes":1,"reason":"한 물건만 옮긴다","remaining_work":original["remaining_work"],
-            "preserved_completed_ids":original["completed_ids"],"goal_completed":mode=="invalid","current_action_completed":false})
+            "estimated_minutes":1,"reason":"한 물건만 옮긴다"})
     } else {
-        json!({"verdict":if mode=="reject" || mode=="uncertain" { mode.as_str() } else { "accept" },"criteria":[1,2,3,4,5],"evidence":"원본과 일치","reason":"판정"})
+        json!({"verdict":if mode=="reject" || mode=="uncertain" { mode.as_str() } else { "accept" },"criteria":[1,2,3,4,5],"evidence":"원본과 일치"})
+    };
+    if (mode == "invalid" || mode == "invalid_missing_usage") && generating {
+        value["goal_completed"] = json!(true);
+    }
+    let fault = mode.strip_prefix(if generating { "generate_" } else { "check_" });
+    let field = if generating { "action" } else { "evidence" };
+    match fault {
+        Some("type") => value[field] = json!(["private-output"]),
+        Some("required") => {
+            value.as_object_mut().unwrap().remove(field);
+        }
+        Some("additional") => value["private-key"] = json!("private-output"),
+        Some("owned") => {
+            value[if generating {
+                "remaining_work"
+            } else {
+                "reason"
+            }] = json!("private-output")
+        }
+        Some("enum") => {
+            value[if generating { "status" } else { "verdict" }] = json!("private-output")
+        }
+        Some("empty") => value[field] = json!(" "),
+        Some("criteria") => value["criteria"] = json!([1, 2, 3, 4]),
+        Some("empty_criteria") => value["criteria"] = json!([]),
+        Some("criteria_type") => value["criteria"] = json!([1, 2, "private-output", 4, 5]),
+        Some("criteria_enum") => value["criteria"] = json!([1, 2, 3, 4, 6]),
+        _ => {}
+    }
+    let text = match fault {
+        Some("syntax") => "{private-output".to_owned(),
+        Some("depth") => format!("{}0{}", "[".repeat(256), "]".repeat(256)),
+        Some("trailing") => format!("{} private-output", value),
+        Some("duplicate") => format!(
+            "{{\"{field}\":\"private-output\",{}",
+            &value.to_string()[1..]
+        ),
+        Some("escaped_duplicate") => format!(
+            "{{\"{}\":\"private-output\",{}",
+            if generating {
+                "actio\\u006e"
+            } else {
+                "evidenc\\u0065"
+            },
+            &value.to_string()[1..]
+        ),
+        Some("nested_duplicate") => format!(
+            "{{\"private-key\":{{\"secret\":1,\"secret\":2}},{}",
+            &value.to_string()[1..]
+        ),
+        _ => value.to_string(),
     };
     let mut response = json!({"type":"message","role":"assistant","model":"claude-haiku-5-5","stop_reason":"end_turn",
-        "content":[{"type":"thinking","thinking":"합성","signature":"test"},{"type":"text","text":value.to_string()}],
+        "content":[{"type":"thinking","thinking":"private-thinking","signature":"test"},{"type":"text","text":text}],
         "usage":{"input_tokens":8,"output_tokens":7,"cache_read_input_tokens":3,"cache_creation_input_tokens":0,
             "output_tokens_details":{"thinking_tokens":2}}});
-    if mode == "missing_usage" {
+    if mode == "missing_usage" || mode == "invalid_missing_usage" {
         response["usage"] = serde_json::Value::Null;
     }
     if mode == "overrun" {
@@ -156,6 +204,14 @@ impl Fixture {
         if let Some(kind) = kind {
             input["request_kind"] = json!(kind);
         }
+        self.request_input(uid, key, input).await
+    }
+    async fn request_input(
+        &self,
+        uid: &str,
+        key: &str,
+        input: serde_json::Value,
+    ) -> axum::response::Response {
         self.app
             .clone()
             .oneshot(
@@ -185,6 +241,198 @@ impl Fixture {
 async fn result(response: axum::response::Response) -> serde_json::Value {
     use http_body_util::BodyExt;
     serde_json::from_slice(&response.into_body().collect().await.unwrap().to_bytes()).unwrap()
+}
+
+#[tokio::test]
+#[ignore = "requires TEST_DATABASE_URL; HTTP against real isolated PostgreSQL"]
+async fn malformed_decisions_stop_at_the_failing_role_without_retry() {
+    let logs = LogBuffer::default();
+    let writer = logs.clone();
+    // Keep one process-wide collector for concurrent HTTP work and callsite registration.
+    tracing::subscriber::set_global_default(
+        tracing_subscriber::fmt()
+            .without_time()
+            .with_ansi(false)
+            .with_writer(move || writer.clone())
+            .finish(),
+    )
+    .unwrap();
+    let fixture = Fixture::new().await;
+    for role in ["generate", "check"] {
+        for fault in [
+            "duplicate",
+            "escaped_duplicate",
+            "nested_duplicate",
+            "depth",
+            "trailing",
+            "syntax",
+            "type",
+            "required",
+            "additional",
+            "owned",
+            "enum",
+            "empty",
+        ] {
+            let mode = format!("{role}_{fault}");
+            *fixture.remote.mode.lock().unwrap() = mode.clone();
+            fixture.remote.calls.lock().unwrap().clear();
+            logs.0.lock().unwrap().clear();
+            let body = result(fixture.request("allowed", &mode).await).await;
+            assert_eq!(
+                body["disposition"],
+                if role == "generate" {
+                    "invalid_proposal"
+                } else {
+                    "failed"
+                },
+                "{mode}"
+            );
+            let log = String::from_utf8(logs.0.lock().unwrap().clone()).unwrap();
+            assert!(!log.contains("private-"), "{mode}: {log}");
+            {
+                assert!(log.contains("invalid_ai_decision"), "{mode}: {log}");
+                assert!(log.contains(&format!("role=\"{role}\"")), "{mode}: {log}");
+                let classification = if ["syntax", "depth", "trailing"].contains(&fault) {
+                    "json_syntax"
+                } else if fault == "owned" {
+                    "additional"
+                } else if fault == "empty" {
+                    "nonblank"
+                } else if fault.contains("duplicate") {
+                    "duplicate_key"
+                } else {
+                    fault
+                };
+                assert!(
+                    log.contains(&format!("kind=\"{classification}\"")),
+                    "{mode}: {log}"
+                );
+            }
+            assert!(body["proposal"].is_null());
+            assert_eq!(
+                fixture.remote.calls.lock().unwrap().len(),
+                if role == "generate" { 1 } else { 2 },
+                "{mode}"
+            );
+        }
+    }
+    fixture.close().await;
+}
+
+#[derive(Clone, Default)]
+struct LogBuffer(Arc<Mutex<Vec<u8>>>);
+impl std::io::Write for LogBuffer {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        self.0.lock().unwrap().extend_from_slice(bytes);
+        Ok(bytes.len())
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+#[tokio::test]
+#[ignore = "requires TEST_DATABASE_URL; HTTP against real isolated PostgreSQL"]
+async fn checker_requires_all_five_criteria_and_nonblank_grounded_evidence() {
+    let fixture = Fixture::new().await;
+    for mode in [
+        "check_criteria",
+        "check_empty_criteria",
+        "check_criteria_type",
+        "check_criteria_enum",
+        "check_empty",
+    ] {
+        *fixture.remote.mode.lock().unwrap() = mode.into();
+        fixture.remote.calls.lock().unwrap().clear();
+        let body = result(fixture.request("allowed", mode).await).await;
+        assert_eq!(body["disposition"], "failed", "{mode}");
+        assert!(body["proposal"].is_null());
+        assert_eq!(fixture.remote.calls.lock().unwrap().len(), 2);
+    }
+    fixture.close().await;
+}
+
+#[tokio::test]
+#[ignore = "requires TEST_DATABASE_URL; HTTP against real isolated PostgreSQL"]
+async fn invalid_decision_with_unknown_usage_keeps_conservative_charge_after_restart() {
+    let mut fixture = Fixture::new().await;
+    fixture.config.budget_limit = 42_000;
+    fixture.app = super::router(Some(fixture.config.clone()), fixture.database.clone());
+    *fixture.remote.mode.lock().unwrap() = "invalid_missing_usage".into();
+    let body = result(fixture.request("allowed", "invalid-unknown-usage").await).await;
+    assert_eq!(body["disposition"], "invalid_proposal");
+    assert!(body["proposal"].is_null());
+    assert_eq!(body["usage"], json!([]));
+    fixture.app = super::router(Some(fixture.config.clone()), fixture.database.clone());
+    assert_eq!(
+        fixture.request("allowed", "after-restart").await.status(),
+        StatusCode::TOO_MANY_REQUESTS
+    );
+    assert_eq!(fixture.remote.calls.lock().unwrap().len(), 1);
+    fixture.close().await;
+}
+
+#[tokio::test]
+#[ignore = "requires TEST_DATABASE_URL; HTTP against real isolated PostgreSQL"]
+async fn decisions_preserve_original_state_and_specialize_only_smaller_questions() {
+    let fixture = Fixture::new().await;
+    for (kind, mode, specialized) in [
+        ("smaller", "need_info", true),
+        ("first_action", "need_info", false),
+        ("smaller", "minimum", false),
+        ("replacement", "no_action", false),
+    ] {
+        *fixture.remote.mode.lock().unwrap() = mode.into();
+        fixture.remote.calls.lock().unwrap().clear();
+        let mut input: serde_json::Value =
+            serde_json::from_str(include_str!("../../examples/development-ai-input.json")).unwrap();
+        input["request_kind"] = json!(kind);
+        input["available_minutes"] = json!(2.0);
+        input["remaining_work"] = json!(["남은 작업", "보류 작업"]);
+        input["completed_ids"] = json!(["completed-1", "completed-2"]);
+        input["available"] = json!(["보류 작업은 보류 상태다", "완료 작업은 완료했다"]);
+        let body = result(
+            fixture
+                .request_input("allowed", &format!("{kind}-{mode}"), input.clone())
+                .await,
+        )
+        .await;
+        assert_eq!(body["disposition"], "accepted");
+        assert_eq!(
+            body["proposal"]["remaining_work"],
+            json!(["남은 작업", "보류 작업"])
+        );
+        assert_eq!(
+            body["proposal"]["preserved_completed_ids"],
+            json!(["completed-1", "completed-2"])
+        );
+        assert_eq!(body["proposal"]["goal_completed"], false);
+        assert_eq!(body["proposal"]["current_action_completed"], false);
+        let calls = fixture.remote.calls.lock().unwrap().clone();
+        assert_eq!(calls.len(), 2);
+        let prompt = calls[1]["system"].as_str().unwrap();
+        assert_eq!(prompt.starts_with("Independently check all five mandatory criteria for this need_info question on a smaller request."), specialized);
+        for rule in [
+            "Eligibility before selection:",
+            "Five mandatory criteria,",
+            "repeated failure",
+            "Also stop smaller",
+            "Host-verified literal preservation:",
+            "goal_incomplete\":true",
+            "completed_ids_exact\":true",
+            "remaining_work_exact\":true",
+            "current_action_incomplete\":true",
+        ] {
+            assert!(prompt.contains(rule), "missing {rule}");
+        }
+        assert_eq!(prompt.contains("- goal_preparation permits"), !specialized);
+        assert_eq!(prompt.contains("- no_action uses"), !specialized);
+        let checked: serde_json::Value =
+            serde_json::from_str(calls[1]["messages"][0]["content"].as_str().unwrap()).unwrap();
+        assert_eq!(checked["original_request"], input);
+        assert_eq!(checked["candidate"], body["proposal"]);
+    }
+    fixture.close().await;
 }
 
 #[tokio::test]
@@ -357,19 +605,28 @@ async fn allowed_user_receives_only_independently_checked_proposal_and_usage() {
         assert_eq!(request["stream"], false);
         assert!(request.get("store").is_none());
         assert!(request.get("cache_control").is_none());
+        let schema = &request["output_config"]["format"]["schema"];
         assert_eq!(
-            request["system"],
-            crate::development_ai::model_instructions(if index == 0 {
-                "generate"
-            } else {
-                "check"
-            })
-            .unwrap()
+            schema["properties"].as_object().unwrap().len(),
+            if index == 0 { 5 } else { 3 }
+        );
+        assert_eq!(schema["additionalProperties"], false);
+        assert!(
+            request["system"]
+                .as_str()
+                .unwrap()
+                .contains("Five mandatory criteria,")
+        );
+        assert!(
+            request["system"]
+                .as_str()
+                .unwrap()
+                .contains("Eligibility before selection:")
         );
         if index == 0 {
             assert_eq!(
                 request["output_config"]["format"]["schema"],
-                crate::development_ai::generation_schema(None)
+                super::decision::schema("generate", None)
             );
         }
         if index == 1 {
@@ -413,7 +670,7 @@ async fn request_status_contract_and_schema_match_through_real_database_and_http
         assert_eq!(sent.len(), calls);
         assert_eq!(
             sent[0]["output_config"]["format"]["schema"],
-            crate::development_ai::generation_schema(Some(kind))
+            super::decision::schema("generate", Some(kind))
         );
         if calls == 2 {
             let checked: serde_json::Value =
