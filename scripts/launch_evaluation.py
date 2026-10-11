@@ -349,13 +349,18 @@ def report(directory, *, observations=()):
             snapshot = {}
             for name in ('results', 'requests', 'calls'):
                 child = opened.enter_context(private_directory(descriptor, name))
-                for filename in private_names(child, '.'):
+                with os.scandir(child) as entries:
+                    identities = [(entry.name, entry.inode()) for entry in entries if entry.name.endswith('.json')]
+                for filename, inode in identities:
                     source = None
                     if name == 'results':
                         try:
                             source = opened.enter_context(private_source(child, filename))
+                            current = os.fstat(source.fileno())
+                            if current.st_ino != inode or current.st_dev != os.fstat(child).st_dev:
+                                raise ValueError('result changed after enumeration')
                         except (OSError, ValueError):
-                            pass
+                            source = None
                     snapshot[str(Path(name)/filename)] = source
             for name in ('manifest.json', 'integrity.json', 'regression/manifest.json',
                          'run-started.json', 'run-ended.json'):
@@ -498,6 +503,11 @@ def report_bundle(directory, descriptor, observations):
                 or budget.get('basis') != manifest['cost_policy']['basis']
                 or 'actual_billing' not in budget or budget['actual_billing'] is not None):
             raise ValueError('invalid end budget')
+        if end['reason'] == 'completed' and (
+                budget['charged_micro_usd'] > manifest['limits']['initial_micro_usd']
+                or budget['charged_micro_usd'] + budget['monthly_spent_micro_usd'] > manifest['limits']['monthly_micro_usd']
+                or started_requests > manifest['limits']['requests'] or started_roles > manifest['limits']['calls']):
+            raise ValueError('completed execution exceeds limits')
     errors = Counter(r['error'] for r in records if r.get('error'))
     for row in records:
         row['outcome'] = ('cancelled' if row.get('error') in {'cancelled', 'ownership_lost'} else
@@ -538,6 +548,7 @@ def report_bundle(directory, descriptor, observations):
         'automatic_passed': end.get('reason') == 'completed'
                             and len(completed) == len(manifest['flows']) and not errors and not unreadable
                             and started_roles == len(calls) and started_requests == len(records)
+                            and sum(r['seconds'] for r in records) <= manifest['limits']['seconds']
                             and all(r.get('reference_matched') is True for r in records),
         'costs': end.get('budget', {'actual_billing': None,
             'charged_micro_usd': started_roles * manifest['cost_policy']['role_reservation_micro_usd'],

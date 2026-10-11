@@ -858,6 +858,67 @@ print('cancelled')
                 self.assertEqual(result['costs'], original['costs'])
                 self.assertFalse(result['automatic_passed'])
 
+    def test_report_detects_result_leaf_replacement_before_open(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root, _ = self.freeze(directory)
+            launch.run(root, invoke=self.response)
+            path = next((root/'results').glob('*.json'))
+            original = path.read_bytes()
+            corrupt = json.loads(original)
+            corrupt['verdict'] = 'corrupt'
+            path.write_bytes(qa.encoded(corrupt))
+            real_source, replaced = launch.private_source, []
+            def replace(bundle, name):
+                if type(bundle) is int and str(name) == path.name and not replaced:
+                    path.rename(path.with_suffix('.original'))
+                    path.write_bytes(original)
+                    replaced.append(True)
+                return real_source(bundle, name)
+            with patch.object(launch, 'private_source', side_effect=replace):
+                result = launch.report(root)
+            self.assertTrue(replaced)
+            self.assertFalse(result['automatic_passed'])
+            self.assertEqual(result['unreadable_records'], [path.name])
+            self.assertEqual(result['requests']['recorded'], 32)
+
+    def test_completed_budget_respects_initial_and_monthly_limits(self):
+        for charged, spent, allowed in [(9_999_999, 0, False), (3_000_000, 7_000_001, False),
+                                        (3_000_000, 7_000_000, True)]:
+            with self.subTest(charged=charged, spent=spent), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory).resolve()/'launch'
+                launch.freeze(root, owner='minjunkim-dev',
+                    ends_at=(datetime.now(timezone.utc)+timedelta(days=1)).isoformat(),
+                    delete_method='delete directory', monthly_spent_micro_usd=spent)
+                launch.run(root, invoke=self.response)
+                end = json.loads((root/'run-ended.json').read_bytes())
+                end['budget']['charged_micro_usd'] = charged
+                (root/'run-ended.json').write_bytes(qa.encoded(end))
+                if allowed:
+                    self.assertTrue(launch.report(root)['automatic_passed'])
+                else:
+                    with self.assertRaises(ValueError):
+                        launch.report(root)
+
+    def test_completed_report_rejects_sequential_time_above_90_minutes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root, _ = self.freeze(directory)
+            generated = [0]
+            def invoke(role, *args):
+                result = self.response(role, *args)
+                if role == 'generate':
+                    generated[0] += 1
+                    if generated[0] <= 72:
+                        result['output']['status'] = 'action'
+                return result
+            original = launch.run(root, invoke=invoke)
+            self.assertEqual(original['requests']['recorded'], 81)
+            for elapsed, allowed in [(5670, False), (5400, True)]:
+                for n, path in enumerate(sorted((root/'results').glob('*.json'))):
+                    row = json.loads(path.read_bytes())
+                    row['seconds'] = 70 if elapsed == 5670 else 40 if n == 0 else 67
+                    path.write_bytes(qa.encoded(row))
+                self.assertEqual(launch.report(root)['automatic_passed'], allowed)
+
     def test_maximum_report_fits_256_file_descriptors(self):
         with tempfile.TemporaryDirectory() as directory:
             script = '''import json,resource,sys
