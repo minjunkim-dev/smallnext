@@ -25,6 +25,8 @@ import oauth_quality as qa
 
 LIMITS = {'requests': 81, 'calls': 162, 'seconds': 5400,
           'initial_micro_usd': 3_000_000, 'monthly_micro_usd': 10_000_000}
+# Two 4 MiB role streams plus record metadata and JSON encoding overhead.
+REPORT_JSON_LIMIT = 16 * 1024 * 1024
 MEASUREMENT = {'median': 'middle pair mean', 'p90': 'nearest-rank ceil(0.9*n)',
                'minimum_p90_samples': 10, 'median_seconds': 20, 'p90_seconds': 30,
                'boundary': 'button to checked result screen; server alone is unknown'}
@@ -276,10 +278,23 @@ def private_source(directory, path):
         yield opened.enter_context(os.fdopen(descriptor, 'rb', closefd=False))
 
 
+def private_json(directory, path):
+    try:
+        with private_source(directory, path) as source:
+            if os.fstat(source.fileno()).st_size > REPORT_JSON_LIMIT:
+                raise ValueError('report JSON too large')
+            data = source.read(REPORT_JSON_LIMIT + 1)
+            if len(data) > REPORT_JSON_LIMIT:
+                raise ValueError('report JSON grew beyond limit')
+    except OSError:
+        raise ValueError('private report JSON unavailable') from None
+    return json.loads(data)
+
+
 def report(directory, *, observations=()):
     directory = Path(directory)
     manifest = load(directory)
-    claim = json.loads((directory/'run-started.json').read_bytes())
+    claim = private_json(directory, 'run-started.json')
     if not (directory/'run-ended.json').exists():
         birth = qa.process_birth(claim['controller_pid'])
         if birth and birth == claim['controller_birth']:
@@ -287,8 +302,7 @@ def report(directory, *, observations=()):
     records, unreadable, usage_totals = [], [], Counter()
     for path in sorted((directory/'results').glob('*.json')):
         try:
-            with private_source(directory, Path('results')/path.name) as source:
-                row = json.load(source)
+            row = private_json(directory, Path('results')/path.name)
             if type(row) is not dict or any(type(row.get(key)) is not str
                     for key in ('run_id', 'manifest_sha256', 'request_id', 'flow', 'request_kind')):
                 raise ValueError('invalid result identity')
@@ -318,7 +332,7 @@ def report(directory, *, observations=()):
                 raise ValueError('unrelated result')
             records.append(row)
             usage_totals = pending_usage
-        except (OSError, ValueError, KeyError, TypeError, OverflowError):
+        except (OSError, ValueError, KeyError, TypeError, OverflowError, RecursionError):
             unreadable.append(path.name)
     ids = [r['request_id'] for r in records]
     if len(ids) != len(set(ids)):
@@ -354,7 +368,7 @@ def report(directory, *, observations=()):
             if (r['request_kind'] if r['request_kind'] in {'first_action', 'smaller'} else 'other') == kind
             and r['request_id'] in screens], manifest['measurement'])
     completed = {r['flow'] for r in records if r.get('termination') and not r.get('error')}
-    end = json.loads((directory/'run-ended.json').read_bytes()) if (directory/'run-ended.json').exists() else {}
+    end = private_json(directory, 'run-ended.json') if (directory/'run-ended.json').exists() else {}
     started_requests = len(list((directory/'requests').glob('*.json')))
     started_roles = len(list((directory/'calls').glob('*.json')))
     errors = Counter(r['error'] for r in records if r.get('error'))

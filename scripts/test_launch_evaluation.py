@@ -355,7 +355,7 @@ class LaunchEvaluationTests(unittest.TestCase):
 
     def test_monthly_budget_and_elapsed_deadline_stop_before_more_calls(self):
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)/'launch'
+            root = Path(directory).resolve()/'launch'
             launch.freeze(root, owner='minjunkim-dev',
                 ends_at=(datetime.now(timezone.utc)+timedelta(days=1)).isoformat(), delete_method='delete directory',
                 monthly_spent_micro_usd=9_960_001)
@@ -591,15 +591,73 @@ print(json.dumps({'type':'result','subtype':'success','is_error':False,'modelUsa
 
                 try:
                     with patch.object(launch.os, 'open', side_effect=replace):
-                        summary = launch.report(root)
+                        if target == 'results':
+                            summary = launch.report(root)
+                            self.assertEqual(summary['requests']['recorded'], 0)
+                            self.assertEqual(len(summary['unreadable_records']), 33)
+                            self.assertFalse(summary['automatic_passed'])
+                        else:
+                            with self.assertRaises(ValueError):
+                                launch.report(root)
                     self.assertTrue(replaced)
-                    self.assertEqual(summary['requests']['recorded'], 0)
-                    self.assertEqual(len(summary['unreadable_records']), 33)
-                    self.assertFalse(summary['automatic_passed'])
                 finally:
                     if replaced:
                         victim.unlink()
                         original.rename(victim)
+
+    def test_report_rejects_fifo_and_symlink_execution_metadata_without_waiting(self):
+        for name in ('run-started.json', 'run-ended.json'):
+            for kind in ('fifo', 'symlink'):
+                with self.subTest(name=name, kind=kind), tempfile.TemporaryDirectory() as directory:
+                    root, _ = self.freeze(directory)
+                    launch.run(root, invoke=self.response)
+                    metadata = root/name
+                    preserved = root/(name+'.original')
+                    metadata.rename(preserved)
+                    if kind == 'fifo':
+                        os.mkfifo(metadata)
+                    else:
+                        metadata.symlink_to(preserved)
+                    child = subprocess.run([sys.executable, '-c',
+                        'import sys; import launch_evaluation as l; l.report(sys.argv[1])', str(root)],
+                        env=dict(os.environ, PYTHONPATH=str(Path(launch.__file__).parent)),
+                        capture_output=True, text=True, timeout=2)
+                    self.assertNotEqual(child.returncode, 0)
+
+    def test_partial_report_bounds_oversized_and_deep_json_before_parsing(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root, _ = self.freeze(directory)
+            launch.run(root, invoke=self.response)
+            extra = root/'results'/'999.json'
+            limit = 16 * 1024 * 1024
+            with extra.open('wb') as source:
+                source.truncate(limit+1)
+            real_loads = json.loads
+
+            def bounded_parse(data, *args, **kwargs):
+                self.assertLessEqual(len(data), limit)
+                return real_loads(data, *args, **kwargs)
+
+            with patch.object(launch.json, 'loads', side_effect=bounded_parse):
+                summary = launch.report(root)
+            self.assertEqual(summary['unreadable_records'], ['999.json'])
+            real_stat = os.fstat
+
+            def stale_size(descriptor):
+                observed = real_stat(descriptor)
+                if observed.st_size > limit:
+                    fields = list(observed)
+                    fields[6] = 0
+                    return os.stat_result(fields)
+                return observed
+
+            with patch.object(launch.os, 'fstat', side_effect=stale_size), patch.object(launch.json, 'loads', side_effect=bounded_parse):
+                self.assertEqual(launch.report(root)['unreadable_records'], ['999.json'])
+            extra.write_text('['*2000 + '0' + ']'*2000)
+            summary = launch.report(root)
+            self.assertEqual(summary['unreadable_records'], ['999.json'])
+            self.assertEqual(summary['requests']['recorded'], 33)
+            self.assertFalse(summary['automatic_passed'])
 
     def test_expected_rejection_is_separate_from_quality_failure_and_fast_failure_not_normal(self):
         for expected in (True, False):
