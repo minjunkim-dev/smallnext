@@ -506,6 +506,26 @@ print(json.dumps({'type':'result','subtype':'success','is_error':False,'modelUsa
             self.assertEqual(summary['stop_reason'], 'interrupted')
             self.assertEqual(summary['costs']['conservative_roles'], 66)
 
+    def test_partial_report_isolates_valid_json_with_invalid_record_structure(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root, _ = self.freeze(directory)
+            launch.run(root, invoke=self.response)
+            result = next((root/'results').glob('*.json'))
+            original = json.loads(result.read_bytes())
+            malformed = [None, [], 'text', dict(original, calls=None),
+                         dict(original, calls=[None]), dict(original, seconds='unknown'),
+                         dict(original, error=[]), dict(original, request_id=[]), dict(original, flow='unrelated'),
+                         dict(original, calls=[dict(original['calls'][0], usage=None)]),
+                         dict(original, calls=[dict(original['calls'][0], provider_messages='one')])]
+            for value in malformed:
+                with self.subTest(value=value):
+                    result.write_bytes(qa.encoded(value))
+                    summary = launch.report(root)
+                    self.assertEqual(summary['unreadable_records'], [result.name])
+                    self.assertEqual(summary['requests']['recorded'], 32)
+                    self.assertEqual(summary['roles']['unrecorded'], 2)
+                    self.assertFalse(summary['automatic_passed'])
+
     def test_expected_rejection_is_separate_from_quality_failure_and_fast_failure_not_normal(self):
         for expected in (True, False):
             with self.subTest(expected=expected), tempfile.TemporaryDirectory() as directory:

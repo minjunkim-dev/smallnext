@@ -268,10 +268,30 @@ def report(directory, *, observations=()):
     for path in sorted((directory/'results').glob('*.json')):
         try:
             row = json.loads(path.read_bytes())
+            if type(row) is not dict or any(type(row.get(key)) is not str
+                    for key in ('run_id', 'manifest_sha256', 'request_id', 'flow', 'request_kind')):
+                raise ValueError('invalid result identity')
+            if qa.numeric(row.get('seconds')) is None or type(row.get('calls')) is not list:
+                raise ValueError('invalid result structure')
+            if row['flow'] not in {f['id'] for f in manifest['flows']} or row['request_kind'] not in ('first_action', 'smaller', 'next_action'):
+                raise ValueError('unrelated result flow')
+            if any(key in row and type(row[key]) is not str for key in ('error', 'verdict', 'termination')):
+                raise ValueError('invalid result outcome')
+            for call in row['calls']:
+                if type(call) is not dict or call.get('role') not in ('generate', 'check'):
+                    raise ValueError('invalid role record')
+                if type(call.get('provider_messages', 0)) is not int or call.get('provider_messages', 0) < 0:
+                    raise ValueError('invalid role message count')
+                usage = call.get('usage', {})
+                if type(usage) is not dict or any(v is not None and qa.numeric(v) is None for v in usage.values()):
+                    raise ValueError('invalid role usage')
+                if ('error' in call and type(call['error']) is not str
+                        or 'output' in call and type(call['output']) is not dict):
+                    raise ValueError('invalid role outcome')
             if row['run_id'] != claim['run_id'] or row['manifest_sha256'] != claim['manifest_sha256']:
                 raise ValueError('unrelated result')
             records.append(row)
-        except (ValueError, KeyError):
+        except (OSError, ValueError, KeyError, TypeError):
             unreadable.append(path.name)
     ids = [r['request_id'] for r in records]
     if len(ids) != len(set(ids)):
