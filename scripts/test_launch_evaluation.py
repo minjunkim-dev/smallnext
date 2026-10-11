@@ -787,15 +787,161 @@ print('cancelled')
                 self.assertEqual(json.loads(child.stdout), {'error': 'launch_evaluation_failed'})
                 self.assertNotIn('Traceback', child.stderr)
 
+    def test_report_isolates_corrupt_decision_and_role_output_consistency(self):
+        changes = [lambda row: row.update(verdict='corrupt'),
+                   lambda row: row.pop('criteria'),
+                   lambda row: row.update(criteria=[1]),
+                   lambda row: row.update(status='action'),
+                   lambda row: row.update(reference_matched=False),
+                   lambda row: row['calls'][1]['output'].update(verdict='reject'),
+                   lambda row: row['calls'][1]['output'].update(criteria=[1]),
+                   lambda row: row.update(termination='corrupt'),
+                   lambda row: row['calls'][0]['output'].update(goal_completed=True),
+                   lambda row: row['calls'][0]['output'].update(current_action_completed=True),
+                   lambda row: row['calls'][0]['output'].update(remaining_work=[]),
+                   lambda row: row['calls'][0]['output'].update(preserved_completed_ids=['invented']),
+                   lambda row: row['calls'][0].update(actual_models=['other-model']),
+                   lambda row: row['calls'][0].update(provider_messages=2),
+                   lambda row: row['calls'][1].update(provider_retries=1),
+                   lambda row: row['calls'][1]['usage'].update(input_tokens=None),
+                   lambda row: row['calls'][0].update(cli_pid=123, process_reaped=False)]
+        for change in changes:
+            with self.subTest(change=change), tempfile.TemporaryDirectory() as directory:
+                root, _ = self.freeze(directory)
+                launch.run(root, invoke=self.response)
+                path = next((root/'results').glob('*.json'))
+                row = json.loads(path.read_bytes())
+                change(row)
+                path.write_bytes(qa.encoded(row))
+                result = launch.report(root)
+                self.assertFalse(result['automatic_passed'])
+                self.assertEqual(result['requests']['recorded'], 32)
+                self.assertEqual(result['unreadable_records'], [path.name])
+
+    def test_report_pins_subdirectories_and_files_before_reading_claim(self):
+        for target in ('results', 'requests', 'calls', 'result', 'end'):
+            with self.subTest(target=target), tempfile.TemporaryDirectory() as directory:
+                root, _ = self.freeze(directory)
+                original = launch.run(root, invoke=self.response)
+                replacement = root.with_name('replacement')
+                shutil.copytree(root, replacement)
+                changed = next((root/'results').glob('*.json'))
+                row = json.loads(changed.read_bytes())
+                row['verdict'] = 'corrupt'
+                changed.write_bytes(qa.encoded(row))
+                if target in ('requests', 'calls'):
+                    next((root/target).glob('*.json')).unlink()
+                real_json, replaced = launch.private_json, []
+                def replace(bundle, name):
+                    value = real_json(bundle, name)
+                    if name == 'run-started.json' and not replaced:
+                        if target == 'result':
+                            changed.rename(changed.with_suffix('.original'))
+                            (replacement/'results'/changed.name).rename(changed)
+                        elif target == 'end':
+                            (root/'run-ended.json').rename(root/'end.original')
+                            end = json.loads((replacement/'run-ended.json').read_bytes())
+                            end['budget']['charged_micro_usd'] = 999999
+                            (replacement/'run-ended.json').write_bytes(qa.encoded(end))
+                            (replacement/'run-ended.json').rename(root/'run-ended.json')
+                        else:
+                            (root/target).rename(root/(target+'-original'))
+                            (replacement/target).rename(root/target)
+                        replaced.append(True)
+                    return value
+                with patch.object(launch, 'private_json', side_effect=replace):
+                    result = launch.report(root)
+                self.assertEqual(result['requests']['recorded'], 32)
+                self.assertEqual(result['unreadable_records'], [changed.name])
+                self.assertEqual(result['requests']['started'], 32 if target == 'requests' else 33)
+                self.assertEqual(result['roles']['started'], 65 if target == 'calls' else 66)
+                self.assertEqual(result['costs'], original['costs'])
+                self.assertFalse(result['automatic_passed'])
+
+    def test_maximum_report_fits_256_file_descriptors(self):
+        with tempfile.TemporaryDirectory() as directory:
+            script = '''import json,resource,sys
+from pathlib import Path
+from test_launch_evaluation import LaunchEvaluationTests
+import launch_evaluation as l
+import oauth_quality as q
+resource.setrlimit(resource.RLIMIT_NOFILE,(256,resource.getrlimit(resource.RLIMIT_NOFILE)[1]))
+root,_=LaunchEvaluationTests().freeze(sys.argv[1])
+generated=[0]
+def invoke(role,*args):
+ result=LaunchEvaluationTests.response(role,*args)
+ if role=='generate':
+  generated[0]+=1
+  if generated[0]<=72: result['output']['status']='action'
+ return result
+summary=l.run(root,invoke=invoke)
+assert summary['requests']['recorded']==81, summary['requests']
+(root/'screens').mkdir()
+observations=[]
+for n,path in enumerate(sorted((root/'results').glob('*.json'))):
+ row=json.loads(path.read_bytes()); evidence=root/'screens'/f'{n}.png'
+ evidence.write_bytes(b'offline screen fixture')
+ observations.append(dict(run_id=row['run_id'],request_id=row['request_id'],
+  observed_upper_seconds=1,sample_interval_seconds=.5,method='screen fixture',
+  display_observed=True,evidence_path=str(evidence.relative_to(root)),
+  evidence_sha256=q.digest(evidence.read_bytes())))
+assert l.report(root,observations=observations)['automatic_passed']
+print('maximum report passed')
+'''
+            child = subprocess.run([sys.executable, '-c', script, directory],
+                env=dict(os.environ, PYTHONPATH=str(Path(launch.__file__).parent)),
+                capture_output=True, text=True, timeout=5)
+            self.assertEqual(child.returncode, 0, child.stderr)
+            self.assertEqual(child.stdout.strip(), 'maximum report passed')
+
+    def test_screen_png_does_not_change_snapshot_json_counts(self):
+        for folder in ('results', 'requests', 'calls'):
+            with self.subTest(folder=folder), tempfile.TemporaryDirectory() as directory:
+                root, _ = self.freeze(directory)
+                original = launch.run(root, invoke=self.response)
+                row = json.loads(next((root/'results').glob('*.json')).read_bytes())
+                evidence = root/folder/'screen.png'
+                evidence.write_bytes(b'offline screen fixture')
+                observation = dict(run_id=row['run_id'], request_id=row['request_id'],
+                    observed_upper_seconds=1, sample_interval_seconds=.5,
+                    method='first screenshot containing result', display_observed=True,
+                    evidence_path=str(evidence.relative_to(root)), evidence_sha256=qa.digest(evidence.read_bytes()))
+                result = launch.report(root, observations=[observation])
+                self.assertTrue(result['automatic_passed'])
+                self.assertEqual(result['requests'], original['requests'])
+                self.assertEqual(result['roles'], original['roles'])
+                self.assertEqual(result['unreadable_records'], [])
+
+    def test_report_rejects_corrupt_end_budget(self):
+        changes = [lambda end: end.update(budget=[]),
+                   lambda end: end.pop('budget'),
+                   lambda end: end['budget'].update(charged_micro_usd='0'),
+                   lambda end: end['budget'].update(conservative_roles=-1),
+                   lambda end: end['budget'].pop('monthly_spent_micro_usd'),
+                   lambda end: end['budget'].update(basis=None),
+                   lambda end: end['budget'].update(actual_billing=0)]
+        for change in changes:
+            with self.subTest(change=change), tempfile.TemporaryDirectory() as directory:
+                root, _ = self.freeze(directory)
+                launch.run(root, invoke=self.response)
+                path = root/'run-ended.json'
+                end = json.loads(path.read_bytes())
+                change(end)
+                path.write_bytes(qa.encoded(end))
+                with self.assertRaises(ValueError):
+                    launch.report(root)
+
     def test_cli_rejects_non_string_screen_method_with_safe_error(self):
         with tempfile.TemporaryDirectory() as directory:
             root, _ = self.freeze(directory)
             launch.run(root, invoke=self.response)
             row = json.loads(next((root/'results').glob('*.json')).read_bytes())
+            evidence = root/'screen.png'
+            evidence.write_bytes(b'offline screen fixture')
             observation = dict(run_id=row['run_id'], request_id=row['request_id'],
                                observed_upper_seconds=1, sample_interval_seconds=.5,
                                method=1, display_observed=True, evidence_path='screen.png',
-                               evidence_sha256='0'*64)
+                               evidence_sha256=qa.digest(evidence.read_bytes()))
             argument = root/'observations.json'
             argument.write_bytes(qa.encoded([observation]))
             child = subprocess.run([sys.executable, str(Path(launch.__file__)), 'report', str(root),

@@ -60,7 +60,9 @@ python3 scripts/launch_evaluation.py report work/launch-new --observations work/
 파일 누락·경로 이탈·symlink·정규 파일이 아닌 증거·해시 차이를 거부한다.
 private 디렉터리 descriptor를 기준으로 열고 같은 파일 descriptor의 타입과 해시를 검사한다.
 보고 시작부터 종료까지 같은 번들 descriptor를 유지한다. 제어·메타데이터·결과·호출 수·증거를 이 descriptor에서 읽는다.
+집계 전에 하위 디렉터리·결과·제어·증거 파일을 열어 고정한다. 요청·호출 JSON 이름 목록도 고정한다. 파일을 연 뒤 부모 descriptor를 닫는다.
 제어 JSON은 object로 읽는다. 화면 관측 JSON은 array로 읽고 method 문자열을 검사한다. 타입 오류는 안전한 CLI 오류로 종료한다.
+결과는 동결 생성·검사 계약과 참조를 다시 검사한다. 역할 출력·요약·종료가 다르면 격리한다. 종료 예산은 필수 숫자·기준·청구 미확인을 검사한다.
 번들 경로도 `/` 또는 현재 디렉터리 descriptor부터 각 요소를 연다. 경로의 symlink와 `..`를 거부한다.
 보고에는 symlink가 없는 실제 경로를 지정한다. macOS 임시 경로 `/var`는 `/private/var`를 사용한다.
 결과 JSON과 시작·종료 메타데이터도 같은 정규 파일·경로 검사를 사용한다.

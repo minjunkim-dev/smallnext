@@ -288,9 +288,17 @@ def private_source(directory, path):
     if path.is_absolute() or '..' in path.parts or not path.parts:
         raise ValueError('private path must stay inside bundle')
     with ExitStack() as opened:
-        parent = opened.enter_context(private_directory(directory, path.parent))
-        descriptor = os.open(path.parts[-1], os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent)
-        opened.callback(os.close, descriptor)
+        if type(directory) is dict:
+            source = directory.get(str(path))
+            if source is None:
+                raise ValueError('private snapshot source unavailable')
+            copied = opened.enter_context(os.fdopen(os.dup(source.fileno()), 'rb'))
+            copied.seek(0)
+            yield copied
+            return
+        with private_directory(directory, path.parent) as parent:
+            descriptor = os.open(path.parts[-1], os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent)
+            opened.callback(os.close, descriptor)
         if not stat.S_ISREG(os.fstat(descriptor).st_mode):
             raise ValueError('private source must be a regular file')
         yield opened.enter_context(os.fdopen(descriptor, 'rb', closefd=False))
@@ -317,11 +325,16 @@ def private_json(directory, path, *, expected_type=dict):
 
 
 def private_names(directory, path):
+    if type(directory) is dict:
+        return [Path(name).name for name in directory
+                if Path(name).parent == Path(path) and name.endswith('.json')]
     with private_directory(directory, path) as descriptor:
         return [name for name in os.listdir(descriptor) if name.endswith('.json')]
 
 
 def private_exists(directory, path):
+    if type(directory) is dict:
+        return str(Path(path)) in directory
     try:
         os.stat(path, dir_fd=directory)
         return True
@@ -331,8 +344,31 @@ def private_exists(directory, path):
 
 def report(directory, *, observations=()):
     try:
-        with private_directory(directory) as descriptor:
-            return report_bundle(Path(directory), descriptor, observations)
+        with ExitStack() as opened:
+            descriptor = opened.enter_context(private_directory(directory))
+            snapshot = {}
+            for name in ('results', 'requests', 'calls'):
+                child = opened.enter_context(private_directory(descriptor, name))
+                for filename in private_names(child, '.'):
+                    source = None
+                    if name == 'results':
+                        try:
+                            source = opened.enter_context(private_source(child, filename))
+                        except (OSError, ValueError):
+                            pass
+                    snapshot[str(Path(name)/filename)] = source
+            for name in ('manifest.json', 'integrity.json', 'regression/manifest.json',
+                         'run-started.json', 'run-ended.json'):
+                if name != 'run-ended.json' or private_exists(descriptor, name):
+                    snapshot[name] = opened.enter_context(private_source(descriptor, name))
+            for item in observations:
+                try:
+                    name = str(Path(item['evidence_path']))
+                    if name not in snapshot:
+                        snapshot[name] = opened.enter_context(private_source(descriptor, name))
+                except (OSError, KeyError, TypeError, ValueError):
+                    raise ValueError('private screen evidence unavailable') from None
+            return report_bundle(Path(directory), snapshot, observations)
     except OSError:
         raise ValueError('private report bundle unavailable') from None
 
@@ -346,6 +382,7 @@ def report_bundle(directory, descriptor, observations):
         if birth and birth == claim['controller_birth']:
             raise ValueError('controller still alive; do not report an active run')
     records, unreadable, usage_totals = [], [], Counter()
+    flows = {flow['id']: flow for flow in manifest['flows']}
     for path in map(Path, sorted(private_names(descriptor, 'results'))):
         try:
             row = private_json(descriptor, Path('results')/path.name)
@@ -374,6 +411,39 @@ def report_bundle(directory, descriptor, observations):
                 if ('error' in call and type(call['error']) is not str
                         or 'output' in call and type(call['output']) is not dict):
                     raise ValueError('invalid role outcome')
+            if 'verdict' in row:
+                flow = flows[row['flow']]
+                if [call['role'] for call in row['calls']] != ['generate', 'check']:
+                    raise ValueError('decision roles missing')
+                candidate, checked = [call['output'] for call in row['calls']]
+                qa.validate(candidate, qa.schema_for(manifest, row))
+                qa.validate(checked, manifest['schemas']['check'])
+                if any(call.get('actual_models') != [manifest['model']]
+                       or call.get('provider_messages') != 1 or call.get('provider_retries', 0)
+                       or call.get('additional_provider_requests', 0)
+                       or any(type(call['usage'].get(key)) not in (int, float)
+                              or qa.numeric(call['usage'][key]) is None
+                              for key in ('input_tokens', 'output_tokens'))
+                       or call.get('cli_pid') and (not call.get('process_reaped') or call.get('process_group_alive'))
+                       for call in row['calls']):
+                    raise ValueError('inconsistent successful role')
+                matched = (checked['verdict'] in flow['expected']['verdicts']
+                           and candidate['status'] in flow['expected']['statuses'])
+                if (not qa.proposal_valid(flow['input'], candidate) or not qa.check_valid(checked)
+                        or row['verdict'] != checked['verdict']
+                        or row.get('criteria') != checked['criteria'] or row.get('status') != candidate['status']
+                        or row.get('reference_matched') is not matched or row.get('structure_valid') is not True
+                        or type(row.get('step')) is not int or not 0 <= row['step'] <= flow['max_smaller']
+                        or any(call.get('error') for call in row['calls'])):
+                    raise ValueError('inconsistent decision record')
+                termination = (None if not matched else 'expected_' + checked['verdict']
+                    if checked['verdict'] != 'accept' else candidate['status']
+                    if candidate['status'] in {'need_info', 'minimum', 'no_action'} else
+                    'planned_limit' if row['step'] == flow['max_smaller'] else None)
+                if row.get('termination') != termination:
+                    raise ValueError('inconsistent termination')
+            elif not row.get('error'):
+                raise ValueError('decision or failure required')
             if row['run_id'] != claim['run_id'] or row['manifest_sha256'] != claim['manifest_sha256']:
                 raise ValueError('unrelated result')
             records.append(row)
@@ -418,6 +488,16 @@ def report_bundle(directory, descriptor, observations):
     end = private_json(descriptor, 'run-ended.json') if private_exists(descriptor, 'run-ended.json') else {}
     started_requests = len(private_names(descriptor, 'requests'))
     started_roles = len(private_names(descriptor, 'calls'))
+    if private_exists(descriptor, 'run-ended.json'):
+        budget = end.get('budget')
+        if (type(end.get('reason')) is not str or not end['reason'] or type(budget) is not dict
+                or any(type(budget.get(key)) is not int or budget[key] < 0
+                       for key in ('charged_micro_usd', 'conservative_roles', 'monthly_spent_micro_usd'))
+                or budget['conservative_roles'] > started_roles
+                or budget['monthly_spent_micro_usd'] != manifest['cost_policy']['monthly_spent_micro_usd']
+                or budget.get('basis') != manifest['cost_policy']['basis']
+                or 'actual_billing' not in budget or budget['actual_billing'] is not None):
+            raise ValueError('invalid end budget')
     errors = Counter(r['error'] for r in records if r.get('error'))
     for row in records:
         row['outcome'] = ('cancelled' if row.get('error') in {'cancelled', 'ownership_lost'} else
