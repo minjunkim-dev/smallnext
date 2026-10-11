@@ -164,7 +164,7 @@ def freeze(directory, *, owner, ends_at, delete_method, role_reservation_micro_u
     if directory.is_relative_to(qa.REPO.resolve()) and not directory.is_relative_to((qa.REPO/'work').resolve()):
         raise ValueError('raw bundles must be outside tracked source or in ignored work')
     directory.mkdir(parents=True, mode=0o700, exist_ok=False)
-    qa.freeze(directory / 'regression', 'quality', output_mode='text-json')
+    qa.freeze(directory / 'regression', 'quality', output_mode='text-json', sequential=True)
     regression = qa.load(directory / 'regression')
     sources = deepcopy(regression['sources'])
     for name in ['scripts/launch_evaluation.py', 'services/api/src/development_ai.rs',
