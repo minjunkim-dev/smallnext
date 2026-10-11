@@ -539,6 +539,10 @@ print(json.dumps({'type':'result','subtype':'success','is_error':False,'modelUsa
                 row['seconds'] = 1e308
                 if index < 2:
                     row['calls'][0]['usage']['input_tokens'] = 1e308
+                    receipt = root/'calls'/f"{row['request_id']}-generate.receipt"
+                    trace = json.loads(receipt.read_bytes())
+                    trace['record_sha256'] = qa.digest(qa.encoded(row['calls'][0]))
+                    receipt.write_bytes(qa.encoded(trace))
                 result.write_bytes(qa.encoded(row))
             summary = launch.report(root)
             self.assertEqual(summary['unreadable_records'], [results[1].name])
@@ -830,7 +834,8 @@ print('cancelled')
                 row['verdict'] = 'corrupt'
                 changed.write_bytes(qa.encoded(row))
                 if target in ('requests', 'calls'):
-                    next((root/target).glob('*.json')).unlink()
+                    marker = f"{row['request_id']}{'-generate' if target == 'calls' else ''}.json"
+                    (root/target/marker).unlink()
                 real_json, replaced = launch.private_json, []
                 def replace(bundle, name):
                     value = real_json(bundle, name)
@@ -857,6 +862,68 @@ print('cancelled')
                 self.assertEqual(result['roles']['started'], 65 if target == 'calls' else 66)
                 self.assertEqual(result['costs'], original['costs'])
                 self.assertFalse(result['automatic_passed'])
+
+    def test_report_rejects_inplace_rewrite_and_completed_cost_ledger_mismatch(self):
+        for corruption in ('inplace', 'charged', 'conservative'):
+            with self.subTest(corruption=corruption), tempfile.TemporaryDirectory() as directory:
+                root, _ = self.freeze(directory)
+                launch.run(root, invoke=self.response)
+                if corruption == 'inplace':
+                    path = next((root/'results').glob('*.json'))
+                    original = path.read_bytes()
+                    bad = json.loads(original)
+                    bad['verdict'] = 'corrupt'
+                    path.write_bytes(qa.encoded(bad))
+                    inode = path.stat().st_ino
+                    real_json = launch.private_json
+                    def replace(bundle, name):
+                        value = real_json(bundle, name)
+                        if name == 'run-started.json':
+                            path.write_bytes(original)
+                            self.assertEqual(path.stat().st_ino, inode)
+                        return value
+                    with patch.object(launch, 'private_json', side_effect=replace):
+                        result = launch.report(root)
+                    self.assertEqual(result['unreadable_records'], [path.name])
+                    self.assertFalse(result['automatic_passed'])
+                else:
+                    path = root/'run-ended.json'
+                    end = json.loads(path.read_bytes())
+                    end['budget']['charged_micro_usd' if corruption == 'charged' else 'conservative_roles'] = (
+                        0 if corruption == 'charged' else 1)
+                    path.write_bytes(qa.encoded(end))
+                    with self.assertRaises(ValueError):
+                        launch.report(root)
+
+    def test_report_binds_repeats_to_request_and_role_receipts(self):
+        for corruption in ('copied_repeat', 'request_hash', 'missing_receipt', 'receipt_hash'):
+            with self.subTest(corruption=corruption), tempfile.TemporaryDirectory() as directory:
+                root, _ = self.freeze(directory)
+                launch.run(root, invoke=self.response)
+                rows = [(p, json.loads(p.read_bytes())) for p in (root/'results').glob('*.json')]
+                source = next(row for _, row in rows if row['flow'] == 'fixed-ready-1')
+                path, target = next((p, row) for p, row in rows if row['flow'] == 'fixed-ready-2')
+                ident = target['request_id']
+                receipt = root/'calls'/f'{ident}-generate.receipt'
+                if corruption == 'copied_repeat':
+                    copied = json.loads(qa.encoded(source))
+                    copied.update(flow=target['flow'], request_id=ident)
+                    path.write_bytes(qa.encoded(copied))
+                elif corruption == 'request_hash':
+                    request = root/'requests'/f'{ident}.json'
+                    data = json.loads(request.read_bytes())
+                    data['input_sha256'] = '0'*64
+                    request.write_bytes(qa.encoded(data))
+                elif corruption == 'missing_receipt':
+                    receipt.unlink(missing_ok=True)
+                else:
+                    data = json.loads(receipt.read_bytes()) if receipt.exists() else {}
+                    data['record_sha256'] = '0'*64
+                    receipt.write_bytes(qa.encoded(data))
+                result = launch.report(root)
+                self.assertFalse(result['automatic_passed'])
+                self.assertEqual(result['unreadable_records'], [path.name])
+                self.assertEqual(result['requests']['recorded'], 32)
 
     def test_report_detects_result_leaf_replacement_before_open(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -888,8 +955,16 @@ print('cancelled')
                 root = Path(directory).resolve()/'launch'
                 launch.freeze(root, owner='minjunkim-dev',
                     ends_at=(datetime.now(timezone.utc)+timedelta(days=1)).isoformat(),
-                    delete_method='delete directory', monthly_spent_micro_usd=spent)
-                launch.run(root, invoke=self.response)
+                    delete_method='delete directory', monthly_spent_micro_usd=spent,
+                    role_reservation_micro_usd=45_455)
+                role_count = [0]
+                def invoke(*args):
+                    result = self.response(*args)
+                    role_count[0] += 1
+                    if allowed:
+                        result['cost_estimate_micro_usd'] = 45_425 if role_count[0] == 1 else 45_455
+                    return result
+                launch.run(root, invoke=invoke)
                 end = json.loads((root/'run-ended.json').read_bytes())
                 end['budget']['charged_micro_usd'] = charged
                 (root/'run-ended.json').write_bytes(qa.encoded(end))

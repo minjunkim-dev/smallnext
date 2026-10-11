@@ -27,6 +27,7 @@ LIMITS = {'requests': 81, 'calls': 162, 'seconds': 5400,
           'initial_micro_usd': 3_000_000, 'monthly_micro_usd': 10_000_000}
 # Two 4 MiB role streams plus record metadata and JSON encoding overhead.
 REPORT_JSON_LIMIT = 16 * 1024 * 1024
+MARKER_JSON_LIMIT = 4096
 MEASUREMENT = {'median': 'middle pair mean', 'p90': 'nearest-rank ceil(0.9*n)',
                'minimum_p90_samples': 10, 'median_seconds': 20, 'p90_seconds': 30,
                'boundary': 'button to checked result screen; server alone is unknown'}
@@ -290,8 +291,10 @@ def private_source(directory, path):
     with ExitStack() as opened:
         if type(directory) is dict:
             source = directory.get(str(path))
-            if source is None:
+            if source is None or type(source) is bytes:
                 raise ValueError('private snapshot source unavailable')
+            if type(source) is tuple:
+                source = source[0]
             copied = opened.enter_context(os.fdopen(os.dup(source.fileno()), 'rb'))
             copied.seek(0)
             yield copied
@@ -304,14 +307,25 @@ def private_source(directory, path):
         yield opened.enter_context(os.fdopen(descriptor, 'rb', closefd=False))
 
 
-def private_bytes(directory, path):
+def private_bytes(directory, path, *, limit=REPORT_JSON_LIMIT, expected_identity=None):
+    if type(directory) is dict and type(directory.get(str(Path(path)))) is bytes:
+        data = directory[str(Path(path))]
+        if len(data) > limit:
+            raise ValueError('private snapshot JSON too large')
+        return data
     try:
         with private_source(directory, path) as source:
-            if os.fstat(source.fileno()).st_size > REPORT_JSON_LIMIT:
+            current = os.fstat(source.fileno())
+            if expected_identity is not None and (current.st_dev, current.st_ino) != expected_identity:
+                raise ValueError('private source changed after enumeration')
+            if current.st_size > limit:
                 raise ValueError('report JSON too large')
-            data = source.read(REPORT_JSON_LIMIT + 1)
-            if len(data) > REPORT_JSON_LIMIT:
+            data = source.read(limit + 1)
+            if len(data) > limit:
                 raise ValueError('report JSON grew beyond limit')
+            if type(directory) is dict and type(directory.get(str(Path(path)))) is tuple:
+                if qa.digest(data) != directory[str(Path(path))][1]:
+                    raise ValueError('private snapshot bytes changed')
     except OSError:
         raise ValueError('private report JSON unavailable') from None
     return data
@@ -350,17 +364,27 @@ def report(directory, *, observations=()):
             for name in ('results', 'requests', 'calls'):
                 child = opened.enter_context(private_directory(descriptor, name))
                 with os.scandir(child) as entries:
-                    identities = [(entry.name, entry.inode()) for entry in entries if entry.name.endswith('.json')]
+                    identities = [(entry.name, entry.inode()) for entry in entries
+                                  if entry.name.endswith('.json') or name == 'calls' and entry.name.endswith('.receipt')]
                 for filename, inode in identities:
                     source = None
-                    if name == 'results':
-                        try:
+                    try:
+                        if name == 'results':
                             source = opened.enter_context(private_source(child, filename))
                             current = os.fstat(source.fileno())
                             if current.st_ino != inode or current.st_dev != os.fstat(child).st_dev:
                                 raise ValueError('result changed after enumeration')
-                        except (OSError, ValueError):
-                            source = None
+                            if current.st_size > REPORT_JSON_LIMIT:
+                                raise ValueError('result too large')
+                            captured = source.read(REPORT_JSON_LIMIT + 1)
+                            if len(captured) > REPORT_JSON_LIMIT:
+                                raise ValueError('result grew beyond limit')
+                            source = (source, qa.digest(captured))
+                        else:
+                            source = private_bytes(child, filename, limit=MARKER_JSON_LIMIT,
+                                expected_identity=(os.fstat(child).st_dev, inode))
+                    except (OSError, ValueError):
+                        source = None
                     snapshot[str(Path(name)/filename)] = source
             for name in ('manifest.json', 'integrity.json', 'regression/manifest.json',
                          'run-started.json', 'run-ended.json'):
@@ -382,12 +406,16 @@ def report_bundle(directory, descriptor, observations):
     directory = Path(directory)
     manifest = load(directory, descriptor=descriptor)
     claim = private_json(descriptor, 'run-started.json')
+    if claim.get('manifest_sha256') != qa.digest(private_bytes(descriptor, 'manifest.json')):
+        raise ValueError('run manifest binding mismatch')
     if not private_exists(descriptor, 'run-ended.json'):
         birth = qa.process_birth(claim['controller_pid'])
         if birth and birth == claim['controller_birth']:
             raise ValueError('controller still alive; do not report an active run')
     records, unreadable, usage_totals = [], [], Counter()
     flows = {flow['id']: flow for flow in manifest['flows']}
+    states = {key: deepcopy(flow['input']) for key, flow in flows.items()}
+    steps = Counter()
     for path in map(Path, sorted(private_names(descriptor, 'results'))):
         try:
             row = private_json(descriptor, Path('results')/path.name)
@@ -400,8 +428,18 @@ def report_bundle(directory, descriptor, observations):
                 raise ValueError('unrelated result flow')
             if any(key in row and type(row[key]) is not str for key in ('error', 'verdict', 'termination')):
                 raise ValueError('invalid result outcome')
+            data = states[row['flow']]
+            ident = f"{claim['run_id']}-{row['flow']}-{steps[row['flow']]}"
+            if (row['request_id'] != ident or row.get('step') != steps[row['flow']]
+                    or row['request_kind'] != data['request_kind']):
+                raise ValueError('request identity or sequence mismatch')
+            request = private_json(descriptor, f'requests/{ident}.json')
+            if (any(request.get(key) != row[key] for key in
+                    ('run_id', 'manifest_sha256', 'request_id', 'flow', 'step', 'request_kind'))
+                    or request.get('input_sha256') != qa.digest(qa.encoded(data))):
+                raise ValueError('frozen request mismatch')
             pending_usage = usage_totals.copy()
-            for call in row['calls']:
+            for index, call in enumerate(row['calls']):
                 if type(call) is not dict or call.get('role') not in ('generate', 'check'):
                     raise ValueError('invalid role record')
                 if type(call.get('provider_messages', 0)) is not int or call.get('provider_messages', 0) < 0:
@@ -416,6 +454,22 @@ def report_bundle(directory, descriptor, observations):
                 if ('error' in call and type(call['error']) is not str
                         or 'output' in call and type(call['output']) is not dict):
                     raise ValueError('invalid role outcome')
+                if index >= 2 or call['role'] != ('generate', 'check')[index]:
+                    raise ValueError('role sequence mismatch')
+                sent = data if index == 0 else {'original_request': data, 'candidate': row['calls'][0].get('output')}
+                binding = dict(run_id=claim['run_id'], request_id=ident, role=call['role'],
+                    input_sha256=qa.digest(qa.encoded(sent)), manifest_sha256=claim['manifest_sha256'])
+                marker = private_json(descriptor, f"calls/{ident}-{call['role']}.json")
+                if any(call.get(key) != value or marker.get(key) != value for key, value in binding.items()):
+                    raise ValueError('role request binding mismatch')
+                receipt_name = f"calls/{ident}-{call['role']}.receipt"
+                if private_exists(descriptor, receipt_name):
+                    receipt = private_json(descriptor, receipt_name)
+                    if (any(receipt.get(key) != value for key, value in binding.items())
+                            or receipt.get('record_sha256') != qa.digest(qa.encoded(call))):
+                        raise ValueError('role receipt mismatch')
+                elif not call.get('error'):
+                    raise ValueError('completed role receipt missing')
             if 'verdict' in row:
                 flow = flows[row['flow']]
                 if [call['role'] for call in row['calls']] != ['generate', 'check']:
@@ -453,6 +507,11 @@ def report_bundle(directory, descriptor, observations):
                 raise ValueError('unrelated result')
             records.append(row)
             usage_totals = pending_usage
+            if not row.get('error') and not row.get('termination'):
+                states[row['flow']]['previous_proposals'].append(deepcopy(row['calls'][0]['output']))
+                states[row['flow']]['request_kind'] = 'smaller'
+                states[row['flow']]['user_request'] = '현재 행동을 실질적으로 줄인다. 반복 막힘이면 첫 막힘 한 가지를 확인한다.'
+                steps[row['flow']] += 1
         except (OSError, ValueError, KeyError, TypeError, OverflowError, RecursionError):
             unreadable.append(path.name)
     ids = [r['request_id'] for r in records]
@@ -508,6 +567,22 @@ def report_bundle(directory, descriptor, observations):
                 or budget['charged_micro_usd'] + budget['monthly_spent_micro_usd'] > manifest['limits']['monthly_micro_usd']
                 or started_requests > manifest['limits']['requests'] or started_roles > manifest['limits']['calls']):
             raise ValueError('completed execution exceeds limits')
+        if (end['reason'] == 'completed' and not unreadable and started_roles == len(calls)
+                and all(not row.get('error') for row in records)):
+            charged = conservative = 0
+            for call in calls:
+                cost = call.get('cost_estimate_micro_usd')
+                if call.get('cost_state') == 'estimated':
+                    if type(cost) is not int or not 0 <= cost <= manifest['cost_policy']['role_reservation_micro_usd']:
+                        raise ValueError('invalid completed role cost')
+                    charged += cost
+                elif call.get('cost_state') == 'conservative_reservation':
+                    charged += manifest['cost_policy']['role_reservation_micro_usd']
+                    conservative += 1
+                else:
+                    raise ValueError('completed role cost state missing')
+            if charged != budget['charged_micro_usd'] or conservative != budget['conservative_roles']:
+                raise ValueError('completed cost ledger mismatch')
     errors = Counter(r['error'] for r in records if r.get('error'))
     for row in records:
         row['outcome'] = ('cancelled' if row.get('error') in {'cancelled', 'ownership_lost'} else
@@ -644,14 +719,18 @@ def run(directory, *, claude='claude', invoke=None, cancelled=None, clock=monoto
                             schema = qa.schema_for(manifest, data) if role == 'generate' else manifest['schemas']['check']
                             sent = deepcopy(data) if role == 'generate' else {'original_request': deepcopy(data), 'candidate': candidate}
                             budget.start_role()
+                            binding = dict(request_id=ident, role=role, run_id=claim['run_id'],
+                                manifest_sha256=claim['manifest_sha256'], input_sha256=qa.digest(qa.encoded(sent)))
                             qa.save(directory/'calls'/f'{ident}-{role}.json',
-                                    {'request_id': ident, 'role': role, 'run_id': claim['run_id']})
-                            row['calls'].append({'role': role, 'requested_effort': manifest['effort'],
+                                    binding)
+                            row['calls'].append({**binding, 'requested_effort': manifest['effort'],
                                                  'error': 'runner_failed'})
                             result = invoke(role, manifest['prompts'][role], schema, sent, deadline, cancelled)
                             row['calls'][-1].pop('error')
                             row['calls'][-1].update(result)
                             settlement = budget.settle(row['calls'][-1])
+                            qa.save(directory/'calls'/f'{ident}-{role}.receipt',
+                                {**binding, 'record_sha256': qa.digest(qa.encoded(row['calls'][-1]))})
                             if result.get('error'):
                                 row['error'] = result['error']
                                 break
