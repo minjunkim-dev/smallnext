@@ -2,6 +2,7 @@
 """Opt-in, sequential launch QA. Paid transport is deliberately unavailable."""
 import argparse
 from collections import Counter
+from contextlib import ExitStack
 from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 import fcntl
@@ -13,6 +14,7 @@ from pathlib import Path
 import signal
 import selectors
 import statistics
+import stat
 import subprocess
 import threading
 from time import monotonic
@@ -288,14 +290,20 @@ def report(directory, *, observations=()):
             raise ValueError('screen observation method and upper bound required')
         try:
             path = Path(item['evidence_path'])
-            if path.is_absolute():
-                raise ValueError('absolute evidence path')
-            path = (directory/path).resolve(strict=True)
-            path.relative_to(directory.resolve())
-            if not path.is_file():
-                raise ValueError('screen evidence must be a regular file')
+            if path.is_absolute() or '..' in path.parts or not path.parts:
+                raise ValueError('evidence path must stay inside private bundle')
             digest = hashlib.sha256()
-            with path.open('rb') as source:
+            with ExitStack() as opened:
+                parent = os.open(directory.resolve(), os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+                opened.callback(os.close, parent)
+                for part in path.parts[:-1]:
+                    parent = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent)
+                    opened.callback(os.close, parent)
+                descriptor = os.open(path.parts[-1], os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent)
+                opened.callback(os.close, descriptor)
+                if not stat.S_ISREG(os.fstat(descriptor).st_mode):
+                    raise ValueError('screen evidence must be a regular file')
+                source = opened.enter_context(os.fdopen(descriptor, 'rb', closefd=False))
                 for chunk in iter(lambda: source.read(65536), b''):
                     digest.update(chunk)
             if digest.hexdigest() != evidence:

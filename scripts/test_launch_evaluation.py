@@ -259,6 +259,39 @@ class LaunchEvaluationTests(unittest.TestCase):
                     time.sleep(.05)
                 self.assertTrue(not state or state.startswith(b'Z'), state)
 
+    def test_screen_open_rejects_concurrent_symlink_fifo_and_parent_replacement(self):
+        for replacement in ('symlink', 'fifo', 'parent'):
+            with self.subTest(replacement=replacement), tempfile.TemporaryDirectory() as directory:
+                root, _ = self.freeze(directory)
+                summary = launch.run(root, invoke=self.response)
+                row = json.loads(next((root/'results').glob('*.json')).read_bytes())
+                (root/'screens').mkdir()
+                evidence = root/'screens/screen.png'
+                evidence.write_bytes(b'offline evidence')
+                outside = root.parent/'outside'
+                outside.mkdir()
+                (outside/'screen.png').write_bytes(evidence.read_bytes())
+                observation = dict(run_id=summary['run_id'], request_id=row['request_id'],
+                    observed_upper_seconds=1, sample_interval_seconds=.1, method='screen fixture',
+                    display_observed=True, evidence_path='screens/screen.png',
+                    evidence_sha256=qa.digest(evidence.read_bytes()))
+                self.assertEqual(launch.report(root, observations=[observation])['timings']['first_action']['samples'], 1)
+                original_open = os.open
+                def replace_before_open(path, flags, *args, **kwargs):
+                    if path == ('screens' if replacement == 'parent' else 'screen.png'):
+                        if replacement == 'parent':
+                            (root/'screens').rename(root/'original-screens')
+                            (root/'screens').symlink_to(outside, target_is_directory=True)
+                        else:
+                            evidence.unlink()
+                            if replacement == 'symlink':
+                                evidence.symlink_to(outside/'screen.png')
+                            else:
+                                os.mkfifo(evidence)
+                    return original_open(path, flags, *args, **kwargs)
+                with patch.object(os, 'open', replace_before_open), self.assertRaises(ValueError):
+                    launch.report(root, observations=[observation])
+
     def test_monthly_budget_and_elapsed_deadline_stop_before_more_calls(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)/'launch'
