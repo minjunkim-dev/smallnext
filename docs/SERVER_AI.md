@@ -7,6 +7,7 @@
 추론 강도 변경은 [#47의 xhigh 승인과 검증 범위](https://github.com/minjunkim-dev/smallnext/issues/47#issuecomment-6075071867)를 따릅니다.
 제한 구독 평가의 결과와 남은 오수용은 [Haiku 평가 기록](research/haiku-server-ai-evaluation.md)에 있습니다.
 요청별 계약 회귀와 미사용 후보·생성 단독·연결 결과는 [생성·검사 분리 평가](research/generator-checker-validation.md)에 있습니다.
+확정한 검증 범위와 유료 실행 시점은 [출시 검증 계획](research/server-ai-launch-validation-plan.md)을 따릅니다.
 [#61의 실기기 검증](https://github.com/minjunkim-dev/smallnext/issues/61#issuecomment-6049652307)은 보류 상태입니다.
 
 ## 서버 계약
