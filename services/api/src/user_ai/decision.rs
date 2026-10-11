@@ -203,54 +203,54 @@ struct Unique<'a>(&'a Cell<bool>);
 impl<'de> DeserializeSeed<'de> for Unique<'_> {
     type Value = Value;
     fn deserialize<D: de::Deserializer<'de>>(self, deserializer: D) -> Result<Value, D::Error> {
-        impl<'de> Visitor<'de> for Unique<'_> {
-            type Value = Value;
-            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-                formatter.write_str("JSON")
-            }
-            fn visit_bool<E: de::Error>(self, value: bool) -> Result<Value, E> {
-                Ok(json!(value))
-            }
-            fn visit_i64<E: de::Error>(self, value: i64) -> Result<Value, E> {
-                Ok(json!(value))
-            }
-            fn visit_u64<E: de::Error>(self, value: u64) -> Result<Value, E> {
-                Ok(json!(value))
-            }
-            fn visit_f64<E: de::Error>(self, value: f64) -> Result<Value, E> {
-                serde_json::Number::from_f64(value)
-                    .map(Value::Number)
-                    .ok_or_else(|| E::custom("number"))
-            }
-            fn visit_str<E: de::Error>(self, value: &str) -> Result<Value, E> {
-                Ok(json!(value))
-            }
-            fn visit_string<E: de::Error>(self, value: String) -> Result<Value, E> {
-                Ok(Value::String(value))
-            }
-            fn visit_unit<E: de::Error>(self) -> Result<Value, E> {
-                Ok(Value::Null)
-            }
-            fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<Value, A::Error> {
-                let mut values = Vec::new();
-                while let Some(value) = seq.next_element_seed(Unique(self.0))? {
-                    values.push(value);
-                }
-                Ok(Value::Array(values))
-            }
-            fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<Value, A::Error> {
-                let mut values = serde_json::Map::new();
-                while let Some(key) = map.next_key::<String>()? {
-                    if values.contains_key(&key) {
-                        self.0.set(true);
-                        return Err(de::Error::custom("duplicate_key"));
-                    }
-                    values.insert(key, map.next_value_seed(Unique(self.0))?);
-                }
-                Ok(Value::Object(values))
-            }
-        }
         deserializer.deserialize_any(self)
+    }
+}
+impl<'de> Visitor<'de> for Unique<'_> {
+    type Value = Value;
+    fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        formatter.write_str("JSON")
+    }
+    fn visit_bool<E: de::Error>(self, value: bool) -> Result<Value, E> {
+        Ok(json!(value))
+    }
+    fn visit_i64<E: de::Error>(self, value: i64) -> Result<Value, E> {
+        Ok(json!(value))
+    }
+    fn visit_u64<E: de::Error>(self, value: u64) -> Result<Value, E> {
+        Ok(json!(value))
+    }
+    fn visit_f64<E: de::Error>(self, value: f64) -> Result<Value, E> {
+        serde_json::Number::from_f64(value)
+            .map(Value::Number)
+            .ok_or_else(|| E::custom("number"))
+    }
+    fn visit_str<E: de::Error>(self, value: &str) -> Result<Value, E> {
+        Ok(json!(value))
+    }
+    fn visit_string<E: de::Error>(self, value: String) -> Result<Value, E> {
+        Ok(Value::String(value))
+    }
+    fn visit_unit<E: de::Error>(self) -> Result<Value, E> {
+        Ok(Value::Null)
+    }
+    fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<Value, A::Error> {
+        let mut values = Vec::new();
+        while let Some(value) = seq.next_element_seed(Unique(self.0))? {
+            values.push(value);
+        }
+        Ok(Value::Array(values))
+    }
+    fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<Value, A::Error> {
+        let mut values = serde_json::Map::new();
+        while let Some(key) = map.next_key::<String>()? {
+            if values.contains_key(&key) {
+                self.0.set(true);
+                return Err(de::Error::custom("duplicate_key"));
+            }
+            values.insert(key, map.next_value_seed(Unique(self.0))?);
+        }
+        Ok(Value::Object(values))
     }
 }
 
