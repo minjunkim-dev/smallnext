@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 import json
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -568,6 +569,37 @@ print(json.dumps({'type':'result','subtype':'success','is_error':False,'modelUsa
                     self.assertEqual(summary['requests']['recorded'], 33)
                     self.assertFalse(summary['automatic_passed'])
                     extra.unlink()
+
+    def test_result_paths_reject_results_root_and_ancestor_replacement(self):
+        for target in ('results', 'root', 'ancestor'):
+            with self.subTest(target=target), tempfile.TemporaryDirectory() as directory, tempfile.TemporaryDirectory() as outside:
+                root, _ = self.freeze(directory)
+                launch.run(root, invoke=self.response)
+                first = sorted((root/'results').glob('*.json'))[0]
+                victim = {'results': root/'results', 'root': root, 'ancestor': root.parent}[target]
+                foreign = Path(outside).resolve()/'replacement'
+                shutil.copytree(victim, foreign)
+                original = victim.with_name(victim.name+'.original')
+                real_open, replaced = os.open, []
+
+                def replace(path, flags, *args, **kwargs):
+                    if not replaced and os.fspath(path) in (str(first), victim.name):
+                        victim.rename(original)
+                        victim.symlink_to(foreign, target_is_directory=True)
+                        replaced.append(True)
+                    return real_open(path, flags, *args, **kwargs)
+
+                try:
+                    with patch.object(launch.os, 'open', side_effect=replace):
+                        summary = launch.report(root)
+                    self.assertTrue(replaced)
+                    self.assertEqual(summary['requests']['recorded'], 0)
+                    self.assertEqual(len(summary['unreadable_records']), 33)
+                    self.assertFalse(summary['automatic_passed'])
+                finally:
+                    if replaced:
+                        victim.unlink()
+                        original.rename(victim)
 
     def test_expected_rejection_is_separate_from_quality_failure_and_fast_failure_not_normal(self):
         for expected in (True, False):

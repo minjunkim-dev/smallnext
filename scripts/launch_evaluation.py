@@ -2,7 +2,7 @@
 """Opt-in, sequential launch QA. Paid transport is deliberately unavailable."""
 import argparse
 from collections import Counter
-from contextlib import ExitStack
+from contextlib import ExitStack, contextmanager
 from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 import fcntl
@@ -257,6 +257,25 @@ def metrics(values, measurement):
                                                   and p90 <= measurement['p90_seconds']}
 
 
+@contextmanager
+def private_source(directory, path):
+    directory, path = Path(directory), Path(path)
+    if path.is_absolute() or '..' in path.parts or not path.parts or '..' in directory.parts:
+        raise ValueError('private path must stay inside bundle')
+    with ExitStack() as opened:
+        parent = os.open(directory.anchor or '.', os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        opened.callback(os.close, parent)
+        bundle_parts = directory.parts[1:] if directory.is_absolute() else directory.parts
+        for part in bundle_parts + path.parts[:-1]:
+            parent = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent)
+            opened.callback(os.close, parent)
+        descriptor = os.open(path.parts[-1], os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent)
+        opened.callback(os.close, descriptor)
+        if not stat.S_ISREG(os.fstat(descriptor).st_mode):
+            raise ValueError('private source must be a regular file')
+        yield opened.enter_context(os.fdopen(descriptor, 'rb', closefd=False))
+
+
 def report(directory, *, observations=()):
     directory = Path(directory)
     manifest = load(directory)
@@ -268,10 +287,7 @@ def report(directory, *, observations=()):
     records, unreadable, usage_totals = [], [], Counter()
     for path in sorted((directory/'results').glob('*.json')):
         try:
-            descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
-            with os.fdopen(descriptor, 'rb') as source:
-                if not stat.S_ISREG(os.fstat(source.fileno()).st_mode):
-                    raise ValueError('result must be a regular file')
+            with private_source(directory, Path('results')/path.name) as source:
                 row = json.load(source)
             if type(row) is not dict or any(type(row.get(key)) is not str
                     for key in ('run_id', 'manifest_sha256', 'request_id', 'flow', 'request_kind')):
@@ -321,26 +337,8 @@ def report(directory, *, observations=()):
             raise ValueError('screen observation method and upper bound required')
         try:
             path = Path(item['evidence_path'])
-            if path.is_absolute() or '..' in path.parts or not path.parts:
-                raise ValueError('evidence path must stay inside private bundle')
             digest = hashlib.sha256()
-            with ExitStack() as opened:
-                if '..' in directory.parts:
-                    raise ValueError('bundle path must not contain parent traversal')
-                parent = os.open(directory.anchor or '.', os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
-                opened.callback(os.close, parent)
-                bundle_parts = directory.parts[1:] if directory.is_absolute() else directory.parts
-                for part in bundle_parts:
-                    parent = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent)
-                    opened.callback(os.close, parent)
-                for part in path.parts[:-1]:
-                    parent = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent)
-                    opened.callback(os.close, parent)
-                descriptor = os.open(path.parts[-1], os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent)
-                opened.callback(os.close, descriptor)
-                if not stat.S_ISREG(os.fstat(descriptor).st_mode):
-                    raise ValueError('screen evidence must be a regular file')
-                source = opened.enter_context(os.fdopen(descriptor, 'rb', closefd=False))
+            with private_source(directory, path) as source:
                 for chunk in iter(lambda: source.read(65536), b''):
                     digest.update(chunk)
             if digest.hexdigest() != evidence:
