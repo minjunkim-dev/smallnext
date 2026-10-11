@@ -516,7 +516,9 @@ print(json.dumps({'type':'result','subtype':'success','is_error':False,'modelUsa
                          dict(original, calls=[None]), dict(original, seconds='unknown'),
                          dict(original, error=[]), dict(original, request_id=[]), dict(original, flow='unrelated'),
                          dict(original, calls=[dict(original['calls'][0], usage=None)]),
-                         dict(original, calls=[dict(original['calls'][0], provider_messages='one')])]
+                         dict(original, calls=[dict(original['calls'][0], provider_messages='one')]),
+                         dict(original, seconds=10**1000),
+                         dict(original, calls=[dict(original['calls'][0], usage={'input_tokens': 10**1000})])]
             for value in malformed:
                 with self.subTest(value=value):
                     result.write_bytes(qa.encoded(value))

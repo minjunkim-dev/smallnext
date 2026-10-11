@@ -291,7 +291,7 @@ def report(directory, *, observations=()):
             if row['run_id'] != claim['run_id'] or row['manifest_sha256'] != claim['manifest_sha256']:
                 raise ValueError('unrelated result')
             records.append(row)
-        except (OSError, ValueError, KeyError, TypeError):
+        except (OSError, ValueError, KeyError, TypeError, OverflowError):
             unreadable.append(path.name)
     ids = [r['request_id'] for r in records]
     if len(ids) != len(set(ids)):
