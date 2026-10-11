@@ -292,6 +292,36 @@ class LaunchEvaluationTests(unittest.TestCase):
                 with patch.object(os, 'open', replace_before_open), self.assertRaises(ValueError):
                     launch.report(root, observations=[observation])
 
+    def test_screen_open_rejects_bundle_root_symlink_replacement(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root, _ = self.freeze(directory)
+            summary = launch.run(root, invoke=self.response)
+            row = json.loads(next((root/'results').glob('*.json')).read_bytes())
+            (root/'screen.png').write_bytes(b'offline evidence')
+            outside = root.parent/'outside'
+            outside.mkdir()
+            (outside/'screen.png').write_bytes((root/'screen.png').read_bytes())
+            observation = dict(run_id=summary['run_id'], request_id=row['request_id'],
+                observed_upper_seconds=1, sample_interval_seconds=.1, method='screen fixture',
+                display_observed=True, evidence_path='screen.png',
+                evidence_sha256=qa.digest((root/'screen.png').read_bytes()))
+            original_resolve, original_open = Path.resolve, os.open
+            replaced = []
+            def replace_root(path):
+                if path == root and not replaced:
+                    root.rename(root.parent/'original-bundle')
+                    root.symlink_to(outside, target_is_directory=True)
+                    replaced.append(True)
+            def resolve(path, *args, **kwargs):
+                replace_root(path)
+                return original_resolve(path, *args, **kwargs)
+            def opening(path, flags, *args, **kwargs):
+                replace_root(path)
+                return original_open(path, flags, *args, **kwargs)
+            with patch.object(Path, 'resolve', resolve), patch.object(os, 'open', opening), self.assertRaises(ValueError):
+                launch.report(root, observations=[observation])
+            self.assertEqual(replaced, [True])
+
     def test_monthly_budget_and_elapsed_deadline_stop_before_more_calls(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)/'launch'

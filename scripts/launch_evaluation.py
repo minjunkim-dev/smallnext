@@ -294,7 +294,7 @@ def report(directory, *, observations=()):
                 raise ValueError('evidence path must stay inside private bundle')
             digest = hashlib.sha256()
             with ExitStack() as opened:
-                parent = os.open(directory.resolve(), os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+                parent = os.open(directory, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
                 opened.callback(os.close, parent)
                 for part in path.parts[:-1]:
                     parent = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent)
