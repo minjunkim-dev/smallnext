@@ -82,3 +82,46 @@ XCTest의 tap 대기·접근성 조회·화면 사진 처리도 상한에 포함
 Claude Code 구독 OAuth·`claude-haiku-5-5 / xhigh` 설정을 변경하지 않는다.
 기능 플래그 기본 OFF와 #61 실기기 보류를 유지한다.
 유료 API 호출·실기기·운영 배포는 수행하지 않는다.
+
+## 35초 모의 정상 화면
+
+[#122](https://github.com/minjunkim-dev/smallnext/issues/122)의 별도 관측이다.
+기존 ON/OFF·행동·확인 질문·실패 관측은 10초 대기를 유지한다.
+`testDelayedNormalMockScreen`만 버튼 직전부터 사진 확보까지 60초를 사용한다.
+`SMALLNEXT_TIMING_DELAYED_TEST=1`을 지정하지 않으면 이 테스트는 건너뛴다.
+서버 120초·사용자 앱 160초 차단값을 변경하지 않는다.
+
+1. 실행 전에 담당자 `minjunkim-dev`, Git 제외 보관 위치, 자기 자료만 삭제하는 방법을 기록한다.
+   종료 뒤 최대 30일 이내의 절대 삭제 기한을 기록한다.
+   기존 #115 자료 기한 `2026-11-10 22:38:08 KST`를 연장하지 않는다.
+2. 기존 `services/api/tests/fixtures/timing-cli/codex`를 private 실행 디렉터리에 복사한다.
+   복사한 CLI 옆에 빈 파일 `delay-first-action`을 만든다.
+   Rust 서버의 `PATH`는 이 디렉터리를 먼저 사용한다.
+   새 검증 DB와 새 시뮬레이터만 사용한다.
+3. `TimingValidation`을 빌드한다.
+   생성한 `.xctestrun`의 테스트 환경에 `SMALLNEXT_TIMING_DELAYED_TEST=1`과 전용 서버 URL을 지정한다.
+   `-only-testing:SmallnextTimingUITests/ScreenTimingTests/testDelayedNormalMockScreen`으로 1회 실행한다.
+   실패 뒤 재실행하지 않는다. 자동 테스트 재시도를 켜지 않는다.
+4. `xcresult`의 JSON 관측 자료와 PNG 결과 사진을 확보한다.
+   JSON의 UUID를 앱 컨테이너 `Library/Caches/suggestion-timing.json`과 연결한다.
+   PNG의 SHA-256을 JSON의 `evidence_sha256`과 비교한다.
+   사진에서 `펜 다섯 개 정리하기`가 실제로 보이는지 직접 확인한다.
+5. 실제 최대 관측 간격·안정화·불안정 표본 수·사진 누락·상한·종료 상태를 기록한다.
+   사진 부재는 `missing`이다. UI 조회나 사진 처리로 60초를 넘으면 `time_exceeded`다.
+   늦은 사진으로 시간 초과를 성공으로 바꾸지 않는다.
+
+35초 대기는 `first_action`의 생성 결과 대기에만 적용한다.
+목표 준비와 검사 단계는 기존 0.15초 대기를 유지한다.
+생성·검사에 각각 35초를 넣지 않는다.
+`calls.jsonl`은 복사한 CLI 옆에 역할·요청 종류·설정 대기·실제 대기를 기록한다.
+이 경로는 고정 합성 응답만 반환한다. 모델과 OAuth 인증정보를 읽지 않는다.
+실제 모델 호출·유료 호출·자동 재실행은 각각 0개로 확인한다.
+
+접근성 표식과 예상 문구는 사진 확보의 보조 조건이다.
+사진의 직접 확인이 끝나기 전에는 정상 화면 확인을 완료로 보고하지 않는다.
+관측 상한에는 tap·UI 조회·500ms 안정화 요청·사진 처리·hash 계산이 포함된다.
+최대 관측 간격에는 블로킹 조회와 사진 처리도 포함된다.
+500ms 설정값을 실제 관측 간격으로 보고하지 않는다.
+실제 OAuth 품질·모델 지연·시간 목표·출시 승인과 모의 화면 성공을 구분한다.
+
+기존 연결 표본 분석과 새 관측 결과는 [#122 검증 기록](research/delayed-mock-screen-validation.md)에 기록한다.
