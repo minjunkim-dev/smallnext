@@ -1,4 +1,5 @@
 import XCTest
+import CryptoKit
 
 /// 별도 TimingValidation scheme에서 모의 Rust 서버와 실행한다.
 @MainActor
@@ -27,6 +28,32 @@ final class ScreenTimingTests: XCTestCase {
         XCTAssertTrue(app.staticTexts["행동을 준비하지 못했어요."].exists)
     }
 
+    func testDelayedNormalMockScreen() throws {
+        try XCTSkipUnless(ProcessInfo.processInfo.environment["SMALLNEXT_TIMING_DELAYED_TEST"] == "1",
+                          "별도로 지정한 35초 모의 사례만 1회 실행한다.")
+        continueAfterFailure = false
+        let url = try XCTUnwrap(ProcessInfo.processInfo.environment["SMALLNEXT_TIMING_TEST_URL"])
+        let app = XCUIApplication()
+        app.launchArguments = ["-ios_core_flow", "YES", "-development_ai_url", url, "-suggestion_timing", "NO"]
+        app.launch()
+        newGoal(app)
+        app.textFields["목표 한 문장"].tap()
+        app.textFields["목표 한 문장"].typeText("35초 모의 펜 정리")
+        app.buttons["목표 정리"].tap()
+        XCTAssertTrue(app.buttons["확인하고 시작"].waitForExistence(timeout: 10))
+        app.terminate()
+        app.launchArguments = ["-ios_core_flow", "YES", "-development_ai_url", url, "-suggestion_timing", "YES"]
+        app.launch()
+        observe(app, button: "확인하고 시작", kind: "first_action", outcome: "action",
+                budget: 60, expectedAction: "펜 다섯 개 정리하기")
+    }
+
+    func testObservationRejectsMissingScreenshotAndLateCapture() {
+        XCTAssertEqual(termination(elapsed: 59, budget: 60, screenshotHash: nil), "missing")
+        XCTAssertEqual(termination(elapsed: 60.1, budget: 60, screenshotHash: "hash"), "time_exceeded")
+        XCTAssertEqual(termination(elapsed: 59, budget: 60, screenshotHash: "hash"), "observed")
+    }
+
     private func newGoal(_ app: XCUIApplication) {
         if !app.textFields["목표 한 문장"].exists {
             app.buttons["목표 목록"].tap()
@@ -36,7 +63,8 @@ final class ScreenTimingTests: XCTestCase {
     private func markers(_ app: XCUIApplication) -> XCUIElementQuery {
         app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "timing:"))
     }
-    private func observe(_ app: XCUIApplication, button: String, kind: String, outcome: String) {
+    private func observe(_ app: XCUIApplication, button: String, kind: String, outcome: String,
+                         budget: Double = 10, expectedAction: String? = nil) {
         let previous = markers(app).firstMatch.exists ? markers(app).firstMatch.identifier : ""
         let clock = ContinuousClock()
         let started = clock.now
@@ -44,7 +72,10 @@ final class ScreenTimingTests: XCTestCase {
         var maxInterval = 0.0
         app.buttons[button].tap()
         var observed: String?
-        while seconds(started.duration(to: clock.now)) < 10 {
+        var screenshotHash: String?
+        var stabilization = 0.0
+        var unstableSamples = 0
+        while seconds(started.duration(to: clock.now)) < budget {
             let marker = markers(app).firstMatch
             if marker.exists, marker.isHittable {
                 let id = marker.identifier
@@ -52,29 +83,66 @@ final class ScreenTimingTests: XCTestCase {
             }
             if let id = observed {
                 // 전환 중 접근성 표식도 먼저 생긴다. 사진을 확인할 상한에 안정화 대기를 포함한다.
+                let stabilizationStart = clock.now
                 Thread.sleep(forTimeInterval: 0.5)
-                if marker.exists, marker.isHittable, marker.identifier == id { attach(app, name: "\(kind)-\(outcome)") }
-                else { observed = nil }
+                let stable = marker.exists && marker.isHittable && marker.identifier == id
+                let expectedVisible = expectedAction.map { app.staticTexts[$0].exists && app.staticTexts[$0].isHittable } ?? true
+                stabilization = seconds(stabilizationStart.duration(to: clock.now))
+                if stable && expectedVisible && seconds(started.duration(to: clock.now)) < budget {
+                    screenshotHash = attach(app, name: "\(kind)-\(outcome)-\(id)")
+                } else {
+                    unstableSamples += 1
+                    observed = nil
+                }
             }
             let now = clock.now
             maxInterval = max(maxInterval, seconds(last.duration(to: now)))
             last = now
-            if observed != nil { break }
+            if screenshotHash != nil { break }
             Thread.sleep(forTimeInterval: 0.1)
         }
-        XCTAssertNotNil(observed)
-        let report = "\(observed ?? "missing") button-before-tap-to-first-result-screenshot-upper-bound-ms=\(seconds(started.duration(to: last)) * 1000) max-sample-interval-ms=\(maxInterval * 1000) stabilization-ms=500 method=XCTest-visible-accessibility+screenshot mock-only=true"
-        let attachment = XCTAttachment(string: report)
+        // UI 조회나 사진 처리 자체가 budget을 넘을 수 있다. 늦은 사진도 성공으로 바꾸지 않는다.
+        let ended = clock.now
+        maxInterval = max(maxInterval, seconds(last.duration(to: ended)))
+        let elapsed = seconds(started.duration(to: ended))
+        let status = termination(elapsed: elapsed, budget: budget, screenshotHash: screenshotHash)
+        let parts = observed?.split(separator: ":")
+        let report: [String: Any] = [
+            "run_id": parts.map { String($0[1]) } as Any? ?? NSNull(),
+            "request_kind": kind, "expected_outcome": outcome,
+            "expected_action": expectedAction as Any? ?? NSNull(),
+            "observed_upper_seconds": elapsed, "budget_seconds": budget,
+            "max_sample_interval_seconds": maxInterval,
+            "stabilization_requested_seconds": 0.5, "stabilization_actual_seconds": stabilization,
+            "unstable_samples": unstableSamples, "missing_screenshot": screenshotHash == nil,
+            "evidence_sha256": screenshotHash as Any? ?? NSNull(), "termination": status,
+            "method": "XCTest-visible-accessibility+result-screenshot; manual pixel verification required",
+            "mock_only": true
+        ]
+        let data = try! JSONSerialization.data(withJSONObject: report, options: [.sortedKeys])
+        let attachment = XCTAttachment(data: data, uniformTypeIdentifier: "public.json")
+        attachment.name = "observation-\(kind)-\(outcome)"
         attachment.lifetime = .keepAlways
         add(attachment)
+        XCTAssertEqual(status, "observed")
+        XCTAssertNotNil(observed)
+    }
+
+    private func termination(elapsed: Double, budget: Double, screenshotHash: String?) -> String {
+        if elapsed > budget { return "time_exceeded" }
+        return screenshotHash == nil ? "missing" : "observed"
     }
     private func seconds(_ duration: Duration) -> Double {
         Double(duration.components.seconds) + Double(duration.components.attoseconds) / 1e18
     }
-    private func attach(_ app: XCUIApplication, name: String) {
-        let attachment = XCTAttachment(screenshot: app.screenshot())
+    @discardableResult
+    private func attach(_ app: XCUIApplication, name: String) -> String? {
+        let png = app.screenshot().pngRepresentation
+        guard !png.isEmpty else { return nil }
+        let attachment = XCTAttachment(data: png, uniformTypeIdentifier: "public.png")
         attachment.name = name
         attachment.lifetime = .keepAlways
         add(attachment)
+        return SHA256.hash(data: png).map { String(format: "%02x", $0) }.joined()
     }
 }
