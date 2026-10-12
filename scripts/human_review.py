@@ -82,6 +82,9 @@ def prepare(directory, *, receipt=None):
                     for key in ('run_id', 'manifest_sha256', 'request_id', 'result_file'):
                         match(f'requests/{ident}.receipt:{key}', completion.get(key), binding[key])
                     match(f'{name}:completion hash', qa.digest(qa.encoded(row)), completion['record_sha256'])
+                    for key in ('status', 'verdict', 'criteria', 'error', 'reference_matched',
+                                'structure_valid', 'termination'):
+                        match(f'{name}:{key}', qa.encoded(row.get(key)), qa.encoded(expected.get(key)))
                     # Inputs were not stored separately; bind reconstruction to the original public payload hash.
                     input_hash = qa.digest(qa.encoded(data))
                     match(f'{name}:request input', request['input_sha256'], input_hash)

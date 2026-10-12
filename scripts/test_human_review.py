@@ -43,6 +43,9 @@ class HumanReviewTests(unittest.TestCase):
                        launch_manifest_sha256=qa.digest((root / 'manifest.json').read_bytes()),
                        launch_rows=[dict(run_id=r['run_id'], request_id=r['request_id'],
                                          flow=r['flow'], step=r['step'], request_kind=r['request_kind'],
+                                         **{k: r[k] for k in ('status', 'verdict', 'criteria', 'error',
+                                                             'reference_matched', 'structure_valid',
+                                                             'termination') if k in r},
                                          roles=[dict(role=c['role'], payload_sha256=c['payload_sha256'],
                                                      output_sha256=qa.digest(qa.encoded(c['output'])))
                                                 for c in r['calls']]) for r in rows])
@@ -97,6 +100,30 @@ class HumanReviewTests(unittest.TestCase):
             result = human_review.prepare(root, receipt=receipt)
             self.assertFalse(result['ready'])
             self.assertTrue(result['mismatched'])
+
+    def test_changed_decision_with_rehashed_receipt_blocks_preparation(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root, receipt = self.bundle(directory)
+            ident = receipt['launch_rows'][1]['request_id']
+            source = root / 'results/001.json'
+            completion = root / f'requests/{ident}.receipt'
+            original = json.loads(source.read_bytes())
+            recorded = json.loads(completion.read_bytes())
+            for key, value in [('status', 'minimum'), ('verdict', 'accept'),
+                               ('criteria', [1, 2, 3, 4, 5]), ('error', None),
+                               ('reference_matched', True), ('structure_valid', False),
+                               ('termination', 'planned_limit'), ('criteria', [True, 4]),
+                               ('reference_matched', 0), ('structure_valid', 1)]:
+                with self.subTest(key=key, value=value):
+                    changed = original | {key: value}
+                    source.write_bytes(qa.encoded(changed))
+                    completion.write_bytes(qa.encoded(recorded | {
+                        'record_sha256': qa.digest(qa.encoded(changed))}))
+                    result = human_review.prepare(root, receipt=receipt)
+                    self.assertFalse(result['ready'])
+                    self.assertIn(f'results/001.json:{key}', result['mismatched'])
+                    self.assertNotIn('results/001.json:completion hash', result['mismatched'])
+                    self.assertNotIn('PRIVATE_SENTINEL', json.dumps(result))
 
     def test_unavailable_bundle_and_unsafe_files_never_leak_private_source(self):
         with tempfile.TemporaryDirectory() as directory:
