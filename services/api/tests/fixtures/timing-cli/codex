@@ -8,11 +8,23 @@ import time
 args = sys.argv[1:]
 schema = json.loads(pathlib.Path(args[args.index('--output-schema') + 1]).read_text())
 payload = json.load(sys.stdin)
-time.sleep(0.15)
-if 'verdict' in schema['properties']:
+checking = 'verdict' in schema['properties']
+kind = (payload['original_request'] if checking else payload).get('request_kind')
+delayed = pathlib.Path(__file__).with_name('delay-first-action').is_file()
+delay = 35 if (not checking and kind == 'first_action'
+               and delayed) else .15
+started = time.monotonic()
+time.sleep(delay)
+if delayed:
+    with pathlib.Path(__file__).with_name('calls.jsonl').open('a') as file:
+        file.write(json.dumps(dict(role='check' if checking else 'generate',
+                                   request_kind=kind,
+                                   configured_wait_seconds=delay,
+                                   actual_wait_seconds=time.monotonic() - started,
+                                   actual_model_calls=0, paid_calls=0)) + '\n')
+if checking:
     value = dict(verdict='accept', criteria=[1, 2, 3, 4, 5], evidence='모의 검사', reason='모의 검증')
 else:
-    kind = payload.get('request_kind')
     if kind == 'next_action':
         sys.exit(1)
     status = 'goal_summary' if kind == 'goal_preparation' else 'action'
