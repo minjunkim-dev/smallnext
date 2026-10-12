@@ -1,0 +1,20 @@
+{
+  "run_version": "subscription-115-20261011",
+  "manifest_sha256": "db7eb112aa846697bd94776797690cc70789b6c0bac2db23870c6137621f3b9a",
+  "case_id": "fixed-ready-1",
+  "request_ids": [
+    "8aec5bdd5cdc414c80665d0bd0947410-fixed-ready-1-0",
+    "8aec5bdd5cdc414c80665d0bd0947410-fixed-ready-1-1"
+  ],
+  "ready": false,
+  "missing": [
+    "bundle"
+  ],
+  "mismatched": [],
+  "unreadable": [],
+  "links": [],
+  "human_review": "not_performed",
+  "quality_passed": null,
+  "model_calls": 0,
+  "paid_calls": 0
+}
