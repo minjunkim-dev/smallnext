@@ -168,6 +168,10 @@ def publish(directory, version, source, api=get, run=command):
             require(asset["digest"] == f"sha256:{digest(path)}", "GitHub asset digest mismatch")
     after = pages(api, "releases")
     require(all(any(item == old for item in after) for old in previous), "Existing Release changed")
+    final = [item for item in after if item["tag_name"] == version]
+    require(len(final) == 1 and final[0]["id"] == release["id"] and
+            final[0]["draft"] is True and final[0]["prerelease"] is True and
+            final[0]["target_commitish"] == source, "Draft changed during verification")
     # GitHub cannot atomically lock main, CI and tag creation with Release creation.
     require(not any(item["ref"] == f"refs/tags/{version}" for item in api(f"git/matching-refs/tags/{version}")),
             "A concurrent tag appeared; inspect the private Draft")
