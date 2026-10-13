@@ -274,6 +274,35 @@ class DraftReleaseTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             check_ci(SOURCE, rerunning_ci)
 
+    def test_final_release_snapshot_rejects_draft_changes(self):
+        for failure in ("source", "public", "identity", "duplicate"):
+            with self.subTest(failure=failure), tempfile.TemporaryDirectory() as temporary:
+                directory = Path(temporary)
+                self.artifacts(directory)
+                self.releases, self.writes = [], []
+                reads = 0
+
+                def changed_snapshot(endpoint):
+                    nonlocal reads
+                    if endpoint.split("?")[0] == "releases":
+                        reads += 1
+                        if reads == 3:
+                            if failure == "source":
+                                self.releases[0]["target_commitish"] = "b" * 40
+                            elif failure == "public":
+                                self.releases[0]["draft"] = False
+                            elif failure == "identity":
+                                self.releases[0]["id"] = 11
+                            else:
+                                self.releases.append(deepcopy(self.releases[0]))
+                    return self.api(endpoint)
+
+                with redirect_stdout(io.StringIO()) as output, self.assertRaises(ValueError):
+                    publish(directory, VERSION, SOURCE, changed_snapshot, self.gh)
+                self.assertEqual("", output.getvalue())
+                self.assertEqual(3, reads)
+                self.assertEqual(["create"], [args[2] for args in self.writes])
+
     def test_download_verification_detects_corruption_metadata_and_extra_files(self):
         with tempfile.TemporaryDirectory() as temporary:
             directory = Path(temporary)
