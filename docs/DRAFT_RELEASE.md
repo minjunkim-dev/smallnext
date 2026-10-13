@@ -16,8 +16,11 @@ Project checks의 모든 플랫폼 job과 Repository hygiene가 최신 attempt�
 
 1. 최종 PR의 전체 diff 독립 리뷰와 필수 CI를 완료한다.
 2. 쓰기 권한 변경을 포함하는 최종 head SHA에 대해 사람의 승인을 받는다. [병합 조건](WORKFLOW.md#병합-조건)을 따른다.
-3. 승인 후 squash로 병합한다. 병합 SHA의 main CI를 확인한다.
-4. 충돌 없는 alpha 버전과 병합 SHA를 명시해 `main`에서 수동 실행한다.
+3. 승인 후 squash로 병합한다. 승인한 source SHA의 main CI를 확인한다.
+4. 충돌 없는 alpha 버전과 승인한 source SHA를 명시해 `main`에서 수동 실행한다.
+
+검증용 artifact는 제품 코드가 동일한 기존 main SHA를 사용할 수 있다.
+승인 요청에서 source SHA와 workflow 정책 head SHA를 구분한다. 이미 통과한 같은 source의 CI는 재사용한다.
 
 ```sh
 gh workflow run draft-release.yml --repo minjunkim-dev/smallnext --ref main \
