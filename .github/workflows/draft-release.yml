@@ -1,0 +1,97 @@
+name: Private API draft
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: New vMAJOR.MINOR.PATCH-alpha.N
+        type: string
+        required: true
+      source-sha:
+        description: Full source commit SHA included in main with full CI success
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: private-api-draft
+  cancel-in-progress: false
+
+env:
+  DRAFT_VERSION: ${{ inputs.version }}
+  SOURCE_SHA: ${{ inputs.source-sha }}
+
+jobs:
+  build:
+    if: github.ref == 'refs/heads/main' && github.repository == 'minjunkim-dev/smallnext'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - name: Check out trusted policy
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+          path: policy
+      - name: Validate exact source, full CI and absent version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 policy/scripts/draft_release.py preflight
+      - name: Check out selected source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ inputs.source-sha }}
+          persist-credentials: false
+          path: source
+      - name: Build and smoke the existing API deployment unit
+        working-directory: source
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          docker buildx create --driver docker-container --use
+          docker buildx build --load --progress plain --file services/api/Dockerfile \
+            --label "org.opencontainers.image.revision=$SOURCE_SHA" --tag smallnext-api:ci .
+          make api-image-check
+          mkdir "$RUNNER_TEMP/draft-assets"
+          docker image save smallnext-api:ci | gzip -n > "$RUNNER_TEMP/draft-assets/smallnext-api-image.tar.gz"
+      - name: Record built source and dependency evidence
+        working-directory: source
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 ../policy/scripts/draft_release.py package --directory "$RUNNER_TEMP/draft-assets"
+      - name: Upload exact assets
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: private-api-draft
+          path: ${{ runner.temp }}/draft-assets
+          if-no-files-found: error
+          retention-days: 7
+
+  draft:
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - name: Check out trusted publication policy
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+          path: policy
+      - name: Download this run's assets
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: private-api-draft
+          path: ${{ runner.temp }}/draft-assets
+      - name: Recheck all gates and create only a new private Draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 policy/scripts/draft_release.py publish --directory "$RUNNER_TEMP/draft-assets"

@@ -1,6 +1,19 @@
 # 저장소와 AI 자동화 설정
 
-설정 확인 날짜: 2026-10-04, Asia/Seoul. 아래 과거 봇 실행 기록의 확인 날짜는 별도로 표시합니다.
+설정 확인 날짜: 2026-10-14, Asia/Seoul. 아래 과거 봇 실행 기록의 확인 날짜는 별도로 표시합니다.
+
+## 현재 운영 방식
+
+[Issue #125](https://github.com/minjunkim-dev/smallnext/issues/125)에 따라 자동 AI 댓글·코드·AI 보안 리뷰를 로컬 독립 리뷰로 전환한다.
+절차는 [리뷰](agents/review.md), 코딩 규칙은 [coding-standards](coding-standards.md), 미공개 CD는 [Draft CD](DRAFT_RELEASE.md)를 따른다.
+필수 CI·dependency 검사·독립 집계와 기존 Cloud 저장소 접근은 보존한다.
+Bugbot은 필요한 PR에서 수동 보조 리뷰로 사용한다. Manual Only / Default, As Comment, 위험 점수 On, Draft 자동 리뷰 Off, Autofix Off를 적용한다.
+On-demand는 Disabled를 유지한다. Incremental은 기존 값을 유지한다. 다른 저장소와 계정 기본 설정은 바꾸지 않는다.
+YAML은 base branch에서 읽는다. 개인 override가 YAML보다 우선한다. Manual Only와 결제는 대시보드에서 확인한다.
+실제 외부 반영·CI·독립 리뷰·Draft 실행 상태는 [검증 보고서](PR_QUALITY_VALIDATION.md)를 따른다.
+
+아래 자동 리뷰 설명과 연결 절차는 이전 운영 방식의 근거다. 다시 활성화하는 지시가 아니다.
+현재는 Claude workflow를 제거한다. 남은 helper와 보안 검사는 과거 계약의 회귀 근거로 보존한다.
 
 ## 생성과 병합
 
@@ -12,7 +25,7 @@
 - Issue: 사용. Wiki, Discussions, 저장소 Projects: 사용하지 않음.
 - 외부 협업자는 추가하지 않음.
 
-## 자동 작업과 사람의 작업
+## 과거 자동 작업과 사람의 작업
 
 | 작업 | 담당과 실행 조건 |
 | --- | --- |
@@ -85,7 +98,7 @@ GitHub 소유 Action 허용과 SHA 고정은 유지합니다. 다음 두 항목�
 Bun 설치 Action은 고정된 Claude composite Action이 내부에서 사용합니다.
 Dependabot이 새 SHA를 제안하면 출처와 내부 Action 변경을 확인한 후 허용 목록도 갱신합니다.
 
-## 최초 연결: 수동 설정
+## 과거 최초 연결: 수동 설정
 
 이 작업에는 계정 로그인과 Secret 등록이 필요합니다. Secret 값은 채팅이나 문서에 기록하지 않습니다.
 
