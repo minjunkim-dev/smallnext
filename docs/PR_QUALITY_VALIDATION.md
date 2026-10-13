@@ -30,6 +30,10 @@ default branch 반영과 Draft 실제 실행은 최종 head 승인 뒤 확인한
 기존 Python에서 실행하는 streaming SHA-256으로 수정했다.
 실제 preflight 조회에서 저장소 루트 URL의 trailing slash가 HTTP 404를 만드는 결함을 재현했다.
 리뷰어가 metadata 필수 항목 누락, 게시 중 main 상태 재검사와 Release ID에 연결한 asset 업로드도 수정했다.
+마지막 Release 목록 조회의 새 Draft source 변경도 수정 전 재현했다. 최종 목록에서도 ID·미공개 상태·source를 확인하도록 수정했다.
+중간 전체 검사 219개에서 기존 OAuth 검사의 4개 subcase가 실패했다. 단독 검사에서도 재현했다.
+진단은 `oauth_quality._call`의 stdin close에서 `BrokenPipeError`를 확인했다. 가짜 CLI가 입력을 읽지 않고 즉시 종료한 경합이었다.
+테스트의 가짜 CLI가 stdin을 소비하도록 수정한다. 실제 오류 처리·시간 제한·검사 조건은 유지한다.
 API는 기존 배포 단위를 유지한다. CI helper의 SHA·pagination·job 목록을 재사용했다. 저장소 전체 리팩터를 수행하지 않았다.
 
 ## 외부 설정과 실행
@@ -50,7 +54,8 @@ GitHub App 설치 목록 API는 현재 gh 인증으로 403을 반환했다. 접�
 
 ## 남은 검증
 
-최종 head 독립 리뷰·필수 CI·Codex 자동 리뷰 비활성화·저장소 Bugbot 옵션·사람의 최종 head 승인·병합 후 main CI·Draft 실제 실행·다운로드 digest/metadata/smoke를 확인한다.
+최종 head 독립 리뷰·필수 CI·사람의 최종 head 승인·Draft 실제 실행·다운로드 digest/metadata/smoke를 확인한다.
+Codex 외부 설정은 사용자 지시로 미완료다. Bugbot base YAML 적용과 새 요약 출력은 아직 확인하지 않았다.
 검증용 후보: `v0.1.0-alpha.20261014`, source `22a52959080b4221147fbbbf967c30507b7ff568`.
 이 source의 [Project checks run 38206871524](https://github.com/minjunkim-dev/smallnext/actions/runs/38206871524)은 7개 job 모두 성공했다.
 [Repository checks run 38206871247](https://github.com/minjunkim-dev/smallnext/actions/runs/38206871247)도 동일 source에서 성공했다.
