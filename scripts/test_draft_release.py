@@ -6,8 +6,9 @@ from pathlib import Path
 import subprocess
 import tempfile
 import unittest
+from unittest.mock import patch
 
-from draft_release import ASSETS, REPO, check_ci, digest, inputs, preflight, publish, verify
+from draft_release import ASSETS, REPO, check_ci, digest, get, inputs, preflight, publish, verify
 
 SOURCE = "a" * 40
 VERSION = "v0.1.0-alpha.20261014"
@@ -21,6 +22,8 @@ class DraftReleaseTest(unittest.TestCase):
         self.refs = []
         self.assets = []
         self.writes = []
+        self.default_branch = "main"
+        self.comparison = {"status": "ahead", "merge_base_commit": {"sha": SOURCE}}
         for index, (filename, names) in enumerate([
             ("project-checks.yml", ["scope", "Project checks", "api / verify", "container / image", "ios / test", "android / build", "android / device-tests"]),
             ("repository-checks.yml", ["Repository hygiene"]),
@@ -36,9 +39,9 @@ class DraftReleaseTest(unittest.TestCase):
     def api(self, endpoint):
         path = endpoint.split("?")[0]
         if path == "":
-            return {"default_branch": "main"}
+            return {"default_branch": self.default_branch}
         if path.startswith("compare/"):
-            return {"status": "ahead", "merge_base_commit": {"sha": SOURCE}}
+            return deepcopy(self.comparison)
         if path == "releases":
             return deepcopy(self.releases)
         if path == "releases/10":
@@ -98,25 +101,87 @@ class DraftReleaseTest(unittest.TestCase):
             with self.subTest(key=key), self.assertRaises(ValueError):
                 check_ci(SOURCE, self.api)
 
+    def test_run_path_with_api_ref_suffix_is_accepted(self):
+        def api_ref_suffix(endpoint):
+            result = self.api(endpoint)
+            if endpoint.startswith("actions/runs/") and "/jobs" not in endpoint:
+                result["path"] += suffix
+            return result
+
+        for suffix in ("@main", "@refs/heads/main", f"@{SOURCE}"):
+            with self.subTest(suffix=suffix):
+                self.assertEqual(2, len(check_ci(SOURCE, api_ref_suffix)))
+        suffix = "@refs/heads/feature"
+        with self.assertRaises(ValueError):
+            check_ci(SOURCE, api_ref_suffix)
+
     def artifacts(self, directory):
         (directory / ASSETS[0]).write_bytes(b"container fixture")
-        (directory / ASSETS[1]).write_text(json.dumps({"version": VERSION, "source_sha": SOURCE, "artifact": "api-container"}))
+        metadata = {"version": VERSION, "source_sha": SOURCE, "artifact": "api-container",
+                    "image_id": "sha256:" + "c" * 64, "os": "linux", "architecture": "amd64", "docker_version": "28.5.1",
+                    "dependency_sha256": {name: "d" * 64 for name in
+                        ("services/api/Cargo.lock", "services/api/Dockerfile", "rust-toolchain.toml")},
+                    "ci": [{"workflow": "project-checks.yml", "run_id": 1, "attempt": 1},
+                           {"workflow": "repository-checks.yml", "run_id": 2, "attempt": 1}]}
+        (directory / ASSETS[1]).write_text(json.dumps(metadata))
         (directory / ASSETS[2]).write_text("".join(f"{digest(directory / name)}  {name}\n" for name in ASSETS[:2]))
+
+    def test_preflight_uses_repository_root_through_real_gh_boundary(self):
+        def gh_output(args, text):
+            self.assertTrue(text)
+            self.assertEqual(("gh", "api"), args[:2])
+            prefix = f"repos/{REPO}"
+            if args[2] == prefix + "/":
+                raise subprocess.CalledProcessError(1, args, output="HTTP 404")
+            endpoint = args[2][len(prefix):].removeprefix("/")
+            return json.dumps(self.api(endpoint)) + "\n"
+
+        with patch("draft_release.subprocess.check_output", side_effect=gh_output):
+            evidence, releases = preflight(VERSION, SOURCE, get)
+        self.assertEqual([1, 2], [item["run_id"] for item in evidence])
+        self.assertEqual([], releases)
+
+    def test_incomplete_or_invalid_build_metadata_rejected_after_checksum_passes(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            self.artifacts(directory)
+            original = json.loads((directory / ASSETS[1]).read_text())
+            cases = []
+            for key in original:
+                metadata = deepcopy(original)
+                del metadata[key]
+                cases.append((f"missing {key}", metadata))
+            for key, value in [("image_id", "sha256:short"), ("os", "windows"), ("architecture", "invalid"), ("docker_version", ""),
+                               ("dependency_sha256", {"services/api/Cargo.lock": "d" * 64}),
+                               ("dependency_sha256", {name: "short" for name in original["dependency_sha256"]}),
+                               ("ci", [original["ci"][0]]), ("ci", [original["ci"][0], original["ci"][0]])]:
+                metadata = deepcopy(original)
+                metadata[key] = value
+                cases.append((f"invalid {key}", metadata))
+            for key, value in [("run_id", 0), ("attempt", -1), ("run_id", True), ("attempt", "1")]:
+                metadata = deepcopy(original)
+                metadata["ci"][0][key] = value
+                cases.append((f"invalid ci {key}", metadata))
+            for label, metadata in cases:
+                with self.subTest(label=label):
+                    (directory / ASSETS[1]).write_text(json.dumps(metadata))
+                    (directory / ASSETS[2]).write_text("".join(f"{digest(directory / name)}  {name}\n" for name in ASSETS[:2]))
+                    with self.assertRaises((ValueError, KeyError)):
+                        verify(directory, VERSION, SOURCE)
 
     def gh(self, *args):
         self.writes.append(args)
-        self.assertEqual(("gh", "release"), args[:2])
+        self.assertEqual(("gh", "release", "create"), args[:3])
         self.assertEqual(REPO, args[args.index("--repo") + 1])
-        if args[2] == "create":
-            self.assertIn("--draft", args)
-            self.assertIn("--prerelease", args)
-            self.releases.append({"id": 10, "tag_name": args[3], "draft": True, "prerelease": True,
-                                  "target_commitish": args[args.index("--target") + 1]})
-        else:
-            self.assertEqual("upload", args[2])
-            self.assertNotIn("--clobber", args)
-            self.assets = [{"name": Path(name).name, "size": Path(name).stat().st_size, "state": "uploaded",
-                            "digest": f"sha256:{digest(Path(name))}"} for name in args[4:args.index("--repo")]]
+        self.assertIn("--draft", args)
+        self.assertIn("--prerelease", args)
+        self.assertNotIn("--clobber", args)
+        url = f"https://github.com/{REPO}/releases/tag/untagged-fixture"
+        self.releases.append({"id": 10, "tag_name": args[3], "draft": True, "prerelease": True,
+                              "target_commitish": args[args.index("--target") + 1], "html_url": url})
+        self.assets = [{"name": Path(name).name, "size": Path(name).stat().st_size, "state": "uploaded",
+                        "digest": f"sha256:{digest(Path(name))}"} for name in args[4:args.index("--repo")]]
+        return url
 
     def test_publish_creates_private_draft_and_preserves_existing_release(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -128,7 +193,7 @@ class DraftReleaseTest(unittest.TestCase):
                 publish(directory, VERSION, SOURCE, self.api, self.gh)
             self.assertEqual({"release_id": 10, "draft": True, "source_sha": SOURCE}, json.loads(output.getvalue()))
             self.assertEqual(existing, self.releases[0])
-            self.assertEqual(["create", "upload"], [args[2] for args in self.writes])
+            self.assertEqual(["create"], [args[2] for args in self.writes])
             self.assertEqual(list(ASSETS), [asset["name"] for asset in self.assets])
 
     def test_upload_failure_leaves_private_draft_without_cleanup_or_retry(self):
@@ -137,29 +202,29 @@ class DraftReleaseTest(unittest.TestCase):
             self.artifacts(directory)
 
             def failed_upload(*args):
-                if args[2] == "upload":
-                    self.writes.append(args)
-                    raise subprocess.CalledProcessError(1, args)
                 self.gh(*args)
+                self.assets.pop()
+                raise subprocess.CalledProcessError(1, args)
 
             with self.assertRaises(subprocess.CalledProcessError):
                 publish(directory, VERSION, SOURCE, self.api, failed_upload)
             self.assertTrue(self.releases[0]["draft"])
-            self.assertEqual(["create", "upload"], [args[2] for args in self.writes])
+            self.assertEqual(["create"], [args[2] for args in self.writes])
 
     def test_publish_rejects_upload_corruption_and_concurrent_changes(self):
-        for failure in ("digest", "size", "state", "missing", "public", "target", "tag", "ci", "previous"):
+        for failure in ("digest", "size", "state", "missing", "public", "target", "tag", "ci", "previous",
+                        "main", "default", "identity", "duplicate"):
             with self.subTest(failure=failure), tempfile.TemporaryDirectory() as temporary:
                 directory = Path(temporary)
                 self.artifacts(directory)
                 self.releases = [{"id": 9, "tag_name": "v0.0.1", "draft": False}]
                 self.refs, self.writes = [], []
                 self.runs[1]["run_attempt"] = 1
+                self.default_branch = "main"
+                self.comparison = {"status": "ahead", "merge_base_commit": {"sha": SOURCE}}
 
                 def corrupted_upload(*args):
-                    self.gh(*args)
-                    if args[2] != "upload":
-                        return
+                    url = self.gh(*args)
                     if failure in ("digest", "size", "state"):
                         self.assets[0][failure] = {"digest": "sha256:" + "0" * 64, "size": 0, "state": "new"}[failure]
                     elif failure == "missing":
@@ -174,10 +239,19 @@ class DraftReleaseTest(unittest.TestCase):
                         self.runs[1]["run_attempt"] = 2
                     elif failure == "previous":
                         self.releases[0]["draft"] = True
+                    elif failure == "main":
+                        self.comparison = {"status": "diverged", "merge_base_commit": {"sha": "b" * 40}}
+                    elif failure == "default":
+                        self.default_branch = "other"
+                    elif failure == "identity":
+                        return url + "-replaced"
+                    elif failure == "duplicate":
+                        self.releases.append({"id": 11, "tag_name": VERSION})
+                    return url
 
                 with self.assertRaises(ValueError):
                     publish(directory, VERSION, SOURCE, self.api, corrupted_upload)
-                self.assertEqual(["create", "upload"], [args[2] for args in self.writes])
+                self.assertEqual(["create"], [args[2] for args in self.writes])
 
     def test_source_outside_main_and_ci_rerun_during_validation_rejected(self):
         def outside_main(endpoint):
