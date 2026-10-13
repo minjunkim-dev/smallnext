@@ -21,7 +21,7 @@ def command(*args):
 
 
 def get(endpoint):
-    return json.loads(command("gh", "api", f"repos/{REPO}/{endpoint}"))
+    return json.loads(command("gh", "api", f"repos/{REPO}" + (f"/{endpoint}" if endpoint else "")))
 
 
 def inputs(version, source):
@@ -44,7 +44,9 @@ def check_ci(source, api):
         runs = [run for run in runs if run["event"] in ("push", "workflow_dispatch")]
         require(runs, "No trusted main CI run for source")
         run = api(f"actions/runs/{max(runs, key=lambda item: item['id'])['id']}")
-        require(run["workflow_id"] == workflow["id"] and run["path"] == workflow["path"] and
+        require(run["workflow_id"] == workflow["id"] and run["path"] in
+                (workflow["path"], f"{workflow['path']}@main", f"{workflow['path']}@refs/heads/main",
+                 f"{workflow['path']}@{source}") and
                 run["head_sha"] == source and run["head_branch"] == "main" and
                 run["event"] in ("push", "workflow_dispatch") and
                 run["head_repository"]["full_name"] == REPO and
@@ -65,12 +67,16 @@ def check_ci(source, api):
     return evidence
 
 
-def preflight(version, source, api=get):
-    inputs(version, source)
+def check_source(source, api):
     require(api("")["default_branch"] == "main", "Default branch changed")
     comparison = api(f"compare/{source}...main")
     require(comparison["status"] in ("ahead", "identical") and
             comparison["merge_base_commit"]["sha"] == source, "Source is not contained in main")
+
+
+def preflight(version, source, api=get):
+    inputs(version, source)
+    check_source(source, api)
     releases = pages(api, "releases")
     require(not any(item["tag_name"] == version for item in releases), "Release or Draft already exists")
     refs = api(f"git/matching-refs/tags/{version}")
@@ -113,8 +119,26 @@ def verify(directory, version, source):
     require(checksums == "".join(f"{digest(directory / name)}  {name}\n" for name in ASSETS[:2]),
             "Artifact checksum mismatch")
     metadata = json.loads((directory / ASSETS[1]).read_text(encoding="utf-8"))
-    require(metadata["version"] == version and metadata["source_sha"] == source and
-            metadata["artifact"] == "api-container", "Artifact metadata mismatch")
+    require(isinstance(metadata, dict) and metadata.get("version") == version and
+            metadata.get("source_sha") == source and metadata.get("artifact") == "api-container",
+            "Artifact metadata mismatch")
+    require(isinstance(metadata.get("image_id"), str) and
+            re.fullmatch(r"sha256:[0-9a-f]{64}", metadata["image_id"]) and
+            metadata.get("os") == "linux" and metadata.get("architecture") in ("amd64", "arm64") and
+            isinstance(metadata.get("docker_version"), str) and metadata["docker_version"].strip(),
+            "Container build metadata missing or invalid")
+    dependencies = metadata.get("dependency_sha256")
+    require(isinstance(dependencies, dict) and set(dependencies) ==
+            {"services/api/Cargo.lock", "services/api/Dockerfile", "rust-toolchain.toml"} and
+            all(isinstance(value, str) and re.fullmatch(r"[0-9a-f]{64}", value)
+                for value in dependencies.values()), "Dependency evidence missing or invalid")
+    evidence = metadata.get("ci")
+    require(isinstance(evidence, list) and len(evidence) == 2 and
+            all(isinstance(item, dict) and isinstance(item.get("workflow"), str) and
+                type(item.get("run_id")) is int and item["run_id"] > 0 and
+                type(item.get("attempt")) is int and item["attempt"] > 0 for item in evidence) and
+            {item.get("workflow") for item in evidence} == {"project-checks.yml", "repository-checks.yml"} and
+            len({item["run_id"] for item in evidence}) == 2, "CI evidence missing or invalid")
     return metadata
 
 
@@ -122,12 +146,16 @@ def publish(directory, version, source, api=get, run=command):
     verify(directory, version, source)
     _, previous = preflight(version, source, api)
     # No overwrite, cleanup, public toggle, product execution or dependency install in this job.
-    run("gh", "release", "create", version, "--repo", REPO, "--draft", "--prerelease", "--target", source,
-        "--title", f"Smallnext API {version}", "--notes", f"Private API container verification. Source: {source}")
-    release = next(item for item in pages(api, "releases") if item["tag_name"] == version)
+    # gh create uploads to its returned release ID; a second tag lookup can select a concurrent replacement.
+    created_url = run("gh", "release", "create", version, *(str(directory / name) for name in ASSETS),
+                      "--repo", REPO, "--draft", "--prerelease", "--target", source,
+                      "--title", f"Smallnext API {version}", "--notes",
+                      f"Private API container verification. Source: {source}")
+    matches = [item for item in pages(api, "releases") if item["tag_name"] == version]
+    require(len(matches) == 1 and matches[0]["html_url"] == created_url, "New Draft identity mismatch")
+    release = matches[0]
     require(release["draft"] is True and release["prerelease"] is True and release["target_commitish"] == source,
             "New release is not the requested private Draft")
-    run("gh", "release", "upload", version, *(str(directory / name) for name in ASSETS), "--repo", REPO)
     current = api(f"releases/{release['id']}")
     require(current["draft"] is True and current["prerelease"] is True and
             current["target_commitish"] == source and current["tag_name"] == version, "Draft changed during upload")
@@ -143,6 +171,7 @@ def publish(directory, version, source, api=get, run=command):
     # GitHub cannot atomically lock main, CI and tag creation with Release creation.
     require(not any(item["ref"] == f"refs/tags/{version}" for item in api(f"git/matching-refs/tags/{version}")),
             "A concurrent tag appeared; inspect the private Draft")
+    check_source(source, api)
     check_ci(source, api)
     print(json.dumps({"release_id": release["id"], "draft": True, "source_sha": source}))
 
