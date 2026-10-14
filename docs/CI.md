@@ -133,6 +133,7 @@ iOS는 시뮬레이터 부팅과 `build-for-testing`을 동시에 시작합니�
 빌드는 실행기 CPU의 generic simulator 대상으로 수행합니다.
 빌드와 부팅이 모두 성공한 뒤 같은 출력으로 `test-without-building`을 수행합니다.
 빌드 실패와 부팅 실패는 모두 검사를 실패 처리합니다.
+잠금 파일 검증을 유지하고 `-skipPackageUpdates`로 원격 패키지 갱신 조회를 생략합니다.
 `-showBuildTimingSummary`와 각 단계의 초 단위 시간을 로그에 기록합니다.
 테스트 결과와 시뮬레이터 사용자 데이터는 컴파일 캐시에 넣지 않습니다.
 

@@ -18,7 +18,7 @@ if [ -n "${IOS_DERIVED_DATA:-}" ]; then args+=(-derivedDataPath "$IOS_DERIVED_DA
 build_started=$SECONDS
 xcodebuild -project apps/ios/Smallnext.xcodeproj -scheme Smallnext \
   -destination 'generic/platform=iOS Simulator' ${args[@]+"${args[@]}"} \
-  -onlyUsePackageVersionsFromResolvedFile -showBuildTimingSummary \
+  -onlyUsePackageVersionsFromResolvedFile -skipPackageUpdates -showBuildTimingSummary \
   ARCHS="$(uname -m)" ONLY_ACTIVE_ARCH=YES CODE_SIGNING_ALLOWED=NO build-for-testing
 printf 'iOS build-for-testing: %ss\n' "$((SECONDS - build_started))"
 wait "$boot_pid"
@@ -27,5 +27,5 @@ if [ -n "${IOS_RESULTS:-}" ]; then args+=(-resultBundlePath "$IOS_RESULTS"); fi
 test_started=$SECONDS
 xcodebuild -project apps/ios/Smallnext.xcodeproj -scheme Smallnext \
   -destination "platform=iOS Simulator,id=$simulator" ${args[@]+"${args[@]}"} \
-  -onlyUsePackageVersionsFromResolvedFile CODE_SIGNING_ALLOWED=NO test-without-building
+  -onlyUsePackageVersionsFromResolvedFile -skipPackageUpdates CODE_SIGNING_ALLOWED=NO test-without-building
 printf 'iOS test-without-building: %ss\n' "$((SECONDS - test_started))"
