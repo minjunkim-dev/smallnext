@@ -1,0 +1,116 @@
+{
+  "schema_version": 1,
+  "repository": "minjunkim-dev/smallnext",
+  "repository_id": 1402815254,
+  "default_branch": "main",
+  "expected": {
+    "repository": {
+      "default_branch": "main",
+      "visibility": "public",
+      "allow_merge_commit": false,
+      "allow_rebase_merge": false,
+      "allow_squash_merge": true,
+      "allow_auto_merge": true,
+      "delete_branch_on_merge": true,
+      "allow_update_branch": true,
+      "squash_merge_commit_title": "PR_TITLE",
+      "squash_merge_commit_message": "PR_BODY",
+      "security_and_analysis": {
+        "dependabot_security_updates": {
+          "status": "enabled"
+        },
+        "secret_scanning": {
+          "status": "enabled"
+        },
+        "secret_scanning_push_protection": {
+          "status": "enabled"
+        }
+      }
+    },
+    "protection": {
+      "required_status_checks": {
+        "strict": true,
+        "checks": [
+          {
+            "context": "PR conventions",
+            "app_id": 15368
+          },
+          {
+            "context": "Repository hygiene",
+            "app_id": 15368
+          },
+          {
+            "context": "Project checks",
+            "app_id": 15368
+          }
+        ]
+      },
+      "required_pull_request_reviews": {
+        "required_approving_review_count": 0,
+        "dismiss_stale_reviews": true,
+        "require_code_owner_reviews": false,
+        "require_last_push_approval": false
+      },
+      "enforce_admins": {
+        "enabled": true
+      },
+      "required_linear_history": {
+        "enabled": true
+      },
+      "required_conversation_resolution": {
+        "enabled": true
+      },
+      "allow_force_pushes": {
+        "enabled": false
+      },
+      "allow_deletions": {
+        "enabled": false
+      },
+      "lock_branch": {
+        "enabled": false
+      }
+    },
+    "rulesets": [],
+    "actions": {
+      "enabled": true,
+      "allowed_actions": "selected",
+      "sha_pinning_required": true
+    },
+    "allowed_actions": {
+      "github_owned_allowed": true,
+      "verified_allowed": false,
+      "patterns_allowed": []
+    },
+    "workflow_token": {
+      "default_workflow_permissions": "read",
+      "can_approve_pull_request_reviews": false
+    },
+    "fork_policy": {
+      "approval_policy": "all_external_contributors"
+    },
+    "immutable_releases": {
+      "enabled": true
+    },
+    "dependabot_alerts": {
+      "enabled": true
+    },
+    "codeql": {
+      "state": "not-configured"
+    },
+    "codeql_workflow": {
+      "path": ".github/workflows/codeql.yml",
+      "state": "active"
+    },
+    "codeql_main_source": {
+      "path": ".github/workflows/codeql.yml",
+      "type": "file"
+    }
+  },
+  "exceptions": [
+    {
+      "control": "release Environment",
+      "status": "not_applicable",
+      "reason": "No public/production deployment workflow exists; the existing Draft-only workflow is unchanged."
+    }
+  ]
+}

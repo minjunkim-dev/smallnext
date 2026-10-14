@@ -1,0 +1,86 @@
+name: CodeQL
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  schedule:
+    - cron: '0 1 * * 3'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: codeql-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: actions
+            runner: ubuntu-24.04
+            build-mode: none
+          - language: python
+            runner: ubuntu-24.04
+            build-mode: none
+          - language: rust
+            runner: ubuntu-24.04
+            build-mode: none
+          - language: java-kotlin
+            runner: ubuntu-24.04
+            build-mode: manual
+          - language: swift
+            runner: xcode-27
+            build-mode: manual
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Resolve pinned tools
+        if: matrix.build-mode == 'manual'
+        id: tools
+        run: python3 scripts/environment.py github
+      - name: Select pinned Java
+        if: matrix.language == 'java-kotlin'
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: ${{ steps.tools.outputs.java }}
+      - name: Install pinned Android SDK packages
+        if: matrix.language == 'java-kotlin'
+        run: make android-sdk
+      - name: Select pinned Xcode
+        if: matrix.language == 'swift'
+        run: |
+          developer_dir=$(python3 -c 'import json; print("/Applications/Xcode_" + json.load(open(".ci/toolchains.json"))["xcode"] + ".app/Contents/Developer")')
+          echo "DEVELOPER_DIR=$developer_dir" >> "$GITHUB_ENV"
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@24c54180a607b1449ed407dd24f251e4e9147c8d # v4
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+      - name: Build and test Android for extraction
+        if: matrix.language == 'java-kotlin'
+        run: make android-check
+      - name: Build and test iOS for extraction
+        if: matrix.language == 'swift'
+        env:
+          IOS_PACKAGES_DIR: ${{ runner.temp }}/codeql-swift-packages
+          IOS_DERIVED_DATA: ${{ runner.temp }}/codeql-ios-derived-data
+          IOS_RESULTS: ${{ runner.temp }}/codeql-ios-results.xcresult
+        run: make ios-check
+      - name: Analyze and upload results
+        uses: github/codeql-action/analyze@24c54180a607b1449ed407dd24f251e4e9147c8d # v4
+        with:
+          category: /language:${{ matrix.language }}
