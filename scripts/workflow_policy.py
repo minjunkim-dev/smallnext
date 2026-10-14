@@ -77,8 +77,9 @@ def main():
     parser.add_argument("--pr", action="store_true", help="Read PR metadata from GITHUB_EVENT_PATH")
     args = parser.parse_args()
     errors = []
-    if (ROOT / "CLAUDE.md").read_text() != "@AGENTS.md\n":
-        errors.append("CLAUDE.md must contain only @AGENTS.md and a newline")
+    claude = ROOT / "CLAUDE.md"
+    if claude.exists() or claude.is_symlink():
+        errors.append("Use AGENTS.md only; remove CLAUDE.md")
     if not (ROOT / "AGENTS.md").is_file():
         errors.append("AGENTS.md is required")
     try:
