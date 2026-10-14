@@ -42,12 +42,12 @@ class QuestionCheckTests(unittest.TestCase):
                 with patch.object(qa, "_call", return_value={"error":"cancelled"}) as single:
                     qa.call("claude", self.prompt, self.schema, data, qa.monotonic()+2, threading.Event())
                 single.assert_called_once()
-                self.assertEqual(single.call_args.args[1] != self.prompt, kind=="smaller" and status=="need_info")
+                prompt, _ = qa.request(self.prompt, self.schema, data)
+                self.assertEqual(prompt.startswith("Independently check all five mandatory criteria"),
+                                 kind=="smaller" and status=="need_info")
                 self.assertEqual(qa.encoded(data), before)
-        with patch.object(qa, "_call", return_value={"error":"cancelled"}) as single:
-            qa.call("claude", self.prompt, {"properties":{"ok":{"type":"boolean"}}}, self.data,
-                    qa.monotonic()+2, threading.Event())
-        self.assertEqual(single.call_args.args[1], self.prompt)
+        self.assertTrue(qa.request(self.prompt, {"properties":{"ok":{"type":"boolean"}}}, self.data)[0]
+                        .startswith(self.prompt))
 
     def test_incomplete_accept_or_blank_evidence_is_not_repaired_or_logged(self):
         with tempfile.TemporaryDirectory() as directory:

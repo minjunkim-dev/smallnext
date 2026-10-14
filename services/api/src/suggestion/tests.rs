@@ -259,3 +259,65 @@ async fn invalid_input_starts_no_model_call() {
     assert_eq!(evaluation.result, Err(Disposition::InvalidInput));
     assert!(evaluation.bills.is_empty());
 }
+
+/// scripts/oauth_quality.py replays this contract; both suites compare against one fixture.
+#[test]
+fn compact_contract_matches_shared_fixture() {
+    let path = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../contracts/fixtures/suggestion-compact.json"
+    );
+    let committed: Value = serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
+    let mut actual = json!({
+        "cases": committed["cases"],
+        "prompts": {},
+        "schemas": {},
+        "statuses": {},
+    });
+    for case in committed["cases"].as_array().unwrap() {
+        let role = match case["role"].as_str().unwrap() {
+            "generate" => Role::Generate,
+            _ => Role::Check,
+        };
+        let (prompt, schema) = compact::request(role, &case["payload"]);
+        let (p, s) = (
+            case["prompt"].as_str().unwrap(),
+            case["schema"].as_str().unwrap(),
+        );
+        assert!(
+            actual["prompts"].get(p).is_none_or(|old| old == &prompt),
+            "{p}"
+        );
+        assert!(
+            actual["schemas"].get(s).is_none_or(|old| old == &schema),
+            "{s}"
+        );
+        actual["prompts"][p] = json!(prompt);
+        actual["schemas"][s] = schema;
+    }
+    for kind in [
+        "goal_preparation",
+        "first_action",
+        "next_action",
+        "smaller",
+        "replacement",
+    ] {
+        actual["statuses"][kind] = json!(allowed_statuses(Some(kind)));
+    }
+    actual["statuses"]["none"] = json!(allowed_statuses(None));
+    // A contract.md edit that breaks the paragraph shape silently drops the question projection.
+    assert!(
+        actual["prompts"]["check-question"]
+            .as_str()
+            .unwrap()
+            .starts_with("Independently check all five mandatory criteria")
+    );
+    if std::env::var_os("UPDATE_CONTRACT_FIXTURES").is_some() {
+        std::fs::write(path, serde_json::to_string_pretty(&actual).unwrap() + "\n").unwrap();
+        return;
+    }
+    assert_eq!(
+        actual, committed,
+        "run UPDATE_CONTRACT_FIXTURES=1 cargo test, then update scripts/oauth_quality.py"
+    );
+}
