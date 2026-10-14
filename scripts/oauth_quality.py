@@ -78,7 +78,7 @@ def freeze(directory, suite, comparison=None, repetitions=2, case_ids=(),
     status = source(base + "status-contract-checks.json")
     latency = source(base + "checker-latency-checks.json")
     references = source(base + "oauth-quality-references.json")
-    prompt_dir = "services/api/src/development_ai/"
+    prompt_dir = "services/api/src/suggestion/"
     contract = source(prompt_dir + "contract.md", False)
     prompts = {role: source(prompt_dir + role + ".md", False) + "\n" + contract
                for role in ("generate", "check")}

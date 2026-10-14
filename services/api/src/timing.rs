@@ -29,7 +29,10 @@ pub(crate) fn run_id(headers: &HeaderMap) -> Option<String> {
     .then(|| id.to_owned())
 }
 
-pub(crate) async fn measure<T>(role: &str, future: impl Future<Output = T>) -> T {
+pub(crate) async fn measure<T>(
+    role: crate::suggestion::Role,
+    future: impl Future<Output = T>,
+) -> T {
     let started = CURRENT.try_with(|_| Instant::now()).ok();
     let result = future.await;
     if let Some(started) = started {
@@ -37,9 +40,8 @@ pub(crate) async fn measure<T>(role: &str, future: impl Future<Output = T>) -> T
             let mut timing = timing.lock().expect("timing lock");
             let elapsed = Some(started.elapsed().as_secs_f64() * 1000.0);
             match role {
-                "generate" => timing.generate_ms = elapsed,
-                "check" => timing.check_ms = elapsed,
-                _ => unreachable!(),
+                crate::suggestion::Role::Generate => timing.generate_ms = elapsed,
+                crate::suggestion::Role::Check => timing.check_ms = elapsed,
             }
         });
     }

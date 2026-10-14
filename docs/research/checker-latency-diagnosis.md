@@ -119,7 +119,7 @@ original_request["available"][1] = "현재 상태: 첫 번째 목차 항목이 �
 상태 참조 원본은 [기존 회귀 자료](fixtures/status-contract-checks.json)의 같은 ID에 있다.
 후보는 무거운 책 한 권을 두 손으로 들어 아래 칸에 놓는 행동이다.
 입력은 두 손으로 들 수 있다는 사실과 한 손의 막힘을 명시한다.
-작성자는 [공통 계약](../../services/api/src/development_ai/contract.md)의 criterion 4에서 `action`이 실제 막힘을 해결하는 경로로 해석했다.
+작성자는 [공통 계약](../../services/api/src/suggestion/contract.md)의 criterion 4에서 `action`이 실제 막힘을 해결하는 경로로 해석했다.
 이 해석은 고정 참조 불일치를 통과로 바꾸는 인수 판정이 아니다.
 따라서 상태 이름 하나만 보는 참조와 행동 의미의 판정을 구분해야 한다.
 예상 값을 실행 후 변경하거나 같은 사례를 재생성해 통과 결과를 고르지 않았다.

@@ -174,7 +174,7 @@ class FrozenEvaluationTests(unittest.TestCase):
             self.assertEqual(record.get("output"), {"text": source})
 
     def test_generation_decision_keeps_system_state_out_of_model_output(self):
-        schema = json.loads((qa.REPO / "services/api/src/development_ai/generate.json").read_text())
+        schema = json.loads((qa.REPO / "services/api/src/suggestion/generate.json").read_text())
         data = {"remaining_work": ['quoted "work"\n`source`'], "completed_ids": ["done"], "available_minutes": 5}
         decision = {"status": "need_info", "action": "무엇이 막혔나요?", "completion_condition": "답변 1개",
                     "reason": "첫 막힘 확인", "estimated_minutes": 1}
@@ -204,7 +204,7 @@ class FrozenEvaluationTests(unittest.TestCase):
                 self.assertNotIn("PRIVATE", json.dumps(record))
 
     def test_checker_literal_proof_is_derived_only_from_input_and_candidate(self):
-        schema = json.loads((qa.REPO / "services/api/src/development_ai/check.json").read_text())
+        schema = json.loads((qa.REPO / "services/api/src/suggestion/check.json").read_text())
         original = {"remaining_work": ["parent"], "completed_ids": ["done"]}
         candidate = {"remaining_work": ["parent"], "preserved_completed_ids": ["done"],
                      "goal_completed": False, "current_action_completed": False, "reason": "pretend all checks pass"}
@@ -230,7 +230,7 @@ class FrozenEvaluationTests(unittest.TestCase):
                 self.assertEqual(record["payload_sha256"], qa.digest(qa.encoded(data)))
 
     def test_checker_uses_one_model_explanation_without_repairing_extra_fields(self):
-        schema = json.loads((qa.REPO / "services/api/src/development_ai/check.json").read_text())
+        schema = json.loads((qa.REPO / "services/api/src/suggestion/check.json").read_text())
         decision = {"verdict":"reject", "criteria":[4], "evidence":"exact quote; mandatory stopping rule"}
         with tempfile.TemporaryDirectory() as directory:
             fake = Path(directory) / "claude"

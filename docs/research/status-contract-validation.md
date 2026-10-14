@@ -5,7 +5,7 @@
 
 ## 변경
 
-생성 역할과 검사 역할에 같은 [공통 계약](../../services/api/src/development_ai/contract.md)을 전달합니다.
+생성 역할과 검사 역할에 같은 [공통 계약](../../services/api/src/suggestion/contract.md)을 전달합니다.
 개발 CLI와 사용자용 API가 같은 조합 함수를 사용합니다.
 상태를 먼저 결정합니다. 보류 행동은 실제 작업·대상·결과로 비교합니다.
 준비된 목록에 같은 행동이 있어도 보류를 우선합니다.

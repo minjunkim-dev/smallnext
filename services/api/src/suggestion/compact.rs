@@ -1,5 +1,5 @@
-//! Model-owned decisions; preservation and the public response remain host-owned.
-use crate::development_ai::{Disposition, generation_schema, model_instructions};
+//! Compact contract for API models: the model owns decisions; preservation stays host-owned.
+use super::{Disposition, Role};
 use serde::de::{self, DeserializeSeed, MapAccess, SeqAccess, Visitor};
 use serde_json::{Value, json};
 use std::{cell::Cell, fmt};
@@ -10,6 +10,24 @@ const OWNED: [&str; 4] = [
     "goal_completed",
     "current_action_completed",
 ];
+
+/// System prompt and compact output schema for one model call.
+pub(crate) fn request(role: Role, payload: &Value) -> (String, Value) {
+    (
+        instructions(role, payload),
+        schema(role, payload["request_kind"].as_str()),
+    )
+}
+
+/// Decode the model text and restore host-owned fields into the full-shape JSON.
+pub(crate) fn read(role: Role, text: Option<&str>, payload: &Value) -> Result<Value, Disposition> {
+    let original = match role {
+        Role::Generate => payload,
+        Role::Check => &payload["original_request"],
+    };
+    let value = decode(role, text, original["request_kind"].as_str())?;
+    expand(role, value, original)
+}
 
 struct Fault {
     kind: &'static str,
@@ -31,26 +49,22 @@ fn known_field(key: &str) -> Option<&'static str> {
     .find(|name| *name == key)
 }
 
-fn report(role: &str, fault: Fault) -> Disposition {
+fn report(role: Role, fault: Fault) -> Disposition {
     // Only fixed classifications and allowlisted field names can leave this boundary.
     tracing::warn!(
-        role,
+        role = role.as_str(),
         kind = fault.kind,
         field = fault.field.unwrap_or(""),
         "invalid_ai_decision"
     );
-    if role == "generate" {
+    if role == Role::Generate {
         Disposition::InvalidProposal
     } else {
         Disposition::Failed
     }
 }
 
-pub(super) fn decode(
-    role: &str,
-    text: Option<&str>,
-    kind: Option<&str>,
-) -> Result<Value, Disposition> {
+fn decode(role: Role, text: Option<&str>, kind: Option<&str>) -> Result<Value, Disposition> {
     let text = text.ok_or_else(|| {
         report(
             role,
@@ -88,7 +102,7 @@ pub(super) fn decode(
             )
         })?;
     validate(&value, &schema(role, kind), None).map_err(|fault| report(role, fault))?;
-    let fields: &[&str] = if role == "generate" {
+    let fields: &[&str] = if role == Role::Generate {
         &["action", "completion_condition", "reason"]
     } else {
         &["evidence"]
@@ -107,7 +121,7 @@ pub(super) fn decode(
             ));
         }
     }
-    if role == "check" {
+    if role == Role::Check {
         let criteria = value["criteria"].as_array().expect("validated array");
         if criteria.is_empty()
             || (value["verdict"] == "accept" && !(1..=5).all(|n| criteria.contains(&json!(n))))
@@ -254,14 +268,9 @@ impl<'de> Visitor<'de> for Unique<'_> {
     }
 }
 
-pub(super) fn schema(role: &str, kind: Option<&str>) -> Value {
-    let mut schema = if role == "generate" {
-        generation_schema(kind)
-    } else {
-        serde_json::from_str(include_str!("../development_ai/check.json"))
-            .expect("committed schema")
-    };
-    let removed: &[&str] = if role == "generate" {
+fn schema(role: Role, kind: Option<&str>) -> Value {
+    let mut schema = super::schema(role, kind);
+    let removed: &[&str] = if role == Role::Generate {
         &OWNED
     } else {
         &["reason"]
@@ -273,21 +282,21 @@ pub(super) fn schema(role: &str, kind: Option<&str>) -> Value {
             .unwrap()
             .retain(|item| item != key);
     }
-    if role == "check" {
+    if role == Role::Check {
         schema["properties"]["criteria"]["items"] = json!({"type":"integer","enum":[1,2,3,4,5]});
     }
     schema
 }
 
-pub(super) fn instructions(role: &str, payload: &Value) -> Result<String, Disposition> {
-    let mut prompt = model_instructions(role)?;
-    if role == "check"
+fn instructions(role: Role, payload: &Value) -> String {
+    let mut prompt = super::instructions(role);
+    if role == Role::Check
         && payload["original_request"]["request_kind"] == "smaller"
         && payload["candidate"]["status"] == "need_info"
     {
         prompt = question_prompt(&prompt);
     }
-    if role == "generate" {
+    if role == Role::Generate {
         prompt.push_str("\nFor generation, emit only the decision fields in the output schema. The runtime copies remaining_work and completed_ids from the input and sets both incomplete flags to false. Do not emit those preservation fields. Excluding a completed or deferred task means excluding it from selection, never editing the stored remaining work. Give one concise reason for this decision.");
     } else {
         prompt.push_str("\nEmit only verdict, criteria and evidence. In evidence, combine short exact quotes with one concise justification of the verdict. The runtime copies this explanation into reason. Do not emit reason.");
@@ -301,7 +310,7 @@ pub(super) fn instructions(role: &str, payload: &Value) -> Result<String, Dispos
         });
         prompt.push_str(&format!("\nHost-verified literal preservation: {proof}\nThese checks establish only exact values, not semantic correctness. Do not repeat literal list comparison. Independently check the criteria assigned by the output schema; preserve original facts, unfinished parent scope and task eligibility."));
     }
-    Ok(prompt)
+    prompt
 }
 
 fn question_prompt(prompt: &str) -> String {
@@ -353,7 +362,7 @@ fn question_prompt(prompt: &str) -> String {
     )
 }
 
-pub(super) fn expand(role: &str, mut value: Value, original: &Value) -> Result<Value, Disposition> {
+fn expand(role: Role, mut value: Value, original: &Value) -> Result<Value, Disposition> {
     let schema = schema(role, original["request_kind"].as_str());
     let object = value.as_object_mut().ok_or(Disposition::InvalidProposal)?;
     if object
@@ -362,7 +371,7 @@ pub(super) fn expand(role: &str, mut value: Value, original: &Value) -> Result<V
     {
         return Err(Disposition::InvalidProposal);
     }
-    if role == "generate" {
+    if role == Role::Generate {
         object.insert("remaining_work".into(), original["remaining_work"].clone());
         object.insert(
             "preserved_completed_ids".into(),

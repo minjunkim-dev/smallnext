@@ -1,14 +1,13 @@
 //! User API. The registered flag is OFF until a separate release decision.
 mod auth;
 pub mod budget;
-mod decision;
 pub(crate) mod provider;
-use crate::development_ai::{AiInput, Disposition, Proposal, validate_input};
+use crate::suggestion::{AiInput, Disposition, Proposal, validate_input};
 use axum::{
     Router,
     body::Bytes,
     extract::{DefaultBodyLimit, State},
-    http::{HeaderMap, StatusCode, header},
+    http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
     routing::post,
 };
@@ -54,17 +53,7 @@ pub(crate) struct Server {
 
 impl Config {
     pub fn from_environment() -> Result<Option<Self>, &'static str> {
-        let registry: Value =
-            serde_json::from_str(include_str!("../../../../config/feature-flags.json"))
-                .unwrap_or(Value::Null);
-        let enabled = registry["version"] == 1
-            && registry["flags"].as_array().is_some_and(|flags| {
-                let matches: Vec<_> = flags
-                    .iter()
-                    .filter(|f| f["key"] == "user_server_ai")
-                    .collect();
-                matches.len() == 1 && matches[0]["default"] == true
-            });
+        let enabled = crate::transport::flag_default("user_server_ai");
         let enabled = match std::env::var("USER_SERVER_AI") {
             Ok(value) => value == "1",
             Err(std::env::VarError::NotPresent) => enabled,
@@ -146,15 +135,8 @@ pub(crate) async fn suggest(
 ) -> Response {
     let started = Instant::now();
     let timing_id = crate::timing::run_id(&headers);
-    if headers.contains_key(header::ORIGIN) {
-        return StatusCode::FORBIDDEN.into_response();
-    }
-    if headers
-        .get(header::CONTENT_TYPE)
-        .and_then(|v| v.to_str().ok())
-        .is_none_or(|v| v.split(';').next().unwrap_or("").trim() != "application/json")
-    {
-        return StatusCode::UNSUPPORTED_MEDIA_TYPE.into_response();
+    if let Err(status) = crate::transport::json_request(&headers) {
+        return status.into_response();
     }
     let uid = match tokio::time::timeout(
         Duration::from_secs(20),
@@ -169,16 +151,12 @@ pub(crate) async fn suggest(
     let Ok(request) = serde_json::from_slice::<SuggestionRequest>(&body) else {
         return StatusCode::BAD_REQUEST.into_response();
     };
-    if request.state_key.trim().is_empty()
-        || request.state_key.len() > 128
-        || request.state_key.chars().any(char::is_control)
-    {
+    if !crate::transport::valid_state_key(&request.state_key) {
         return StatusCode::BAD_REQUEST.into_response();
     }
-    let original = match validate_input(&request.input) {
-        Ok(v) => v,
-        Err(_) => return StatusCode::BAD_REQUEST.into_response(),
-    };
+    if validate_input(&request.input).is_err() {
+        return StatusCode::BAD_REQUEST.into_response();
+    }
     let Ok(slot) = server.slots.clone().try_acquire_owned() else {
         return StatusCode::SERVICE_UNAVAILABLE.into_response();
     };
@@ -205,7 +183,7 @@ pub(crate) async fn suggest(
         let _slot = slot;
         let (disposition, proposal, usage) = match tokio::time::timeout(
             Duration::from_secs(120),
-            server.config.provider.evaluate(&request.input, original),
+            server.config.provider.evaluate(&request.input),
         )
         .await
         {
@@ -242,9 +220,7 @@ pub(crate) async fn suggest(
         };
         Bytes::from(serde_json::to_vec(&response).expect("finite checked response"))
     };
-    crate::development_ai::http::deferred_response(crate::timing::response(
-        timing_id, started, future,
-    ))
+    crate::transport::deferred_response(crate::timing::response(timing_id, started, future))
 }
 
 fn required(name: &str) -> Result<String, &'static str> {

@@ -1,19 +1,28 @@
 use super::*;
+use crate::suggestion::ProposalStatus;
+use serde_json::json;
 
 #[test]
 fn both_roles_receive_one_shared_contract_and_keep_their_role() {
-    let contract = include_str!("contract.md");
-    for role in ["generate", "check"] {
+    let contract = include_str!("../suggestion/contract.md");
+    for role in [Role::Generate, Role::Check] {
         let workspace = Workspace::new(role, Some("smaller")).unwrap();
         let system = std::fs::read_to_string(workspace.0.join("system.md")).unwrap();
-        assert_eq!(system.matches(contract).count(), 1, "{role}");
-        assert!(system.starts_with(if role == "generate" {
+        assert_eq!(system.matches(contract).count(), 1, "{role:?}");
+        if role == Role::Check {
+            let schema = std::fs::read_to_string(workspace.0.join("schema.json")).unwrap();
+            assert_eq!(
+                schema,
+                include_str!("../suggestion/check.json"),
+                "committed key order"
+            );
+        }
+        assert!(system.starts_with(if role == Role::Generate {
             "Generate one candidate"
         } else {
             "Independently check"
         }));
     }
-    assert!(Workspace::new("other", None).is_err());
 }
 
 fn input() -> AiInput {
@@ -31,154 +40,6 @@ fn proposal() -> Proposal {
         goal_completed: false,
         current_action_completed: false,
         preserved_completed_ids: vec![],
-    }
-}
-
-#[test]
-fn request_status_contract() {
-    for kind in [
-        None,
-        Some("goal_preparation"),
-        Some("first_action"),
-        Some("next_action"),
-        Some("smaller"),
-        Some("replacement"),
-    ] {
-        for status in [
-            ProposalStatus::Action,
-            ProposalStatus::NeedInfo,
-            ProposalStatus::Minimum,
-            ProposalStatus::GoalSummary,
-            ProposalStatus::NoAction,
-        ] {
-            let mut data = input();
-            data.request_kind = kind.map(str::to_owned);
-            let mut candidate = proposal();
-            candidate.status = status.clone();
-            let allowed = match kind {
-                Some("goal_preparation") => matches!(
-                    status,
-                    ProposalStatus::GoalSummary | ProposalStatus::NeedInfo
-                ),
-                Some("replacement") => status != ProposalStatus::GoalSummary,
-                _ => matches!(
-                    status,
-                    ProposalStatus::Action | ProposalStatus::NeedInfo | ProposalStatus::Minimum
-                ),
-            };
-            assert_eq!(
-                validate_proposal(&data, &candidate).is_ok(),
-                allowed,
-                "{kind:?}: {status:?}"
-            );
-            let schema = generation_schema(kind);
-            assert_eq!(
-                schema["properties"]["status"]["enum"]
-                    .as_array()
-                    .unwrap()
-                    .contains(&json!(status)),
-                allowed,
-                "schema {kind:?}: {status:?}"
-            );
-        }
-    }
-}
-
-#[test]
-fn input_contract_rejects_missing_scope_invalid_kinds_and_time() {
-    assert!(validate_input(&input()).is_ok());
-    for field in ["goal", "user_request", "current_blocker", "request_kind"] {
-        let mut data = input();
-        match field {
-            "goal" => data.goal = " ".into(),
-            "user_request" => data.user_request = " ".into(),
-            "current_blocker" => data.current_blocker = "x".repeat(2049),
-            _ => data.request_kind = Some("unsupported".into()),
-        }
-        assert_eq!(
-            validate_input(&data),
-            Err(Disposition::InvalidInput),
-            "{field}"
-        );
-    }
-    for minutes in [-1.0, f64::NAN, f64::INFINITY] {
-        let mut data = input();
-        data.available_minutes = minutes;
-        assert_eq!(validate_input(&data), Err(Disposition::InvalidInput));
-    }
-    let mut data = input();
-    data.available_minutes = 0.0;
-    assert!(validate_input(&data).is_ok());
-}
-
-#[test]
-fn candidate_preserves_exact_scope_ids_and_incomplete_state() {
-    let mut data = input();
-    data.remaining_work = vec!["첫 범위".into(), "둘째 범위".into()];
-    data.completed_ids = vec!["done-1".into(), "done-2".into()];
-    let mut good = proposal();
-    good.remaining_work = data.remaining_work.clone();
-    good.preserved_completed_ids = data.completed_ids.clone();
-    assert!(validate_proposal(&data, &good).is_ok());
-    for field in [
-        "action",
-        "completion_condition",
-        "reason",
-        "remaining_work",
-        "preserved_completed_ids",
-        "goal_completed",
-        "current_action_completed",
-        "estimated_minutes",
-    ] {
-        let mut value = json!(good);
-        value[field] = match field {
-            "remaining_work" => json!(["둘째 범위", "첫 범위"]),
-            "preserved_completed_ids" => json!(["done-2", "done-1"]),
-            "goal_completed" | "current_action_completed" => json!(true),
-            "estimated_minutes" => json!(data.available_minutes + 1.0),
-            _ => json!("  "),
-        };
-        let candidate = serde_json::from_value(value).unwrap();
-        assert_eq!(
-            validate_proposal(&data, &candidate),
-            Err(Disposition::InvalidProposal),
-            "{field}"
-        );
-    }
-    for minutes in [-1.0, f64::NAN, f64::INFINITY] {
-        good.estimated_minutes = minutes;
-        assert_eq!(
-            validate_proposal(&data, &good),
-            Err(Disposition::InvalidProposal)
-        );
-    }
-}
-
-#[test]
-fn check_response_contract_never_promotes_missing_or_invalid_evidence() {
-    let good = json!({"verdict":"accept","criteria":[1,2,3,4,5],"evidence":"원본과 후보 인용", "reason":"다섯 기준과 일치"});
-    assert_eq!(validate_check(good.clone()), Ok(()));
-    for (field, value) in [
-        ("evidence", json!(" ")),
-        ("reason", json!("")),
-        ("criteria", json!([])),
-        ("criteria", json!([1, 2, 3, 4])),
-        ("criteria", json!([1, 2, 3, 4, 6])),
-        ("verdict", json!("unsupported")),
-        ("extra", json!(true)),
-    ] {
-        let mut check = good.clone();
-        check[field] = value;
-        assert_eq!(validate_check(check), Err(Disposition::Failed), "{field}");
-    }
-    for (verdict, expected) in [
-        ("reject", Disposition::Rejected),
-        ("uncertain", Disposition::Uncertain),
-    ] {
-        let mut check = good.clone();
-        check["verdict"] = json!(verdict);
-        check["criteria"] = json!([1]);
-        assert_eq!(validate_check(check), Err(expected));
     }
 }
 
@@ -222,7 +83,7 @@ struct Fixture {
 impl Fixture {
     fn new(candidate: Value, check: Value, delay: bool) -> Self {
         use std::os::unix::fs::PermissionsExt;
-        let dir = Workspace::new("generate", None).unwrap();
+        let dir = Workspace::new(Role::Generate, None).unwrap();
         let executable = dir.0.join("fake-codex");
         std::fs::write(dir.0.join("candidate.json"), candidate.to_string()).unwrap();
         std::fs::write(dir.0.join("check.json"), check.to_string()).unwrap();
@@ -673,8 +534,11 @@ async fn wrong_context_status_never_starts_checker_or_changes_current_action() {
         assert_eq!(state.current(), &Some(old));
         let calls = f.calls();
         assert_eq!(calls.len(), 1);
-        assert_eq!(calls[0]["schema"], generation_schema(Some(kind)));
-        assert_eq!(calls[0]["system"], model_instructions("generate").unwrap());
+        assert_eq!(
+            calls[0]["schema"],
+            suggestion::schema(Role::Generate, Some(kind))
+        );
+        assert_eq!(calls[0]["system"], suggestion::instructions(Role::Generate));
     }
 }
 

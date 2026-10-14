@@ -11,9 +11,9 @@ import oauth_quality as qa
 
 class QuestionCheckTests(unittest.TestCase):
     def setUp(self):
-        self.schema = json.loads((qa.REPO / "services/api/src/development_ai/check.json").read_text())
-        self.contract = (qa.REPO / "services/api/src/development_ai/contract.md").read_text()
-        self.prompt = (qa.REPO / "services/api/src/development_ai/check.md").read_text()+"\n"+self.contract
+        self.schema = json.loads((qa.REPO / "services/api/src/suggestion/check.json").read_text())
+        self.contract = (qa.REPO / "services/api/src/suggestion/contract.md").read_text()
+        self.prompt = (qa.REPO / "services/api/src/suggestion/check.md").read_text()+"\n"+self.contract
         fixture = json.loads((qa.REPO / "docs/research/fixtures/checker-latency-checks.json").read_text())
         self.data = {"original_request":fixture["original_request"], "candidate":fixture["cases"][0]["candidate"]}
 
