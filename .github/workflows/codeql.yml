@@ -76,6 +76,7 @@ jobs:
       - name: Build and test iOS for extraction
         if: matrix.language == 'swift'
         env:
+          IOS_CODEQL_ANALYSIS: true
           IOS_PACKAGES_DIR: ${{ runner.temp }}/codeql-swift-packages
           IOS_DERIVED_DATA: ${{ runner.temp }}/codeql-ios-derived-data
           IOS_RESULTS: ${{ runner.temp }}/codeql-ios-results.xcresult

@@ -14,6 +14,9 @@ args=()
 if [ -n "${IOS_PACKAGES_DIR:-}" ]; then args+=(-clonedSourcePackagesDirPath "$IOS_PACKAGES_DIR"); fi
 if [ -n "${IOS_DERIVED_DATA:-}" ]; then args+=(-derivedDataPath "$IOS_DERIVED_DATA"); fi
 if [ -n "${IOS_RESULTS:-}" ]; then args+=(-resultBundlePath "$IOS_RESULTS"); fi
+if [ "${IOS_CODEQL_ANALYSIS:-false}" = "true" ]; then
+  args+=(SWIFT_USE_INTEGRATED_DRIVER=NO COMPILATION_CACHE_ENABLE_CACHING=NO SWIFT_ENABLE_COMPILE_CACHE=NO)
+fi
 xcodebuild -project apps/ios/Smallnext.xcodeproj -scheme Smallnext \
   -destination "platform=iOS Simulator,id=$simulator" ${args[@]+"${args[@]}"} \
   -onlyUsePackageVersionsFromResolvedFile CODE_SIGNING_ALLOWED=NO test

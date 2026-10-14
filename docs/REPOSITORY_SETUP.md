@@ -194,3 +194,5 @@ PR 생성·CI 통과는 Secret 등록, 계정 연결, AI 응답을 증명하지 
 Project checks는 iOS·Android·API와 컨테이너를 검사합니다.
 로컬 실행은 [개발 환경](DEVELOPMENT.md), 캐시와 병렬 실행은 [CI 구성](CI.md)을 따릅니다.
 실제 AI 품질과 운영 배포는 초기 셋업의 검증 범위에 포함하지 않습니다.
+
+CodeQL 전용 Swift 빌드는 integrated driver와 compilation cache를 끕니다. 일반 iOS CI는 기존 빌드 설정을 유지합니다. CodeQL workflow를 바꾸면 기준선의 `codeql_main_source.sha`도 새 Git blob SHA로 갱신합니다. 감사 도구는 필수 제어 항목이나 보호 필드가 빠진 기준선을 `UNVERIFIED`로 거부합니다.

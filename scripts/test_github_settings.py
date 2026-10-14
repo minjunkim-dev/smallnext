@@ -1,9 +1,18 @@
 #!/usr/bin/env python3
 
 import copy
+from contextlib import redirect_stderr, redirect_stdout
+import io
+import json
+from pathlib import Path
+import tempfile
+from unittest.mock import patch
+import check_github_settings as settings
 import unittest
 
 from check_github_settings import audit, differences
+
+BASELINE = json.loads((settings.ROOT / ".github/repository-settings.json").read_text())
 
 
 class GitHubSettingsTests(unittest.TestCase):
@@ -24,20 +33,38 @@ class GitHubSettingsTests(unittest.TestCase):
         self.assertEqual(differences(True, 1, "enabled"), ["enabled"])
 
     def profile(self):
-        return {
-            "schema_version": 1, "repository": "owner/repo", "repository_id": 12,
-            "default_branch": "main",
-            "expected": {"repository": {"allow_merge_commit": False},
-                         "dependabot_alerts": {"enabled": True}},
+        profile = copy.deepcopy(BASELINE)
+        profile.update(repository="owner/repo", repository_id=12)
+        return profile
+
+    def reader(self, path):
+        profile = self.profile()
+        if path == "repos/owner/repo":
+            return {"id": 12, "full_name": "owner/repo", **profile["expected"]["repository"]}
+        if path.endswith("vulnerability-alerts"):
+            return None
+        endpoints = {
+            "branches/main/protection": "protection", "rulesets": "rulesets",
+            "actions/permissions": "actions", "actions/permissions/selected-actions": "allowed_actions",
+            "actions/permissions/workflow": "workflow_token",
+            "actions/permissions/fork-pr-contributor-approval": "fork_policy",
+            "immutable-releases": "immutable_releases", "code-scanning/default-setup": "codeql",
+            "actions/workflows/codeql.yml": "codeql_workflow",
+            "contents/.github/workflows/codeql.yml?ref=main": "codeql_main_source",
         }
+        return copy.deepcopy(profile["expected"][endpoints[path.removeprefix("repos/owner/repo/")]])
 
     def test_live_reader_receives_only_get_paths_and_detects_drift(self):
         calls = []
         def read(path):
             calls.append(path)
-            return {"id": 12, "full_name": "owner/repo", "allow_merge_commit": True} if len(calls) == 1 else None
+            value = self.reader(path)
+            if len(calls) == 1:
+                value["allow_merge_commit"] = True
+            return value
         self.assertEqual(audit(self.profile(), read), ["repository.allow_merge_commit"])
-        self.assertEqual(calls, ["repos/owner/repo", "repos/owner/repo/vulnerability-alerts"])
+        self.assertEqual(len(calls), 12)
+        self.assertTrue(all(path.startswith("repos/owner/repo") for path in calls))
 
     def test_wrong_repository_and_request_paths_stop_before_extra_reads(self):
         for value in ["owner/repo?bad", "../repo", "https://github.com/owner/repo"]:
@@ -52,7 +79,7 @@ class GitHubSettingsTests(unittest.TestCase):
         def read(path):
             if path.endswith("vulnerability-alerts"):
                 raise PermissionError("no access")
-            return {"id": 12, "full_name": "owner/repo", "allow_merge_commit": False}
+            return self.reader(path)
         with self.assertRaises(PermissionError):
             audit(self.profile(), read)
 
@@ -60,9 +87,59 @@ class GitHubSettingsTests(unittest.TestCase):
         profile = copy.deepcopy(self.profile())
         profile["expected"]["secrets"] = {}
         def read(path):
-            return {"id": 12, "full_name": "owner/repo", "allow_merge_commit": False}
+            return self.reader(path)
         with self.assertRaises(ValueError):
             audit(profile, read)
+
+    def run_main(self, profile, read):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / ".github").mkdir()
+            (root / ".github/repository-settings.json").write_text(json.dumps(profile))
+            stdout, stderr = io.StringIO(), io.StringIO()
+            with patch.object(settings, "ROOT", root), patch.object(settings, "read_api", read), redirect_stdout(stdout), redirect_stderr(stderr):
+                status = settings.main()
+            return status, stdout.getvalue(), stderr.getvalue()
+
+    def test_incomplete_baselines_are_unverified_before_network_access(self):
+        for expected in [{}, [], None]:
+            profile = self.profile()
+            profile["expected"] = expected
+            status, out, err = self.run_main(profile, lambda _: self.fail("Incomplete baseline reached network"))
+            self.assertEqual(status, 2)
+            self.assertEqual(out, "")
+            self.assertIn("UNVERIFIED", err)
+        for control in self.profile()["expected"]:
+            profile = self.profile()
+            del profile["expected"][control]
+            self.assertEqual(self.run_main(profile, lambda _: self.fail("Missing control reached network"))[0], 2)
+        profile = self.profile()
+        del profile["expected"]["protection"]["enforce_admins"]["enabled"]
+        self.assertEqual(self.run_main(profile, lambda _: self.fail("Missing protection reached network"))[0], 2)
+
+    def test_invalid_data_and_lookup_errors_are_unverified(self):
+        profile = self.profile()
+        profile["default_branch"] = None
+        self.assertEqual(self.run_main(profile, self.reader)[0], 2)
+        self.assertEqual(self.run_main(self.profile(), lambda _: None)[0], 2)
+        def read(path):
+            raise PermissionError("no access")
+        status, out, err = self.run_main(self.profile(), read)
+        self.assertEqual(status, 2)
+        self.assertEqual(out, "")
+        self.assertIn("UNVERIFIED", err)
+
+    def test_main_pass_and_drift_have_distinct_exit_codes(self):
+        status, out, err = self.run_main(self.profile(), self.reader)
+        self.assertEqual(status, 0)
+        self.assertIn("PASS", out)
+        self.assertEqual(err, "")
+        profile = self.profile()
+        profile["expected"]["protection"]["enforce_admins"]["enabled"] = False
+        status, out, err = self.run_main(profile, self.reader)
+        self.assertEqual(status, 1)
+        self.assertIn("protection.enforce_admins.enabled", out)
+        self.assertEqual(err, "")
 
 
 if __name__ == "__main__":
