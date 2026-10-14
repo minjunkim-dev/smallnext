@@ -1,0 +1,10 @@
+version: 1
+triggers:
+  drafts: false
+review:
+  effort: default
+prSummary:
+  mode: comment
+  riskScore: true
+autofix:
+  mode: disabled

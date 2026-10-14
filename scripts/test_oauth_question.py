@@ -59,7 +59,7 @@ class QuestionCheckTests(unittest.TestCase):
                     ("uncertain",[4],"source quote",None)):
                 with self.subTest(verdict=verdict, criteria=criteria, fields=fields):
                     out = {"verdict":verdict,"criteria":criteria,"evidence":evidence}
-                    fake.write_text("#!/usr/bin/env python3\nimport json\n"
+                    fake.write_text("#!/usr/bin/env python3\nimport json,sys\nsys.stdin.buffer.read()\n"
                         "print(json.dumps({'type':'stream_event','event':{'type':'message_start'}}))\n"
                         "print(json.dumps({'type':'result','subtype':'success','is_error':False,"
                         "'modelUsage':{'claude-haiku-5-5':{}},'structured_output':"+repr(out)+"}))\n")
