@@ -15,5 +15,5 @@ if [ -n "${IOS_PACKAGES_DIR:-}" ]; then args+=(-clonedSourcePackagesDirPath "$IO
 if [ -n "${IOS_DERIVED_DATA:-}" ]; then args+=(-derivedDataPath "$IOS_DERIVED_DATA"); fi
 if [ -n "${IOS_RESULTS:-}" ]; then args+=(-resultBundlePath "$IOS_RESULTS"); fi
 xcodebuild -project apps/ios/Smallnext.xcodeproj -scheme Smallnext \
-  -destination "platform=iOS Simulator,id=$simulator" "${args[@]}" \
+  -destination "platform=iOS Simulator,id=$simulator" ${args[@]+"${args[@]}"} \
   -onlyUsePackageVersionsFromResolvedFile CODE_SIGNING_ALLOWED=NO test
