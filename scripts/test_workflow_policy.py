@@ -1,9 +1,52 @@
 from copy import deepcopy
 from datetime import date
+from io import StringIO
+from pathlib import Path
+from tempfile import TemporaryDirectory
 import unittest
+from unittest.mock import patch
 
+import workflow_policy
 from workflow_policy import validate_flags, validate_pr
 from review_context import review_request
+
+
+class SharedInstructionsTest(unittest.TestCase):
+    def setUp(self):
+        temporary = TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.root = Path(temporary.name)
+        (self.root / "AGENTS.md").write_text("Shared project instructions\n")
+        (self.root / "config").mkdir()
+        (self.root / "config/feature-flags.json").write_text('{"version": 1, "flags": []}\n')
+
+    def run_policy(self):
+        output = StringIO()
+        with patch.object(workflow_policy, "ROOT", self.root), patch("sys.argv", ["workflow_policy.py"]), patch("sys.stdout", output):
+            result = workflow_policy.main()
+        return result, output.getvalue()
+
+    def test_agents_only_passes(self):
+        self.assertEqual(0, self.run_policy()[0])
+
+    def test_claude_file_or_symlink_is_rejected(self):
+        claude = self.root / "CLAUDE.md"
+        for kind in ("file", "symlink", "dangling symlink"):
+            with self.subTest(kind=kind):
+                if kind == "file":
+                    claude.write_text("@AGENTS.md\n")
+                else:
+                    claude.symlink_to("AGENTS.md" if kind == "symlink" else "missing.md")
+                result, output = self.run_policy()
+                self.assertEqual(1, result)
+                self.assertIn("Use AGENTS.md only", output)
+                claude.unlink()
+
+    def test_missing_agents_is_rejected(self):
+        (self.root / "AGENTS.md").unlink()
+        result, output = self.run_policy()
+        self.assertEqual(1, result)
+        self.assertIn("AGENTS.md is required", output)
 
 
 class ConventionsTest(unittest.TestCase):
