@@ -111,7 +111,7 @@ GitHub runner의 미리 설치한 SDK, OS 업데이트와 외부 패키지 저�
 | Rust | Cargo 레지스트리·Git 의존성·Debug 컴파일 출력 | OS·CPU·Rust 도구 버전·Cargo 설정·잠금 파일 |
 | Docker | BuildKit 레이어(의존성 빌드 레이어 중심) | OS·CPU·Dockerfile·Cargo.toml·잠금 파일·베이스 이미지 digest |
 | iOS 패키지 | SwiftPM 소스 | OS·CPU·Xcode·SDK·Package.resolved |
-| iOS 컴파일 | DerivedData의 Build 폴더 | 위 도구 조건과 iOS 소스·프로젝트·워크플로의 정확한 일치 |
+| iOS 컴파일 | DerivedData의 Build·ModuleCache.noindex·SDKStatCaches.noindex | OS·CPU·Xcode·SDK·잠금 파일·프로젝트·빌드 스크립트·워크플로가 같으면 소스 변경 전 출력도 복원. Xcode가 변경 입력을 다시 빌드 |
 | Android | Gradle 의존성·작업 출력 | OS·CPU·Gradle Wrapper·빌드 설정·버전 목록; 작업 입력은 Gradle이 확인 |
 
 캐시 명중 여부로 빌드나 테스트를 생략하지 않습니다.
@@ -128,6 +128,21 @@ main과 PR의 캐시 접근 범위는 GitHub 규칙을 따릅니다.
 PR에서 만든 캐시는 main에서 바로 사용할 수 없으므로 main의 첫 실행도 준비 시간이 필요할 수 있습니다.
 
 ## 진단과 비교
+
+iOS는 시뮬레이터 부팅과 `build-for-testing`을 동시에 시작합니다.
+빌드는 실행기 CPU의 generic simulator 대상으로 수행합니다.
+빌드와 부팅이 모두 성공한 뒤 같은 출력으로 `test-without-building`을 수행합니다.
+빌드 실패와 부팅 실패는 모두 검사를 실패 처리합니다.
+잠금 파일 검증을 유지하고 `-skipPackageUpdates`로 원격 패키지 갱신 조회를 생략합니다.
+`-showBuildTimingSummary`와 각 단계의 초 단위 시간을 로그에 기록합니다.
+테스트 결과와 시뮬레이터 사용자 데이터는 컴파일 캐시에 넣지 않습니다.
+
+2026-10-15 조사에서 실행 `38565558831`의 iOS 단계는 418초였습니다.
+테스트 99개의 실행은 약 3초였습니다. 컴파일 캐시 exact hit에도 빌드 준비와 시뮬레이터 대기가 남았습니다.
+이 사례에서는 테스트 shard보다 부팅·빌드 중첩과 모듈 캐시 재사용을 먼저 적용합니다.
+긴 UI 테스트가 추가되면 Apple의 `build-for-testing`·`test-without-building` 방식으로 빌드 출력 하나를 여러 테스트 실행기에 전달합니다.
+shard를 추가하기 전에 artifact 전달 시간과 실행기 비용을 비교합니다.
+참고: [Apple 명령행 테스트](https://developer.apple.com/library/archive/technotes/tn2339/_index.html), [빌드 시간 진단](https://developer.apple.com/documentation/xcode/improving-the-speed-of-incremental-builds).
 
 각 실행의 Job summary에서 캐시 명중 여부를 확인합니다.
 동일 커밋을 다시 실행해 캐시가 비어 있는 실행과 복원한 실행을 비교합니다.
