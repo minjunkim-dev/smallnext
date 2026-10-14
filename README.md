@@ -30,7 +30,7 @@ Smallnext는 '작은 다음 행동'을 나타내는 작업 이름입니다.
 
 ## 시작하기
 
-1. [공통 작업 지침](AGENTS.md)을 읽습니다. Claude Code는 `CLAUDE.md`에서 같은 지침을 가져옵니다.
+1. [공통 작업 지침](AGENTS.md)을 읽습니다. Claude Code와 Codex는 `AGENTS.md`의 공통 지침을 사용합니다.
 2. [개발 환경과 실행](docs/DEVELOPMENT.md)에 따라 필요한 프로젝트를 실행합니다.
 3. [결정 지도 #2](https://github.com/minjunkim-dev/smallnext/issues/2)에서 확정 답과 다음 질문을 확인합니다.
 4. [협업 규칙](docs/WORKFLOW.md)에 따라 짧은 브랜치와 작은 PR을 사용합니다.
