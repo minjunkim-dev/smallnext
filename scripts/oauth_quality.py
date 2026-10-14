@@ -341,28 +341,33 @@ def environment():
     return env
 
 
-def _call(claude, prompt, schema, data, deadline, cancelled, output_mode="structured"):
-    proposal_schema = schema
-    check_schema = schema
-    single_explanation = {"verdict", "criteria", "evidence", "reason"}.issubset(schema.get("properties", {}))
-    if single_explanation:
+CHECK_FIELDS = {"verdict", "criteria", "evidence", "reason"}
+OWNED = ("remaining_work", "preserved_completed_ids", "goal_completed", "current_action_completed")
+
+
+def request(prompt, schema, data):
+    """Compact system prompt and output schema; contracts/fixtures/suggestion-compact.json pins
+    this to services/api/src/suggestion/compact.rs."""
+    original, candidate = data.get("original_request"), data.get("candidate")
+    if CHECK_FIELDS.issubset(schema.get("properties", {})):
+        if (isinstance(candidate, dict) and candidate.get("status") == "need_info"
+                and isinstance(original, dict) and original.get("request_kind") == "smaller"):
+            prompt = question_prompt(prompt)
         schema = deepcopy(schema)
         del schema["properties"]["reason"]
         schema["required"].remove("reason")
+        schema["properties"]["criteria"]["items"] = {"type": "integer", "enum": [1, 2, 3, 4, 5]}
         prompt += ("\nEmit only verdict, criteria and evidence. In evidence, combine short exact quotes with one concise "
                    "justification of the verdict. The runtime copies this explanation into reason. Do not emit reason.")
-    owned = ("remaining_work", "preserved_completed_ids", "goal_completed", "current_action_completed")
-    decision_only = set(owned).issubset(schema.get("properties", {})) and "candidate" not in data
-    if decision_only:
+    if set(OWNED).issubset(schema.get("properties", {})) and "candidate" not in data:
         schema = deepcopy(schema)
-        for key in owned:
+        for key in OWNED:
             del schema["properties"][key]
             schema["required"].remove(key)
         prompt += ("\nFor generation, emit only the decision fields in the output schema. "
                    "The runtime copies remaining_work and completed_ids from the input and sets both incomplete flags to false. "
                    "Do not emit those preservation fields. Excluding a completed or deferred task means excluding it from "
                    "selection, never editing the stored remaining work. Give one concise reason for this decision.")
-    original, candidate = data.get("original_request"), data.get("candidate")
     if isinstance(original, dict) and isinstance(candidate, dict):
         proof = {"remaining_work_exact": type(candidate.get("remaining_work")) is list
                  and candidate["remaining_work"] == original.get("remaining_work"),
@@ -370,9 +375,17 @@ def _call(claude, prompt, schema, data, deadline, cancelled, output_mode="struct
                  and candidate["preserved_completed_ids"] == original.get("completed_ids"),
                  "goal_incomplete": candidate.get("goal_completed") is False,
                  "current_action_incomplete": candidate.get("current_action_completed") is False}
-        prompt += ("\nHost-verified literal preservation: " + json.dumps(proof) + "\n"
+        prompt += ("\nHost-verified literal preservation: " + json.dumps(proof, sort_keys=True, separators=(",", ":")) + "\n"
                    "These checks establish only exact values, not semantic correctness. Do not repeat literal list comparison. "
                    "Independently check the criteria assigned by the output schema; preserve original facts, unfinished parent scope and task eligibility.")
+    return prompt, schema
+
+
+def _call(claude, prompt, schema, data, deadline, cancelled, output_mode="structured"):
+    proposal_schema = check_schema = schema
+    single_explanation = CHECK_FIELDS.issubset(schema.get("properties", {}))
+    decision_only = set(OWNED).issubset(schema.get("properties", {})) and "candidate" not in data
+    prompt, schema = request(prompt, schema, data)
     tracker = Tracker(schema)
     started = monotonic()
     child = None
@@ -527,11 +540,7 @@ def question_prompt(prompt):
             'For accept, return exactly criteria [1,2,3,4,5]; for reject or uncertain, return at least one relevant failing or unsupported criterion. Use nonblank exact quotes and a concise Korean justification.\n\n'+'\n\n'.join(paragraphs))
 
 def call(claude,prompt,schema,data,deadline,cancelled,output_mode='structured'):
-    is_check={'verdict','criteria','evidence','reason'}.issubset(schema.get('properties',{}))
-    if (is_check and isinstance(data.get('candidate'),dict) and data['candidate'].get('status')=='need_info'
-            and isinstance(data.get('original_request'),dict)
-            and data['original_request'].get('request_kind')=='smaller'):
-        prompt=question_prompt(prompt)
+    is_check=CHECK_FIELDS.issubset(schema.get('properties',{}))
     record=_call(claude,prompt,schema,data,deadline,cancelled,output_mode)
     if record.get('process_group_alive') or (record.get('cli_pid') and not record.get('process_reaped')):
         record['error']='process_cleanup'
