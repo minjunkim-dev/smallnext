@@ -36,8 +36,9 @@ python3 scripts/check_github_settings.py
 공개 배포·production workflow는 현재 없다. [Draft CD](DRAFT_RELEASE.md)는 미공개 Release만 생성한다. 사용하지 않는 `release` Environment를 만들지 않는다. 공개 배포를 추가할 때 실제 쓰기 job과 사람 승인 보호를 함께 연결한다.
 Release immutability는 앞으로 공개할 Release에 적용한다. Draft에서 파일·source SHA·checksum·다운로드 검증을 완료한 뒤 공개한다. 이 설정 적용으로 기존 Draft를 공개하거나 기존 Release를 소급 잠그지 않는다.
 
-CodeQL은 [명시적인 workflow](../.github/workflows/codeql.yml)에서 Actions·Python·Rust·Kotlin·Swift를 분석한다. 기본 설정의 Android autobuild는 하위 프로젝트를 찾지 못했고 REST 언어 선택은 Rust를 거부했으므로 기본 설정을 끈다. 두 설정을 중복 실행하지 않는다.
-모바일은 기존 고정 Java·Android SDK·Xcode와 `make android-check`, `make ios-check`를 사용한다. 분석은 배포하지 않으며 production Secret을 받지 않는다. 결과 게시에 필요한 `security-events: write`는 분석 job에만 둔다. 새 쓰기 권한은 사람이 최종 head를 승인한 뒤 main에 반영한다.
+CodeQL은 [명시적인 workflow](../.github/workflows/codeql.yml)에서 Actions·Python·Rust·Kotlin을 분석한다. 기본 설정의 Android autobuild는 하위 프로젝트를 찾지 못했고 REST 언어 선택은 Rust를 거부했으므로 기본 설정을 끈다. 두 설정을 중복 실행하지 않는다.
+Kotlin은 기존 고정 Java·Android SDK와 `make android-check`를 사용한다. 분석은 배포하지 않으며 production Secret을 받지 않는다. 결과 게시에 필요한 `security-events: write`는 분석 job에만 둔다. 새 쓰기 권한은 사람이 최종 head를 승인한 뒤 main에 반영한다.
+Swift CodeQL은 현재 구성의 지원 대상이 아니다. GitHub는 [CodeQL 2.27.2 호환성 공지](https://github.blog/changelog/2026-10-09-codeql-2-27-2-improves-c-go-rust-and-javascript-analysis/#macos-27-compatibility)에서 macOS 27 또는 Xcode 27의 컴파일 추적 미지원을 명시한다. 실제 시험도 package manifest 실행에서 `Bad CPU type`으로 실패했다. Swift를 분석 완료로 표시하거나 CI 도구 버전을 낮추지 않는다. 기존 Xcode 27 iOS CI·독립 리뷰·보안 변경의 별도 리뷰를 유지한다. 이 분석 공백은 후속 Issue로 추적한다.
 초기 범위는 같은 저장소의 PR·main push·수동 실행·주간 검사다. 외부 fork는 이 CodeQL job에서 제외하고 기존 승인·CI 경로를 유지한다. 분석 성공·결과 게시·최종 SHA는 실제 run으로 확인한다. 설정 파일이나 workflow 등록만으로 main에서 분석이 검증됐다고 보고하지 않는다.
 기존 모바일 CI·동작 검사는 유지한다. CodeQL이 코드 전체의 안전이나 실제 기기 동작을 보증하지 않는다.
 
@@ -195,6 +196,4 @@ Project checks는 iOS·Android·API와 컨테이너를 검사합니다.
 로컬 실행은 [개발 환경](DEVELOPMENT.md), 캐시와 병렬 실행은 [CI 구성](CI.md)을 따릅니다.
 실제 AI 품질과 운영 배포는 초기 셋업의 검증 범위에 포함하지 않습니다.
 
-CodeQL 전용 Swift 빌드는 integrated driver와 compilation cache를 끕니다. 일반 iOS CI는 기존 빌드 설정을 유지합니다. CodeQL workflow를 바꾸면 기준선의 `codeql_main_source.sha`도 새 Git blob SHA로 갱신합니다. 감사 도구는 필수 제어 항목이나 보호 필드가 빠진 기준선을 `UNVERIFIED`로 거부합니다.
-
-Swift 패키지는 CodeQL 초기화 전에 고정된 `Package.resolved`로 준비합니다. 같은 runner의 x86_64 실행 probe와 host 정보를 기록합니다. Rosetta 설치나 라이선스 자동 수락, sandbox 해제는 수행하지 않습니다. 현재 CodeQL 공식 지원 목록은 macOS 14·15·26입니다. `xcode-27`의 분석 호환성은 실제 추출·분석·결과 게시로 확인해야 합니다. 일반 iOS CI 성공만으로 Swift CodeQL 성공을 판단하지 않습니다.
+CodeQL workflow를 바꾸면 기준선의 `codeql_main_source.sha`도 새 Git blob SHA로 갱신합니다. 감사 도구는 필수 제어 항목이나 보호 필드가 빠진 기준선을 `UNVERIFIED`로 거부합니다.

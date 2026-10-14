@@ -104,7 +104,7 @@
     "codeql_main_source": {
       "path": ".github/workflows/codeql.yml",
       "type": "file",
-      "sha": "434f21e8963fc3811285bf014abf48edccc93aee"
+      "sha": "303fcefe3f26989fac8685a4178f89c40c0c0251"
     }
   },
   "exceptions": [
@@ -112,6 +112,13 @@
       "control": "release Environment",
       "status": "not_applicable",
       "reason": "No public/production deployment workflow exists; the existing Draft-only workflow is unchanged."
+    },
+    {
+      "control": "Swift CodeQL",
+      "status": "not_supported",
+      "reason": "CodeQL 2.27.2 does not support compiled-language tracing on macOS 27 or Xcode 27. Keep the existing Xcode 27 iOS CI and independent review. Swift is not in the analysis matrix.",
+      "source": "https://github.blog/changelog/2026-10-09-codeql-2-27-2-improves-c-go-rust-and-javascript-analysis/#macos-27-compatibility",
+      "tracking_issue": "https://github.com/minjunkim-dev/smallnext/issues/142"
     }
   ]
 }

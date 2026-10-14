@@ -35,9 +35,6 @@ jobs:
           - language: java-kotlin
             runner: ubuntu-24.04
             build-mode: manual
-          - language: swift
-            runner: xcode-27
-            build-mode: manual
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
     permissions:
@@ -60,26 +57,6 @@ jobs:
       - name: Install pinned Android SDK packages
         if: matrix.language == 'java-kotlin'
         run: make android-sdk
-      - name: Select pinned Xcode
-        if: matrix.language == 'swift'
-        run: |
-          developer_dir=$(python3 -c 'import json; print("/Applications/Xcode_" + json.load(open(".ci/toolchains.json"))["xcode"] + ".app/Contents/Developer")')
-          echo "DEVELOPER_DIR=$developer_dir" >> "$GITHUB_ENV"
-      - name: Check Swift host and resolve pinned packages before tracing
-        if: matrix.language == 'swift'
-        env:
-          IOS_PACKAGES_DIR: ${{ runner.temp }}/codeql-swift-packages
-          IOS_DERIVED_DATA: ${{ runner.temp }}/codeql-ios-derived-data
-        run: |
-          sw_vers
-          uname -m
-          file /usr/bin/sandbox-exec
-          arch -x86_64 /usr/bin/true
-          xcodebuild -resolvePackageDependencies \
-            -project apps/ios/Smallnext.xcodeproj -scheme Smallnext \
-            -clonedSourcePackagesDirPath "$IOS_PACKAGES_DIR" \
-            -derivedDataPath "$IOS_DERIVED_DATA" \
-            -onlyUsePackageVersionsFromResolvedFile
       - name: Initialize CodeQL
         uses: github/codeql-action/init@24c54180a607b1449ed407dd24f251e4e9147c8d # v4
         with:
@@ -88,14 +65,6 @@ jobs:
       - name: Build and test Android for extraction
         if: matrix.language == 'java-kotlin'
         run: make android-check
-      - name: Build and test iOS for extraction
-        if: matrix.language == 'swift'
-        env:
-          IOS_CODEQL_ANALYSIS: true
-          IOS_PACKAGES_DIR: ${{ runner.temp }}/codeql-swift-packages
-          IOS_DERIVED_DATA: ${{ runner.temp }}/codeql-ios-derived-data
-          IOS_RESULTS: ${{ runner.temp }}/codeql-ios-results.xcresult
-        run: make ios-check
       - name: Analyze and upload results
         uses: github/codeql-action/analyze@24c54180a607b1449ed407dd24f251e4e9147c8d # v4
         with:
