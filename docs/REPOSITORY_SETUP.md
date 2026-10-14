@@ -196,3 +196,5 @@ Project checks는 iOS·Android·API와 컨테이너를 검사합니다.
 실제 AI 품질과 운영 배포는 초기 셋업의 검증 범위에 포함하지 않습니다.
 
 CodeQL 전용 Swift 빌드는 integrated driver와 compilation cache를 끕니다. 일반 iOS CI는 기존 빌드 설정을 유지합니다. CodeQL workflow를 바꾸면 기준선의 `codeql_main_source.sha`도 새 Git blob SHA로 갱신합니다. 감사 도구는 필수 제어 항목이나 보호 필드가 빠진 기준선을 `UNVERIFIED`로 거부합니다.
+
+Swift 패키지는 CodeQL 초기화 전에 고정된 `Package.resolved`로 준비합니다. 같은 runner의 x86_64 실행 probe와 host 정보를 기록합니다. Rosetta 설치나 라이선스 자동 수락, sandbox 해제는 수행하지 않습니다. 현재 CodeQL 공식 지원 목록은 macOS 14·15·26입니다. `xcode-27`의 분석 호환성은 실제 추출·분석·결과 게시로 확인해야 합니다. 일반 iOS CI 성공만으로 Swift CodeQL 성공을 판단하지 않습니다.
