@@ -1,0 +1,160 @@
+#!/usr/bin/env python3
+"""Read GitHub settings and report drift; never change repository settings."""
+
+import json
+from pathlib import Path
+import re
+import subprocess
+import sys
+
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def differences(expected, actual, path=""):
+    """Compare required fields; omitted required fields are drift, not false."""
+    if isinstance(expected, dict):
+        if not isinstance(actual, dict):
+            return [path or "<root>"]
+        result = []
+        for key, value in expected.items():
+            name = f"{path}.{key}" if path else key
+            if key not in actual:
+                result.append(name)
+            else:
+                result.extend(differences(value, actual[key], name))
+        return result
+    if type(expected) is not type(actual):
+        return [path]
+    if isinstance(expected, list):
+        # API ordering is irrelevant; duplicates and extra entries still differ.
+        expected = sorted(json.dumps(item, sort_keys=True) for item in expected)
+        actual = sorted(json.dumps(item, sort_keys=True) for item in actual)
+    return [] if expected == actual else [path]
+
+
+def read_api(endpoint):
+    result = subprocess.run(
+        ["gh", "api", "--method", "GET", endpoint],
+        capture_output=True, text=True, check=True, timeout=60,
+    )
+    return json.loads(result.stdout) if result.stdout.strip() else None
+
+
+# Required controls cannot disappear when someone edits the baseline.
+REQUIRED_FIELDS = {
+    "repository": "default_branch visibility allow_merge_commit allow_rebase_merge allow_squash_merge allow_auto_merge delete_branch_on_merge allow_update_branch squash_merge_commit_title squash_merge_commit_message security_and_analysis.dependabot_security_updates.status security_and_analysis.secret_scanning.status security_and_analysis.secret_scanning_push_protection.status",
+    "protection": "required_status_checks.strict required_status_checks.checks required_pull_request_reviews.required_approving_review_count required_pull_request_reviews.dismiss_stale_reviews required_pull_request_reviews.require_code_owner_reviews required_pull_request_reviews.require_last_push_approval enforce_admins.enabled required_linear_history.enabled required_conversation_resolution.enabled allow_force_pushes.enabled allow_deletions.enabled lock_branch.enabled",
+    "rulesets": "",
+    "actions": "enabled allowed_actions sha_pinning_required",
+    "allowed_actions": "github_owned_allowed verified_allowed patterns_allowed",
+    "workflow_token": "default_workflow_permissions can_approve_pull_request_reviews",
+    "fork_policy": "approval_policy",
+    "immutable_releases": "enabled",
+    "dependabot_alerts": "enabled",
+    "codeql": "state",
+    "codeql_workflow": "path state",
+    "codeql_main_source": "path type sha",
+}
+STRING_FIELDS = {
+    "default_branch", "visibility", "squash_merge_commit_title", "squash_merge_commit_message",
+    "status", "allowed_actions", "default_workflow_permissions", "approval_policy", "state", "path", "type", "sha",
+}
+
+
+def validate_profile(profile):
+    if not isinstance(profile, dict):
+        raise ValueError("Baseline must be an object")
+    expected = profile.get("expected")
+    if not isinstance(expected, dict) or set(expected) != set(REQUIRED_FIELDS):
+        raise ValueError("Baseline must include every required control")
+    for control, fields in REQUIRED_FIELDS.items():
+        value = expected[control]
+        if control == "rulesets":
+            if not isinstance(value, list):
+                raise ValueError("Rulesets must be a list")
+            continue
+        if not isinstance(value, dict):
+            raise ValueError(f"Invalid control: {control}")
+        for field in fields.split():
+            current = value
+            for part in field.split("."):
+                if not isinstance(current, dict) or part not in current:
+                    raise ValueError(f"Missing required setting: {control}.{field}")
+                current = current[part]
+            leaf = field.split(".")[-1]
+            kind = str if leaf in STRING_FIELDS else int if leaf == "required_approving_review_count" else list if leaf in {"checks", "patterns_allowed"} else bool
+            if type(current) is not kind:
+                raise ValueError(f"Invalid setting type: {control}.{field}")
+            if kind is str and not current:
+                raise ValueError(f"Empty setting: {control}.{field}")
+        checks = value["required_status_checks"]["checks"] if control == "protection" else None
+        if checks is not None and (not checks or any(
+            not isinstance(check, dict) or not isinstance(check.get("context"), str)
+            or not check["context"] or type(check.get("app_id")) is not int
+            for check in checks
+        )):
+            raise ValueError("Required checks must include names and App IDs")
+    if type(profile.get("repository_id")) is not int or profile["repository_id"] <= 0:
+        raise ValueError("Invalid repository ID")
+
+
+def audit(profile, read=None):
+    validate_profile(profile)
+    read = read_api if read is None else read
+    if type(profile["schema_version"]) is not int or profile["schema_version"] != 1:
+        raise ValueError("Unsupported settings baseline version")
+    repo = profile["repository"]
+    branch = profile["default_branch"]
+    if not isinstance(repo, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9-]{0,38}/[A-Za-z0-9_.-]+", repo) or repo.split("/")[-1] in {".", ".."}:
+        raise ValueError("Invalid repository identity")
+    if not isinstance(branch, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]*", branch) or ".." in branch or branch.endswith("."):
+        raise ValueError("Invalid baseline branch")
+    prefix = f"repos/{repo}"
+    metadata = read(prefix)
+    if not isinstance(metadata, dict) or metadata["id"] != profile["repository_id"] or metadata["full_name"] != repo:
+        raise ValueError("Repository identity mismatch")
+    paths = {
+        "protection": f"branches/{branch}/protection",
+        "rulesets": "rulesets",
+        "actions": "actions/permissions",
+        "allowed_actions": "actions/permissions/selected-actions",
+        "workflow_token": "actions/permissions/workflow",
+        "fork_policy": "actions/permissions/fork-pr-contributor-approval",
+        "immutable_releases": "immutable-releases",
+        "codeql": "code-scanning/default-setup",
+        "codeql_workflow": "actions/workflows/codeql.yml",
+        "codeql_main_source": f"contents/.github/workflows/codeql.yml?ref={branch}",
+    }
+    result = []
+    for name, expected in profile["expected"].items():
+        if name == "repository":
+            actual = metadata
+        elif name == "dependabot_alerts":
+            # A successful GET returns 204. Permission or API errors must fail.
+            read(f"{prefix}/vulnerability-alerts")
+            actual = {"enabled": True}
+        else:
+            if name not in paths:
+                raise ValueError(f"Unsupported settings endpoint: {name}")
+            actual = read(f"{prefix}/{paths[name]}")
+        result.extend(differences(expected, actual, name))
+    return result
+
+
+def main():
+    try:
+        profile = json.loads((ROOT / ".github/repository-settings.json").read_text())
+        drift = audit(profile)
+    except (ValueError, KeyError, TypeError, OSError, subprocess.SubprocessError) as error:
+        print(f"UNVERIFIED: GitHub settings lookup failed ({type(error).__name__})", file=sys.stderr)
+        return 2
+    if drift:
+        print("DRIFT: " + ", ".join(drift))
+        return 1
+    print(f"PASS: {profile['repository']} settings match baseline; no writes performed")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

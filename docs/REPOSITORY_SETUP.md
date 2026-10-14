@@ -19,6 +19,29 @@ YAML은 base branch에서 읽는다. 개인 override가 YAML보다 우선한다.
 아래 자동 리뷰 설명과 연결 절차는 이전 운영 방식의 근거다. 다시 활성화하는 지시가 아니다.
 현재는 Claude workflow를 제거한다. 남은 helper와 보안 검사는 과거 계약의 회귀 근거로 보존한다.
 
+## GitHub 서버 기준선
+
+[repository-settings.json](../.github/repository-settings.json)은 이 저장소의 서버 설정 기준선이다. GitHub가 자동으로 적용하는 네이티브 설정 파일이 아니다.
+공통 보호 정책과 저장소 ID·필수 체크·App ID를 함께 기록한다. 값의 기준은 이 JSON이다. 다른 저장소에 적용할 때 프로젝트별 값을 그대로 복사하지 않는다.
+
+로컬에서 저장소 관리자 읽기 권한이 있는 `gh` 인증으로 확인한다.
+
+```sh
+python3 scripts/check_github_settings.py
+```
+
+이 명령은 GET 요청만 수행한다. 설정을 변경하지 않는다. 차이가 없으면 0, 차이가 있으면 1, 조회·권한·자료 오류면 2로 종료한다. 조회 실패를 Off나 성공으로 처리하지 않는다.
+같은 명령을 다시 실행해 차이가 없는지 확인한다. 기본 Actions 토큰에는 관리자 조회 권한이 없으므로 이 온라인 검사를 PR CI에 연결하지 않는다. 비교 로직의 테스트는 기존 Repository hygiene에서 실행한다.
+
+공개 배포·production workflow는 현재 없다. [Draft CD](DRAFT_RELEASE.md)는 미공개 Release만 생성한다. 사용하지 않는 `release` Environment를 만들지 않는다. 공개 배포를 추가할 때 실제 쓰기 job과 사람 승인 보호를 함께 연결한다.
+Release immutability는 앞으로 공개할 Release에 적용한다. Draft에서 파일·source SHA·checksum·다운로드 검증을 완료한 뒤 공개한다. 이 설정 적용으로 기존 Draft를 공개하거나 기존 Release를 소급 잠그지 않는다.
+
+CodeQL은 [명시적인 workflow](../.github/workflows/codeql.yml)에서 Actions·Python·Rust·Kotlin을 분석한다. 기본 설정의 Android autobuild는 하위 프로젝트를 찾지 못했고 REST 언어 선택은 Rust를 거부했으므로 기본 설정을 끈다. 두 설정을 중복 실행하지 않는다.
+Kotlin은 기존 고정 Java·Android SDK와 `make android-check`를 사용한다. 분석은 배포하지 않으며 production Secret을 받지 않는다. 결과 게시에 필요한 `security-events: write`는 분석 job에만 둔다. 새 쓰기 권한은 사람이 최종 head를 승인한 뒤 main에 반영한다.
+Swift CodeQL은 현재 구성의 지원 대상이 아니다. GitHub는 [CodeQL 2.27.2 호환성 공지](https://github.blog/changelog/2026-10-09-codeql-2-27-2-improves-c-go-rust-and-javascript-analysis/#macos-27-compatibility)에서 macOS 27 또는 Xcode 27의 컴파일 추적 미지원을 명시한다. 실제 시험도 package manifest 실행에서 `Bad CPU type`으로 실패했다. Swift를 분석 완료로 표시하거나 CI 도구 버전을 낮추지 않는다. 기존 Xcode 27 iOS CI·독립 리뷰·보안 변경의 별도 리뷰를 유지한다. 이 분석 공백은 후속 Issue로 추적한다.
+초기 범위는 같은 저장소의 PR·main push·수동 실행·주간 검사다. 외부 fork는 이 CodeQL job에서 제외하고 기존 승인·CI 경로를 유지한다. 분석 성공·결과 게시·최종 SHA는 실제 run으로 확인한다. 설정 파일이나 workflow 등록만으로 main에서 분석이 검증됐다고 보고하지 않는다.
+기존 모바일 CI·동작 검사는 유지한다. CodeQL이 코드 전체의 안전이나 실제 기기 동작을 보증하지 않는다.
+
 ## 생성과 병합
 
 - 저장소: [minjunkim-dev/smallnext](https://github.com/minjunkim-dev/smallnext).
@@ -82,7 +105,7 @@ GitHub Actions 토큰이 쓴 댓글은 다른 워크플로의 트리거가 되�
 - main push와 main 대상 PR에서 Repository checks를 실행합니다.
 - Repository hygiene 검사는 UTF-8, 줄 끝, 공백, 로컬 문서 링크, Action 커밋 고정을 확인합니다.
 - CI 기본 권한은 read입니다. 자동 승인 기능은 사용하지 않습니다.
-- 기본 허용 Action은 GitHub 공식 소유 Action입니다. Claude 리뷰에 필요한 검토한 SHA만 예외로 추가합니다.
+- 기본 허용 Action은 GitHub 공식 소유 Action입니다. 현재 workflow에는 외부 Action 예외가 없습니다.
 - 저장소 정책에서 Action 전체 커밋 SHA 고정을 요구합니다.
 - Dependabot은 GitHub Actions 업데이트를 매주 확인합니다.
 - Dependabot 취약점 알림과 자동 보안 수정 기능을 켰습니다.
@@ -92,15 +115,9 @@ GitHub Actions 토큰이 쓴 댓글은 다른 워크플로의 트리거가 되�
 
 ## Action 허용 목록
 
-GitHub 소유 Action 허용과 SHA 고정은 유지합니다. 다음 두 항목만 예외로 추가합니다.
-
-| Action | 허용 SHA |
-| --- | --- |
-| `anthropics/claude-code-action/base-action` | `97c53473391bff1901034d4b454b5bac7ab7a029` |
-| `oven-sh/setup-bun` | `0c5077e51419868618aeaa5fe8019c62421857d6` |
-
-Bun 설치 Action은 고정된 Claude composite Action이 내부에서 사용합니다.
-Dependabot이 새 SHA를 제안하면 출처와 내부 Action 변경을 확인한 후 허용 목록도 갱신합니다.
+GitHub 소유 Action 허용과 전체 SHA 강제는 유지합니다. 검증한 현재 workflow는 GitHub 소유 Action과 같은 저장소의 재사용 workflow만 사용합니다.
+제거한 Claude workflow의 `base-action`과 그 내부 Bun 설치 Action은 서버 예외에서 제거했습니다. 과거 설치 기록은 아래에 보존하지만 재활성화 지시가 아닙니다.
+새 외부 Action을 도입할 때는 직접·간접 의존성과 출처·SHA·권한을 검토한 뒤 서버 허용 목록과 기준선을 함께 갱신합니다.
 
 ## 과거 최초 연결: 수동 설정
 
@@ -178,3 +195,5 @@ PR 생성·CI 통과는 Secret 등록, 계정 연결, AI 응답을 증명하지 
 Project checks는 iOS·Android·API와 컨테이너를 검사합니다.
 로컬 실행은 [개발 환경](DEVELOPMENT.md), 캐시와 병렬 실행은 [CI 구성](CI.md)을 따릅니다.
 실제 AI 품질과 운영 배포는 초기 셋업의 검증 범위에 포함하지 않습니다.
+
+CodeQL workflow를 바꾸면 기준선의 `codeql_main_source.sha`도 새 Git blob SHA로 갱신합니다. 감사 도구는 필수 제어 항목이나 보호 필드가 빠진 기준선을 `UNVERIFIED`로 거부합니다.
