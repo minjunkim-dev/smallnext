@@ -26,7 +26,7 @@ def get(endpoint):
 
 def inputs(version, source):
     require(isinstance(version, str) and len(version) < 80 and
-            re.fullmatch(r"v(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)-alpha\.[1-9][0-9]*", version),
+            re.fullmatch(r"v(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)-alpha-smoke\.[1-9][0-9]*", version),
             "Use vMAJOR.MINOR.PATCH-alpha.N")
     return version, sha(source)
 
