@@ -345,11 +345,18 @@ CHECK_FIELDS = {"verdict", "criteria", "evidence", "reason"}
 OWNED = ("remaining_work", "preserved_completed_ids", "goal_completed", "current_action_completed")
 
 
+def compact_roles(schema, data):
+    """Whether the call is a check and whether generation emits only decision fields."""
+    properties = schema.get("properties", {})
+    return CHECK_FIELDS.issubset(properties), set(OWNED).issubset(properties) and "candidate" not in data
+
+
 def request(prompt, schema, data):
     """Compact system prompt and output schema; contracts/fixtures/suggestion-compact.json pins
     this to services/api/src/suggestion/compact.rs."""
     original, candidate = data.get("original_request"), data.get("candidate")
-    if CHECK_FIELDS.issubset(schema.get("properties", {})):
+    check, decision_only = compact_roles(schema, data)
+    if check:
         if (isinstance(candidate, dict) and candidate.get("status") == "need_info"
                 and isinstance(original, dict) and original.get("request_kind") == "smaller"):
             prompt = question_prompt(prompt)
@@ -359,7 +366,7 @@ def request(prompt, schema, data):
         schema["properties"]["criteria"]["items"] = {"type": "integer", "enum": [1, 2, 3, 4, 5]}
         prompt += ("\nEmit only verdict, criteria and evidence. In evidence, combine short exact quotes with one concise "
                    "justification of the verdict. The runtime copies this explanation into reason. Do not emit reason.")
-    if set(OWNED).issubset(schema.get("properties", {})) and "candidate" not in data:
+    if decision_only:
         schema = deepcopy(schema)
         for key in OWNED:
             del schema["properties"][key]
@@ -383,8 +390,7 @@ def request(prompt, schema, data):
 
 def _call(claude, prompt, schema, data, deadline, cancelled, output_mode="structured"):
     proposal_schema = check_schema = schema
-    single_explanation = CHECK_FIELDS.issubset(schema.get("properties", {}))
-    decision_only = set(OWNED).issubset(schema.get("properties", {})) and "candidate" not in data
+    single_explanation, decision_only = compact_roles(schema, data)
     prompt, schema = request(prompt, schema, data)
     tracker = Tracker(schema)
     started = monotonic()
@@ -540,7 +546,7 @@ def question_prompt(prompt):
             'For accept, return exactly criteria [1,2,3,4,5]; for reject or uncertain, return at least one relevant failing or unsupported criterion. Use nonblank exact quotes and a concise Korean justification.\n\n'+'\n\n'.join(paragraphs))
 
 def call(claude,prompt,schema,data,deadline,cancelled,output_mode='structured'):
-    is_check=CHECK_FIELDS.issubset(schema.get('properties',{}))
+    is_check,_=compact_roles(schema,data)
     record=_call(claude,prompt,schema,data,deadline,cancelled,output_mode)
     if record.get('process_group_alive') or (record.get('cli_pid') and not record.get('process_reaped')):
         record['error']='process_cleanup'

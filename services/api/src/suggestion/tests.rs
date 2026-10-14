@@ -314,6 +314,7 @@ fn compact_contract_matches_shared_fixture() {
     );
     if std::env::var_os("UPDATE_CONTRACT_FIXTURES").is_some() {
         std::fs::write(path, serde_json::to_string_pretty(&actual).unwrap() + "\n").unwrap();
+        return;
     }
     assert_eq!(
         actual, committed,
