@@ -403,31 +403,6 @@ final class ProgressFlow {
                                                     arguments: [goalID, SuggestionKind.goalPreparation.rawValue]).map { GoalAnswer(question: $0["question"], answer: $0["answer"]) })
     }
 
-    /// 이미 확인한 목표를 생성하는 기존 명령이다. 새 입력 화면은 prepareGoal과 confirmGoal을 사용한다.
-    func createGoal(_ text: String) throws {
-        let statement = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !statement.isEmpty else { throw ProgressFlowError.emptyGoal }
-        try perform { db in
-            if let previous = try Self.selectedGoalID(db) {
-                try Self.endPendingRequests(db, goalID: previous, status: "interrupted")
-            }
-            let now = Date()
-            try db.execute(
-                sql: "INSERT INTO goal (statement, created_at, updated_at) VALUES (?, ?, ?)",
-                arguments: [statement, now, now]
-            )
-            let goalID = db.lastInsertedRowID
-            try db.execute(
-                sql: """
-                INSERT INTO app_metadata (key, value) VALUES ('selected_goal_id', ?)
-                ON CONFLICT(key) DO UPDATE SET value = excluded.value
-                """,
-                arguments: [String(goalID)]
-            )
-            return try Self.insertRequest(db, goalID: goalID, kind: .firstAction)
-        }
-    }
-
     /// 입력 초안을 그대로 자동 저장한다. 결과나 완료 기록으로 바꾸지 않는다.
     func updateDraft(_ text: String, for actionID: Int64) throws {
         guard case .currentAction(let card, _) = screen, card.id == actionID else {
