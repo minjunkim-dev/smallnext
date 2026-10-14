@@ -88,7 +88,7 @@ def validate_profile(profile):
                 raise ValueError(f"Invalid setting type: {control}.{field}")
             if kind is str and not current:
                 raise ValueError(f"Empty setting: {control}.{field}")
-        checks = value.get("required_status_checks", {}).get("checks")
+        checks = value["required_status_checks"]["checks"] if control == "protection" else None
         if checks is not None and (not checks or any(
             not isinstance(check, dict) or not isinstance(check.get("context"), str)
             or not check["context"] or type(check.get("app_id")) is not int

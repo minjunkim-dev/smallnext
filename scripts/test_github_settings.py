@@ -129,6 +129,14 @@ class GitHubSettingsTests(unittest.TestCase):
         self.assertEqual(out, "")
         self.assertIn("UNVERIFIED", err)
 
+    def test_extra_non_protection_field_reports_drift_without_schema_crash(self):
+        profile = self.profile()
+        profile["expected"]["repository"]["required_status_checks"] = False
+        status, out, err = self.run_main(profile, self.reader)
+        self.assertEqual(status, 1)
+        self.assertIn("repository.required_status_checks", out)
+        self.assertEqual(err, "")
+
     def test_main_pass_and_drift_have_distinct_exit_codes(self):
         status, out, err = self.run_main(self.profile(), self.reader)
         self.assertEqual(status, 0)
