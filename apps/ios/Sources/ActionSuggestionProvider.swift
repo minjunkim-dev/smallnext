@@ -85,6 +85,52 @@ enum SuggestionFailure: String, Error, Sendable, CaseIterable {
     case unavailable
 }
 
+/// 요청 종류에 맞고 바로 보여줄 수 있는 후보만 받는다. 앞뒤 공백을 지운 후보를 돌려준다.
+/// 공급자와 관계없는 규칙이다. 저장된 기록이 필요한 검사는 `ProgressFlow`가 한다.
+enum CandidatePolicy {
+    static func accept(_ candidate: SuggestionCandidate, for request: SuggestionRequest) -> SuggestionCandidate? {
+        switch candidate {
+        case .goalSummary(let text):
+            guard request.kind == .goalPreparation, let criteria = trimmed(text) else { return nil }
+            return .goalSummary(criteria)
+        case .noAction:
+            // 대체 후보 없음은 대체 요청에서만 받는다.
+            return request.kind == .replacement ? .noAction : nil
+        case .question(let text):
+            // 목표 준비와 더 작게에서만 확인 질문 하나를 받는다.
+            guard request.kind == .goalPreparation || request.kind == .smaller, let question = trimmed(text) else { return nil }
+            return .question(question)
+        case .action(let proposed):
+            return action(proposed, for: request).map(SuggestionCandidate.action)
+        case .minimalAction(let proposed):
+            return action(proposed, for: request).map(SuggestionCandidate.minimalAction)
+        }
+    }
+
+    /// 필수 필드가 비었거나 목표·원래 행동의 완료를 표시한 후보는 받지 않는다.
+    /// 더 작게는 현재 행동을, 다른 요청은 보류한 행동을 그대로 다시 제안하면 받지 않는다.
+    /// 더 작게는 되돌린 작은 행동을 다시 제안할 수 있다(#55).
+    private static func action(_ proposed: ProposedAction, for request: SuggestionRequest) -> ProposedAction? {
+        guard request.kind != .goalPreparation, let task = trimmed(proposed.task), let doneWhen = trimmed(proposed.doneWhen),
+              proposed.estimatedMinutes > 0, !proposed.marksGoalComplete, !proposed.marksCurrentActionComplete,
+              proposed.materialLinks.allSatisfy({ ["https", "http"].contains($0.scheme?.lowercased() ?? "") && !($0.host ?? "").isEmpty })
+        else { return nil }
+        let excluded = request.kind == .smaller ? [request.currentAction?.task].compactMap { $0 } : request.deferredTasks
+        guard !excluded.contains(task) else { return nil }
+        var action = proposed
+        action.task = task
+        action.doneWhen = doneWhen
+        action.targetName = proposed.targetName.flatMap(trimmed)
+        action.targetDescription = proposed.targetDescription.flatMap(trimmed)
+        return action
+    }
+
+    private static func trimmed(_ text: String) -> String? {
+        let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return text.isEmpty ? nil : text
+    }
+}
+
 /// 실제 공급자를 연결하기 전에 쓰는 공급자다. 항상 `사용 불가`를 반환한다.
 struct UnavailableSuggestionProvider: ActionSuggestionProvider {
     func suggest(_ request: SuggestionRequest) async throws -> SuggestionCandidate {

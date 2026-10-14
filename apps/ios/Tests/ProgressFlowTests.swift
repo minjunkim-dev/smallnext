@@ -1513,3 +1513,55 @@ private actor SuspendedProvider: ActionSuggestionProvider {
         throw SuggestionFailure.timedOut
     }
 }
+
+final class CandidatePolicyTests: XCTestCase {
+    private let action = ProposedAction(task: "관련 메모 하나 열기", doneWhen: "메모가 화면에 열려 있다", estimatedMinutes: 3)
+
+    private func request(_ kind: SuggestionKind) -> SuggestionRequest {
+        SuggestionRequest(kind: kind, goal: "자료 정리", currentAction: action, completedTasks: [], deferredTasks: ["보류한 일"])
+    }
+
+    func testCandidateTypeMustMatchRequestKind() {
+        let all: [SuggestionKind] = [.goalPreparation, .firstAction, .nextAction, .smaller, .replacement]
+        let cases: [(SuggestionCandidate, Set<SuggestionKind>)] = [
+            (.goalSummary("메모가 정리돼 있다"), [.goalPreparation]),
+            (.noAction, [.replacement]),
+            (.question("어느 메모인가요?"), [.goalPreparation, .smaller]),
+            (.action(ProposedAction(task: "새 일", doneWhen: "끝남", estimatedMinutes: 1)), [.firstAction, .nextAction, .smaller, .replacement]),
+            (.minimalAction(ProposedAction(task: "새 일", doneWhen: "끝남", estimatedMinutes: 1)), [.firstAction, .nextAction, .smaller, .replacement]),
+        ]
+        for (candidate, accepted) in cases {
+            for kind in all {
+                XCTAssertEqual(CandidatePolicy.accept(candidate, for: request(kind)) != nil, accepted.contains(kind), "\(candidate) \(kind)")
+            }
+        }
+    }
+
+    func testIncompleteOrClaimingActionsAreRejectedAndTextIsTrimmed() {
+        var blank = action; blank.task = " \n"
+        var noCondition = action; noCondition.doneWhen = ""
+        var noMinutes = action; noMinutes.estimatedMinutes = 0
+        var goalDone = action; goalDone.marksGoalComplete = true
+        var currentDone = action; currentDone.marksCurrentActionComplete = true
+        var badLink = action; badLink.materialLinks = [URL(string: "file:///tmp/a")!]
+        for invalid in [blank, noCondition, noMinutes, goalDone, currentDone, badLink] {
+            XCTAssertNil(CandidatePolicy.accept(.action(invalid), for: request(.firstAction)), "\(invalid)")
+        }
+        XCTAssertNil(CandidatePolicy.accept(.goalSummary("  "), for: request(.goalPreparation)))
+        XCTAssertNil(CandidatePolicy.accept(.question("\n"), for: request(.smaller)))
+        var padded = action; padded.task = "  새 일\n"; padded.targetName = " "
+        XCTAssertEqual(CandidatePolicy.accept(.action(padded), for: request(.firstAction)),
+                       .action(ProposedAction(task: "새 일", doneWhen: action.doneWhen, estimatedMinutes: 3)))
+        XCTAssertEqual(CandidatePolicy.accept(.question(" 어느 메모인가요? "), for: request(.smaller)), .question("어느 메모인가요?"))
+    }
+
+    func testSmallerExcludesCurrentActionAndOthersExcludeDeferredActions() {
+        var deferred = action; deferred.task = " 보류한 일"
+        XCTAssertNil(CandidatePolicy.accept(.action(action), for: request(.smaller)))
+        XCTAssertNotNil(CandidatePolicy.accept(.action(deferred), for: request(.smaller)))
+        for kind: SuggestionKind in [.firstAction, .nextAction, .replacement] {
+            XCTAssertNil(CandidatePolicy.accept(.minimalAction(deferred), for: request(kind)), "\(kind)")
+            XCTAssertNotNil(CandidatePolicy.accept(.action(action), for: request(kind)), "\(kind)")
+        }
+    }
+}

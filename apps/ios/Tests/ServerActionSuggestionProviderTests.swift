@@ -30,11 +30,11 @@ final class ServerActionSuggestionProviderTests: XCTestCase {
             session:URLSession(configuration:configuration))
     }
 
-    private nonisolated static func accepted(_ request: URLRequest, status: String = "action", complete: Bool = false, wrongScope: Bool = false) throws -> Data {
+    private nonisolated static func accepted(_ request: URLRequest, status: String = "action", complete: Bool = false, wrongScope: Bool = false, blank: Bool = false) throws -> Data {
         let payload = try JSONSerialization.jsonObject(with:request.httpBody!) as! [String:Any]
         let input = payload["input"] as! [String:Any]
         return try JSONSerialization.data(withJSONObject:["disposition":"accepted","proposal":[
-            "status":status,"action":"펜 하나 옮기기","completion_condition":"펜이 펜꽂이에 있다","estimated_minutes":1,
+            "status":status,"action":"펜 하나 옮기기","completion_condition":blank ? " " : "펜이 펜꽂이에 있다","estimated_minutes":1,
             "reason":"한 물건만 옮긴다","remaining_work":wrongScope ? ["다른 범위"] : input["remaining_work"]!,
             "preserved_completed_ids":input["completed_ids"]!,"goal_completed":complete,"current_action_completed":complete]])
     }
@@ -100,13 +100,24 @@ final class ServerActionSuggestionProviderTests: XCTestCase {
         XCTAssertTrue(DevelopmentTransport.store.requests.isEmpty)
     }
 
-    func testCompletionClaimsAndScopeMismatchCannotBecomeCandidates() async throws {
-        for (complete,wrongScope) in [(true,false),(false,true)] {
+    func testScopeMismatchBlankTextAndUnrepresentableCompletionClaimsCannotBecomeCandidates() async throws {
+        let request = SuggestionRequest(kind:.goalPreparation,goal:"정리",currentAction:nil,completedTasks:[])
+        for (status,complete,wrongScope,blank) in [("action",false,true,false),("need_info",true,false,false),("goal_summary",true,false,false),("no_action",false,false,true)] {
             DevelopmentTransport.store.reset()
-            DevelopmentTransport.store.handler = { request in (200,try Self.accepted(request,complete:complete,wrongScope:wrongScope)) }
-            do { _ = try await provider().suggest(SuggestionRequest(kind:.firstAction,goal:"정리",currentAction:nil,completedTasks:[])); XCTFail("must reject") }
+            DevelopmentTransport.store.handler = { request in (200,try Self.accepted(request,status:status,complete:complete,wrongScope:wrongScope,blank:blank)) }
+            do { _ = try await provider().suggest(request); XCTFail("must reject \(status)") }
             catch { XCTAssertEqual(error as? SuggestionFailure,.rejected) }
         }
+    }
+
+    func testActionCompletionClaimReachesCandidatePolicy() async throws {
+        let request = SuggestionRequest(kind:.firstAction,goal:"정리",currentAction:nil,completedTasks:[])
+        DevelopmentTransport.store.reset()
+        DevelopmentTransport.store.handler = { request in (200,try Self.accepted(request,complete:true)) }
+        let candidate = try await provider().suggest(request)
+        guard case .action(let action) = candidate else { return XCTFail("\(candidate)") }
+        XCTAssertTrue(action.marksGoalComplete)
+        XCTAssertNil(CandidatePolicy.accept(candidate, for: request))
     }
 
     func testCancellationDuringIdentityPreparationNeverSendsAIRequest() async throws {

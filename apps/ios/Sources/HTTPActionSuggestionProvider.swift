@@ -1,11 +1,11 @@
 import Foundation
 
 /// 기존 입력·응답 계약을 개발·사용자용 공급자가 공유한다.
+/// 응답의 wire 계약만 검사한다. 요청 종류와 후보의 호환은 `CandidatePolicy`가 판단한다.
 struct HTTPActionSuggestionProvider: ActionSuggestionProvider {
     let baseURL: URL
     let path: String
     let token: @Sendable () async throws -> String?
-    var rejectCompletion = false
     var session: URLSession = .shared
     var timeout: TimeInterval = 130
     var authApplicable = true
@@ -82,10 +82,10 @@ struct HTTPActionSuggestionProvider: ActionSuggestionProvider {
               proposal.estimated_minutes.isFinite, proposal.estimated_minutes >= 0,
               proposal.estimated_minutes < Double(Int.max),
               proposal.estimated_minutes <= input.available_minutes,
+              // 서버 계약은 모든 status에서 두 문장을 요구한다.
               !proposal.action.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
               !proposal.completion_condition.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         else { throw SuggestionFailure.rejected }
-        if rejectCompletion && (proposal.goal_completed || proposal.current_action_completed) { throw SuggestionFailure.rejected }
         let action = ProposedAction(task: proposal.action, doneWhen: proposal.completion_condition,
                                     estimatedMinutes: Int(proposal.estimated_minutes.rounded(.up)),
                                     marksGoalComplete: proposal.goal_completed,
@@ -93,15 +93,14 @@ struct HTTPActionSuggestionProvider: ActionSuggestionProvider {
         switch proposal.status {
         case "action": return .action(action)
         case "minimum": return .minimalAction(action)
-        case "need_info":
-            guard !proposal.goal_completed, !proposal.current_action_completed else { throw SuggestionFailure.rejected }
-            return .question(proposal.action)
-        case "goal_summary" where request.kind == .goalPreparation:
-            guard !proposal.goal_completed, !proposal.current_action_completed else { throw SuggestionFailure.rejected }
-            return .goalSummary(proposal.completion_condition)
-        case "no_action" where request.kind == .replacement:
-            guard !proposal.goal_completed, !proposal.current_action_completed else { throw SuggestionFailure.rejected }
-            return .noAction
+        default: break
+        }
+        // 아래 후보 종류는 완료 표시를 담지 못한다. 표시가 있으면 여기서 거부한다.
+        guard !proposal.goal_completed, !proposal.current_action_completed else { throw SuggestionFailure.rejected }
+        switch proposal.status {
+        case "need_info": return .question(proposal.action)
+        case "goal_summary": return .goalSummary(proposal.completion_condition)
+        case "no_action": return .noAction
         default: throw SuggestionFailure.rejected
         }
     }

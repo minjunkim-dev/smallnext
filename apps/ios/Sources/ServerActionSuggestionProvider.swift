@@ -22,7 +22,7 @@ struct ServerActionSuggestionProvider: ActionSuggestionProvider {
                   !value.contains(where: { $0.isWhitespace || $0.isNewline })
             else { throw SuggestionFailure.rejected }
             return value
-        }, rejectCompletion: true, session: session, timeout: 160).suggest(request)
+        }, session: session, timeout: 160).suggest(request)
     }
 
     @MainActor
