@@ -10,6 +10,34 @@ struct HTTPActionSuggestionProvider: ActionSuggestionProvider {
     var timeout: TimeInterval = 130
     var authApplicable = true
 
+    #if DEBUG
+    /// 개발자 Mac의 개발 서버다. http를 허용하고 고정 토큰만 보낸다.
+    static func development(baseURL: URL, token: String?, session: URLSession = .shared) -> any ActionSuggestionProvider {
+        guard endpoint(baseURL, schemes: ["http", "https"]) else { return UnavailableSuggestionProvider() }
+        return Self(baseURL: baseURL, path: "development/suggestions", token: { token }, session: session, authApplicable: false)
+    }
+    #endif
+
+    /// 사용자 서버다. https만 허용한다. 주소가 맞지 않으면 신원 토큰을 만들지 않는다.
+    static func server(baseURL: URL, token: @escaping @Sendable () async throws -> String,
+                       session: URLSession = .shared) -> any ActionSuggestionProvider {
+        guard endpoint(baseURL, schemes: ["https"]) else { return UnavailableSuggestionProvider() }
+        return Self(baseURL: baseURL, path: "v1/suggestions", token: {
+            let value = try await token()
+            guard !value.isEmpty, value.utf8.count <= 16 * 1024,
+                  !value.contains(where: { $0.isWhitespace || $0.isNewline })
+            else { throw SuggestionFailure.rejected }
+            return value
+        }, session: session, timeout: 160)
+    }
+
+    /// 경로·자격 증명·query 없는 서버 주소만 받는다.
+    static func endpoint(_ url: URL, schemes: Set<String>) -> Bool {
+        schemes.contains(url.scheme?.lowercased() ?? "") && url.host?.isEmpty == false
+            && url.user == nil && url.password == nil && url.query == nil && url.fragment == nil
+            && (url.path.isEmpty || url.path == "/")
+    }
+
     func suggest(_ request: SuggestionRequest) async throws -> SuggestionCandidate {
         try Task.checkCancellation()
         guard (request.blocker?.utf8.count ?? 0) <= 2048 else { throw SuggestionFailure.rejected }

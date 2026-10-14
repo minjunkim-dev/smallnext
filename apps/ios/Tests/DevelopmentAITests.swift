@@ -4,12 +4,12 @@ import XCTest
 @testable import Smallnext
 
 @MainActor
-final class DevelopmentActionSuggestionProviderTests: XCTestCase {
-    private func provider() -> DevelopmentActionSuggestionProvider {
+final class DevelopmentAITests: XCTestCase {
+    private func provider() -> any ActionSuggestionProvider {
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [DevelopmentTransport.self]
-        return DevelopmentActionSuggestionProvider(baseURL: URL(string: "http://127.0.0.1:8080")!,
-                                                   token: "test-token", session: URLSession(configuration: config))
+        return HTTPActionSuggestionProvider.development(baseURL: URL(string: "http://127.0.0.1:8080")!,
+                                                        token: "test-token", session: URLSession(configuration: config))
     }
 
     private nonisolated static func accepted(_ request: URLRequest, status: String = "action", complete: Bool = false) throws -> Data {

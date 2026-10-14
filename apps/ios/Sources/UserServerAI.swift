@@ -2,29 +2,8 @@ import Foundation
 import FirebaseCore
 @preconcurrency import FirebaseAuth
 
-struct ServerActionSuggestionProvider: ActionSuggestionProvider {
-    let baseURL: URL
-    let token: @Sendable () async throws -> String
-    var session: URLSession = .shared
-
-    private var validURL: Bool {
-        baseURL.scheme?.lowercased() == "https" && baseURL.host?.isEmpty == false
-            && baseURL.user == nil && baseURL.password == nil
-            && baseURL.query == nil && baseURL.fragment == nil
-            && (baseURL.path.isEmpty || baseURL.path == "/")
-    }
-
-    func suggest(_ request: SuggestionRequest) async throws -> SuggestionCandidate {
-        guard validURL else { throw SuggestionFailure.unavailable }
-        return try await HTTPActionSuggestionProvider(baseURL: baseURL, path: "v1/suggestions", token: {
-            let value = try await token()
-            guard !value.isEmpty, value.utf8.count <= 16 * 1024,
-                  !value.contains(where: { $0.isWhitespace || $0.isNewline })
-            else { throw SuggestionFailure.rejected }
-            return value
-        }, session: session, timeout: 160).suggest(request)
-    }
-
+/// 사용자 서버의 주소와 Firebase 익명 신원을 연결한다.
+enum UserServerAI {
     @MainActor
     static func configured(bundle: Bundle = .main, defaults: UserDefaults = .standard) -> (any ActionSuggestionProvider)? {
         guard FeatureFlags.userServerAI else { return nil }
@@ -41,7 +20,7 @@ struct ServerActionSuggestionProvider: ActionSuggestionProvider {
               let options = FirebaseClientConfiguration.options(info: bundle.infoDictionary ?? [:])
         else { return UnavailableSuggestionProvider() }
         // Validate the endpoint before creating even an anonymous Firebase identity.
-        guard Self(baseURL: url, token: { "" }).validURL else { return UnavailableSuggestionProvider() }
+        guard HTTPActionSuggestionProvider.endpoint(url, schemes: ["https"]) else { return UnavailableSuggestionProvider() }
         let name = "SmallnextUserAI"
         if FirebaseApp.app(name: name) == nil {
             FirebaseApp.configure(name: name, options: options)
@@ -49,7 +28,7 @@ struct ServerActionSuggestionProvider: ActionSuggestionProvider {
         guard let app = FirebaseApp.app(name: name) else { return UnavailableSuggestionProvider() }
         app.isDataCollectionDefaultEnabled = false
         let identity = FirebaseAnonymousIdentity(auth: Auth.auth(app: app))
-        return Self(baseURL: url, token: { try await identity.idToken() })
+        return HTTPActionSuggestionProvider.server(baseURL: url, token: { try await identity.idToken() })
     }
 }
 

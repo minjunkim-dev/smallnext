@@ -3,7 +3,7 @@ import XCTest
 @testable import Smallnext
 
 @MainActor
-final class ServerActionSuggestionProviderTests: XCTestCase {
+final class UserServerAITests: XCTestCase {
     func testAppBundleIncludesServerConfigurationKeys() {
         for key in ["SmallnextAPIBaseURL", "SmallnextFirebaseAppID", "SmallnextFirebaseSenderID",
                     "SmallnextFirebaseProjectID", "SmallnextFirebaseAPIKey"] {
@@ -13,7 +13,7 @@ final class ServerActionSuggestionProviderTests: XCTestCase {
 
     func testPlainHTTPOrCredentialURLNeverObtainsIdentity() async throws {
         for address in ["http://api.example.invalid", "https://name:pass@api.example.invalid", "https://api.example.invalid?token=x"] {
-            let provider = ServerActionSuggestionProvider(baseURL: URL(string: address)!, token: {
+            let provider = HTTPActionSuggestionProvider.server(baseURL: URL(string: address)!, token: {
                 XCTFail("invalid endpoint must not obtain identity")
                 return "unused"
             })
@@ -23,10 +23,10 @@ final class ServerActionSuggestionProviderTests: XCTestCase {
     }
 
     #if DEBUG
-    private func provider(token: @escaping @Sendable () async throws -> String = { "firebase-test-id-token" }) -> ServerActionSuggestionProvider {
+    private func provider(token: @escaping @Sendable () async throws -> String = { "firebase-test-id-token" }) -> any ActionSuggestionProvider {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [DevelopmentTransport.self]
-        return ServerActionSuggestionProvider(baseURL: URL(string:"https://api.example.invalid")!, token:token,
+        return HTTPActionSuggestionProvider.server(baseURL: URL(string:"https://api.example.invalid")!, token:token,
             session:URLSession(configuration:configuration))
     }
 
