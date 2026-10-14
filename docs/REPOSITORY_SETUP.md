@@ -10,6 +10,10 @@
 Bugbot은 필요한 PR에서 수동 보조 리뷰로 사용한다. Manual Only / Default, As Comment, 위험 점수 On, Draft 자동 리뷰 Off, Autofix Off를 적용한다.
 On-demand는 Disabled를 유지한다. Incremental은 기존 값을 유지한다. 다른 저장소와 계정 기본 설정은 바꾸지 않는다.
 YAML은 base branch에서 읽는다. 개인 override가 YAML보다 우선한다. Manual Only와 결제는 대시보드에서 확인한다.
+현재 개인 Bugbot 연결에서는 PR 작성자와 Cursor에 연결한 GitHub 계정이 같아야 수동 리뷰가 실행된다.
+2026-10-14 Dependabot 작성 PR #107의 수동 요청은 [실제 응답](https://github.com/minjunkim-dev/smallnext/pull/107#issuecomment-6158071176)에서 `GitHub account mismatch`로 거부됐다.
+요청 ID 발급과 Analytics counter 증가를 리뷰 성공으로 보고하지 않는다. 이 요청의 리뷰·규칙·요약 출력은 검증하지 못했다.
+본인 작성 PR에서 `bugbot run verbose=true`를 한 번 요청한다. 실제 검토 head, 규칙 테이블, 지적, 요약 댓글과 관측 사용량을 확인한다.
 실제 외부 반영·CI·독립 리뷰·Draft 실행 상태는 [검증 보고서](PR_QUALITY_VALIDATION.md)를 따른다.
 
 아래 자동 리뷰 설명과 연결 절차는 이전 운영 방식의 근거다. 다시 활성화하는 지시가 아니다.
