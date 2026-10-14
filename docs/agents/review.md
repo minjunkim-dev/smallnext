@@ -60,3 +60,30 @@ GitHub 자동 병합 예약은 독립 리뷰 결과를 대상 SHA의 필수 체�
 neutral check와 지적 0건은 결함 부재의 증거가 아니다.
 반복된 실제 결함은 재현 검사·자동 체크·코딩 규칙으로 옮긴다.
 자료를 찾지 못한 문제는 AGENTS의 경로 안내를 수정한다. 가상 문제를 위한 자동화를 추가하지 않는다.
+
+## Bugbot 입력과 로컬 문서 선택
+
+Bugbot에는 root `.cursor/BUGBOT.md`의 핵심 규칙과 변경 경로의 하위 `.cursor/BUGBOT.md`만 전달한다.
+규칙 파일에는 상세 문서·다른 영역 규칙으로 향하는 상대 Markdown 링크를 두지 않는다.
+상세 문서 원문을 복제하거나 모든 문서를 읽도록 일괄 지시하지 않는다.
+영역 규칙은 변경 경로에 따라 적용한다. root에서 모든 영역을 연결하지 않는다.
+
+로컬 독립 리뷰 에이전트는 `docs/coding-standards.md`와 티켓의 확정 완료 조건을 읽는다.
+그다음 변경 영역에 필요한 원문만 선택한다. 아래 표는 로컬 리뷰의 길잡이다. Bugbot 입력 목록이 아니다.
+
+| 변경 영역 | 로컬 리뷰가 선택할 상세 문서 |
+| --- | --- |
+| API·AI | `CONTEXT.md`, `docs/SERVER_AI.md`, `contracts/openapi.json`, 관련 확정 Issue |
+| iOS | `docs/DEVELOPMENT.md`, `docs/CRASHLYTICS.md`, Issue #61의 실기기 보류 조건 |
+| Android | `docs/DEVELOPMENT.md`, `docs/SERVER_AI.md`의 앱 계약, 관련 확정 Issue |
+| GitHub·CI·Draft | `docs/CI.md`, `docs/adr/0001-trusted-ci-aggregation.md`, `docs/DRAFT_RELEASE.md`, `docs/REPOSITORY_SETUP.md`, `.ci/toolchains.json` |
+| 검증 스크립트 | 해당 검사 계약·`docs/CI.md`·티켓의 재현 조건 |
+| 문서·권리 | `CONTEXT.md`, `docs/DECISIONS.md`, `docs/WORKFLOW.md`, `COPYRIGHT.md`, `THIRD_PARTY_NOTICES.md` |
+
+
+CI는 모든 추적된 root·영역 규칙을 합쳐 95,000자 이하인지 확인한다. 개별 규칙은 30,000자 이하로 유지한다.
+필수 규칙 파일 누락·빈 파일·symlink와 상세 문서의 로컬 링크도 거부한다.
+상세 문서 길이는 이 Bugbot 예산에 포함하지 않는다. 새 영역을 추가하면 필수 규칙 목록을 갱신한다.
+이 합계는 모든 영역을 더한 보수적인 값이다. 특정 PR의 서버 입력·팀 규칙·학습 규칙 전체를 증명하지 않는다.
+서버 포함·생략·잘림은 필요한 수동 리뷰의 `bugbot run verbose=true` 표로 확인한다.
+Manual Only·Autofix Off·On-demand Off를 유지한다. 이 정리로 새 Bugbot 실행이나 결제 설정 변경을 시작하지 않는다.
