@@ -36,6 +36,14 @@ class ScopeTests(unittest.TestCase):
     def test_document_changes_skip_project_builds(self):
         self.assert_selected(["docs/PRODUCT.md", "apps/ios/README.md", "services/api/README.md"])
 
+    def test_compiled_api_prompts_select_checks_and_image(self):
+        for path in ["services/api/src/development_ai/contract.md", "services/api/src/suggestion/generate.md"]:
+            with self.subTest(path=path):
+                self.assert_selected([path], api=True, container=True)
+
+    def test_api_review_rules_skip_project_builds(self):
+        self.assert_selected(["services/api/.cursor/BUGBOT.md"])
+
     def test_container_config_selects_only_container(self):
         self.assert_selected([".dockerignore", ".env.example", "infra/production/compose.yaml"], container=True)
 

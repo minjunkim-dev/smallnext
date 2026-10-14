@@ -57,7 +57,8 @@ def select(paths):
     """Apply the same policy to local Git paths and trusted API diff paths."""
     selected = dict.fromkeys(PROJECTS, False)
     for path in paths:
-        if path.endswith(".md") or path.startswith("docs/"):
+        # Markdown under the API source tree is compiled in with include_str!.
+        if (path.endswith(".md") and not path.startswith("services/api/src/")) or path.startswith("docs/"):
             continue
         if path in SCOPED_FILES:
             projects = SCOPED_FILES[path]
