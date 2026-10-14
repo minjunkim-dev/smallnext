@@ -66,7 +66,7 @@ class OAuthBridgeTests(unittest.TestCase):
         self.assertNotIn("output", invalid)
 
     def test_domain_guard_reports_only_field_names_without_repairing_output(self):
-        schema = Path(bridge.__file__).parent.parent / "services/api/src/development_ai/generate.json"
+        schema = Path(bridge.__file__).parent.parent / "services/api/src/suggestion/generate.json"
         self.schema.write_text(schema.read_text())
         candidate = {"status": "need_info", "action": " ", "completion_condition": "Answered",
                      "reason": "PRIVATE", "estimated_minutes": 1}
@@ -90,7 +90,7 @@ class OAuthBridgeTests(unittest.TestCase):
         marker = self.root / "pids"
         marker.mkdir()
         self.schema.write_bytes((Path(bridge.__file__).parent.parent /
-                                 "services/api/src/development_ai/check.json").read_bytes())
+                                 "services/api/src/suggestion/check.json").read_bytes())
         self.fake.write_text("#!/usr/bin/env python3\nimport os,time\nfrom pathlib import Path\n"
                             + f"(Path({str(marker)!r})/str(os.getpid())).touch()\n"
                             + "time.sleep(20)\n")

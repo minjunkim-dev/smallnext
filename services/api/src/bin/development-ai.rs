@@ -1,4 +1,7 @@
-use smallnext_api::development_ai::{ActionState, AiInput, SubscriptionAi};
+use smallnext_api::{
+    development_ai::{ActionState, SubscriptionAi},
+    suggestion::AiInput,
+};
 use std::io::Read;
 
 #[tokio::main]

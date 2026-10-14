@@ -167,8 +167,8 @@ def freeze(directory, *, owner, ends_at, delete_method, role_reservation_micro_u
     qa.freeze(directory / 'regression', 'quality', output_mode='text-json', sequential=True)
     regression = qa.load(directory / 'regression')
     sources = deepcopy(regression['sources'])
-    for name in ['scripts/launch_evaluation.py', 'services/api/src/development_ai.rs',
-                 'services/api/src/user_ai/decision.rs']:
+    for name in ['scripts/launch_evaluation.py', 'services/api/src/suggestion.rs',
+                 'services/api/src/suggestion/compact.rs']:
         raw = (qa.REPO / name).read_bytes()
         sources[name] = {'sha256': qa.digest(raw), 'utf8': raw.decode()}
     evidence = {p.relative_to(qa.REPO).as_posix(): qa.digest(p.read_bytes())

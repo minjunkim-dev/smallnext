@@ -4,7 +4,9 @@ use sqlx::PgPool;
 use utoipa::{OpenApi, ToSchema};
 
 pub mod development_ai;
+pub mod suggestion;
 mod timing;
+mod transport;
 pub mod user_ai;
 
 #[derive(Clone)]
@@ -62,9 +64,9 @@ async fn ready(State(state): State<AppState>) -> (StatusCode, Json<HealthRespons
         HealthResponse,
         user_ai::SuggestionRequest,
         user_ai::SuggestionResponse,
-        development_ai::AiInput,
-        development_ai::Proposal,
-        development_ai::ProposalStatus,
+        suggestion::AiInput,
+        suggestion::Proposal,
+        suggestion::ProposalStatus,
         user_ai::provider::Usage
     ))
 )]

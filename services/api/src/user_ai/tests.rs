@@ -669,7 +669,8 @@ async fn allowed_user_receives_only_independently_checked_proposal_and_usage() {
         if index == 0 {
             assert_eq!(
                 request["output_config"]["format"]["schema"],
-                super::decision::schema("generate", None)
+                crate::suggestion::compact::request(crate::suggestion::Role::Generate, &json!({}))
+                    .1
             );
         }
         if index == 1 {
@@ -713,7 +714,11 @@ async fn request_status_contract_and_schema_match_through_real_database_and_http
         assert_eq!(sent.len(), calls);
         assert_eq!(
             sent[0]["output_config"]["format"]["schema"],
-            super::decision::schema("generate", Some(kind))
+            crate::suggestion::compact::request(
+                crate::suggestion::Role::Generate,
+                &json!({"request_kind": kind})
+            )
+            .1
         );
         if calls == 2 {
             let checked: serde_json::Value =

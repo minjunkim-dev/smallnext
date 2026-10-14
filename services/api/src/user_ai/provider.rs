@@ -1,5 +1,5 @@
-use super::{client, decision, read_json, required};
-use crate::development_ai::{AiInput, Disposition, Proposal, validate_check, validate_proposal};
+use super::{client, read_json, required};
+use crate::suggestion::{self, AiInput, Disposition, Model, Proposal, Role, compact};
 use serde::Serialize;
 use serde_json::{Value, json};
 use utoipa::ToSchema;
@@ -30,6 +30,11 @@ pub struct Usage {
     cache_write_tokens: u64,
     reasoning_tokens: Option<u64>,
     cost_micro_usd: i64,
+}
+
+pub(super) struct Bill {
+    usage: Option<Usage>,
+    overrun: bool,
 }
 
 pub(super) struct Evaluation {
@@ -71,70 +76,35 @@ impl Provider {
         (input * self.input_rate + output * self.output_rate).div_ceil(1_000_000) as i64
     }
 
-    pub(super) async fn evaluate(&self, input: &AiInput, original: Value) -> Evaluation {
-        let mut usage = Vec::new();
-        let mut charged = 0;
-        let mut overrun = false;
-        let (generated, bill, exceeded) =
-            crate::timing::measure("generate", self.call("generate", &original)).await;
-        charged += bill
-            .as_ref()
-            .map_or(self.role_ceiling(), |u| u.cost_micro_usd);
-        overrun |= exceeded;
-        if let Some(bill) = bill {
-            usage.push(bill);
-        }
-        let generated = generated
-            .and_then(|value| decision::expand("generate", value, &original))
-            .and_then(|value| {
-                serde_json::from_value::<Proposal>(value).map_err(|_| Disposition::InvalidProposal)
-            })
-            .and_then(|proposal| {
-                validate_proposal(input, &proposal)?;
-                Ok(proposal)
-            });
-        let result = match generated {
-            Err(reason) => Err(reason),
-            Ok(proposal) => {
-                let (checked, bill, exceeded) = crate::timing::measure(
-                    "check",
-                    self.call(
-                        "check",
-                        &json!({"original_request":original,"candidate":proposal}),
-                    ),
-                )
-                .await;
-                charged += bill
-                    .as_ref()
-                    .map_or(self.role_ceiling(), |u| u.cost_micro_usd);
-                overrun |= exceeded;
-                if let Some(bill) = bill {
-                    usage.push(bill);
-                }
-                checked
-                    .and_then(|value| decision::expand("check", value, &original))
-                    .and_then(validate_check)
-                    .map(|()| proposal)
-            }
-        };
+    pub(super) async fn evaluate(&self, input: &AiInput) -> Evaluation {
+        let evaluation = suggestion::evaluate(self, input).await;
         Evaluation {
-            result,
-            usage,
-            charged,
-            overrun,
+            result: evaluation.result,
+            // Missing usage remains charged at the verified model's ceiling.
+            charged: evaluation
+                .bills
+                .iter()
+                .map(|b| {
+                    b.usage
+                        .as_ref()
+                        .map_or(self.role_ceiling(), |u| u.cost_micro_usd)
+                })
+                .sum(),
+            overrun: evaluation.bills.iter().any(|b| b.overrun),
+            usage: evaluation
+                .bills
+                .into_iter()
+                .filter_map(|b| b.usage)
+                .collect(),
         }
     }
 
-    async fn call(
+    async fn send(
         &self,
-        role: &str,
+        role: Role,
         payload: &Value,
     ) -> (Result<Value, Disposition>, Option<Usage>, bool) {
-        let instructions = match decision::instructions(role, payload) {
-            Ok(instructions) => instructions,
-            Err(error) => return (Err(error), None, false),
-        };
-        let schema = decision::schema(role, payload["request_kind"].as_str());
+        let (instructions, schema) = compact::request(role, payload);
         let body = json!({"model":MODEL,"system":instructions,
             "messages":[{"role":"user","content":payload.to_string()}],
             "thinking":{"type":"adaptive"},"max_tokens":self.output_tokens,
@@ -222,15 +192,11 @@ impl Provider {
         {
             return (Err(Disposition::Rejected), usage, false);
         }
-        let result = decision::decode(
-            role,
-            texts[0]["text"].as_str(),
-            payload["request_kind"].as_str(),
-        );
+        let result = compact::read(role, texts[0]["text"].as_str(), payload);
         (result, usage, false)
     }
 
-    fn usage(&self, role: &str, value: &Value) -> Option<Usage> {
+    fn usage(&self, role: Role, value: &Value) -> Option<Usage> {
         let input = input_tokens(value)?;
         let output = value["output_tokens"].as_u64()?;
         let cached = optional_tokens(value, "cache_read_input_tokens")?;
@@ -245,7 +211,7 @@ impl Provider {
             return None;
         }
         Some(Usage {
-            role: role.into(),
+            role: role.as_str().into(),
             input_tokens: input,
             output_tokens: output,
             cached_tokens: cached,
@@ -266,6 +232,14 @@ impl Provider {
             input_rate: 1_000_000,
             output_rate: 1_000_000,
         }
+    }
+}
+
+impl Model for Provider {
+    type Bill = Bill;
+    async fn call(&self, role: Role, payload: &Value) -> (Result<Value, Disposition>, Bill) {
+        let (result, usage, overrun) = self.send(role, payload).await;
+        (result, Bill { usage, overrun })
     }
 }
 
@@ -312,7 +286,9 @@ mod tests {
         let mut value = json!({"input_tokens":7,"cache_read_input_tokens":3,
             "cache_creation_input_tokens":1,"output_tokens":7,
             "output_tokens_details":{"thinking_tokens":2}});
-        let usage = provider.usage("generate", &value).expect("Messages usage");
+        let usage = provider
+            .usage(Role::Generate, &value)
+            .expect("Messages usage");
         assert_eq!(usage.input_tokens, 11);
         assert_eq!(usage.cost_micro_usd, 18);
         assert_eq!(serde_json::to_value(&usage).unwrap()["reasoning_tokens"], 2);
@@ -320,11 +296,11 @@ mod tests {
             .as_object_mut()
             .unwrap()
             .remove("output_tokens_details");
-        assert!(serde_json::to_value(provider.usage("generate", &value).unwrap()).unwrap()["reasoning_tokens"].is_null());
+        assert!(serde_json::to_value(provider.usage(Role::Generate, &value).unwrap()).unwrap()["reasoning_tokens"].is_null());
         value["cache_read_input_tokens"] = json!(20_001);
-        assert!(provider.usage("generate", &value).is_none());
+        assert!(provider.usage(Role::Generate, &value).is_none());
         value["cache_read_input_tokens"] = json!(u64::MAX);
-        assert!(provider.usage("generate", &value).is_none());
+        assert!(provider.usage(Role::Generate, &value).is_none());
     }
 
     #[test]

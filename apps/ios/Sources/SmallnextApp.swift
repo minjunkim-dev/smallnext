@@ -37,10 +37,10 @@ struct SmallnextApp: App {
 
     private static var suggestionProvider: any ActionSuggestionProvider {
         if FeatureFlags.userServerAI {
-            return ServerActionSuggestionProvider.configured() ?? UnavailableSuggestionProvider()
+            return UserServerAI.configured() ?? UnavailableSuggestionProvider()
         }
         #if DEBUG
-        return DevelopmentActionSuggestionProvider.configured() ?? DebugActionSuggestionProvider()
+        return DevelopmentAI.configured() ?? DebugActionSuggestionProvider()
         #else
         return UnavailableSuggestionProvider()
         #endif

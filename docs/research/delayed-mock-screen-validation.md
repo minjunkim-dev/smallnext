@@ -18,7 +18,7 @@
 iOS 연결 UUID는 `3C71EDE6-5FBF-4C54-BCA5-A70DC155E714`다.
 요청 종류는 `smaller`다. 결과는 `question`이다.
 앱 기록·서버 확장·화면 관측은 같은 UUID를 가진다.
-Rust의 [생성·검사 호출](../../services/api/src/development_ai.rs)은
+Rust의 [생성·검사 호출](../../services/api/src/suggestion.rs)은
 `timing::measure`로 `self.call` 전체를 감싼다.
 아래 생성·검사 값은 같은 UUID의 CLI 호출을 포함한 구간이다.
 CLI 내부 처리만 분리한 값은 아니다.
