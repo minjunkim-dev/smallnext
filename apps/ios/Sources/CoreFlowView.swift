@@ -630,32 +630,14 @@ struct CoreFlowView: View {
 
     @discardableResult
     private func run(_ command: @MainActor () throws -> Void) -> Bool {
-        flow.beginMeasuredCommand()
-        defer { flow.endMeasuredCommand() }
         storageFailed = false
         goalInputProblem = nil
+        let drafts = Drafts(goalInput: goalInputDraft, answer: answerText, completionCriteria: criteriaText, actionNote: draftText)
         do {
-            if let input = flow.suggestionInput {
-                let text: String
-                let saved: String
-                if case .preparingGoal(_, let criteria?, _) = flow.screen {
-                    text = criteriaText
-                    saved = input.text ?? criteria
-                } else {
-                    text = answerText
-                    saved = input.text ?? ""
+            try flow.run(saving: drafts) {
+                try withAnimation(.easeInOut(duration: Motion.nextCard)) {
+                    try command()
                 }
-                if text != saved { try flow.updateSuggestionInput(text, for: input.requestID) }
-            }
-            if flow.screen == .goalInput, goalInputDraft != flow.goalInput {
-                try flow.updateGoalInput(goalInputDraft)
-            }
-            // 자동 저장에 실패한 입력이 있으면 화면을 떠나기 전에 다시 저장한다.
-            if case .currentAction(let card, _) = flow.screen, card.draft != draftText {
-                try flow.updateDraft(draftText, for: card.id)
-            }
-            try withAnimation(.easeInOut(duration: Motion.nextCard)) {
-                try command()
             }
             return true
         } catch ProgressFlowError.invalidGoalContext {

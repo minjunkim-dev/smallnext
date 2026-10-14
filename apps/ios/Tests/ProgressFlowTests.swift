@@ -28,7 +28,7 @@ final class ProgressFlowTests: XCTestCase {
     func testTimingWaitsForScreenObservationAndDoesNotChangeProgress() async throws {
         let flow = try makeFlow(ScriptedProvider([.action(first), .action(second)]))
         flow.timingEnabled = true
-        try flow.measuredCommand { try flow.createGoal("학습 자료 정리") }
+        try flow.run { try flow.createGoal("학습 자료 정리") }
         await flow.waitForSuggestion()
         let firstSample = try XCTUnwrap(flow.timingSample)
         XCTAssertEqual(firstSample.kind, .firstAction)
@@ -36,7 +36,7 @@ final class ProgressFlowTests: XCTestCase {
         XCTAssertNil(firstSample.snapshot().screenUpperBoundMS)
         XCTAssertNotNil(firstSample.snapshot().applyMS)
         XCTAssertNil(firstSample.snapshot().httpMS)
-        try flow.measuredCommand { try flow.makeSmaller() }
+        try flow.run { try flow.makeSmaller() }
         await flow.waitForSuggestion()
         XCTAssertNotEqual(flow.timingSample?.id, firstSample.id)
         XCTAssertEqual(flow.timingSample?.kind, .smaller)
@@ -47,7 +47,7 @@ final class ProgressFlowTests: XCTestCase {
         let provider = HeldProvider(.action(first))
         let flow = try makeFlow(provider)
         flow.timingEnabled = true
-        try flow.measuredCommand { try flow.createGoal("資料 정리") }
+        try flow.run { try flow.createGoal("資料 정리") }
         try flow.cancelSuggestion()
         try flow.startNewGoal()
         await provider.release()
@@ -61,7 +61,7 @@ final class ProgressFlowTests: XCTestCase {
         let provider = LockingProvider(path: path, candidate: .action(first))
         let flow = try makeFlow(provider)
         flow.timingEnabled = true
-        try flow.measuredCommand { try flow.createGoal("자료 정리") }
+        try flow.run { try flow.createGoal("자료 정리") }
         await flow.waitForSuggestion()
         XCTAssertNil(flow.timingSample)
         XCTAssertEqual(flow.screen, .awaitingFirstAction(goal: "자료 정리", problem: .failure(.failed)))
@@ -72,7 +72,7 @@ final class ProgressFlowTests: XCTestCase {
         let provider = HeldProvider(.action(first))
         let flow = try makeFlow(provider)
         flow.timingEnabled = true
-        try flow.measuredCommand { try flow.createGoal("자료 정리") }
+        try flow.run { try flow.createGoal("자료 정리") }
         try flow.cancelSuggestion()
         try flow.stopGoal()
         await provider.release()
@@ -1364,6 +1364,31 @@ final class ProgressFlowTests: XCTestCase {
         guard case .currentAction(let saved, nil) = flow.screen else { return XCTFail("\(flow.screen)") }
         XCTAssertEqual(saved.results.map(\.body), ["지우면 안 되는 초안"])
         XCTAssertEqual(saved.draft, "")
+    }
+
+    func testRunSavesGoalInputDraftBeforeCommand() throws {
+        let flow = try makeFlow(UnavailableSuggestionProvider())
+        var drafts = Drafts()
+        drafts.goalInput.statement = "자료 정리"
+        try flow.run(saving: drafts) { try flow.prepareGoal() }
+        XCTAssertEqual(flow.goalDetails?.statement, "자료 정리")
+    }
+
+    func testRunDoesNotRunCommandWhenDraftSaveFails() async throws {
+        let flow = try makeFlow(ScriptedProvider([.action(first)]))
+        let card = try await firstCard(flow)
+        let before = flow.screen
+        let database = try AppDatabase(path: path)
+        try await database.writer.write { db in
+            try db.execute(sql: "CREATE TRIGGER reject_draft BEFORE INSERT ON action_note BEGIN SELECT RAISE(ABORT, 'test failure'); END")
+        }
+        XCTAssertThrowsError(try flow.run(saving: Drafts(actionNote: "다시 볼 메모")) { try flow.deferAction() })
+        XCTAssertEqual(flow.screen, before)
+        try await database.writer.write { db in try db.execute(sql: "DROP TRIGGER reject_draft") }
+        try flow.run(saving: Drafts(actionNote: "다시 볼 메모")) { try flow.deferAction() }
+        try flow.resume(card.id)
+        guard case .currentAction(let resumed, _) = flow.screen else { return XCTFail("\(flow.screen)") }
+        XCTAssertEqual(resumed.draft, "다시 볼 메모")
     }
 
     func testStaleActionCannotSaveDraftIntoAnotherCard() async throws {

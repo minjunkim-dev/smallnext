@@ -13,6 +13,14 @@ struct GoalInput: Codable, Equatable, Sendable {
     var availableMinutes = ""
 }
 
+/// 화면에 남은 입력 초안이다. 명령 전에 현재 화면에 해당하는 값만 저장한다.
+struct Drafts: Equatable, Sendable {
+    var goalInput = GoalInput()
+    var answer = ""
+    var completionCriteria = ""
+    var actionNote = ""
+}
+
 struct SuggestionInput: Equatable, Sendable {
     let requestID: Int64
     var text: String?
@@ -127,13 +135,36 @@ final class ProgressFlow {
     private(set) var timingSample: SuggestionTiming?
     @ObservationIgnored private var commandStart: TimeInterval?
 
-    func measuredCommand(_ command: () throws -> Void) rethrows {
-        beginMeasuredCommand()
-        defer { endMeasuredCommand() }
+    /// 사용자 명령 하나를 실행한다. 입력 초안을 먼저 저장하고, 시간 측정은 명령 시작부터 잰다.
+    /// 초안 저장에 실패하면 명령을 실행하지 않는다.
+    func run(saving drafts: Drafts? = nil, _ command: () throws -> Void) throws {
+        commandStart = timingEnabled ? SuggestionTiming.now : nil
+        defer { commandStart = nil }
+        if let drafts { try save(drafts) }
         try command()
     }
-    func beginMeasuredCommand() { commandStart = timingEnabled ? SuggestionTiming.now : nil }
-    func endMeasuredCommand() { commandStart = nil }
+
+    private func save(_ drafts: Drafts) throws {
+        if let input = suggestionInput {
+            let text: String
+            let saved: String
+            if case .preparingGoal(_, let criteria?, _) = screen {
+                text = drafts.completionCriteria
+                saved = input.text ?? criteria
+            } else {
+                text = drafts.answer
+                saved = input.text ?? ""
+            }
+            if text != saved { try updateSuggestionInput(text, for: input.requestID) }
+        }
+        if screen == .goalInput, drafts.goalInput != goalInput {
+            try updateGoalInput(drafts.goalInput)
+        }
+        // 자동 저장에 실패한 입력이 있으면 화면을 떠나기 전에 다시 저장한다.
+        if case .currentAction(let card, _) = screen, card.draft != drafts.actionNote {
+            try updateDraft(drafts.actionNote, for: card.id)
+        }
+    }
 
     @ObservationIgnored private let database: AppDatabase
     @ObservationIgnored private let provider: any ActionSuggestionProvider
