@@ -17,8 +17,9 @@ if [ -n "${IOS_PACKAGES_DIR:-}" ]; then args+=(-clonedSourcePackagesDirPath "$IO
 if [ -n "${IOS_DERIVED_DATA:-}" ]; then args+=(-derivedDataPath "$IOS_DERIVED_DATA"); fi
 build_started=$SECONDS
 xcodebuild -project apps/ios/Smallnext.xcodeproj -scheme Smallnext \
-  -destination 'generic/platform=iOS Simulator' -arch "$(uname -m)" ${args[@]+"${args[@]}"} \
-  -onlyUsePackageVersionsFromResolvedFile -showBuildTimingSummary CODE_SIGNING_ALLOWED=NO build-for-testing
+  -destination 'generic/platform=iOS Simulator' ${args[@]+"${args[@]}"} \
+  -onlyUsePackageVersionsFromResolvedFile -showBuildTimingSummary \
+  ARCHS="$(uname -m)" ONLY_ACTIVE_ARCH=YES CODE_SIGNING_ALLOWED=NO build-for-testing
 printf 'iOS build-for-testing: %ss\n' "$((SECONDS - build_started))"
 wait "$boot_pid"
 trap - EXIT

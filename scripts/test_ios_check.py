@@ -27,6 +27,9 @@ if tool == "xcodebuild":
     if args == ["-version"]:
         print(f'Xcode {pins["xcode"]}\nBuild version {pins["xcode_build"]}')
     elif "build-for-testing" in args:
+        if "-destination" in args and "-arch" in args:
+            print("destination implies architecture, architecture must not also be specified.", file=sys.stderr)
+            sys.exit(70)
         wait_for("boot-started")
         (root / "build-started").touch()
         sys.exit(int(os.environ["BUILD_EXIT"]))
