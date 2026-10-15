@@ -12,7 +12,7 @@ public struct HTTPActionSuggestionProvider: ActionSuggestionProvider {
 
     #if DEBUG
     /// 개발자 Mac의 개발 서버다. http를 허용하고 고정 토큰만 보낸다.
-    public static func development(baseURL: URL, token: String?, session: URLSession = .shared) -> any ActionSuggestionProvider {
+    static func development(baseURL: URL, token: String?, session: URLSession = .shared) -> any ActionSuggestionProvider {
         guard endpoint(baseURL, schemes: ["http", "https"]) else { return UnavailableSuggestionProvider() }
         return Self(baseURL: baseURL, path: "development/suggestions", token: { token }, session: session, authApplicable: false)
     }

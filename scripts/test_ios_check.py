@@ -132,6 +132,13 @@ class IOSCheckTests(unittest.TestCase):
         self.assertFalse(any(call[0] == "xcrun" and "simctl" in call for call in self.calls))
         self.assertIn("iOS simulator tests: skipped", result.stdout)
 
+    def test_unknown_simulator_mode_fails_before_work(self):
+        result, calls = self.run_check(simulator_tests="true")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(calls, [])
+        self.assertFalse(any(call[0] == "swift" for call in self.calls))
+        self.assertIn("must be 0 or 1", result.stderr)
+
     def test_test_failure_propagates(self):
         result, calls = self.run_check(test_exit=5)
         self.assertNotEqual(result.returncode, 0)

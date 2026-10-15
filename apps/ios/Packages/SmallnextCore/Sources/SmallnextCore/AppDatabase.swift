@@ -2,7 +2,7 @@ import Foundation
 import GRDB
 
 public struct AppDatabase {
-    public let writer: DatabasePool
+    let writer: DatabasePool
 
     public init(path: String) throws {
         writer = try DatabasePool(path: path)

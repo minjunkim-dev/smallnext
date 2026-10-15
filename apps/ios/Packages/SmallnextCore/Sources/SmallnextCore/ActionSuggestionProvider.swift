@@ -25,16 +25,16 @@ public struct SuggestionRequest: Sendable, Equatable {
     public var blocker: String? = nil
     /// 더 작게 요청에서 현재 행동을 나눈 분할 원본의 할 일. 가장 처음 원본부터 담는다.
     /// 비어 있지 않으면 같은 작업을 이미 나눴다. 공급자는 이 값으로 반복 막힘을 판단한다.
-    public var splitSources: [String] = []
+    var splitSources: [String] = []
     /// 보류한 행동의 할 일. 생성 순서로 담는다. 공급자는 이 행동을 다시 제안하지 않는다.
-    public var deferredTasks: [String] = []
+    var deferredTasks: [String] = []
     public var context = GoalContext()
     public var completionCriteria: String? = nil
     /// 같은 목표 리비전의 HTTP 중복 요청을 막는 키다.
     public var stateKey: String = ""
     /// 완료한 행동과 구분하는 미완료 분할 원본·현재·보류 행동이다.
-    public var remainingTasks: [String] = []
-    public var completedActionIDs: [String] = []
+    var remainingTasks: [String] = []
+    var completedActionIDs: [String] = []
 }
 
 public struct GoalAnswer: Equatable, Sendable {
@@ -49,7 +49,7 @@ public struct GoalContext: Equatable, Sendable {
     public var materialLinks: [URL] = []
     public var materialExcerpt: String? = nil
     public var availableMinutes: Int? = nil
-    public var answers: [GoalAnswer] = []
+    var answers: [GoalAnswer] = []
 }
 
 public struct ProposedAction: Sendable, Equatable {
@@ -62,7 +62,7 @@ public struct ProposedAction: Sendable, Equatable {
     /// 공급자가 목표 완료를 표시했는지 나타낸다. 앱은 이 표시로 목표를 완료하지 않는다.
     public var marksGoalComplete = false
     /// 공급자가 원래 행동의 완료를 표시했는지 나타낸다. 앱은 이 표시로 행동을 완료하지 않는다.
-    public var marksCurrentActionComplete = false
+    var marksCurrentActionComplete = false
 }
 
 public enum SuggestionCandidate: Sendable, Equatable {

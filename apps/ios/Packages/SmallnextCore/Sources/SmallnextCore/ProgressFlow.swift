@@ -149,7 +149,7 @@ public final class ProgressFlow {
     public private(set) var goalDetails: GoalDetails?
     public private(set) var goals: [GoalSummary] = []
     public private(set) var suggestionInput: SuggestionInput?
-    public var timingEnabled = SuggestionTiming.enabled
+    var timingEnabled = SuggestionTiming.enabled
     public private(set) var timingSample: SuggestionTiming?
     @ObservationIgnored private var commandStart: TimeInterval?
 
@@ -609,7 +609,7 @@ public final class ProgressFlow {
     }
 
     /// 진행 중인 제안 요청이 끝날 때까지 기다린다. 테스트에서 쓴다.
-    public func waitForSuggestion() async {
+    func waitForSuggestion() async {
         await suggestionTask?.value
     }
 
@@ -1026,7 +1026,7 @@ public final class ProgressFlow {
 
 extension ProgressScreen {
     /// 제안을 기다리는 중인지 나타낸다.
-    public var isWaitingForSuggestion: Bool {
+    var isWaitingForSuggestion: Bool {
         switch self {
         case .preparingGoal(nil, nil, nil): true
         case .awaitingFirstAction(_, nil), .awaitingNextAction(nil), .currentAction(_, .waiting), .onHold(_, .waiting): true
@@ -1035,7 +1035,7 @@ extension ProgressScreen {
     }
 
     /// 실패·중단·취소한 제안의 문제다. '다시 시도'를 보여줄 때만 값이 있다.
-    public var suggestionProblem: SuggestionProblem? {
+    var suggestionProblem: SuggestionProblem? {
         switch self {
         case .preparingGoal(_, _, let problem): problem
         case .awaitingFirstAction(_, let problem), .awaitingNextAction(let problem): problem

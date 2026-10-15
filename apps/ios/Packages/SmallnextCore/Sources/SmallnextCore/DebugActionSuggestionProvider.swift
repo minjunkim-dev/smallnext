@@ -2,13 +2,13 @@
 import Foundation
 
 public struct DebugActionSuggestionProvider: ActionSuggestionProvider {
-    public let delay: Duration
+    let delay: Duration
 
     public init(delay: Duration = .milliseconds(400)) {
         self.delay = delay
     }
 
-    public static let exampleGoals: [String] = examples.map(\.goal)
+    static let exampleGoals: [String] = examples.map(\.goal)
     private static let smallerPrefix = "첫 부분만: "
 
     public func suggest(_ request: SuggestionRequest) async throws -> SuggestionCandidate {

@@ -7,13 +7,17 @@ if [ -z "${DEVELOPER_DIR:-}" ]; then
   fi
 fi
 python3 scripts/environment.py ios
+# PR CI sets IOS_SIMULATOR_TESTS=0: the first simulator boot holds the runner CPU for minutes.
+simulator_tests=${IOS_SIMULATOR_TESTS:-1}
+case "$simulator_tests" in
+  0|1) ;;
+  *) echo "IOS_SIMULATOR_TESTS must be 0 or 1, got '$simulator_tests'." >&2; exit 2 ;;
+esac
 package_args=()
 if [ -n "${IOS_PACKAGE_BUILD:-}" ]; then package_args+=(--scratch-path "$IOS_PACKAGE_BUILD"); fi
 package_started=$SECONDS
 swift test --package-path apps/ios/Packages/SmallnextCore --force-resolved-versions ${package_args[@]+"${package_args[@]}"}
 printf 'iOS package swift test: %ss\n' "$((SECONDS - package_started))"
-# PR CI sets IOS_SIMULATOR_TESTS=0: the first simulator boot holds the runner CPU for minutes.
-simulator_tests=${IOS_SIMULATOR_TESTS:-1}
 if [ "$simulator_tests" = 1 ]; then
   simulator=$(python3 scripts/ios_simulator.py)
   # Boot the selected simulator while Xcode builds without a device destination.
@@ -30,7 +34,7 @@ xcodebuild -project apps/ios/Smallnext.xcodeproj -scheme Smallnext \
   -onlyUsePackageVersionsFromResolvedFile -skipPackageUpdates -showBuildTimingSummary \
   ARCHS="$(uname -m)" ONLY_ACTIVE_ARCH=YES CODE_SIGNING_ALLOWED=NO build-for-testing
 printf 'iOS build-for-testing: %ss\n' "$((SECONDS - build_started))"
-if [ "$simulator_tests" != 1 ]; then
+if [ "$simulator_tests" = 0 ]; then
   echo 'iOS simulator tests: skipped (IOS_SIMULATOR_TESTS=0)'
   exit 0
 fi

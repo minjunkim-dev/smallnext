@@ -1,13 +1,13 @@
 import Foundation
 
-public struct HealthResponse: Decodable, Sendable {
+struct HealthResponse: Decodable, Sendable {
     public let status: String
 }
 
-public struct APIClient: Sendable {
+struct APIClient: Sendable {
     public let baseURL: URL
 
-    public func health() async throws -> HealthResponse {
+    func health() async throws -> HealthResponse {
         let (data, response) = try await URLSession.shared.data(
             from: baseURL.appendingPathComponent("health")
         )

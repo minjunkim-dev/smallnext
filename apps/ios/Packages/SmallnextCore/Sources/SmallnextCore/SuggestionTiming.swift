@@ -10,25 +10,25 @@ public final class SuggestionTiming: @unchecked Sendable {
     private var record: Record
     public var outcome: String { lock.withLock { record.outcome } }
 
-    public struct Server: Codable {
+    struct Server: Codable {
         public let run_id: String
-        public let generate_ms: Double?
-        public let check_ms: Double?
-        public let total_ms: Double
+        let generate_ms: Double?
+        let check_ms: Double?
+        let total_ms: Double
     }
-    public struct Record: Codable {
-        public let runID: String
-        public let requestKind: String
+    struct Record: Codable {
+        let runID: String
+        let requestKind: String
         public var outcome = "pending"
         public var authMS: Double?
         public var authApplicable: Bool?
         public var httpMS: Double?
-        public var applyMS: Double?
-        public var buttonToApplyMS: Double?
+        var applyMS: Double?
+        var buttonToApplyMS: Double?
         // 실제 화면 관측은 외부 관측자가 별도 자료로 연결한다.
-        public var screenUpperBoundMS: Double?
+        var screenUpperBoundMS: Double?
         public var server: Server?
-        public var transportQueueResidualMS: Double?
+        var transportQueueResidualMS: Double?
     }
 
     public init(kind: SuggestionKind, start: TimeInterval) {
@@ -44,7 +44,7 @@ public final class SuggestionTiming: @unchecked Sendable {
         #endif
     }
     public static var now: TimeInterval { ProcessInfo.processInfo.systemUptime }
-    public func authentication(ms: Double?, applicable: Bool) {
+    func authentication(ms: Double?, applicable: Bool) {
         lock.withLock { record.authMS = ms; record.authApplicable = applicable }
     }
     public func http(ms: Double) { lock.withLock { record.httpMS = ms } }
@@ -61,15 +61,15 @@ public final class SuggestionTiming: @unchecked Sendable {
             }
         }
     }
-    public func finish(_ outcome: String, applyStart: TimeInterval) {
+    func finish(_ outcome: String, applyStart: TimeInterval) {
         lock.withLock {
             record.outcome = outcome
             record.applyMS = (Self.now - applyStart) * 1000
             record.buttonToApplyMS = (Self.now - start) * 1000
         }
     }
-    public func snapshot() -> Record { lock.withLock { record } }
-    public func save() {
+    func snapshot() -> Record { lock.withLock { record } }
+    func save() {
         #if DEBUG
         guard Self.enabled, let directory = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first else { return }
         let file = directory.appendingPathComponent("suggestion-timing.json")
