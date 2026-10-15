@@ -17,7 +17,20 @@ import launch_evaluation as launch
 import oauth_quality as qa
 
 
+def isolate_private_root(test):
+    # One temporary root per test holds its bundles and the default model lock.
+    root = tempfile.TemporaryDirectory()
+    test.addCleanup(root.cleanup)
+    for patcher in [patch.object(tempfile, 'tempdir', root.name),
+                    patch.object(launch, 'private_root', lambda: Path(root.name).resolve())]:
+        patcher.start()
+        test.addCleanup(patcher.stop)
+
+
 class LaunchEvaluationTests(unittest.TestCase):
+    def setUp(self):
+        isolate_private_root(self)
+
     def freeze(self, directory):
         root = Path(directory).resolve() / "launch"
         launch.freeze(root, owner="minjunkim-dev",
@@ -1067,6 +1080,7 @@ from test_launch_evaluation import LaunchEvaluationTests
 import launch_evaluation as l
 import oauth_quality as q
 resource.setrlimit(resource.RLIMIT_NOFILE,(256,resource.getrlimit(resource.RLIMIT_NOFILE)[1]))
+l.private_root=lambda: Path(sys.argv[1]).resolve()
 root,_=LaunchEvaluationTests().freeze(sys.argv[1])
 generated=[0]
 def invoke(role,*args):
@@ -1216,6 +1230,39 @@ print('maximum report passed')
             self.assertEqual(summary['stop_reason'], 'invalid_output')
             self.assertEqual(summary['roles']['started'], 1)
             self.assertNotIn('private invalid value', json.dumps(summary))
+
+
+class PrivateRootTests(unittest.TestCase):
+    def test_linked_worktree_resolves_to_main_checkout_work(self):
+        with tempfile.TemporaryDirectory() as directory:
+            main, linked, other = (Path(directory).resolve()/name for name in ('main', 'linked', 'other'))
+            env = {k: v for k, v in os.environ.items() if not k.startswith('GIT_')}
+            git = lambda cwd, *args: subprocess.run(['git', *args], cwd=cwd, env=env, check=True, capture_output=True)
+            for repo in (main, other):
+                repo.mkdir()
+                git(repo, 'init', '-q')
+            git(main, '-c', 'user.name=t', '-c', 'user.email=t@example.invalid', 'commit', '-q', '--allow-empty', '-m', 'init')
+            git(main, 'worktree', 'add', '-q', str(linked))
+            self.assertEqual(launch.private_root(linked), main/'work')
+            self.assertEqual(launch.private_root(main), main/'work')
+            with patch.dict(os.environ, {'GIT_DIR': str(other/'.git'), 'GIT_COMMON_DIR': str(other/'.git')}):
+                self.assertEqual(launch.private_root(linked), main/'work')
+            real = launch.private_root
+            with patch.object(launch, 'private_root', lambda: real(linked)):
+                for bundle in [linked/'work'/'launch', main/'work'/'..'/'launch']:
+                    with self.subTest(bundle=bundle), self.assertRaisesRegex(ValueError, 'main checkout work'):
+                        launch.freeze(bundle, owner='minjunkim-dev', delete_method='delete directory',
+                                      ends_at=(datetime.now(timezone.utc)+timedelta(days=1)).isoformat())
+                    self.assertFalse(bundle.resolve().exists())
+
+    def test_freeze_rejects_bundles_outside_main_checkout_work(self):
+        root = launch.private_root()
+        with tempfile.TemporaryDirectory() as directory:
+            for bundle in [Path(directory).resolve()/'launch', root]:
+                with self.subTest(bundle=bundle), self.assertRaisesRegex(ValueError, 'main checkout work'):
+                    launch.freeze(bundle, owner='minjunkim-dev', delete_method='delete directory',
+                                  ends_at=(datetime.now(timezone.utc)+timedelta(days=1)).isoformat())
+            self.assertFalse((Path(directory)/'launch').exists())
 
 
 if __name__ == '__main__':

@@ -152,6 +152,15 @@ def launch_flows(regression):
             for group, name, data, meaning, statuses, smaller in specs for repeat in range(3)]
 
 
+def private_root(repo=qa.REPO):
+    # Raw bundles must outlive worktrees; #115's bundle was lost with a removed worktree.
+    # GIT_* variables (e.g. inside another repository's hook) must not redirect the root.
+    env = {k: v for k, v in os.environ.items() if not k.startswith('GIT_')}
+    common = subprocess.run(['git', 'rev-parse', '--path-format=absolute', '--git-common-dir'],
+                            cwd=repo, env=env, check=True, capture_output=True, text=True).stdout.strip()
+    return (Path(common).parent / 'work').resolve()
+
+
 def freeze(directory, *, owner, ends_at, delete_method, role_reservation_micro_usd=20_000,
            monthly_spent_micro_usd=0):
     directory = Path(directory).resolve()
@@ -161,8 +170,9 @@ def freeze(directory, *, owner, ends_at, delete_method, role_reservation_micro_u
     if (type(role_reservation_micro_usd) is not int or role_reservation_micro_usd <= 0
             or type(monthly_spent_micro_usd) is not int or monthly_spent_micro_usd < 0):
         raise ValueError('nonnegative integer planning cost required')
-    if directory.is_relative_to(qa.REPO.resolve()) and not directory.is_relative_to((qa.REPO/'work').resolve()):
-        raise ValueError('raw bundles must be outside tracked source or in ignored work')
+    root = private_root()
+    if directory == root or not directory.is_relative_to(root):
+        raise ValueError(f'raw bundles must be inside the main checkout work directory: {root}')
     directory.mkdir(parents=True, mode=0o700, exist_ok=False)
     qa.freeze(directory / 'regression', 'quality', output_mode='text-json', sequential=True)
     regression = qa.load(directory / 'regression')
@@ -657,7 +667,7 @@ def run(directory, *, claude='claude', invoke=None, cancelled=None, clock=monoto
     manifest = load(directory)
     if datetime.now(timezone.utc) >= datetime.fromisoformat(manifest['retention']['evaluation_ends_at']):
         raise ValueError('frozen evaluation end time reached')
-    lock_path = Path(lock_path or qa.REPO/'work/launch-model.lock')
+    lock_path = Path(lock_path or private_root()/'launch-model.lock')
     lock_path.parent.mkdir(parents=True, exist_ok=True)
     cancelled = cancelled or threading.Event()
     with lock_path.open('a') as lock:

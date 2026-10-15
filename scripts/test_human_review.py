@@ -10,9 +10,13 @@ from unittest.mock import patch
 import human_review
 import launch_evaluation as launch
 import oauth_quality as qa
+from test_launch_evaluation import isolate_private_root
 
 
 class HumanReviewTests(unittest.TestCase):
+    def setUp(self):
+        isolate_private_root(self)
+
     def bundle(self, directory):
         root = Path(directory).resolve() / 'launch'
         launch.freeze(root, owner='minjunkim-dev',

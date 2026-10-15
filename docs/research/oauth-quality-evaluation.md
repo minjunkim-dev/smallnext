@@ -45,8 +45,9 @@ python3 scripts/launch_evaluation.py run work/launch-new
 python3 scripts/launch_evaluation.py report work/launch-new --observations work/screen-observations.json
 ```
 
-같은 실행 판의 재실행과 덮어쓰기를 거부한다. checkout의 `work/launch-model.lock`으로 하네스 실행 소유권을 배타적으로 유지한다.
-다른 checkout이나 수동 모델 호출도 겹치지 않게 운영한다. 이 잠금이 외부 호출까지 잠그지는 않는다.
+예시의 `work/`는 [보관 규칙](../WORKFLOW.md#검증과-문서-관리)의 위치다. worktree에서는 그 절대 경로를 지정한다.
+같은 실행 판의 재실행과 덮어쓰기를 거부한다. 같은 위치의 `launch-model.lock`으로 worktree 사이의 하네스 실행 소유권을 배타적으로 유지한다.
+별도 clone과 수동 모델 호출도 겹치지 않게 운영한다. 이 잠금이 외부 호출까지 잠그지는 않는다.
 소유권 상실·취소·timeout에서 기존 구독 실행기가 자식 프로세스 그룹을 정리한다.
 제안 요청과 역할 호출의 시작 기록을 먼저 저장한다. 잘린 결과와 누락한 결과를 성공으로 처리하지 않는다.
 예상 밖 품질·출력·모델·정산 오류와 상한에서 다음 호출을 차단한다.
