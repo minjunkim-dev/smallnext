@@ -1,7 +1,6 @@
 #if DEBUG
 import Foundation
 
-// Shared with the app-hosted tests through project.yml.
 final class DevelopmentTransport: URLProtocol, @unchecked Sendable {
     static let store = Store()
     override class func canInit(with request: URLRequest) -> Bool { true }

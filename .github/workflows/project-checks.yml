@@ -28,6 +28,7 @@ jobs:
       container: ${{ steps.scope.outputs.container }}
       ios: ${{ steps.scope.outputs.ios }}
       android: ${{ steps.scope.outputs.android }}
+      ios_simulator: ${{ steps.scope.outputs.ios_simulator }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -67,8 +68,9 @@ jobs:
     uses: ./.github/workflows/ios-checks.yml
     with:
       use-cache: ${{ github.event_name != 'workflow_dispatch' || inputs.use-cache }}
-      # PRs skip the simulator boot; main pushes and manual runs keep app-hosted tests.
-      simulator-tests: ${{ github.event_name != 'pull_request' }}
+      # Simulator tests: manual runs always, main pushes only for app-shell inputs (an empty value
+      # from an older trusted scope script still runs them), PRs never.
+      simulator-tests: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && needs.scope.outputs.ios_simulator != 'false') }}
 
   android:
     needs: scope

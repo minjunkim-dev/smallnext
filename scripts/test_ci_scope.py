@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
 """Prevent project selection from hiding checks after edits, deletions or moves."""
 
+import io
 import os
 from pathlib import Path
+import runpy
 import subprocess
 import tempfile
 import unittest
 from unittest.mock import patch
 
-from ci_scope import scopes
+from ci_scope import needs_simulator, scopes
 
 
 ALL = {"api": True, "container": True, "ios": True, "android": True}
@@ -90,6 +92,35 @@ class ScopeTests(unittest.TestCase):
         for path in [".github/workflows/project-checks.yml", ".github/workflows/new.yml"]:
             with self.subTest(path=path):
                 self.assertEqual(self.selected([path]), ALL)
+
+    def test_simulator_runs_only_for_app_shell_inputs(self):
+        for path in ["apps/ios/Sources/ContentView.swift", "apps/ios/Tests/CrashReportingTests.swift",
+                     "apps/ios/Config/Debug.plist", "apps/ios/project.yml",
+                     "apps/ios/Smallnext.xcodeproj/project.pbxproj", "config/feature-flags.json",
+                     ".ci/toolchains.json", "scripts/check_ios.sh", ".github/workflows/ios-checks.yml"]:
+            with self.subTest(path=path):
+                self.assertTrue(needs_simulator([path]))
+        for path in ["apps/ios/Packages/SmallnextCore/Sources/SmallnextCore/ProgressFlow.swift",
+                     "apps/ios/Packages/SmallnextCore/Tests/SmallnextCoreTests/ProgressFlowTests.swift",
+                     "docs/CI.md", "services/api/src/main.rs", "apps/android/app/build.gradle.kts"]:
+            with self.subTest(path=path):
+                self.assertFalse(needs_simulator([path]))
+
+    def test_unknown_history_runs_simulator(self):
+        self.assertTrue(needs_simulator(None))
+
+    def test_entry_point_writes_projects_and_simulator_decision(self):
+        with tempfile.TemporaryDirectory() as directory:
+            event, output = Path(directory) / "event.json", Path(directory) / "output"
+            event.write_text('{"before": "' + "b" * 40 + '"}')
+            core = "apps/ios/Packages/SmallnextCore/Sources/SmallnextCore/FeatureFlags.swift"
+            with patch.dict(os.environ, {"GITHUB_EVENT_PATH": str(event), "GITHUB_OUTPUT": str(output)}), \
+                 patch("ci_scope.subprocess.check_output", return_value=core), \
+                 patch("sys.stdout", new_callable=io.StringIO):
+                runpy.run_module("ci_scope", run_name="__main__")
+            self.assertEqual(output.read_text().splitlines(), [
+                "api=false", "container=false", "ios=true", "android=false", "ios_simulator=false",
+            ])
 
     def test_new_branch_checks_all_projects(self):
         self.assertEqual(scopes({"before": "0" * 40}), ALL)

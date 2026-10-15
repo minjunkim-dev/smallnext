@@ -21,7 +21,6 @@
 		A9CF16D2206FF500083EBDC6 /* feature-flags.json in Resources */ = {isa = PBXBuildFile; fileRef = 11C1F69DF05E9AE74CF34A04 /* feature-flags.json */; };
 		B71B69141C6C67E9D1493408 /* SmallnextCore in Frameworks */ = {isa = PBXBuildFile; productRef = 1B88103B7194E0316C964DDD /* SmallnextCore */; };
 		C72DBDF74D8A955490D29FB9 /* FirebaseCrashlytics in Frameworks */ = {isa = PBXBuildFile; productRef = C3D20393DB4C9132AA35E656 /* FirebaseCrashlytics */; };
-		CD1F2D36EBC81193F318A643 /* DevelopmentTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 890CA364B7B041D821D2DBF8 /* DevelopmentTransport.swift */; };
 		F02449B4834E149702AE016B /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1150C4CB7EAB11488B1E454E /* ContentView.swift */; };
 		F224F8FC7FAD5CCDC4FCD8A1 /* CoreFlowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50528CC70F298B20C17329B6 /* CoreFlowView.swift */; };
 /* End PBXBuildFile section */
@@ -53,7 +52,6 @@
 		3E93A4009080939BA076E576 /* SmallnextTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = SmallnextTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		45CC86C08E79F4BD7F4B9088 /* Smallnext.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Smallnext.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		50528CC70F298B20C17329B6 /* CoreFlowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoreFlowView.swift; sourceTree = "<group>"; };
-		890CA364B7B041D821D2DBF8 /* DevelopmentTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DevelopmentTransport.swift; sourceTree = "<group>"; };
 		913B89E90870C631E7623A67 /* SuggestionTimingMarker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SuggestionTimingMarker.swift; sourceTree = "<group>"; };
 		A1FB7FB815872124737BBD11 /* UserServerAITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserServerAITests.swift; sourceTree = "<group>"; };
 		AC6969E29D3BEF3575FDFFD0 /* SmallnextTimingUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = SmallnextTimingUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -82,7 +80,6 @@
 			isa = PBXGroup;
 			children = (
 				3A3FBB5EEE28F6040A5A323C /* SmallnextCore */,
-				CDBCA83E7B5107AFB2122E17 /* SmallnextCore */,
 			);
 			path = Packages;
 			sourceTree = "<group>";
@@ -149,22 +146,6 @@
 			path = config;
 			sourceTree = "<group>";
 		};
-		B4570B0754957EA76DACA80C /* SmallnextCoreTests */ = {
-			isa = PBXGroup;
-			children = (
-				890CA364B7B041D821D2DBF8 /* DevelopmentTransport.swift */,
-			);
-			path = SmallnextCoreTests;
-			sourceTree = "<group>";
-		};
-		CDBCA83E7B5107AFB2122E17 /* SmallnextCore */ = {
-			isa = PBXGroup;
-			children = (
-				F42F7A32FE3468EDFFBAE0B7 /* Tests */,
-			);
-			path = SmallnextCore;
-			sourceTree = "<group>";
-		};
 		D29CB81A766063E3D71BD539 /* smallnext */ = {
 			isa = PBXGroup;
 			children = (
@@ -172,14 +153,6 @@
 			);
 			name = smallnext;
 			path = ../..;
-			sourceTree = "<group>";
-		};
-		F42F7A32FE3468EDFFBAE0B7 /* Tests */ = {
-			isa = PBXGroup;
-			children = (
-				B4570B0754957EA76DACA80C /* SmallnextCoreTests */,
-			);
-			path = Tests;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -342,7 +315,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				5CAD65A62B31DE1BA6FA24EB /* CrashReportingTests.swift in Sources */,
-				CD1F2D36EBC81193F318A643 /* DevelopmentTransport.swift in Sources */,
 				00B432C73AA8BDD3A211E9E4 /* FeatureFlagsBundleTests.swift in Sources */,
 				2FA2B0B084303CD0EEE1916F /* UserServerAITests.swift in Sources */,
 			);
