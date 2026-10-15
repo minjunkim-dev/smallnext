@@ -38,8 +38,9 @@ def check(image, network):
         raise RuntimeError('set TEST_DATABASE_URL to an isolated test database')
     schema = f'test_image_purge_{uuid4().hex}'
     base = ['--rm', '--interactive', '--network', network]
+    # psql expands a URI only with explicit dbname; pass the env value inside the client.
     client = [*base, '--env', 'PGDATABASE', POSTGRES_IMAGE,
-              'psql', '-X', '-qAt', '--set', 'ON_ERROR_STOP=1']
+              'sh', '-c', 'exec psql --dbname "$PGDATABASE" -X -qAt --set ON_ERROR_STOP=1']
     client_env = dict(os.environ, PGDATABASE=url)
 
     def sql(statement):
