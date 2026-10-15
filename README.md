@@ -13,6 +13,7 @@ Android 기본 앱, Rust API, 개발 DB와 CI 구성도 있습니다.
 실행 방법은 [개발 환경과 실행](docs/DEVELOPMENT.md#개발-전용-ai)에 있습니다.
 사용자용 서버 AI와 Supabase 익명 인증 경로를 추가했습니다. 기본값은 OFF입니다.
 설정과 검증 범위는 [서버 AI](docs/SERVER_AI.md)에 있습니다.
+DB·인증의 선택 이유는 [Supabase 선택 ADR](docs/adr/0002-supabase-database-and-auth.md)에 있습니다.
 Supabase Free의 DB·인증 연결을 로컬에서 확인했습니다.
 실제 서버·앱의 전체 인증 경로, 유료 API, 기기 간 동기화와 운영 배포는 아직 검증하지 않았습니다.
 iOS Crashlytics의 개발 경로를 추가했습니다. 기본값은 OFF입니다.

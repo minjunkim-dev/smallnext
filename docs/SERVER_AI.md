@@ -2,6 +2,7 @@
 
 인증·권한·철회·보관의 확정 답은 [#75](https://github.com/minjunkim-dev/smallnext/issues/75)에 있습니다.
 인증 공급자 변경은 [#168](https://github.com/minjunkim-dev/smallnext/issues/168)을 따릅니다.
+DB·인증의 선택 이유와 대안·제약은 [Supabase 선택 ADR](adr/0002-supabase-database-and-auth.md)에 기록합니다.
 코드는 기본 OFF입니다. Supabase Free 프로젝트의 DB·인증을 로컬에서 확인했습니다.
 실제 서버 배포와 앱에서 서버까지의 전체 인증 경로는 아직 검증하지 않았습니다.
 실제 API 품질·청구·지연은 [#47](https://github.com/minjunkim-dev/smallnext/issues/47)에서 검증합니다.
