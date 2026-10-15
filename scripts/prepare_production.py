@@ -19,6 +19,8 @@ IOS_FILE = Path("apps/ios/Config/Local.xcconfig")
 def env_value(value):
     if any(character in value for character in "\r\n\0"):
         raise ValueError("한 줄 값을 입력하십시오.")
+    if "\\" in value:
+        raise ValueError("URL의 역슬래시는 percent-encoding으로 입력하십시오.")
     # Compose single quotes prevent interpolation; do not source this file in a shell.
     return "'" + value.replace("'", "\\'") + "'"
 
@@ -33,7 +35,7 @@ def save_private(path, content):
     if path.is_symlink():
         raise ValueError("설정 파일의 symlink를 제거하십시오.")
     path.parent.mkdir(parents=True, exist_ok=True)
-    descriptor, temporary = tempfile.mkstemp(dir=path.parent, prefix=".prepare-")
+    descriptor, temporary = tempfile.mkstemp(dir=path.parent, prefix=".env.prepare-")
     try:
         with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
             stream.write(content)

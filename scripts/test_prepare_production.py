@@ -47,7 +47,7 @@ class PreparationTests(unittest.TestCase):
             self.assertEqual((root / wizard.IOS_FILE).read_text(), "original\n")
 
     def test_serializers_reject_injected_lines_and_build_expansion(self):
-        for value in ("x\nTOKEN=y", "x\r", "x\0"):
+        for value in ("x\nTOKEN=y", "x\r", "x\0", "x\\", "x\\'y"):
             with self.assertRaises(ValueError):
                 wizard.env_value(value)
         for value in ("$(OTHER)", "x // comment", "x\nSETTING=y"):
