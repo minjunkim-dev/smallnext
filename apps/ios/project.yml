@@ -20,6 +20,9 @@ targets:
   Smallnext:
     type: application
     platform: iOS
+    configFiles:
+      Debug: Config/Build.xcconfig
+      Release: Config/Build.xcconfig
     sources:
       - Sources
       - path: ../../config/feature-flags.json
