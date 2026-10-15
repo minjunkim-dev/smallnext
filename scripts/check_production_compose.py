@@ -15,8 +15,8 @@ import uuid
 
 ROOT = Path(__file__).resolve().parents[1]
 AI_SETTINGS = (
-    "USER_SERVER_AI", "FIREBASE_PROJECT_ID", "AI_ALLOWED_FIREBASE_UIDS",
-    "FIREBASE_SERVICE_ACCOUNT_FILE", "AI_MODEL_CONFIRMED", "ANTHROPIC_API_KEY",
+    "USER_SERVER_AI", "SUPABASE_URL", "AI_ALLOWED_SUPABASE_UIDS",
+    "SUPABASE_PUBLISHABLE_KEY", "AI_MODEL_CONFIRMED", "ANTHROPIC_API_KEY",
     "AI_MODEL_CONTEXT_TOKENS", "AI_MAX_OUTPUT_TOKENS",
     "AI_INPUT_MICRO_USD_PER_MILLION", "AI_OUTPUT_MICRO_USD_PER_MILLION",
     "AI_BUDGET_MICRO_USD",
@@ -100,15 +100,10 @@ def check(image, check_purge, check_deploy=False):
     # Do not inherit operator AI settings, database URLs or Compose overrides.
     env = {key: value for key, value in os.environ.items()
            if key not in AI_SETTINGS and not key.startswith("COMPOSE_")
-           and key not in {"DATABASE_URL", "API_DOMAIN", "FIREBASE_CREDENTIALS_DIR", "SMALLNEXT_API_IMAGE"}}
+           and key not in {"DATABASE_URL", "API_DOMAIN", "SMALLNEXT_API_IMAGE"}}
     env.update(DATABASE_URL=DATABASE_URL, API_DOMAIN="http://localhost", SMALLNEXT_API_IMAGE=image)
     with tempfile.TemporaryDirectory(prefix="smallnext-compose-") as directory:
         temporary = Path(directory)
-        credentials = temporary / "credentials"
-        credentials.mkdir(mode=0o755)
-        # Docker's unprivileged image user must be able to traverse the temporary parent.
-        temporary.chmod(0o755)
-        env["FIREBASE_CREDENTIALS_DIR"] = str(credentials)
         empty_env = temporary / "empty.env"
         empty_env.touch()
         override = temporary / "compose.yaml"
@@ -165,26 +160,18 @@ def check(image, check_purge, check_deploy=False):
                                            ("/v1/suggestions", "POST", 404)):
                 if status(f"http://{address}{path}", method) != expected:
                     raise RuntimeError(f"AI OFF response mismatch: {path}")
-            print("PASS production Caddy to AI OFF API without credential file: health=200 ready=200 suggestions=404")
-
-            credential = credentials / "service-account.json"
-            credential.write_text("{}")
-            credential.chmod(0o644)
-            # Root bypasses discretionary permissions, so only a read-only mount blocks this write.
-            run(compose + ["run", "--rm", "-T", "--no-deps", "--user", "0", "--entrypoint", "sh",
-                           "api", "-c", 'test -r "$FIREBASE_SERVICE_ACCOUNT_FILE" && ! touch /run/secrets/firebase/probe'], env)
-            print("PASS credential directory is readable and mounted read-only")
-            failures = (
-                ({"FIREBASE_PROJECT_ID": ""}, "FIREBASE_PROJECT_ID"),
-                ({"FIREBASE_PROJECT_ID": "synthetic", "AI_ALLOWED_FIREBASE_UIDS": ""}, "AI_ALLOWED_FIREBASE_UIDS"),
-                ({"FIREBASE_PROJECT_ID": "synthetic", "AI_ALLOWED_FIREBASE_UIDS": "synthetic",
-                  "FIREBASE_SERVICE_ACCOUNT_FILE": ""}, "FIREBASE_SERVICE_ACCOUNT_FILE"),
-                ({"FIREBASE_PROJECT_ID": "synthetic", "AI_ALLOWED_FIREBASE_UIDS": "synthetic",
-                  "AI_MODEL_CONFIRMED": ""}, "AI_MODEL_CONFIRMED"),
-                ({"FIREBASE_PROJECT_ID": "synthetic", "AI_ALLOWED_FIREBASE_UIDS": "synthetic",
-                  "AI_MODEL_CONFIRMED": "1", "ANTHROPIC_API_KEY": ""}, "ANTHROPIC_API_KEY"),
-            )
-            for settings, missing in failures:
+            print("PASS production Caddy to AI OFF API: health=200 ready=200 suggestions=404")
+            if configured["services"]["api"].get("volumes"):
+                raise RuntimeError("Supabase API must not mount a legacy service account")
+            print("PASS Supabase API requires no mounted service-account file")
+            required = {
+                "SUPABASE_URL": "https://test-project.supabase.co",
+                "SUPABASE_PUBLISHABLE_KEY": "sb_publishable_synthetic",
+                "AI_ALLOWED_SUPABASE_UIDS": "00000000-0000-0000-0000-000000000001",
+                "AI_MODEL_CONFIRMED": "1", "ANTHROPIC_API_KEY": "synthetic-provider",
+            }
+            for missing in required:
+                settings = dict(required, **{missing: ""})
                 command = compose + ["run", "--rm", "-T", "--no-deps", "-e", "USER_SERVER_AI=1"]
                 for key, value in settings.items():
                     command += ["-e", f"{key}={value}"]

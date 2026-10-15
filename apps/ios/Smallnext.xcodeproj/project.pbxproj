@@ -14,7 +14,7 @@
 		30A8576C772C36E2E2FC18A4 /* SmallnextApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF3E8B07B08AD16D7D946A22 /* SmallnextApp.swift */; };
 		59FAA074D5AE15B56A5C0A42 /* SuggestionTimingMarker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 913B89E90870C631E7623A67 /* SuggestionTimingMarker.swift */; };
 		5CAD65A62B31DE1BA6FA24EB /* CrashReportingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 288EEEA59C7E1B88F7F39D8A /* CrashReportingTests.swift */; };
-		74BEFAD9B514886F592F8ED9 /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = 52EAF431181CEA24090DCD37 /* FirebaseAuth */; };
+		74BEFAD9B514886F592F8ED9 /* Auth in Frameworks */ = {isa = PBXBuildFile; productRef = CC9F0D066E045CE88A51F1A6 /* Auth */; };
 		7A5BE289278F6095E7EF0BCF /* FirebaseClientConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 23FF829BA7D4678913A15AE8 /* FirebaseClientConfiguration.swift */; };
 		7FC526E773F035A32359426D /* CrashReporting.swift in Sources */ = {isa = PBXBuildFile; fileRef = D404FD8D96A7865FE4901A10 /* CrashReporting.swift */; };
 		A8DEFD6028B1AD5A9F8C75B2 /* FirebaseCore in Frameworks */ = {isa = PBXBuildFile; productRef = 45E3C1CD17348250C2572F8B /* FirebaseCore */; };
@@ -68,7 +68,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				B71B69141C6C67E9D1493408 /* SmallnextCore in Frameworks */,
-				74BEFAD9B514886F592F8ED9 /* FirebaseAuth in Frameworks */,
+				74BEFAD9B514886F592F8ED9 /* Auth in Frameworks */,
 				A8DEFD6028B1AD5A9F8C75B2 /* FirebaseCore in Frameworks */,
 				C72DBDF74D8A955490D29FB9 /* FirebaseCrashlytics in Frameworks */,
 			);
@@ -184,7 +184,7 @@
 			name = Smallnext;
 			packageProductDependencies = (
 				1B88103B7194E0316C964DDD /* SmallnextCore */,
-				52EAF431181CEA24090DCD37 /* FirebaseAuth */,
+				CC9F0D066E045CE88A51F1A6 /* Auth */,
 				45E3C1CD17348250C2572F8B /* FirebaseCore */,
 				C3D20393DB4C9132AA35E656 /* FirebaseCrashlytics */,
 			);
@@ -260,6 +260,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				A02804F654D57E049A886BB6 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */,
+				9E9F509484E94F35E28F172C /* XCRemoteSwiftPackageReference "supabase-swift" */,
 				23FB98AF9027159F5D0A200E /* XCLocalSwiftPackageReference "Packages/SmallnextCore" */,
 			);
 			preferredProjectObjectVersion = 77;
@@ -652,6 +653,14 @@
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCRemoteSwiftPackageReference section */
+		9E9F509484E94F35E28F172C /* XCRemoteSwiftPackageReference "supabase-swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/supabase/supabase-swift.git";
+			requirement = {
+				kind = exactVersion;
+				version = 2.55.4;
+			};
+		};
 		A02804F654D57E049A886BB6 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/firebase/firebase-ios-sdk.git";
@@ -672,15 +681,15 @@
 			package = A02804F654D57E049A886BB6 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
 			productName = FirebaseCore;
 		};
-		52EAF431181CEA24090DCD37 /* FirebaseAuth */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = A02804F654D57E049A886BB6 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
-			productName = FirebaseAuth;
-		};
 		C3D20393DB4C9132AA35E656 /* FirebaseCrashlytics */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = A02804F654D57E049A886BB6 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
 			productName = FirebaseCrashlytics;
+		};
+		CC9F0D066E045CE88A51F1A6 /* Auth */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 9E9F509484E94F35E28F172C /* XCRemoteSwiftPackageReference "supabase-swift" */;
+			productName = Auth;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

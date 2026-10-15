@@ -1,54 +1,154 @@
 use super::{client, read_json};
 use axum::http::{HeaderMap, StatusCode, header};
 use jsonwebtoken::{
-    Algorithm, DecodingKey, EncodingKey, Header, Validation, decode, decode_header, encode,
-    get_current_timestamp,
+    Algorithm, DecodingKey, Validation, decode, decode_header, get_current_timestamp,
+    jwk::{AlgorithmParameters, EllipticCurve, JwkSet, KeyAlgorithm, KeyOperations, PublicKeyUse},
 };
 use serde::Deserialize;
-use serde_json::json;
-use std::{
-    collections::{HashMap, HashSet},
-    sync::Arc,
-};
+use sqlx::PgPool;
+use std::{collections::HashSet, sync::Arc};
 use tokio::sync::Mutex;
 
 #[derive(Clone)]
-pub(super) struct Firebase {
-    project: String,
+pub(super) struct Supabase {
+    issuer: String,
+    publishable_key: String,
     allowed: HashSet<String>,
-    account: Arc<ServiceAccount>,
     http: reqwest::Client,
     keys: Arc<Mutex<Keys>>,
-    access: Arc<Mutex<Access>>,
     pub(super) endpoints: Endpoints,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::{Json, Router, routing::get};
+    use jsonwebtoken::{EncodingKey, Header, encode, jwk::Jwk};
+    use serde_json::json;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    #[test]
+    fn configuration_rejects_secret_keys_unsafe_urls_and_invalid_uids() {
+        let allowed: HashSet<String> = ["11111111-1111-4111-8111-111111111111".into()].into();
+        for url in [
+            "http://project.supabase.co",
+            "https://user:pass@project.supabase.co",
+            "https://project.supabase.co/path",
+            "https://project.supabase.co?value=1",
+        ] {
+            assert!(
+                Supabase::new(url.into(), "sb_publishable_test".into(), allowed.clone()).is_err()
+            );
+        }
+        for key in ["sb_secret_test", "legacy-token", "sb_publishable_"] {
+            assert!(
+                Supabase::new(
+                    "https://project.supabase.co".into(),
+                    key.into(),
+                    allowed.clone()
+                )
+                .is_err()
+            );
+        }
+        assert!(
+            Supabase::new(
+                "https://project.supabase.co".into(),
+                "sb_publishable_test-A".into(),
+                allowed
+            )
+            .is_ok()
+        );
+        assert!(!valid_uuid("invalid"));
+    }
+
+    #[tokio::test]
+    async fn asymmetric_jwks_verify_both_algorithms_and_reject_key_confusion_without_refetch() {
+        for (algorithm, private) in [
+            (Algorithm::RS256, super::super::test_key::PRIVATE),
+            (Algorithm::ES256, super::super::test_key::EC_PRIVATE),
+        ] {
+            let signing = match algorithm {
+                Algorithm::RS256 => EncodingKey::from_rsa_pem(private.as_bytes()).unwrap(),
+                _ => EncodingKey::from_ec_pem(private.as_bytes()).unwrap(),
+            };
+            let mut jwk = Jwk::from_encoding_key(&signing, algorithm).unwrap();
+            jwk.common.key_id = Some("current".into());
+            let count = Arc::new(AtomicUsize::new(0));
+            let requests = count.clone();
+            let value = json!({"keys":[jwk]});
+            let app = Router::new().route(
+                "/keys",
+                get(move || {
+                    let value = value.clone();
+                    requests.fetch_add(1, Ordering::SeqCst);
+                    async move { ([("Cache-Control", "max-age=600")], Json(value)) }
+                }),
+            );
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let address = listener.local_addr().unwrap();
+            let server = tokio::spawn(async move {
+                axum::serve(listener, app).await.unwrap();
+            });
+            let mut auth = Supabase::new(
+                "https://project.supabase.co".into(),
+                "sb_publishable_test".into(),
+                ["11111111-1111-4111-8111-111111111111".into()].into(),
+            )
+            .unwrap();
+            auth.endpoints.keys = format!("http://{address}/keys");
+            let key = auth.key("current", algorithm).await.unwrap();
+            let mut header = Header::new(algorithm);
+            header.kid = Some("current".into());
+            let token = encode(
+                &header,
+                &json!({"exp":get_current_timestamp()+60}),
+                &signing,
+            )
+            .unwrap();
+            assert!(decode::<serde_json::Value>(&token, &key, &Validation::new(algorithm)).is_ok());
+            assert!(matches!(
+                auth.key("unknown", algorithm).await,
+                Err(StatusCode::UNAUTHORIZED)
+            ));
+            let wrong = if algorithm == Algorithm::RS256 {
+                Algorithm::ES256
+            } else {
+                Algorithm::RS256
+            };
+            assert!(matches!(
+                auth.key("current", wrong).await,
+                Err(StatusCode::UNAUTHORIZED)
+            ));
+            assert_eq!(count.load(Ordering::SeqCst), 1);
+            {
+                let mut cache = auth.keys.lock().await;
+                let duplicate = cache.values[0].clone();
+                cache.values.push(duplicate);
+            }
+            assert!(matches!(
+                auth.key("current", algorithm).await,
+                Err(StatusCode::UNAUTHORIZED)
+            ));
+            auth.keys.lock().await.values.pop();
+            auth.keys.lock().await.values[0].common.public_key_use = Some(PublicKeyUse::Encryption);
+            assert!(matches!(
+                auth.key("current", algorithm).await,
+                Err(StatusCode::UNAUTHORIZED)
+            ));
+            server.abort();
+        }
+    }
 }
 
 #[derive(Clone)]
 pub(super) struct Endpoints {
     pub keys: String,
-    pub oauth: String,
-    pub lookup: String,
+    pub user: String,
 }
 
-#[derive(Deserialize)]
-struct ServiceAccountFile {
-    r#type: String,
-    project_id: String,
-    client_email: String,
-    private_key: String,
-}
-struct ServiceAccount {
-    email: String,
-    key: EncodingKey,
-}
 #[derive(Default)]
 struct Keys {
-    values: HashMap<String, String>,
-    expires: u64,
-}
-#[derive(Default)]
-struct Access {
-    token: String,
+    values: Vec<jsonwebtoken::jwk::Jwk>,
     expires: u64,
 }
 
@@ -57,73 +157,73 @@ struct Claims {
     sub: String,
     exp: u64,
     iat: u64,
-    auth_time: u64,
     aud: String,
     iss: String,
-    firebase: FirebaseClaims,
-    user_id: Option<String>,
-}
-#[derive(Deserialize)]
-struct FirebaseClaims {
-    sign_in_provider: String,
-}
-#[derive(Deserialize)]
-struct TokenResponse {
-    access_token: String,
-    expires_in: u64,
-    token_type: String,
-}
-#[derive(Deserialize)]
-struct Lookup {
-    users: Vec<Account>,
-}
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct Account {
-    local_id: String,
-    #[serde(default)]
-    disabled: bool,
-    valid_since: Option<String>,
+    role: String,
+    is_anonymous: bool,
+    session_id: String,
 }
 
-impl Firebase {
+#[derive(Deserialize)]
+struct User {
+    id: String,
+    is_anonymous: bool,
+}
+
+pub(super) fn valid_uuid(value: &str) -> bool {
+    value.len() == 36
+        && value.bytes().enumerate().all(|(index, byte)| {
+            if [8, 13, 18, 23].contains(&index) {
+                byte == b'-'
+            } else {
+                byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase()
+            }
+        })
+}
+
+impl Supabase {
     pub(super) fn new(
-        project: String,
+        url: String,
+        publishable_key: String,
         allowed: HashSet<String>,
-        bytes: &[u8],
     ) -> Result<Self, &'static str> {
-        if project.is_empty()
-            || !project
+        let parsed = reqwest::Url::parse(&url).map_err(|_| "invalid Supabase configuration")?;
+        if parsed.scheme() != "https"
+            || parsed.host_str().is_none()
+            || !parsed.username().is_empty()
+            || parsed.password().is_some()
+            || !matches!(parsed.path(), "" | "/")
+            || parsed.query().is_some()
+            || parsed.fragment().is_some()
+            || !publishable_key.starts_with("sb_publishable_")
+            || !publishable_key
                 .bytes()
-                .all(|c| c.is_ascii_alphanumeric() || c == b'-')
+                .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-'))
+            || publishable_key.len() <= "sb_publishable_".len()
             || allowed.is_empty()
-            || allowed.iter().any(|uid| uid.is_empty() || uid.len() > 128)
+            || allowed.iter().any(|uid| !valid_uuid(uid))
         {
-            return Err("invalid Firebase project or allowed UID configuration");
+            return Err("invalid Supabase configuration");
         }
-        let file: ServiceAccountFile =
-            serde_json::from_slice(bytes).map_err(|_| "invalid Firebase service account")?;
-        if file.r#type != "service_account"
-            || file.project_id != project
-            || !file.client_email.ends_with(".gserviceaccount.com")
-        {
-            return Err("Firebase service account must belong to the configured project");
-        }
-        let key = EncodingKey::from_rsa_pem(file.private_key.as_bytes())
-            .map_err(|_| "invalid Firebase service account key")?;
-        let lookup =
-            format!("https://identitytoolkit.googleapis.com/v1/projects/{project}/accounts:lookup");
+        let issuer = format!("{}/auth/v1", url.trim_end_matches('/'));
         Ok(Self {
-            project, allowed, account: Arc::new(ServiceAccount { email: file.client_email, key }),
-            http: client()?, keys: Arc::default(), access: Arc::default(),
             endpoints: Endpoints {
-                keys: "https://www.googleapis.com/robot/v1/metadata/x509/securetoken@system.gserviceaccount.com".into(),
-                oauth: "https://oauth2.googleapis.com/token".into(), lookup,
+                keys: format!("{issuer}/.well-known/jwks.json"),
+                user: format!("{issuer}/user"),
             },
+            issuer,
+            publishable_key,
+            allowed,
+            http: client()?,
+            keys: Arc::default(),
         })
     }
 
-    pub(super) async fn authorize(&self, headers: &HeaderMap) -> Result<String, StatusCode> {
+    pub(super) async fn authorize(
+        &self,
+        headers: &HeaderMap,
+        database: &PgPool,
+    ) -> Result<String, StatusCode> {
         let token = headers
             .get(header::AUTHORIZATION)
             .and_then(|v| v.to_str().ok())
@@ -133,18 +233,19 @@ impl Firebase {
             })
             .ok_or(StatusCode::UNAUTHORIZED)?;
         let head = decode_header(token).map_err(|_| StatusCode::UNAUTHORIZED)?;
-        if head.alg != Algorithm::RS256 {
+        if !matches!(head.alg, Algorithm::ES256 | Algorithm::RS256) {
             return Err(StatusCode::UNAUTHORIZED);
         }
         let kid = head
             .kid
             .filter(|s| !s.is_empty() && s.len() <= 128)
             .ok_or(StatusCode::UNAUTHORIZED)?;
-        let key = self.key(&kid).await?;
-        let mut validation = Validation::new(Algorithm::RS256);
+        let key = self.key(&kid, head.alg).await?;
+        let mut validation = Validation::new(head.alg);
         validation.leeway = 0;
-        validation.set_audience(&[&self.project]);
-        validation.set_issuer(&[format!("https://securetoken.google.com/{}", self.project)]);
+        validation.validate_nbf = true;
+        validation.set_audience(&["authenticated"]);
+        validation.set_issuer(&[&self.issuer]);
         validation.set_required_spec_claims(&["exp", "iat", "aud", "iss", "sub"]);
         let claims = decode::<Claims>(token, &key, &validation)
             .map_err(|_| StatusCode::UNAUTHORIZED)?
@@ -152,53 +253,54 @@ impl Firebase {
         let now = get_current_timestamp();
         if claims.exp <= now
             || claims.iat > now
-            || claims.auth_time > claims.iat
-            || claims.aud != self.project
-            || claims.iss != format!("https://securetoken.google.com/{}", self.project)
-            || claims.sub.is_empty()
-            || claims.sub.len() > 128
-            || claims.firebase.sign_in_provider != "anonymous"
-            || claims.user_id.as_ref().is_some_and(|id| id != &claims.sub)
+            || claims.iat >= claims.exp
+            || claims.aud != "authenticated"
+            || claims.iss != self.issuer
+            || claims.role != "authenticated"
+            || !claims.is_anonymous
+            || !valid_uuid(&claims.sub)
+            || !valid_uuid(&claims.session_id)
         {
             return Err(StatusCode::UNAUTHORIZED);
         }
         if !self.allowed.contains(&claims.sub) {
             return Err(StatusCode::FORBIDDEN);
         }
-        // A valid JWT is not a grant. No cached account state can bypass disable/revoke.
-        let access = self.access_token().await?;
+        // A signed JWT does not prove that the account or its session still exists.
         let response = self
             .http
-            .post(&self.endpoints.lookup)
-            .bearer_auth(access)
-            .json(&json!({"localId":[claims.sub]}))
+            .get(&self.endpoints.user)
+            .header("apikey", &self.publishable_key)
+            .bearer_auth(token)
             .send()
             .await
             .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
-        let lookup: Lookup = serde_json::from_value(
+        if matches!(response.status().as_u16(), 401 | 403 | 404) {
+            return Err(StatusCode::UNAUTHORIZED);
+        }
+        let user: User = serde_json::from_value(
             read_json(response, 256 * 1024)
                 .await
                 .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?,
         )
         .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
-        let account = lookup
-            .users
-            .into_iter()
-            .find(|user| user.local_id == claims.sub)
-            .ok_or(StatusCode::UNAUTHORIZED)?;
-        let valid_since = account
-            .valid_since
-            .as_deref()
-            .unwrap_or("0")
-            .parse::<u64>()
+        if user.id != claims.sub || !user.is_anonymous {
+            return Err(StatusCode::UNAUTHORIZED);
+        }
+        // No cached account/session result can bypass logout, deletion or a ban.
+        let active: bool = sqlx::query_scalar("SELECT smallnext_session_active($1, $2)")
+            .bind(&claims.sub)
+            .bind(&claims.session_id)
+            .fetch_one(database)
+            .await
             .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
-        if account.disabled || claims.auth_time < valid_since {
+        if !active {
             return Err(StatusCode::UNAUTHORIZED);
         }
         Ok(claims.sub)
     }
 
-    async fn key(&self, kid: &str) -> Result<DecodingKey, StatusCode> {
+    async fn key(&self, kid: &str, algorithm: Algorithm) -> Result<DecodingKey, StatusCode> {
         let mut keys = self.keys.lock().await;
         let now = get_current_timestamp();
         if keys.expires <= now {
@@ -217,70 +319,51 @@ impl Firebase {
                         .find_map(|part| part.trim().strip_prefix("max-age=")?.parse::<u64>().ok())
                 })
                 .unwrap_or(0)
-                .min(24 * 60 * 60);
-            let values = serde_json::from_value(
+                .min(10 * 60);
+            let jwks: JwkSet = serde_json::from_value(
                 read_json(response, 256 * 1024)
                     .await
                     .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?,
             )
             .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
             *keys = Keys {
-                values,
+                values: jwks.keys,
                 expires: now.saturating_add(max_age),
             };
         }
         // Unknown kid fails closed for the cache lifetime; it cannot trigger fetch storms.
-        DecodingKey::from_rsa_pem(
-            keys.values
-                .get(kid)
-                .ok_or(StatusCode::UNAUTHORIZED)?
-                .as_bytes(),
-        )
-        .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)
-    }
-
-    async fn access_token(&self) -> Result<String, StatusCode> {
-        let mut access = self.access.lock().await;
-        let now = get_current_timestamp();
-        if access.expires > now {
-            return Ok(access.token.clone());
+        let mut matching = keys
+            .values
+            .iter()
+            .filter(|key| key.common.key_id.as_deref() == Some(kid));
+        let key = matching.next().ok_or(StatusCode::UNAUTHORIZED)?;
+        if matching.next().is_some() {
+            return Err(StatusCode::UNAUTHORIZED);
         }
-        let assertion = encode(
-            &Header::new(Algorithm::RS256),
-            &json!({
-                "iss":self.account.email,"scope":"https://www.googleapis.com/auth/identitytoolkit",
-                "aud":"https://oauth2.googleapis.com/token","iat":now,"exp":now+3600
-            }),
-            &self.account.key,
-        )
-        .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
-        let response = self
-            .http
-            .post(&self.endpoints.oauth)
-            .form(&[
-                ("grant_type", "urn:ietf:params:oauth:grant-type:jwt-bearer"),
-                ("assertion", assertion.as_str()),
-            ])
-            .send()
-            .await
-            .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
-        let result: TokenResponse = serde_json::from_value(
-            read_json(response, 16 * 1024)
-                .await
-                .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?,
-        )
-        .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
-        if result.token_type != "Bearer"
-            || result.access_token.is_empty()
-            || result.access_token.contains(['\r', '\n'])
-            || !(60..=3600).contains(&result.expires_in)
+        let compatible = matches!(
+            (&key.algorithm, key.common.key_algorithm, algorithm),
+            (
+                AlgorithmParameters::RSA(_),
+                Some(KeyAlgorithm::RS256),
+                Algorithm::RS256
+            )
+        ) || matches!((&key.algorithm, key.common.key_algorithm, algorithm),
+                (AlgorithmParameters::EllipticCurve(parameters), Some(KeyAlgorithm::ES256), Algorithm::ES256)
+                    if parameters.curve == EllipticCurve::P256);
+        if !compatible
+            || key
+                .common
+                .public_key_use
+                .as_ref()
+                .is_some_and(|v| *v != PublicKeyUse::Signature)
+            || key
+                .common
+                .key_operations
+                .as_ref()
+                .is_some_and(|v| !v.contains(&KeyOperations::Verify))
         {
-            return Err(StatusCode::SERVICE_UNAVAILABLE);
+            return Err(StatusCode::UNAUTHORIZED);
         }
-        *access = Access {
-            token: result.access_token,
-            expires: now + result.expires_in - 30,
-        };
-        Ok(access.token.clone())
+        DecodingKey::from_jwk(key).map_err(|_| StatusCode::SERVICE_UNAVAILABLE)
     }
 }

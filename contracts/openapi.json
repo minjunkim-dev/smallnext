@@ -112,7 +112,7 @@
         },
         "security": [
           {
-            "firebaseIdToken": []
+            "supabaseAccessToken": []
           }
         ]
       }
@@ -366,10 +366,10 @@
       }
     },
     "securitySchemes": {
-      "firebaseIdToken": {
+      "supabaseAccessToken": {
         "type": "http",
         "scheme": "bearer",
-        "bearerFormat": "Firebase ID token"
+        "bearerFormat": "Supabase access token"
       }
     }
   }

@@ -14,6 +14,9 @@ packages:
   Firebase:
     url: https://github.com/firebase/firebase-ios-sdk.git
     exactVersion: 12.19.2
+  Supabase:
+    url: https://github.com/supabase/supabase-swift.git
+    exactVersion: 2.55.4
   SmallnextCore:
     path: Packages/SmallnextCore
 targets:
@@ -45,8 +48,8 @@ targets:
           INFOPLIST_FILE: Config/Debug.plist
     dependencies:
       - package: SmallnextCore
-      - package: Firebase
-        product: FirebaseAuth
+      - package: Supabase
+        product: Auth
       - package: Firebase
         product: FirebaseCore
       - package: Firebase

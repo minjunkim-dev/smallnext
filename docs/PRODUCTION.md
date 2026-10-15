@@ -1,12 +1,15 @@
 # 사용자용 서버의 AI OFF 배포
 
 [#158](https://github.com/minjunkim-dev/smallnext/issues/158)의 배포 runbook이다.
-단일 Linux 서버에서 Docker Compose와 Caddy를 사용한다. DB는 외부 관리형 PostgreSQL이다.
-서버 공급자와 DB 공급자는 사람이 선택한다. 레지스트리와 CI 자동 배포는 사용하지 않는다.
+단일 Linux 서버에서 Docker Compose와 Caddy를 사용한다. DB·익명 인증은 Supabase Free로 통합한다.
+서버는 Supabase DB에 PostgreSQL로 직접 연결한다. Data API는 OFF, 자동 RLS는 ON으로 유지한다.
+서버 공급자는 사람이 선택한다. 레지스트리와 CI 자동 배포는 사용하지 않는다.
 
 이 절차는 서버 AI를 켜지 않는다. `USER_SERVER_AI`는 설정하지 않는다.
 제공사 API 키 생성·모델 확인·단가·예산 설정·AI 활성화·유료 호출은 [#47](https://github.com/minjunkim-dev/smallnext/issues/47)의 별도 승인 범위다.
-실제 계정 준비는 [#162](https://github.com/minjunkim-dev/smallnext/issues/162), 실제 서버 실행은 [#164](https://github.com/minjunkim-dev/smallnext/issues/164)에서 사람이 수행한다.
+Supabase 프로젝트 생성·연결은 [#168](https://github.com/minjunkim-dev/smallnext/issues/168)에서 별도로 확인했다.
+[#162](https://github.com/minjunkim-dev/smallnext/issues/162)의 전체 wizard 실행과 [#164](https://github.com/minjunkim-dev/smallnext/issues/164)의 실제 서버 실행은 보류한다.
+아래 절차는 해당 실행을 승인한 뒤에 따른다. 로컬 연결의 확인 범위는 [서버 AI](SERVER_AI.md#supabase-free-연결-확인과-남은-조건)를 따른다.
 
 ## 1. 준비 wizard를 실행한다
 
@@ -16,10 +19,13 @@
 python3 scripts/prepare_production.py
 ```
 
-wizard는 Linux·방화벽 80/443, DNS, 관리형 PostgreSQL, Firebase iOS 앱·Anonymous 인증, 서비스 계정 순서로 안내한다.
-대시보드에서 계정과 자원을 만드는 작업은 사람이 수행한다. wizard는 서버를 배포하지 않는다.
-관리형 DB의 자동 백업 보관 기간은 공급자 최소값으로 설정한다. 별도 백업을 추가하지 않는다.
-서비스 계정에는 `firebaseauth.users.get`만 허용한다. 광범위한 Firebase 관리자 권한을 부여하지 않는다.
+wizard는 Linux·방화벽 80/443, DNS, Supabase PostgreSQL·백업 조건, Anonymous 인증, DB 권한 순서로 안내한다.
+wizard는 서버를 배포하거나 계정을 생성하지 않는다.
+Supabase Free에는 자동 백업이 없다. 이전의 공급자 최소 자동 백업 조건을 충족했다고 처리하지 않는다.
+예산 데이터만 12시간마다 암호화해 최대 7일 보관하는 안과 RPO·RTO 각 24시간은 미확정 제안이다.
+백업 저장 위치·암호화·접근 주체·삭제 반영·복원 검증을 포함한 최종 조건을 사람이 확정해야 한다.
+익명 계정과 세션은 백업 대상에서 제외하는 안을 검토한다. 익명 계정 유실 시 재생성은 허용했다.
+백업과 복원은 아직 실행하거나 검증하지 않았다. [공급자 백업 조건](https://supabase.com/docs/guides/platform/backups)을 확인한다.
 
 다음 두 파일을 권한 `0600`으로 저장한다. 두 파일은 Git에서 제외한다.
 
@@ -32,7 +38,7 @@ wizard는 Linux·방화벽 80/443, DNS, 관리형 PostgreSQL, Firebase iOS 앱·
 서버 환경 파일은 `docker compose --env-file`로만 읽는다. 셸에서 `source`하지 않는다.
 이미 확인한 본인 익명 UID가 없으면 허용 목록을 비워 둔다. 서버 AI OFF 준비에는 UID가 필요하지 않다.
 UID·키·토큰·환경 파일 내용을 채팅·Issue·로그에 붙이지 않는다.
-#162에는 공급자 이름·지역·백업 보관 기간·서비스 계정 권한만 기록한다.
+#162에는 공급자 이름·지역·확정한 백업 조건·DB 권한과 미확인 범위만 기록한다.
 
 ## 2. 서버의 비밀 파일을 배치한다
 
@@ -44,13 +50,14 @@ SSH 접근과 파일 전송 권한은 로컬 운영 계정에서만 사용한다
 
 1. 서버에 `/opt/smallnext/infra/production`을 만든다.
 2. 보호한 파일 전송 경로로 `.env.production`을 같은 서버 경로에 배치한다. 운영 계정 소유와 권한 `0600`을 유지한다.
-3. 서비스 계정 JSON을 wizard에서 지정한 서버의 절대 디렉터리에 `service-account.json` 이름으로 배치한다.
-4. credential 디렉터리에는 해당 JSON만 둔다. 컨테이너 사용자 UID `10001`이 읽을 수 있게 소유권을 지정한다. 디렉터리 권한은 `0500`, 파일 권한은 `0400`으로 제한한다.
+3. `DATABASE_URL`의 TLS 연결과 DB 접근 제한을 확인한다. 서버 비밀번호를 앱에 넣지 않는다.
+4. 운영용 LOGIN 역할·마이그레이션 권한·실행 권한을 #164 전에 사람이 검토한다. 관리용 DB 연결의 성공은 이 승인을 대신하지 않는다.
 5. DNS A/AAAA가 이 서버를 가리키는지 확인한다. Caddy가 80/443으로 인증서를 발급할 수 있게 한다.
 
-서버 환경 파일의 `FIREBASE_CREDENTIALS_DIR`은 **서버**의 경로다. 개발 Mac의 경로를 넣지 않는다.
-Compose는 이 디렉터리를 `/run/secrets/firebase`에 읽기 전용으로 연결한다.
-이미지에는 서비스 계정 JSON을 넣지 않는다. `docker compose config`의 전체 출력에는 비밀 값이 포함될 수 있으므로 출력·게시하지 않는다.
+마이그레이션 0004는 앱 테이블의 RLS를 켜고 client 역할의 테이블 접근과 인증 함수 실행을 차단한다.
+`smallnext_session_active`는 계정·세션의 활성 여부만 반환한다. 운영 서버 역할에 필요한 권한을 따로 검토한다.
+Firebase 서비스 계정과 credential JSON mount는 사용하지 않는다.
+`docker compose config`의 전체 출력에는 비밀 값이 포함될 수 있으므로 출력·게시하지 않는다.
 
 ## 3. 승인한 이미지 묶음을 준비한다
 
@@ -87,7 +94,7 @@ python3 scripts/deploy_production.py \
 ```
 
 스크립트는 검증한 이미지 묶음과 필요한 Compose 파일을 전송한다.
-서버의 기존 환경 파일과 credential JSON은 전송하거나 출력하지 않는다.
+서버의 기존 환경 파일은 전송하거나 출력하지 않는다.
 묶음의 checksum·metadata와 적재한 이미지의 ID·source label을 대조한다.
 Compose는 지정 이미지를 `--no-build --pull never`로 실행한다.
 배포한 이미지 ID는 비밀 값 없는 `infra/production/.env.image`에 저장한다. 월 삭제도 이 이미지 ID를 사용한다.

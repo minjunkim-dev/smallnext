@@ -50,7 +50,14 @@ def check(image, network):
     try:
         migrations = '\n'.join(path.read_text() for path in
                                sorted((ROOT / 'services/api/migrations').glob('*.sql')))
-        sql(f'SET search_path TO {schema};\n{migrations}')
+        # Manual migration replay needs the metadata table normally created by SQLx.
+        sql(f'''SET search_path TO {schema};
+            CREATE TABLE _sqlx_migrations (
+                version BIGINT PRIMARY KEY, description TEXT NOT NULL,
+                installed_on TIMESTAMPTZ NOT NULL DEFAULT now(), success BOOLEAN NOT NULL,
+                checksum BYTEA NOT NULL, execution_time BIGINT NOT NULL
+            );
+            {migrations}''')
         parts = urlsplit(url)
         query = parse_qsl(parts.query, keep_blank_values=True)
         options = ' '.join(value for key, value in query if key == 'options')

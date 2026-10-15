@@ -82,11 +82,11 @@ pub fn api_document() -> utoipa::openapi::OpenApi {
         .as_mut()
         .expect("declared schemas")
         .add_security_scheme(
-            "firebaseIdToken",
+            "supabaseAccessToken",
             SecurityScheme::Http(
                 HttpBuilder::new()
                     .scheme(HttpAuthScheme::Bearer)
-                    .bearer_format("Firebase ID token")
+                    .bearer_format("Supabase access token")
                     .build(),
             ),
         );

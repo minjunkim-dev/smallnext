@@ -11,9 +11,9 @@ services:
       API_BIND_ADDRESS: 0.0.0.0:8080
       RUST_LOG: smallnext_api=info
       USER_SERVER_AI:
-      FIREBASE_PROJECT_ID:
-      AI_ALLOWED_FIREBASE_UIDS:
-      FIREBASE_SERVICE_ACCOUNT_FILE: ${FIREBASE_SERVICE_ACCOUNT_FILE:-/run/secrets/firebase/service-account.json}
+      SUPABASE_URL:
+      SUPABASE_PUBLISHABLE_KEY:
+      AI_ALLOWED_SUPABASE_UIDS:
       AI_MODEL_CONFIRMED:
       ANTHROPIC_API_KEY:
       AI_MODEL_CONTEXT_TOKENS:
@@ -21,11 +21,6 @@ services:
       AI_INPUT_MICRO_USD_PER_MILLION:
       AI_OUTPUT_MICRO_USD_PER_MILLION:
       AI_BUDGET_MICRO_USD:
-    volumes:
-      - type: bind
-        source: ${FIREBASE_CREDENTIALS_DIR:-./credentials}
-        target: /run/secrets/firebase
-        read_only: true
     expose:
       - "8080"
     restart: unless-stopped

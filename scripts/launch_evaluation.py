@@ -33,7 +33,7 @@ MEASUREMENT = {'median': 'middle pair mean', 'p90': 'nearest-rank ceil(0.9*n)',
                'minimum_p90_samples': 10, 'median_seconds': 20, 'p90_seconds': 30,
                'boundary': 'button to checked result screen; server alone is unknown'}
 PAID_CONDITIONS = ('contract', 'frozen_inputs', 'cost_reservation', 'provider_account',
-                   'server_secret_storage', 'provider_support_and_terms', 'firebase_iam',
+                   'server_secret_storage', 'provider_support_and_terms', 'user_auth',
                    'allowed_uid', 'https', 'database', 'deletion_and_backup_retention')
 
 

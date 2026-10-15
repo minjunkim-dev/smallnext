@@ -13,8 +13,6 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-#[cfg(test)]
-use serde_json::json;
 use sqlx::PgPool;
 use std::{
     sync::Arc,
@@ -25,7 +23,7 @@ use utoipa::ToSchema;
 
 #[derive(Clone)]
 pub struct Config {
-    firebase: auth::Firebase,
+    supabase: auth::Supabase,
     provider: provider::Provider,
     budget_limit: i64,
 }
@@ -62,23 +60,19 @@ impl Config {
         if !enabled {
             return Ok(None);
         }
-        let project = required("FIREBASE_PROJECT_ID")?;
-        let allowed = required("AI_ALLOWED_FIREBASE_UIDS")?
+        let url = required("SUPABASE_URL")?;
+        let publishable_key = required("SUPABASE_PUBLISHABLE_KEY")?;
+        let allowed = required("AI_ALLOWED_SUPABASE_UIDS")?
             .split(',')
             .map(|v| v.trim().to_owned())
             .collect();
-        let path = required("FIREBASE_SERVICE_ACCOUNT_FILE")?;
-        let bytes = std::fs::read(path).map_err(|_| "cannot read Firebase service account file")?;
-        if bytes.len() > 64 * 1024 {
-            return Err("Firebase service account file is too large");
-        }
         let provider = provider::Provider::from_environment()?;
         let budget_limit = provider::number("AI_BUDGET_MICRO_USD", 3_000_000)? as i64;
         if provider.role_ceiling() * 2 > budget_limit {
             return Err("two full model calls exceed the approved evaluation budget");
         }
         Ok(Some(Self {
-            firebase: auth::Firebase::new(project, allowed, &bytes)?,
+            supabase: auth::Supabase::new(url, publishable_key, allowed)?,
             provider,
             budget_limit,
         }))
@@ -88,16 +82,21 @@ impl Config {
 #[cfg(test)]
 impl Config {
     fn test_config() -> Self {
-        Self { firebase: auth::Firebase::new("test-project".into(), ["allowed".into(), "other".into()].into(),
-            &serde_json::to_vec(&json!({"type":"service_account","project_id":"test-project",
-            "client_email":"test@test-project.iam.gserviceaccount.com","private_key":test_key::PRIVATE})).unwrap()).unwrap(),
-            provider: provider::Provider::test_provider(), budget_limit:100_000 }
+        Self {
+            supabase: auth::Supabase::new(
+                "https://test-project.supabase.co".into(),
+                "sb_publishable_test".into(),
+                [tests::identity("allowed"), tests::identity("other")].into(),
+            )
+            .unwrap(),
+            provider: provider::Provider::test_provider(),
+            budget_limit: 100_000,
+        }
     }
     fn with_test_server(mut self, url: String) -> Self {
-        self.firebase.endpoints = auth::Endpoints {
+        self.supabase.endpoints = auth::Endpoints {
             keys: format!("{url}/keys"),
-            oauth: format!("{url}/oauth"),
-            lookup: format!("{url}/accounts"),
+            user: format!("{url}/user"),
         };
         self.provider.endpoint = format!("{url}/messages");
         self
@@ -119,7 +118,7 @@ pub fn router(config: Option<Config>, database: PgPool) -> Router {
 }
 
 #[utoipa::path(post, path="/v1/suggestions", request_body=SuggestionRequest,
-    security(("firebaseIdToken"=[])),
+    security(("supabaseAccessToken"=[])),
     responses((status=200,description="Checked disposition; only accepted includes a proposal",body=SuggestionResponse),
         (status=400,description="Invalid input"),(status=401,description="Invalid or revoked identity"),
         (status=403,description="UID is not allowed, or browser origin"),(status=404,description="Feature is OFF"),
@@ -140,7 +139,7 @@ pub(crate) async fn suggest(
     }
     let uid = match tokio::time::timeout(
         Duration::from_secs(20),
-        server.config.firebase.authorize(&headers),
+        server.config.supabase.authorize(&headers, &server.database),
     )
     .await
     {

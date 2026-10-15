@@ -434,6 +434,11 @@ class LaunchEvaluationTests(unittest.TestCase):
             ready = launch.paid_preflight('before_separate_server', dict.fromkeys(launch.PAID_CONDITIONS, True))
             self.assertTrue(ready['ready'])
             self.assertFalse(ready['transport_enabled'])
+            legacy = dict.fromkeys(launch.PAID_CONDITIONS, True)
+            del legacy['user_auth']
+            legacy['firebase_iam'] = True
+            self.assertEqual(launch.paid_preflight('before_separate_server', legacy)['missing'],
+                             ['user_auth'])
 
     def test_ownership_loss_cancels_and_reaps_active_child_without_next_check(self):
         with tempfile.TemporaryDirectory() as directory:
