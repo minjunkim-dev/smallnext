@@ -1,0 +1,14 @@
+[Unit]
+Description=Delete Smallnext AI budget rows from earlier UTC months
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/smallnext
+ExecStart=/usr/bin/docker compose --env-file infra/production/.env.production --env-file infra/production/.env.image -f infra/production/compose.yaml run --rm --no-deps --pull never -T api purge-ai-budget
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=smallnext-purge-ai-budget
+TimeoutStartSec=120

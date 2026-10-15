@@ -8,13 +8,14 @@ RUN mkdir src && echo 'fn main() {}' > src/main.rs && touch src/lib.rs \
 COPY services/api/src ./src
 COPY services/api/migrations ./migrations
 COPY config/feature-flags.json /workspace/config/feature-flags.json
-RUN cargo build --release --locked --bin smallnext-api
+RUN cargo build --release --locked --bin smallnext-api --bin purge-ai-budget
 
 FROM debian:bookworm-slim@sha256:3783cc01769c7b2b1b83a5c5ad96c815348e28ed7da68e2e3687004faa906251
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --system --uid 10001 --create-home smallnext
 COPY --from=builder /workspace/services/api/target/release/smallnext-api /usr/local/bin/smallnext-api
+COPY --from=builder /workspace/services/api/target/release/purge-ai-budget /usr/local/bin/purge-ai-budget
 USER smallnext
 ENV API_BIND_ADDRESS=0.0.0.0:8080
 EXPOSE 8080

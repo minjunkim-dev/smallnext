@@ -61,13 +61,9 @@ Firebase 공개 키와 서버 OAuth access token만 유효기간 동안 메모�
 DB에는 현재 UTC 월의 합계와 초과 차단 상태 하나만 저장합니다.
 이전 월의 합계는 서버 시작과 실행 중 매분 삭제합니다. OFF에서도 삭제를 수행합니다.
 배포자는 API가 중지된 때에도 월 경계의 삭제 작업을 실행해야 합니다.
-배포 전 월 경계의 스케줄러와 DB 백업 보관 범위를 확인합니다. 현재 저장소는 스케줄러 배포를 완료하지 않았습니다.
-
-```sh
-# 운영 스케줄러가 현재 월 이전의 합계만 삭제할 때 실행할 명령입니다.
-# DATABASE_URL은 비밀정보 제공 경로로 주입합니다.
-cargo run --locked --manifest-path services/api/Cargo.toml --bin purge-ai-budget
-```
+배포 전 월 경계의 스케줄러와 DB 백업 보관 범위를 확인합니다.
+월 삭제 바이너리와 호스트 timer 정의를 제공합니다. 실제 서버의 등록·실행은 아직 검증하지 않았습니다.
+환경 파일·서비스 계정 배치·AI OFF 배포·월 삭제 일정·되돌리기는 [운영 runbook](PRODUCTION.md)을 따릅니다.
 
 ## 실제 연결 전에 설정할 값
 
@@ -101,6 +97,8 @@ OpenAI 전용 `store`·`background` 필드는 보내지 않습니다. 제공사�
 FirebaseAuth와 FirebaseCore 12.19.2를 사용합니다. Analytics 제품은 앱에 연결하지 않습니다.
 Firebase가 익명 계정과 토큰 갱신·Keychain 보관을 관리합니다. 앱의 진행 상태는 GRDB에 유지합니다.
 서버 401 뒤에는 같은 AI 요청을 자동 재전송하지 않습니다.
+`apps/ios/Config/Local.xcconfig.example`을 `apps/ios/Config/Local.xcconfig`로 복사합니다.
+실제 파일은 Git에서 제외합니다. 저장소에는 값 없는 예시 파일만 유지합니다.
 다음 Xcode build settings에 해당 Firebase 앱의 공개 client 설정을 넣습니다.
 서버의 제공사 API 키와 서비스 계정 파일은 이 설정에 넣지 않습니다.
 
@@ -111,6 +109,15 @@ Firebase가 익명 계정과 토큰 갱신·Keychain 보관을 관리합니다. 
 | `SMALLNEXT_FIREBASE_SENDER_ID` | 같은 app ID의 숫자 sender ID |
 | `SMALLNEXT_FIREBASE_PROJECT_ID` | 서버와 같은 Firebase project ID |
 | `SMALLNEXT_FIREBASE_API_KEY` | Firebase client API key; 서버 AI 제공사 키가 아님 |
+
+`SMALLNEXT_API_BASE_URL`의 `https://`는 xcconfig에서 `https:/$()/`로 씁니다.
+xcconfig는 `//` 뒤를 주석으로 처리합니다. `$()`는 빌드 때 빈 문자열로 확장됩니다.
+다른 값에는 따옴표·줄바꿈·build setting 확장을 넣지 않습니다.
+`Config/Build.xcconfig`가 로컬 파일을 선택적으로 읽습니다.
+Debug와 Release는 같은 로컬 값을 Info.plist에 넣습니다.
+로컬 파일이 없어도 Debug·Release·CI 빌드는 성공합니다.
+로컬 설정은 기능 플래그를 켜지 않습니다. 모든 기능 플래그 기본값은 OFF로 유지합니다.
+Release는 기존 `Config/Release.plist`를 사용합니다. Debug의 평문 HTTP·로컬 네트워크 예외를 포함하지 않습니다.
 
 Debug에서만 `-user_server_ai YES`로 로컬 ON을 지정할 수 있습니다.
 서버 주소만 `-server_ai_url https://...`로 바꿀 수 있습니다. 평문 HTTP는 거부합니다.

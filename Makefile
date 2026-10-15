@@ -2,7 +2,7 @@ SHELL := /bin/bash
 API_MANIFEST := services/api/Cargo.toml
 COMPOSE := docker compose --env-file .env -f infra/dev/compose.yaml
 
-.PHONY: dev-db dev-db-stop api api-check api-test-db api-spec api-spec-check ios-check android-check android-device-check android-sdk api-setup repository-check api-image-build api-image-check check
+.PHONY: dev-db dev-db-stop api api-check api-test-db api-spec api-spec-check ios-check android-check android-device-check android-sdk api-setup repository-check api-image-build api-image-check api-production-check check
 
 api-setup:
 	python3 scripts/environment.py rust-install
@@ -54,6 +54,10 @@ api-image-check:
 	test "$$(docker run --rm --entrypoint id smallnext-api:ci -u)" = 10001
 	docker compose --env-file .env.example -f infra/dev/compose.yaml config --quiet
 	API_DOMAIN=api.example.invalid DATABASE_URL=postgres://example:example@database.invalid/smallnext docker compose -f infra/production/compose.yaml config --quiet
+	$(MAKE) api-production-check
+
+api-production-check:
+	python3 scripts/check_production_compose.py --image smallnext-api:ci --check-purge --check-deploy
 
 repository-check:
 	python3 scripts/check_repository.py

@@ -1,0 +1,11 @@
+[Unit]
+Description=Delete Smallnext AI budget rows at the UTC month boundary
+
+[Timer]
+OnCalendar=*-*-01 00:01:00 UTC
+AccuracySec=1s
+Persistent=true
+Unit=smallnext-purge-ai-budget.service
+
+[Install]
+WantedBy=timers.target
