@@ -97,6 +97,19 @@ class PreparationTests(unittest.TestCase):
             self.assertFalse((Path(directory) / wizard.SERVER_FILE).exists())
             self.assertFalse((Path(directory) / wizard.IOS_FILE).exists())
 
+    def test_secret_or_invalid_client_key_never_reaches_configuration_files(self):
+        for client_key in ("sb_secret_synthetic", "legacy-token", "sb_publishable_"):
+            with self.subTest(client_key=client_key), tempfile.TemporaryDirectory() as directory:
+                values = list(self.values())
+                values[3] = client_key
+                values = iter(values)
+                output = io.StringIO()
+                with contextlib.redirect_stdout(output), self.assertRaises(ValueError):
+                    wizard.prepare(Path(directory), lambda _: next(values), lambda _: "y", lambda _: None)
+                self.assertNotIn(client_key, output.getvalue())
+                self.assertFalse((Path(directory) / wizard.SERVER_FILE).exists())
+                self.assertFalse((Path(directory) / wizard.IOS_FILE).exists())
+
     def test_ai_off_preparation_does_not_require_an_existing_identity(self):
         with tempfile.TemporaryDirectory() as directory:
             values = list(self.values())

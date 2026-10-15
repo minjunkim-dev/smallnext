@@ -81,6 +81,8 @@ def prepare(root=ROOT, prompt=getpass.getpass, confirm=input, open_page=webbrows
     open_page("https://supabase.com/dashboard")
     project_url = ask("SUPABASE_URL")
     client_key = ask("SUPABASE_PUBLISHABLE_KEY (공개 client 설정; secret key 아님)")
+    if not re.fullmatch(r"sb_publishable_[A-Za-z0-9_-]+", client_key):
+        raise ValueError("sb_publishable_로 시작하는 공개 client 키를 입력하십시오.")
     print("5. 앱 테이블·인증 확인 함수의 client 접근 차단과 서버 전용 DB 역할을 확인하십시오.")
     uids = ask("AI_ALLOWED_SUPABASE_UIDS (이미 확인한 본인 익명 UID만 입력; 없으면 비워 두고 #47에서 준비)", optional=True)
     if confirm("DB 최소 권한과 파일 보호를 확인했습니까? [y/N] ").lower() != "y":
