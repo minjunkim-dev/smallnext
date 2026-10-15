@@ -1253,7 +1253,7 @@ class PrivateRootTests(unittest.TestCase):
                     with self.subTest(bundle=bundle), self.assertRaisesRegex(ValueError, 'main checkout work'):
                         launch.freeze(bundle, owner='minjunkim-dev', delete_method='delete directory',
                                       ends_at=(datetime.now(timezone.utc)+timedelta(days=1)).isoformat())
-                    self.assertFalse(bundle.exists())
+                    self.assertFalse(bundle.resolve().exists())
 
     def test_freeze_rejects_bundles_outside_main_checkout_work(self):
         root = launch.private_root()
