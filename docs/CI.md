@@ -144,6 +144,22 @@ iOS는 시뮬레이터 부팅과 `build-for-testing`을 동시에 시작합니�
 shard를 추가하기 전에 artifact 전달 시간과 실행기 비용을 비교합니다.
 참고: [Apple 명령행 테스트](https://developer.apple.com/library/archive/technotes/tn2339/_index.html), [빌드 시간 진단](https://developer.apple.com/documentation/xcode/improving-the-speed-of-incremental-builds).
 
+`xcode-27` 실행기는 3 vCPU와 7GB 메모리를 제공합니다.
+시뮬레이터 첫 부팅은 `bootstatus` 완료 후에도 수 분 동안 시스템 프로세스를 실행합니다.
+이 부하가 CPU를 점유하면 xcodebuild 시작, `Resolve Package Graph`, 컴파일이 함께 느려집니다.
+부팅 부하가 없으면 캐시를 복원한 패키지 해석은 12–30초, 컴파일 캐시를 사용한 빌드 단계는 65–125초입니다.
+2026-10-15에 같은 SHA와 같은 컴파일 캐시에서 부팅 위치만 바꿔 각 2회 측정했습니다.
+
+| 부팅 위치 | 평균 job 시간 | 관찰 |
+| --- | --- | --- |
+| 빌드와 동시에 시작(현재) | 529초 | 가장 짧음 |
+| 빌드 후 시작 | 659초 | 부팅 후 `test-without-building` 시작이 4–6분 지연 |
+| 빌드와 동시에 시작, 시뮬레이터 프로세스 background 우선순위 | 614초 | 빌드는 빨라지지만 `bootstatus`가 약 385초로 지연 |
+| 빌드 전 완료 대기 | 770초 | 부팅 후 xcodebuild 시작이 2.5–5.5분 지연 |
+
+부팅 위치를 바꾸면 같은 부하가 다음 xcodebuild로 옮겨갑니다. 현재 방식을 유지합니다.
+부팅한 시뮬레이터 데이터를 캐시하면 이 부하를 줄일 수 있습니다. 위의 캐시 정책에 따라 사용하지 않습니다.
+
 각 실행의 Job summary에서 캐시 명중 여부를 확인합니다.
 동일 커밋을 다시 실행해 캐시가 비어 있는 실행과 복원한 실행을 비교합니다.
 비교 시 빌드 시간, 전체 실행 시간과 실제 테스트 개수를 함께 확인합니다.
