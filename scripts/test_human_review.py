@@ -10,15 +10,18 @@ from unittest.mock import patch
 import human_review
 import launch_evaluation as launch
 import oauth_quality as qa
+from test_launch_evaluation import isolate_private_root
 
 
 class HumanReviewTests(unittest.TestCase):
+    def setUp(self):
+        isolate_private_root(self)
+
     def bundle(self, directory):
         root = Path(directory).resolve() / 'launch'
-        with patch.object(launch, 'private_root', lambda: root.parent):
-            launch.freeze(root, owner='minjunkim-dev',
-                          ends_at=(datetime.now(timezone.utc) + timedelta(days=1)).isoformat(),
-                          delete_method='delete this synthetic test bundle')
+        launch.freeze(root, owner='minjunkim-dev',
+                      ends_at=(datetime.now(timezone.utc) + timedelta(days=1)).isoformat(),
+                      delete_method='delete this synthetic test bundle')
 
         def invoke(role, prompt, schema, data, deadline, cancelled):
             if role == 'generate':

@@ -154,8 +154,10 @@ def launch_flows(regression):
 
 def private_root(repo=qa.REPO):
     # Raw bundles must outlive worktrees; #115's bundle was lost with a removed worktree.
+    # GIT_* variables (e.g. inside another repository's hook) must not redirect the root.
+    env = {k: v for k, v in os.environ.items() if not k.startswith('GIT_')}
     common = subprocess.run(['git', 'rev-parse', '--path-format=absolute', '--git-common-dir'],
-                            cwd=repo, check=True, capture_output=True, text=True).stdout.strip()
+                            cwd=repo, env=env, check=True, capture_output=True, text=True).stdout.strip()
     return (Path(common).parent / 'work').resolve()
 
 

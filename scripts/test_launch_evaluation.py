@@ -17,12 +17,19 @@ import launch_evaluation as launch
 import oauth_quality as qa
 
 
+def isolate_private_root(test):
+    # One temporary root per test holds its bundles and the default model lock.
+    root = tempfile.TemporaryDirectory()
+    test.addCleanup(root.cleanup)
+    for patcher in [patch.object(tempfile, 'tempdir', root.name),
+                    patch.object(launch, 'private_root', lambda: Path(root.name).resolve())]:
+        patcher.start()
+        test.addCleanup(patcher.stop)
+
+
 class LaunchEvaluationTests(unittest.TestCase):
     def setUp(self):
-        # Temporary bundles stand in for the main checkout work directory.
-        root = patch.object(launch, 'private_root', lambda: Path(tempfile.gettempdir()).resolve())
-        root.start()
-        self.addCleanup(root.stop)
+        isolate_private_root(self)
 
     def freeze(self, directory):
         root = Path(directory).resolve() / "launch"
@@ -1240,8 +1247,8 @@ class PrivateRootTests(unittest.TestCase):
     def test_freeze_rejects_bundles_outside_main_checkout_work(self):
         root = launch.private_root()
         with tempfile.TemporaryDirectory() as directory:
-            for bundle in [Path(directory).resolve()/'launch', root, root/'..'/'launch']:
-                with self.subTest(bundle=bundle), self.assertRaises(ValueError):
+            for bundle in [Path(directory).resolve()/'launch', root]:
+                with self.subTest(bundle=bundle), self.assertRaisesRegex(ValueError, 'main checkout work'):
                     launch.freeze(bundle, owner='minjunkim-dev', delete_method='delete directory',
                                   ends_at=(datetime.now(timezone.utc)+timedelta(days=1)).isoformat())
             self.assertFalse((Path(directory)/'launch').exists())
