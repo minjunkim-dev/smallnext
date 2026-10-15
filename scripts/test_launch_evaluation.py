@@ -18,6 +18,12 @@ import oauth_quality as qa
 
 
 class LaunchEvaluationTests(unittest.TestCase):
+    def setUp(self):
+        # Temporary bundles stand in for the main checkout work directory.
+        root = patch.object(launch, 'private_root', lambda: Path(tempfile.gettempdir()).resolve())
+        root.start()
+        self.addCleanup(root.stop)
+
     def freeze(self, directory):
         root = Path(directory).resolve() / "launch"
         launch.freeze(root, owner="minjunkim-dev",
@@ -1067,6 +1073,7 @@ from test_launch_evaluation import LaunchEvaluationTests
 import launch_evaluation as l
 import oauth_quality as q
 resource.setrlimit(resource.RLIMIT_NOFILE,(256,resource.getrlimit(resource.RLIMIT_NOFILE)[1]))
+l.private_root=lambda: Path(sys.argv[1]).resolve()
 root,_=LaunchEvaluationTests().freeze(sys.argv[1])
 generated=[0]
 def invoke(role,*args):
@@ -1216,6 +1223,28 @@ print('maximum report passed')
             self.assertEqual(summary['stop_reason'], 'invalid_output')
             self.assertEqual(summary['roles']['started'], 1)
             self.assertNotIn('private invalid value', json.dumps(summary))
+
+
+class PrivateRootTests(unittest.TestCase):
+    def test_linked_worktree_resolves_to_main_checkout_work(self):
+        with tempfile.TemporaryDirectory() as directory:
+            main, linked = Path(directory).resolve()/'main', Path(directory).resolve()/'linked'
+            git = lambda *args: subprocess.run(['git', *args], cwd=main, check=True, capture_output=True)
+            main.mkdir()
+            git('init', '-q')
+            git('-c', 'user.name=t', '-c', 'user.email=t@example.invalid', 'commit', '-q', '--allow-empty', '-m', 'init')
+            git('worktree', 'add', '-q', str(linked))
+            self.assertEqual(launch.private_root(linked), main/'work')
+            self.assertEqual(launch.private_root(main), main/'work')
+
+    def test_freeze_rejects_bundles_outside_main_checkout_work(self):
+        root = launch.private_root()
+        with tempfile.TemporaryDirectory() as directory:
+            for bundle in [Path(directory).resolve()/'launch', root, root/'..'/'launch']:
+                with self.subTest(bundle=bundle), self.assertRaises(ValueError):
+                    launch.freeze(bundle, owner='minjunkim-dev', delete_method='delete directory',
+                                  ends_at=(datetime.now(timezone.utc)+timedelta(days=1)).isoformat())
+            self.assertFalse((Path(directory)/'launch').exists())
 
 
 if __name__ == '__main__':

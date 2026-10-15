@@ -15,9 +15,10 @@ import oauth_quality as qa
 class HumanReviewTests(unittest.TestCase):
     def bundle(self, directory):
         root = Path(directory).resolve() / 'launch'
-        launch.freeze(root, owner='minjunkim-dev',
-                      ends_at=(datetime.now(timezone.utc) + timedelta(days=1)).isoformat(),
-                      delete_method='delete this synthetic test bundle')
+        with patch.object(launch, 'private_root', lambda: root.parent):
+            launch.freeze(root, owner='minjunkim-dev',
+                          ends_at=(datetime.now(timezone.utc) + timedelta(days=1)).isoformat(),
+                          delete_method='delete this synthetic test bundle')
 
         def invoke(role, prompt, schema, data, deadline, cancelled):
             if role == 'generate':
