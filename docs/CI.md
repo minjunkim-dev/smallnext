@@ -114,6 +114,8 @@ GitHub runner의 미리 설치한 SDK, OS 업데이트와 외부 패키지 저�
 | iOS 컴파일 | DerivedData의 Build·ModuleCache.noindex·SDKStatCaches.noindex·SDKExplicitPrecompiledModules | OS·CPU·Xcode·SDK·잠금 파일·프로젝트·빌드 스크립트·워크플로가 같으면 소스 변경 전 출력도 복원. Xcode가 변경 입력을 다시 빌드 |
 | Android | Gradle 의존성·작업 출력 | OS·CPU·Gradle Wrapper·빌드 설정·버전 목록; 작업 입력은 Gradle이 확인 |
 
+iOS 컴파일 캐시 항목은 약 250MB입니다. 이 중 SDK 명시적 모듈이 약 98MB입니다.
+저장소 캐시 합계가 10GB를 넘으면 GitHub가 오래 쓰지 않은 항목부터 삭제합니다.
 캐시 명중 여부로 빌드나 테스트를 생략하지 않습니다.
 Rust는 계속 `--locked`를 사용합니다.
 iOS는 계속 커밋한 Package.resolved만 사용합니다.
@@ -151,7 +153,8 @@ shard를 추가하기 전에 artifact 전달 시간과 실행기 비용을 비�
 
 워크플로가 main에 등록된 후에는 수동 실행의 `use-cache`를 false로 설정할 수 있습니다.
 이 경우 캐시 복원·저장을 끄고 Docker도 캐시 없이 빌드합니다.
-빌드 캐시 키의 `v1`은 캐시 구조를 바꿀 때 갱신합니다.
+빌드 캐시 키의 버전 접두어(`cargo-v1`, `xcode-v2` 등)는 저장 내용의 의미를 바꿀 때 올립니다.
+캐시 경로 목록만 바꾸면 actions/cache가 기존 항목을 자동으로 재사용하지 않습니다.
 
 Repository hygiene에서 actionlint 1.7.12와 ShellCheck로 워크플로를 검사합니다.
 다운로드한 actionlint 파일은 고정 SHA-256으로 확인합니다.
