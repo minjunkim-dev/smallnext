@@ -51,6 +51,7 @@ jobs:
             ${{ runner.temp }}/ios-derived-data/Build
             ${{ runner.temp }}/ios-derived-data/ModuleCache.noindex
             ${{ runner.temp }}/ios-derived-data/SDKStatCaches.noindex
+            ${{ runner.temp }}/ios-derived-data/SDKExplicitPrecompiledModules
           key: xcode-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.fingerprint }}-${{ hashFiles('apps/ios/**/Package.resolved', 'apps/ios/**/*.pbxproj', 'apps/ios/**/*.xcscheme', 'apps/ios/**/*.xcconfig', 'scripts/check_ios.sh', '.github/workflows/ios-checks.yml') }}-${{ hashFiles('apps/ios/**') }}
           restore-keys: |
             xcode-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.fingerprint }}-${{ hashFiles('apps/ios/**/Package.resolved', 'apps/ios/**/*.pbxproj', 'apps/ios/**/*.xcscheme', 'apps/ios/**/*.xcconfig', 'scripts/check_ios.sh', '.github/workflows/ios-checks.yml') }}-

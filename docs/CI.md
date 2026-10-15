@@ -111,7 +111,7 @@ GitHub runner의 미리 설치한 SDK, OS 업데이트와 외부 패키지 저�
 | Rust | Cargo 레지스트리·Git 의존성·Debug 컴파일 출력 | OS·CPU·Rust 도구 버전·Cargo 설정·잠금 파일 |
 | Docker | BuildKit 레이어(의존성 빌드 레이어 중심) | OS·CPU·Dockerfile·Cargo.toml·잠금 파일·베이스 이미지 digest |
 | iOS 패키지 | SwiftPM 소스 | OS·CPU·Xcode·SDK·Package.resolved |
-| iOS 컴파일 | DerivedData의 Build·ModuleCache.noindex·SDKStatCaches.noindex | OS·CPU·Xcode·SDK·잠금 파일·프로젝트·빌드 스크립트·워크플로가 같으면 소스 변경 전 출력도 복원. Xcode가 변경 입력을 다시 빌드 |
+| iOS 컴파일 | DerivedData의 Build·ModuleCache.noindex·SDKStatCaches.noindex·SDKExplicitPrecompiledModules | OS·CPU·Xcode·SDK·잠금 파일·프로젝트·빌드 스크립트·워크플로가 같으면 소스 변경 전 출력도 복원. Xcode가 변경 입력을 다시 빌드 |
 | Android | Gradle 의존성·작업 출력 | OS·CPU·Gradle Wrapper·빌드 설정·버전 목록; 작업 입력은 Gradle이 확인 |
 
 캐시 명중 여부로 빌드나 테스트를 생략하지 않습니다.
