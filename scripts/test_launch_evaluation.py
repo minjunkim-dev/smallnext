@@ -77,6 +77,33 @@ class LaunchEvaluationTests(unittest.TestCase):
                 'usage': {'input_tokens': 100, 'output_tokens': 50,
                           'cache_read_input_tokens': None, 'cache_creation_input_tokens': None}}
 
+    def test_single_flow_freeze_caps_requests_and_roles(self):
+        ends_at = (datetime.now(timezone.utc) + timedelta(days=1)).isoformat()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve() / 'launch'
+            launch.freeze(root, owner='minjunkim-dev', ends_at=ends_at, delete_method='delete directory',
+                          flow='fixed-ready-1', max_smaller=1)
+            manifest = launch.load(root)
+            self.assertEqual([(f['id'], f['max_smaller']) for f in manifest['flows']], [('fixed-ready-1', 1)])
+            self.assertEqual((manifest['limits']['requests'], manifest['limits']['calls']), (2, 4))
+            roles = []
+
+            def invoke(role, *args):
+                roles.append(role)
+                result = self.response(role, *args)
+                if role == 'generate':
+                    result['output']['status'] = 'action'
+                return result
+
+            summary = launch.run(root, invoke=invoke)
+            self.assertEqual(roles, ['generate', 'check'] * 2)
+            self.assertEqual(summary['stop_reason'], 'completed')
+        for flow, smaller in [('fixed-ready-9', 1), ('fixed-ready-1', 3), ('fixed-ready-1', None), (None, 1)]:
+            with self.subTest(flow=flow, smaller=smaller), tempfile.TemporaryDirectory() as directory, \
+                    self.assertRaises(ValueError):
+                launch.freeze(Path(directory).resolve() / 'launch', owner='minjunkim-dev', ends_at=ends_at,
+                              delete_method='delete directory', flow=flow, max_smaller=smaller)
+
     def test_run_stops_each_flow_at_question_without_fabricated_answers_or_resume(self):
         with tempfile.TemporaryDirectory() as directory:
             root, manifest = self.freeze(directory)
