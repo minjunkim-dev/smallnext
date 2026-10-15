@@ -53,7 +53,7 @@ jobs:
             fi
             mv "$RUNNER_TEMP/buildx-cache-new" "$RUNNER_TEMP/buildx-cache"
           fi
-      - name: Verify runtime user and container configuration
+      - name: Verify runtime user, container configuration and production compose
         run: make api-image-check
       - name: Record cache state
         if: always()

@@ -19,6 +19,8 @@ Thumbs.db
 *.jks
 *.p8
 *.mobileprovision
+/infra/production/credentials/
+/apps/ios/Config/Local.xcconfig
 
 # Generated files and caches
 node_modules/

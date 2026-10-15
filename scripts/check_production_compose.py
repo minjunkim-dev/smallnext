@@ -1,0 +1,164 @@
+"""Exercise production compose with an isolated PostgreSQL and synthetic settings."""
+import argparse
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
+import tempfile
+import time
+import urllib.error
+import urllib.request
+import uuid
+
+ROOT = Path(__file__).resolve().parents[1]
+AI_SETTINGS = (
+    "USER_SERVER_AI", "FIREBASE_PROJECT_ID", "AI_ALLOWED_FIREBASE_UIDS",
+    "FIREBASE_SERVICE_ACCOUNT_FILE", "AI_MODEL_CONFIRMED", "ANTHROPIC_API_KEY",
+    "AI_MODEL_CONTEXT_TOKENS", "AI_MAX_OUTPUT_TOKENS",
+    "AI_INPUT_MICRO_USD_PER_MILLION", "AI_OUTPUT_MICRO_USD_PER_MILLION",
+    "AI_BUDGET_MICRO_USD",
+)
+DATABASE_URL = "postgres://smallnext:smallnext-local-only@postgres:5432/smallnext"
+
+
+def run(command, env, *, timeout=120, check=True):
+    result = subprocess.run(command, cwd=ROOT, env=env, capture_output=True,
+                            text=True, timeout=timeout)
+    if check and result.returncode:
+        # Container output may contain credentials. Report only the operation's exit status.
+        raise RuntimeError(f"container check command failed (exit {result.returncode})")
+    return result
+
+
+def status(url, method="GET"):
+    try:
+        request = urllib.request.Request(url, method=method, headers={"Host": "localhost"})
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+        with opener.open(request, timeout=2) as response:
+            return response.status
+    except urllib.error.HTTPError as error:
+        return error.code
+
+
+def check(image, check_purge):
+    project = "smallnext-smoke-" + uuid.uuid4().hex[:12]
+    # Do not inherit operator AI settings, database URLs or Compose overrides.
+    env = {key: value for key, value in os.environ.items()
+           if key not in AI_SETTINGS and not key.startswith("COMPOSE_")
+           and key not in {"DATABASE_URL", "API_DOMAIN", "FIREBASE_CREDENTIALS_DIR", "SMALLNEXT_API_IMAGE"}}
+    env.update(DATABASE_URL=DATABASE_URL, API_DOMAIN="http://localhost", SMALLNEXT_API_IMAGE=image)
+    with tempfile.TemporaryDirectory(prefix="smallnext-compose-") as directory:
+        temporary = Path(directory)
+        credentials = temporary / "credentials"
+        credentials.mkdir(mode=0o755)
+        # Docker's unprivileged image user must be able to traverse the temporary parent.
+        temporary.chmod(0o755)
+        env["FIREBASE_CREDENTIALS_DIR"] = str(credentials)
+        empty_env = temporary / "empty.env"
+        empty_env.touch()
+        override = temporary / "compose.yaml"
+        override.write_text('''services:
+  api:
+    restart: "no"
+  caddy:
+    ports: !override
+      - "127.0.0.1::80"
+  postgres:
+    image: postgres:18-alpine@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873
+    environment:
+      POSTGRES_USER: smallnext
+      POSTGRES_DB: smallnext
+      POSTGRES_PASSWORD: smallnext-local-only
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "smallnext", "-d", "smallnext"]
+      interval: 1s
+      timeout: 3s
+      retries: 60
+''')
+        compose = ["docker", "compose", "--project-name", project, "--env-file", str(empty_env),
+                   "-f", str(ROOT / "infra/production/compose.yaml"), "-f", str(override)]
+        try:
+            # Resolve every AI variable from a Git-external env file, without displaying its values.
+            forwarded = {key: f"synthetic-{index}" for index, key in enumerate(AI_SETTINGS)}
+            values = temporary / "settings.env"
+            values.write_text("".join(f"{key}={value}\n" for key, value in forwarded.items()))
+            config_command = compose.copy()
+            config_command[config_command.index(str(empty_env))] = str(values)
+            configured = json.loads(run(config_command + ["config", "--format", "json"], env).stdout)
+            actual = configured["services"]["api"]["environment"]
+            if any(actual.get(key) != value for key, value in forwarded.items()):
+                raise RuntimeError("production compose did not forward all AI settings")
+            print("PASS production compose forwards all AI environment settings")
+
+            run(compose + ["up", "-d", "--wait", "--wait-timeout", "90", "postgres"], env)
+            run(compose + ["up", "-d", "--no-build", "--pull", "missing", "api", "caddy"], env)
+            address = run(compose + ["port", "caddy", "80"], env).stdout.strip()
+            deadline = time.monotonic() + 60
+            while True:
+                try:
+                    if status(f"http://{address}/ready") == 200:
+                        break
+                except (OSError, urllib.error.URLError):
+                    pass
+                if time.monotonic() >= deadline:
+                    raise RuntimeError("AI OFF API did not become ready")
+                time.sleep(0.25)
+            for path, method, expected in (("/health", "GET", 200), ("/ready", "GET", 200),
+                                           ("/v1/suggestions", "POST", 404)):
+                if status(f"http://{address}{path}", method) != expected:
+                    raise RuntimeError(f"AI OFF response mismatch: {path}")
+            print("PASS production Caddy to AI OFF API without credential file: health=200 ready=200 suggestions=404")
+
+            credential = credentials / "service-account.json"
+            credential.write_text("{}")
+            credential.chmod(0o644)
+            # Root bypasses discretionary permissions, so only a read-only mount blocks this write.
+            run(compose + ["run", "--rm", "-T", "--no-deps", "--user", "0", "--entrypoint", "sh",
+                           "api", "-c", 'test -r "$FIREBASE_SERVICE_ACCOUNT_FILE" && ! touch /run/secrets/firebase/probe'], env)
+            print("PASS credential directory is readable and mounted read-only")
+            failures = (
+                ({"FIREBASE_PROJECT_ID": ""}, "FIREBASE_PROJECT_ID"),
+                ({"FIREBASE_PROJECT_ID": "synthetic", "AI_ALLOWED_FIREBASE_UIDS": ""}, "AI_ALLOWED_FIREBASE_UIDS"),
+                ({"FIREBASE_PROJECT_ID": "synthetic", "AI_ALLOWED_FIREBASE_UIDS": "synthetic",
+                  "FIREBASE_SERVICE_ACCOUNT_FILE": ""}, "FIREBASE_SERVICE_ACCOUNT_FILE"),
+                ({"FIREBASE_PROJECT_ID": "synthetic", "AI_ALLOWED_FIREBASE_UIDS": "synthetic",
+                  "AI_MODEL_CONFIRMED": ""}, "AI_MODEL_CONFIRMED"),
+                ({"FIREBASE_PROJECT_ID": "synthetic", "AI_ALLOWED_FIREBASE_UIDS": "synthetic",
+                  "AI_MODEL_CONFIRMED": "1", "ANTHROPIC_API_KEY": ""}, "ANTHROPIC_API_KEY"),
+            )
+            for settings, missing in failures:
+                command = compose + ["run", "--rm", "-T", "--no-deps", "-e", "USER_SERVER_AI=1"]
+                for key, value in settings.items():
+                    command += ["-e", f"{key}={value}"]
+                result = run(command + ["api"], env, timeout=20, check=False)
+                if not result.returncode or "missing or invalid user AI configuration" not in result.stderr:
+                    raise RuntimeError(f"API did not reject missing {missing} through its existing validation")
+                print(f"PASS AI ON refuses missing {missing}")
+            if check_purge:
+                run(compose + ["stop", "api"], env)
+                purge_env = dict(env, TEST_DATABASE_URL=DATABASE_URL)
+                result = run([sys.executable, str(ROOT / "scripts/check_production_purge.py"),
+                              "--image", image, "--network", project + "_default"], purge_env)
+                print(result.stdout.strip())
+        finally:
+            run(compose + ["down", "--volumes", "--remove-orphans"], env)
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--image", default="smallnext-api:ci")
+    parser.add_argument("--check-purge", action="store_true")
+    arguments = parser.parse_args()
+    try:
+        check(arguments.image, arguments.check_purge)
+    except (OSError, RuntimeError, subprocess.TimeoutExpired, ValueError) as error:
+        # Do not print subprocess command/env or captured logs.
+        message = str(error) if isinstance(error, RuntimeError) else type(error).__name__
+        print(f"Production compose check failed: {message}", file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
