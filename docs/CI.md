@@ -145,6 +145,8 @@ PR은 이어서 시뮬레이터 부팅 없이 `build-for-testing`만 수행합�
 
 `SmallnextCore` 패키지만 바뀐 main push는 시뮬레이터 테스트를 생략합니다. 서버 경로 계약을 포함한 패키지 로직은 `swift test`가 검사합니다.
 앱 호스트 테스트는 번들 리소스·Info.plist·Firebase 초기화만 확인합니다. 패키지 로직 테스트를 앱 호스트 테스트에 추가하지 않습니다.
+남는 위험: 앱 호스트 테스트는 패키지의 `FeatureFlags.isEnabled`를 호출하고, 호스트 앱 실행 중 `AppDatabase.openDefault()`와 `FeatureFlags` 조회가 실행됩니다.
+패키지만 바뀐 main push에서는 이 경로의 실행 회귀가 다음 앱 껍데기 push나 수동 실행에서 드러납니다. 컴파일 회귀는 `build-for-testing`이 잡습니다.
 판정 규칙은 `scripts/ci_scope.py`의 `needs_simulator`입니다.
 
 시뮬레이터 테스트를 실행할 때는 부팅과 `build-for-testing`을 동시에 시작합니다.
