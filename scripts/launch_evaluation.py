@@ -11,6 +11,7 @@ import json
 import math
 import os
 from pathlib import Path
+import shutil
 import signal
 import selectors
 import statistics
@@ -162,7 +163,7 @@ def private_root(repo=qa.REPO):
 
 
 def freeze(directory, *, owner, ends_at, delete_method, role_reservation_micro_usd=20_000,
-           monthly_spent_micro_usd=0):
+           monthly_spent_micro_usd=0, flow_id=None, max_smaller=None):
     directory = Path(directory).resolve()
     end = datetime.fromisoformat(ends_at)
     if not owner.strip() or not delete_method.strip() or end.tzinfo is None or end <= datetime.now(timezone.utc):
@@ -170,6 +171,9 @@ def freeze(directory, *, owner, ends_at, delete_method, role_reservation_micro_u
     if (type(role_reservation_micro_usd) is not int or role_reservation_micro_usd <= 0
             or type(monthly_spent_micro_usd) is not int or monthly_spent_micro_usd < 0):
         raise ValueError('nonnegative integer planning cost required')
+    if (flow_id is None) != (max_smaller is None) or max_smaller is not None and (
+            type(max_smaller) is not int or max_smaller < 0):
+        raise ValueError('a single flow needs a nonnegative smaller count')
     root = private_root()
     if directory == root or not directory.is_relative_to(root):
         raise ValueError(f'raw bundles must be inside the main checkout work directory: {root}')
@@ -181,11 +185,20 @@ def freeze(directory, *, owner, ends_at, delete_method, role_reservation_micro_u
                  'services/api/src/suggestion/compact.rs']:
         raw = (qa.REPO / name).read_bytes()
         sources[name] = {'sha256': qa.digest(raw), 'utf8': raw.decode()}
+    flows, limits = launch_flows(regression), LIMITS
+    if flow_id is not None:
+        # #154: one fixed flow, with request and role caps derived from its planned steps.
+        flows = [f for f in flows if f['id'] == flow_id]
+        if len(flows) != 1 or max_smaller > flows[0]['max_smaller']:
+            shutil.rmtree(directory)  # only the synthetic regression exists yet; keep the path reusable
+            raise ValueError('known flow and a smaller count within its plan required')
+        flows[0]['max_smaller'] = max_smaller
+        limits = dict(LIMITS, requests=max_smaller + 1, calls=2 * (max_smaller + 1))
     evidence = {p.relative_to(qa.REPO).as_posix(): qa.digest(p.read_bytes())
                 for p in (qa.REPO / 'docs/research/fixtures').glob('*') if p.is_file()}
     manifest = {'version': 1, 'suite': 'launch', 'model': qa.MODEL, 'effort': qa.EFFORT,
         'sources': sources, 'prompts': regression['prompts'], 'schemas': regression['schemas'],
-        'flows': launch_flows(regression), 'limits': LIMITS, 'measurement': MEASUREMENT,
+        'flows': flows, 'limits': limits, 'measurement': MEASUREMENT,
         'pipeline_seconds': 120, 'output_mode': 'text-json', 'parallelism': 1,
         'cost_policy': {'role_reservation_micro_usd': role_reservation_micro_usd,
                         'monthly_spent_micro_usd': monthly_spent_micro_usd,
@@ -844,6 +857,8 @@ def main():
     frozen.add_argument('--role-reservation-micro-usd', type=int, required=True,
                         help='offline planning assumption; not actual pricing or billing')
     frozen.add_argument('--monthly-spent-micro-usd', type=int, required=True)
+    frozen.add_argument('--flow', help='freeze only this launch flow id')
+    frozen.add_argument('--max-smaller', type=int, help='smaller steps allowed in --flow')
     running = commands.add_parser('run')
     running.add_argument('directory', type=Path)
     running.add_argument('--claude', default='claude')
@@ -859,7 +874,8 @@ def main():
         if args.command == 'freeze':
             freeze(args.directory, owner=args.owner, ends_at=args.ends_at, delete_method=args.delete_method,
                    role_reservation_micro_usd=args.role_reservation_micro_usd,
-                   monthly_spent_micro_usd=args.monthly_spent_micro_usd)
+                   monthly_spent_micro_usd=args.monthly_spent_micro_usd,
+                   flow_id=args.flow, max_smaller=args.max_smaller)
             print(json.dumps({'frozen': True, 'model_calls': 0}))
             return 0
         if args.command == 'run':
