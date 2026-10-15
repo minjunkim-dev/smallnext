@@ -57,7 +57,7 @@ api-image-check:
 	$(MAKE) api-production-check
 
 api-production-check:
-	python3 scripts/check_production_compose.py --image smallnext-api:ci
+	python3 scripts/check_production_compose.py --image smallnext-api:ci --check-purge --check-deploy
 
 repository-check:
 	python3 scripts/check_repository.py

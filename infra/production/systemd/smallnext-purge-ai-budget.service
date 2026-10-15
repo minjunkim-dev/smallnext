@@ -7,7 +7,7 @@ Wants=network-online.target
 [Service]
 Type=oneshot
 WorkingDirectory=/opt/smallnext
-ExecStart=/usr/bin/docker compose --env-file infra/production/.env.production -f infra/production/compose.yaml run --rm --no-deps -T api purge-ai-budget
+ExecStart=/usr/bin/docker compose --env-file infra/production/.env.production --env-file infra/production/.env.image -f infra/production/compose.yaml run --rm --no-deps --pull never -T api purge-ai-budget
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=smallnext-purge-ai-budget

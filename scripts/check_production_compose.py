@@ -1,8 +1,10 @@
 """Exercise production compose with an isolated PostgreSQL and synthetic settings."""
 import argparse
+import gzip
 import json
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -41,7 +43,59 @@ def status(url, method="GET"):
         return error.code
 
 
-def check(image, check_purge):
+def deploy_fixture(image, project, temporary, override, empty_env, address, env, cleanup_images):
+    from draft_release import ASSETS, digest
+
+    source = run(["git", "rev-parse", "HEAD"], env).stdout.strip()
+    tag = "smallnext-api:deploy-smoke-" + uuid.uuid4().hex[:12]
+    cleanup_images.append(tag)
+    container = "smallnext-deploy-fixture-" + uuid.uuid4().hex[:12]
+    run(["docker", "create", "--name", container, image], env)
+    try:
+        run(["docker", "commit", "--change", "LABEL org.opencontainers.image.revision=" + source, container, tag], env)
+    finally:
+        run(["docker", "rm", "--force", container], env)
+    built = json.loads(run(["docker", "image", "inspect", tag], env).stdout)[0]
+    cleanup_images.append("smallnext-api:release-" + built["Id"].removeprefix("sha256:"))
+    bundle = temporary / "draft-bundle"
+    bundle.mkdir()
+    archive = temporary / "image.tar"
+    run(["docker", "image", "save", "--output", str(archive), tag], env)
+    with archive.open("rb") as raw, (bundle / ASSETS[0]).open("wb") as compressed:
+        with gzip.GzipFile(fileobj=compressed, mode="wb", mtime=0) as zipped:
+            shutil.copyfileobj(raw, zipped)
+    archive.unlink()
+    metadata = {"version": "v0.0.0-alpha.1", "source_sha": source, "artifact": "api-container",
+                "image_id": built["Id"], "os": built["Os"], "architecture": built["Architecture"],
+                "docker_version": run(["docker", "version", "--format", "{{.Server.Version}}"], env).stdout.strip(),
+                "dependency_sha256": {name: digest(ROOT / name) for name in
+                    ("services/api/Cargo.lock", "services/api/Dockerfile", "rust-toolchain.toml")},
+                "ci": [{"workflow": "project-checks.yml", "run_id": 1, "attempt": 1},
+                       {"workflow": "repository-checks.yml", "run_id": 2, "attempt": 1}]}
+    (bundle / ASSETS[1]).write_text(json.dumps(metadata))
+    (bundle / ASSETS[2]).write_text("".join(f"{digest(bundle / name)}  {name}\n" for name in ASSETS[:2]))
+    deployed = temporary / "deployed"
+    result = run([sys.executable, str(ROOT / "scripts/deploy_production.py"), "--target", "local",
+                  "--bundle", str(bundle), "--version", metadata["version"], "--source-sha", source,
+                  "--deploy-dir", str(deployed), "--env-file", str(empty_env), "--project-name", project,
+                  "--compose-override", str(override), "--url", "http://" + address.replace("127.0.0.1", "localhost")], env)
+    print(result.stdout.strip())
+    pointer = deployed / "infra/production/.env.image"
+    selected = pointer.read_text().strip().split("=", 1)[1]
+    scheduler_env = dict(env)
+    scheduler_env.pop("SMALLNEXT_API_IMAGE", None)
+    scheduler_compose = ["docker", "compose", "--project-name", project,
+                         "--env-file", str(empty_env), "--env-file", str(pointer),
+                         "-f", str(deployed / "infra/production/compose.yaml"), "-f", str(override)]
+    configured = json.loads(run(scheduler_compose + ["config", "--format", "json"], scheduler_env).stdout)
+    if configured["services"]["api"]["image"] != selected:
+        raise RuntimeError("scheduler compose does not read the persisted image pointer")
+    if json.loads(run(["docker", "image", "inspect", selected], env).stdout)[0]["Id"] != built["Id"]:
+        raise RuntimeError("deployment image pointer does not select the verified image")
+    print("PASS actual local load/up/status and scheduler image pointer (synthetic draft-format bundle; not CI provenance)")
+
+
+def check(image, check_purge, check_deploy=False):
     project = "smallnext-smoke-" + uuid.uuid4().hex[:12]
     # Do not inherit operator AI settings, database URLs or Compose overrides.
     env = {key: value for key, value in os.environ.items()
@@ -64,6 +118,8 @@ def check(image, check_purge):
   caddy:
     ports: !override
       - "127.0.0.1::80"
+    volumes:
+      - "CADDY_FILE:/etc/caddy/Caddyfile:ro"
   postgres:
     image: postgres:18-alpine@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873
     environment:
@@ -75,9 +131,10 @@ def check(image, check_purge):
       interval: 1s
       timeout: 3s
       retries: 60
-''')
+'''.replace("CADDY_FILE", str(ROOT / "infra/production/Caddyfile")))
         compose = ["docker", "compose", "--project-name", project, "--env-file", str(empty_env),
                    "-f", str(ROOT / "infra/production/compose.yaml"), "-f", str(override)]
+        cleanup_images = []
         try:
             # Resolve every AI variable from a Git-external env file, without displaying its values.
             forwarded = {key: f"synthetic-{index}" for index, key in enumerate(AI_SETTINGS)}
@@ -131,27 +188,33 @@ def check(image, check_purge):
                 command = compose + ["run", "--rm", "-T", "--no-deps", "-e", "USER_SERVER_AI=1"]
                 for key, value in settings.items():
                     command += ["-e", f"{key}={value}"]
-                result = run(command + ["api"], env, timeout=20, check=False)
+                result = run(command + ["api"], env, timeout=60, check=False)
                 if not result.returncode or "missing or invalid user AI configuration" not in result.stderr:
                     raise RuntimeError(f"API did not reject missing {missing} through its existing validation")
                 print(f"PASS AI ON refuses missing {missing}")
+            if check_deploy:
+                deploy_fixture(image, project, temporary, override, empty_env, address, env, cleanup_images)
             if check_purge:
                 run(compose + ["stop", "api"], env)
                 purge_env = dict(env, TEST_DATABASE_URL=DATABASE_URL)
                 result = run([sys.executable, str(ROOT / "scripts/check_production_purge.py"),
-                              "--image", image, "--network", project + "_default"], purge_env)
+                              "--image", cleanup_images[-1] if cleanup_images else image,
+                              "--network", project + "_default"], purge_env)
                 print(result.stdout.strip())
         finally:
             run(compose + ["down", "--volumes", "--remove-orphans"], env)
+            for tag in cleanup_images:
+                run(["docker", "image", "rm", tag], env, check=False)
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--image", default="smallnext-api:ci")
     parser.add_argument("--check-purge", action="store_true")
+    parser.add_argument("--check-deploy", action="store_true")
     arguments = parser.parse_args()
     try:
-        check(arguments.image, arguments.check_purge)
+        check(arguments.image, arguments.check_purge, arguments.check_deploy)
     except (OSError, RuntimeError, subprocess.TimeoutExpired, ValueError) as error:
         # Do not print subprocess command/env or captured logs.
         message = str(error) if isinstance(error, RuntimeError) else type(error).__name__
