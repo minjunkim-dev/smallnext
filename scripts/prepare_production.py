@@ -52,9 +52,9 @@ def prepare(root=ROOT, prompt=getpass.getpass, confirm=input, open_page=webbrows
             print("취소했습니다. 기존 파일을 유지합니다.")
             return False
 
-    def ask(label):
+    def ask(label, optional=False):
         value = prompt(label + " (입력 숨김): ").strip()
-        if not value or any(character in value for character in "\r\n\0"):
+        if (not value and not optional) or any(character in value for character in "\r\n\0"):
             raise ValueError("빈 값 또는 여러 줄 값을 저장하지 않습니다.")
         return value
 
@@ -86,7 +86,7 @@ def prepare(root=ROOT, prompt=getpass.getpass, confirm=input, open_page=webbrows
     credentials = ask("FIREBASE_CREDENTIALS_DIR (서버의 절대 디렉터리; service-account.json 포함)")
     if not Path(credentials).is_absolute():
         raise ValueError("서버의 절대 디렉터리를 입력하십시오.")
-    uids = ask("AI_ALLOWED_FIREBASE_UIDS (본인 익명 UID; 쉼표 구분)")
+    uids = ask("AI_ALLOWED_FIREBASE_UIDS (이미 확인한 본인 익명 UID만 입력; 없으면 비워 두고 #47에서 준비)", optional=True)
     if confirm("서비스 계정 최소 권한과 파일 보호를 확인했습니까? [y/N] ").lower() != "y":
         return False
 

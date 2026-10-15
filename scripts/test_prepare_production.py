@@ -72,6 +72,15 @@ class PreparationTests(unittest.TestCase):
                 self.assertNotIn("original", (root / name).read_text())
                 self.assertEqual(stat.S_IMODE((root / name).stat().st_mode), 0o600)
 
+    def test_ai_off_preparation_does_not_require_an_existing_identity(self):
+        with tempfile.TemporaryDirectory() as directory:
+            values = list(self.values())
+            values[-1] = ""
+            values = iter(values)
+            with contextlib.redirect_stdout(io.StringIO()):
+                self.assertTrue(wizard.prepare(Path(directory), lambda _: next(values), lambda _: "y", lambda _: None))
+            self.assertIn("AI_ALLOWED_FIREBASE_UIDS=''", (Path(directory) / wizard.SERVER_FILE).read_text())
+
     def test_symlink_does_not_overwrite_target(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
