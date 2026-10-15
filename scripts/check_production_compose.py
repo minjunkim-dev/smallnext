@@ -120,6 +120,7 @@ def check(image, check_purge, check_deploy=False):
       - "127.0.0.1::80"
     volumes:
       - "CADDY_FILE:/etc/caddy/Caddyfile:ro"
+      - "CAPTCHA_DIRECTORY:/srv/smallnext-captcha:ro"
   postgres:
     image: postgres:18-alpine@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873
     environment:
@@ -131,7 +132,8 @@ def check(image, check_purge, check_deploy=False):
       interval: 1s
       timeout: 3s
       retries: 60
-'''.replace("CADDY_FILE", str(ROOT / "infra/production/Caddyfile")))
+'''.replace("CADDY_FILE", str(ROOT / "infra/production/Caddyfile"))
+           .replace("CAPTCHA_DIRECTORY", str(ROOT / "infra/production/captcha")))
         compose = ["docker", "compose", "--project-name", project, "--env-file", str(empty_env),
                    "-f", str(ROOT / "infra/production/compose.yaml"), "-f", str(override)]
         cleanup_images = []

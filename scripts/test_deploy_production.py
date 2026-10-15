@@ -4,7 +4,9 @@ import io
 import json
 from pathlib import Path
 import shlex
+import shutil
 import subprocess
+import sys
 import tarfile
 import tempfile
 import unittest
@@ -39,6 +41,19 @@ def bundle(directory):
 
 
 class DeployTests(unittest.TestCase):
+    def test_staged_backup_tool_has_its_imports_and_restore_schema(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            for name in deploy.SNAPSHOT:
+                target = directory / name
+                target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(deploy.ROOT / name, target)
+            result = subprocess.run([sys.executable, str(directory / "scripts/backup_ai_budget.py"), "--help"],
+                                    capture_output=True, text=True, timeout=10)
+            self.assertEqual(result.returncode, 0)
+            for name in ("0002_ai_budget.sql", "0003_ai_budget_blocked.sql"):
+                self.assertTrue((directory / "services/api/migrations" / name).is_file())
+
     def args(self, directory):
         return argparse.Namespace(target="local", bundle=str(directory / "bundle"), version=VERSION,
                                   source_sha=SOURCE, deploy_dir=str(directory), env_file=str(directory / "private.env"),
