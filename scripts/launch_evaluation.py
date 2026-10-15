@@ -11,6 +11,7 @@ import json
 import math
 import os
 from pathlib import Path
+import shutil
 import signal
 import selectors
 import statistics
@@ -162,7 +163,7 @@ def private_root(repo=qa.REPO):
 
 
 def freeze(directory, *, owner, ends_at, delete_method, role_reservation_micro_usd=20_000,
-           monthly_spent_micro_usd=0, flow=None, max_smaller=None):
+           monthly_spent_micro_usd=0, flow_id=None, max_smaller=None):
     directory = Path(directory).resolve()
     end = datetime.fromisoformat(ends_at)
     if not owner.strip() or not delete_method.strip() or end.tzinfo is None or end <= datetime.now(timezone.utc):
@@ -170,7 +171,7 @@ def freeze(directory, *, owner, ends_at, delete_method, role_reservation_micro_u
     if (type(role_reservation_micro_usd) is not int or role_reservation_micro_usd <= 0
             or type(monthly_spent_micro_usd) is not int or monthly_spent_micro_usd < 0):
         raise ValueError('nonnegative integer planning cost required')
-    if (flow is None) != (max_smaller is None) or max_smaller is not None and (
+    if (flow_id is None) != (max_smaller is None) or max_smaller is not None and (
             type(max_smaller) is not int or max_smaller < 0):
         raise ValueError('a single flow needs a nonnegative smaller count')
     root = private_root()
@@ -185,10 +186,11 @@ def freeze(directory, *, owner, ends_at, delete_method, role_reservation_micro_u
         raw = (qa.REPO / name).read_bytes()
         sources[name] = {'sha256': qa.digest(raw), 'utf8': raw.decode()}
     flows, limits = launch_flows(regression), LIMITS
-    if flow is not None:
+    if flow_id is not None:
         # #154: one fixed flow, with request and role caps derived from its planned steps.
-        flows = [f for f in flows if f['id'] == flow]
+        flows = [f for f in flows if f['id'] == flow_id]
         if len(flows) != 1 or max_smaller > flows[0]['max_smaller']:
+            shutil.rmtree(directory)  # only the synthetic regression exists yet; keep the path reusable
             raise ValueError('known flow and a smaller count within its plan required')
         flows[0]['max_smaller'] = max_smaller
         limits = dict(LIMITS, requests=max_smaller + 1, calls=2 * (max_smaller + 1))
@@ -873,7 +875,7 @@ def main():
             freeze(args.directory, owner=args.owner, ends_at=args.ends_at, delete_method=args.delete_method,
                    role_reservation_micro_usd=args.role_reservation_micro_usd,
                    monthly_spent_micro_usd=args.monthly_spent_micro_usd,
-                   flow=args.flow, max_smaller=args.max_smaller)
+                   flow_id=args.flow, max_smaller=args.max_smaller)
             print(json.dumps({'frozen': True, 'model_calls': 0}))
             return 0
         if args.command == 'run':

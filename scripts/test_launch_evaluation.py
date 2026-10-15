@@ -82,7 +82,7 @@ class LaunchEvaluationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory).resolve() / 'launch'
             launch.freeze(root, owner='minjunkim-dev', ends_at=ends_at, delete_method='delete directory',
-                          flow='fixed-ready-1', max_smaller=1)
+                          flow_id='fixed-ready-1', max_smaller=1)
             manifest = launch.load(root)
             self.assertEqual([(f['id'], f['max_smaller']) for f in manifest['flows']], [('fixed-ready-1', 1)])
             self.assertEqual((manifest['limits']['requests'], manifest['limits']['calls']), (2, 4))
@@ -98,11 +98,13 @@ class LaunchEvaluationTests(unittest.TestCase):
             summary = launch.run(root, invoke=invoke)
             self.assertEqual(roles, ['generate', 'check'] * 2)
             self.assertEqual(summary['stop_reason'], 'completed')
-        for flow, smaller in [('fixed-ready-9', 1), ('fixed-ready-1', 3), ('fixed-ready-1', None), (None, 1)]:
-            with self.subTest(flow=flow, smaller=smaller), tempfile.TemporaryDirectory() as directory, \
-                    self.assertRaises(ValueError):
-                launch.freeze(Path(directory).resolve() / 'launch', owner='minjunkim-dev', ends_at=ends_at,
-                              delete_method='delete directory', flow=flow, max_smaller=smaller)
+        for flow_id, smaller in [('fixed-ready-9', 1), ('fixed-ready-1', 3), ('fixed-ready-1', None), (None, 1)]:
+            with self.subTest(flow_id=flow_id, smaller=smaller), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory).resolve() / 'launch'
+                with self.assertRaises(ValueError):
+                    launch.freeze(root, owner='minjunkim-dev', ends_at=ends_at, delete_method='delete directory',
+                                  flow_id=flow_id, max_smaller=smaller)
+                self.assertFalse(root.exists())
 
     def test_run_stops_each_flow_at_question_without_fabricated_answers_or_resume(self):
         with tempfile.TemporaryDirectory() as directory:
