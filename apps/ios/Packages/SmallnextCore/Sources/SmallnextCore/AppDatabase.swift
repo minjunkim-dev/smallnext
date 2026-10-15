@@ -4,7 +4,7 @@ import GRDB
 public struct AppDatabase {
     let writer: DatabasePool
 
-    public init(path: String) throws {
+    init(path: String) throws {
         writer = try DatabasePool(path: path)
         var migrator = DatabaseMigrator()
         migrator.registerMigration("bootstrap") { db in

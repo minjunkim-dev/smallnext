@@ -37,7 +37,7 @@ public struct SuggestionRequest: Sendable, Equatable {
     var completedActionIDs: [String] = []
 }
 
-public struct GoalAnswer: Equatable, Sendable {
+struct GoalAnswer: Equatable, Sendable {
     let question: String
     let answer: String
 }
@@ -87,7 +87,7 @@ public enum SuggestionFailure: String, Error, Sendable, CaseIterable {
 
 /// 요청 종류에 맞고 바로 보여줄 수 있는 후보만 받는다. 앞뒤 공백을 지운 후보를 돌려준다.
 /// 공급자와 관계없는 규칙이다. 저장된 기록이 필요한 검사는 `ProgressFlow`가 한다.
-public enum CandidatePolicy {
+enum CandidatePolicy {
     static func accept(_ candidate: SuggestionCandidate, for request: SuggestionRequest) -> SuggestionCandidate? {
         switch candidate {
         case .goalSummary(let text):
