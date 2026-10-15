@@ -1235,14 +1235,18 @@ print('maximum report passed')
 class PrivateRootTests(unittest.TestCase):
     def test_linked_worktree_resolves_to_main_checkout_work(self):
         with tempfile.TemporaryDirectory() as directory:
-            main, linked = Path(directory).resolve()/'main', Path(directory).resolve()/'linked'
-            git = lambda *args: subprocess.run(['git', *args], cwd=main, check=True, capture_output=True)
-            main.mkdir()
-            git('init', '-q')
-            git('-c', 'user.name=t', '-c', 'user.email=t@example.invalid', 'commit', '-q', '--allow-empty', '-m', 'init')
-            git('worktree', 'add', '-q', str(linked))
+            main, linked, other = (Path(directory).resolve()/name for name in ('main', 'linked', 'other'))
+            env = {k: v for k, v in os.environ.items() if not k.startswith('GIT_')}
+            git = lambda cwd, *args: subprocess.run(['git', *args], cwd=cwd, env=env, check=True, capture_output=True)
+            for repo in (main, other):
+                repo.mkdir()
+                git(repo, 'init', '-q')
+            git(main, '-c', 'user.name=t', '-c', 'user.email=t@example.invalid', 'commit', '-q', '--allow-empty', '-m', 'init')
+            git(main, 'worktree', 'add', '-q', str(linked))
             self.assertEqual(launch.private_root(linked), main/'work')
             self.assertEqual(launch.private_root(main), main/'work')
+            with patch.dict(os.environ, {'GIT_DIR': str(other/'.git'), 'GIT_COMMON_DIR': str(other/'.git')}):
+                self.assertEqual(launch.private_root(linked), main/'work')
 
     def test_freeze_rejects_bundles_outside_main_checkout_work(self):
         root = launch.private_root()
