@@ -16,51 +16,51 @@ public enum SuggestionKind: String, Sendable {
 }
 
 public struct SuggestionRequest: Sendable, Equatable {
-    public var kind: SuggestionKind
-    public var goal: String
-    public var currentAction: ProposedAction?
+    var kind: SuggestionKind
+    var goal: String
+    var currentAction: ProposedAction?
     /// 완료한 행동의 할 일. 오래된 것부터 담는다.
-    public var completedTasks: [String]
+    var completedTasks: [String]
     /// 사용자가 알려준 막힘 원인이다. 같은 정보를 다시 묻지 않게 한다.
-    public var blocker: String? = nil
+    var blocker: String? = nil
     /// 더 작게 요청에서 현재 행동을 나눈 분할 원본의 할 일. 가장 처음 원본부터 담는다.
     /// 비어 있지 않으면 같은 작업을 이미 나눴다. 공급자는 이 값으로 반복 막힘을 판단한다.
     var splitSources: [String] = []
     /// 보류한 행동의 할 일. 생성 순서로 담는다. 공급자는 이 행동을 다시 제안하지 않는다.
     var deferredTasks: [String] = []
-    public var context = GoalContext()
-    public var completionCriteria: String? = nil
+    var context = GoalContext()
+    var completionCriteria: String? = nil
     /// 같은 목표 리비전의 HTTP 중복 요청을 막는 키다.
-    public var stateKey: String = ""
+    var stateKey: String = ""
     /// 완료한 행동과 구분하는 미완료 분할 원본·현재·보류 행동이다.
     var remainingTasks: [String] = []
     var completedActionIDs: [String] = []
 }
 
 public struct GoalAnswer: Equatable, Sendable {
-    public let question: String
-    public let answer: String
+    let question: String
+    let answer: String
 }
 
 /// 자료 본문을 자동으로 읽지 않는다. 링크와 사용자가 고른 발췌·요약만 담는다.
 public struct GoalContext: Equatable, Sendable {
-    public var deadline: String? = nil
+    var deadline: String? = nil
     public var currentState: String? = nil
-    public var materialLinks: [URL] = []
-    public var materialExcerpt: String? = nil
-    public var availableMinutes: Int? = nil
+    var materialLinks: [URL] = []
+    var materialExcerpt: String? = nil
+    var availableMinutes: Int? = nil
     var answers: [GoalAnswer] = []
 }
 
 public struct ProposedAction: Sendable, Equatable {
-    public var task: String
-    public var doneWhen: String
-    public var estimatedMinutes: Int
-    public var targetName: String? = nil
-    public var targetDescription: String? = nil
-    public var materialLinks: [URL] = []
+    var task: String
+    var doneWhen: String
+    var estimatedMinutes: Int
+    var targetName: String? = nil
+    var targetDescription: String? = nil
+    var materialLinks: [URL] = []
     /// 공급자가 목표 완료를 표시했는지 나타낸다. 앱은 이 표시로 목표를 완료하지 않는다.
-    public var marksGoalComplete = false
+    var marksGoalComplete = false
     /// 공급자가 원래 행동의 완료를 표시했는지 나타낸다. 앱은 이 표시로 행동을 완료하지 않는다.
     var marksCurrentActionComplete = false
 }
@@ -88,7 +88,7 @@ public enum SuggestionFailure: String, Error, Sendable, CaseIterable {
 /// 요청 종류에 맞고 바로 보여줄 수 있는 후보만 받는다. 앞뒤 공백을 지운 후보를 돌려준다.
 /// 공급자와 관계없는 규칙이다. 저장된 기록이 필요한 검사는 `ProgressFlow`가 한다.
 public enum CandidatePolicy {
-    public static func accept(_ candidate: SuggestionCandidate, for request: SuggestionRequest) -> SuggestionCandidate? {
+    static func accept(_ candidate: SuggestionCandidate, for request: SuggestionRequest) -> SuggestionCandidate? {
         switch candidate {
         case .goalSummary(let text):
             guard request.kind == .goalPreparation, let criteria = trimmed(text) else { return nil }

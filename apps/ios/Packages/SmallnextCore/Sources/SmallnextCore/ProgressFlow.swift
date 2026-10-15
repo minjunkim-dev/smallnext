@@ -26,10 +26,10 @@ public struct GoalInput: Codable, Equatable, Sendable {
 
 /// 화면에 남은 입력 초안이다. 명령 전에 현재 화면에 해당하는 값만 저장한다.
 public struct Drafts: Equatable, Sendable {
-    public var goalInput = GoalInput()
-    public var answer = ""
-    public var completionCriteria = ""
-    public var actionNote = ""
+    var goalInput = GoalInput()
+    var answer = ""
+    var completionCriteria = ""
+    var actionNote = ""
 
     public init(goalInput: GoalInput = GoalInput(), answer: String = "", completionCriteria: String = "", actionNote: String = "") {
         self.goalInput = goalInput

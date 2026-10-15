@@ -3,12 +3,12 @@ import Foundation
 /// 기존 입력·응답 계약을 개발·사용자용 공급자가 공유한다.
 /// 응답의 wire 계약만 검사한다. 요청 종류와 후보의 호환은 `CandidatePolicy`가 판단한다.
 public struct HTTPActionSuggestionProvider: ActionSuggestionProvider {
-    public let baseURL: URL
-    public let path: String
-    public let token: @Sendable () async throws -> String?
-    public var session: URLSession = .shared
-    public var timeout: TimeInterval = 130
-    public var authApplicable = true
+    let baseURL: URL
+    let path: String
+    let token: @Sendable () async throws -> String?
+    var session: URLSession = .shared
+    var timeout: TimeInterval = 130
+    var authApplicable = true
 
     #if DEBUG
     /// 개발자 Mac의 개발 서버다. http를 허용하고 고정 토큰만 보낸다.

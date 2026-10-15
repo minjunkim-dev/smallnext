@@ -1,11 +1,11 @@
 import Foundation
 
 struct HealthResponse: Decodable, Sendable {
-    public let status: String
+    let status: String
 }
 
 struct APIClient: Sendable {
-    public let baseURL: URL
+    let baseURL: URL
 
     func health() async throws -> HealthResponse {
         let (data, response) = try await URLSession.shared.data(

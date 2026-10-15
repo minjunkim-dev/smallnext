@@ -2,7 +2,7 @@ import Foundation
 
 /// Debug에서만 명시적으로 켠다. 시각은 프로세스 밖으로 내보내지 않는다.
 public final class SuggestionTiming: @unchecked Sendable {
-    @TaskLocal public static var current: SuggestionTiming?
+    @TaskLocal static var current: SuggestionTiming?
     public let id = UUID().uuidString
     public let kind: SuggestionKind
     private let start: TimeInterval
@@ -11,7 +11,7 @@ public final class SuggestionTiming: @unchecked Sendable {
     public var outcome: String { lock.withLock { record.outcome } }
 
     struct Server: Codable {
-        public let run_id: String
+        let run_id: String
         let generate_ms: Double?
         let check_ms: Double?
         let total_ms: Double
@@ -19,36 +19,36 @@ public final class SuggestionTiming: @unchecked Sendable {
     struct Record: Codable {
         let runID: String
         let requestKind: String
-        public var outcome = "pending"
-        public var authMS: Double?
-        public var authApplicable: Bool?
-        public var httpMS: Double?
+        var outcome = "pending"
+        var authMS: Double?
+        var authApplicable: Bool?
+        var httpMS: Double?
         var applyMS: Double?
         var buttonToApplyMS: Double?
         // 실제 화면 관측은 외부 관측자가 별도 자료로 연결한다.
         var screenUpperBoundMS: Double?
-        public var server: Server?
+        var server: Server?
         var transportQueueResidualMS: Double?
     }
 
-    public init(kind: SuggestionKind, start: TimeInterval) {
+    init(kind: SuggestionKind, start: TimeInterval) {
         self.kind = kind
         self.start = start
         record = Record(runID: id, requestKind: kind.rawValue)
     }
-    public static var enabled: Bool {
+    static var enabled: Bool {
         #if DEBUG
         UserDefaults.standard.bool(forKey: "suggestion_timing")
         #else
         false
         #endif
     }
-    public static var now: TimeInterval { ProcessInfo.processInfo.systemUptime }
+    static var now: TimeInterval { ProcessInfo.processInfo.systemUptime }
     func authentication(ms: Double?, applicable: Bool) {
         lock.withLock { record.authMS = ms; record.authApplicable = applicable }
     }
-    public func http(ms: Double) { lock.withLock { record.httpMS = ms } }
-    public func server(data: Data) {
+    func http(ms: Double) { lock.withLock { record.httpMS = ms } }
+    func server(data: Data) {
         guard data.count <= 128 * 1024 else { return }
         lock.withLock {
             struct Envelope: Decodable { let _timing: Server? }
