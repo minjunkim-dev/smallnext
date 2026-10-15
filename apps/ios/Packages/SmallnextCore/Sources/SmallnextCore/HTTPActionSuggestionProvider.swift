@@ -2,7 +2,7 @@ import Foundation
 
 /// 기존 입력·응답 계약을 개발·사용자용 공급자가 공유한다.
 /// 응답의 wire 계약만 검사한다. 요청 종류와 후보의 호환은 `CandidatePolicy`가 판단한다.
-struct HTTPActionSuggestionProvider: ActionSuggestionProvider {
+public struct HTTPActionSuggestionProvider: ActionSuggestionProvider {
     let baseURL: URL
     let path: String
     let token: @Sendable () async throws -> String?
@@ -19,7 +19,7 @@ struct HTTPActionSuggestionProvider: ActionSuggestionProvider {
     #endif
 
     /// 사용자 서버다. https만 허용한다. 주소가 맞지 않으면 신원 토큰을 만들지 않는다.
-    static func server(baseURL: URL, token: @escaping @Sendable () async throws -> String,
+    public static func server(baseURL: URL, token: @escaping @Sendable () async throws -> String,
                        session: URLSession = .shared) -> any ActionSuggestionProvider {
         guard endpoint(baseURL, schemes: ["https"]) else { return UnavailableSuggestionProvider() }
         return Self(baseURL: baseURL, path: "v1/suggestions", token: {
@@ -32,13 +32,13 @@ struct HTTPActionSuggestionProvider: ActionSuggestionProvider {
     }
 
     /// 경로·자격 증명·query 없는 서버 주소만 받는다.
-    static func endpoint(_ url: URL, schemes: Set<String>) -> Bool {
+    public static func endpoint(_ url: URL, schemes: Set<String>) -> Bool {
         schemes.contains(url.scheme?.lowercased() ?? "") && url.host?.isEmpty == false
             && url.user == nil && url.password == nil && url.query == nil && url.fragment == nil
             && (url.path.isEmpty || url.path == "/")
     }
 
-    func suggest(_ request: SuggestionRequest) async throws -> SuggestionCandidate {
+    public func suggest(_ request: SuggestionRequest) async throws -> SuggestionCandidate {
         try Task.checkCancellation()
         guard (request.blocker?.utf8.count ?? 0) <= 2048 else { throw SuggestionFailure.rejected }
         let input = Input(request)

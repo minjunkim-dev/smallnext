@@ -1,7 +1,7 @@
 import Foundation
 import SQLite3
 import XCTest
-@testable import Smallnext
+@testable import SmallnextCore
 
 @MainActor
 final class ProgressFlowTests: XCTestCase {

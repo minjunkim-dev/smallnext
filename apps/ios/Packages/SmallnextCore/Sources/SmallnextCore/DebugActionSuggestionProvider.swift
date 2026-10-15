@@ -1,17 +1,17 @@
 #if DEBUG
 import Foundation
 
-struct DebugActionSuggestionProvider: ActionSuggestionProvider {
+public struct DebugActionSuggestionProvider: ActionSuggestionProvider {
     let delay: Duration
 
-    init(delay: Duration = .milliseconds(400)) {
+    public init(delay: Duration = .milliseconds(400)) {
         self.delay = delay
     }
 
     static let exampleGoals: [String] = examples.map(\.goal)
     private static let smallerPrefix = "첫 부분만: "
 
-    func suggest(_ request: SuggestionRequest) async throws -> SuggestionCandidate {
+    public func suggest(_ request: SuggestionRequest) async throws -> SuggestionCandidate {
         try await Task.sleep(for: delay)
         if request.kind == .goalPreparation {
             if ["정리하기", "준비하기", "공부하기"].contains(request.goal),

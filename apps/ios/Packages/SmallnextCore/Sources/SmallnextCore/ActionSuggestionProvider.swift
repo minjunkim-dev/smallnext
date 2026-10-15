@@ -2,12 +2,12 @@ import Foundation
 
 /// 진행 흐름 모듈이 주입받는 행동 제안 공급자 경계다.
 /// 구현은 자동 재시도를 하지 않는다. 취소는 Swift Task 취소로 전달한다.
-protocol ActionSuggestionProvider: Sendable {
+public protocol ActionSuggestionProvider: Sendable {
     /// 후보 하나를 반환한다. 실패하면 `SuggestionFailure`를 던진다.
     func suggest(_ request: SuggestionRequest) async throws -> SuggestionCandidate
 }
 
-enum SuggestionKind: String, Sendable {
+public enum SuggestionKind: String, Sendable {
     case goalPreparation = "goal_preparation"
     case firstAction = "first_action"
     case nextAction = "next_action"
@@ -15,7 +15,7 @@ enum SuggestionKind: String, Sendable {
     case replacement
 }
 
-struct SuggestionRequest: Sendable, Equatable {
+public struct SuggestionRequest: Sendable, Equatable {
     var kind: SuggestionKind
     var goal: String
     var currentAction: ProposedAction?
@@ -43,16 +43,16 @@ struct GoalAnswer: Equatable, Sendable {
 }
 
 /// 자료 본문을 자동으로 읽지 않는다. 링크와 사용자가 고른 발췌·요약만 담는다.
-struct GoalContext: Equatable, Sendable {
+public struct GoalContext: Equatable, Sendable {
     var deadline: String? = nil
-    var currentState: String? = nil
+    public var currentState: String? = nil
     var materialLinks: [URL] = []
     var materialExcerpt: String? = nil
     var availableMinutes: Int? = nil
     var answers: [GoalAnswer] = []
 }
 
-struct ProposedAction: Sendable, Equatable {
+public struct ProposedAction: Sendable, Equatable {
     var task: String
     var doneWhen: String
     var estimatedMinutes: Int
@@ -65,7 +65,7 @@ struct ProposedAction: Sendable, Equatable {
     var marksCurrentActionComplete = false
 }
 
-enum SuggestionCandidate: Sendable, Equatable {
+public enum SuggestionCandidate: Sendable, Equatable {
     /// 사용자가 확인하기 전에는 목표의 완료 조건으로 저장하지 않는다.
     case goalSummary(String)
     case action(ProposedAction)
@@ -75,7 +75,7 @@ enum SuggestionCandidate: Sendable, Equatable {
     case noAction
 }
 
-enum SuggestionFailure: String, Error, Sendable, CaseIterable {
+public enum SuggestionFailure: String, Error, Sendable, CaseIterable {
     case connectionLost = "connection_lost"
     case rejected
     case undecidable
@@ -132,8 +132,10 @@ enum CandidatePolicy {
 }
 
 /// 실제 공급자를 연결하기 전에 쓰는 공급자다. 항상 `사용 불가`를 반환한다.
-struct UnavailableSuggestionProvider: ActionSuggestionProvider {
-    func suggest(_ request: SuggestionRequest) async throws -> SuggestionCandidate {
+public struct UnavailableSuggestionProvider: ActionSuggestionProvider {
+    public init() {}
+
+    public func suggest(_ request: SuggestionRequest) async throws -> SuggestionCandidate {
         throw SuggestionFailure.unavailable
     }
 }

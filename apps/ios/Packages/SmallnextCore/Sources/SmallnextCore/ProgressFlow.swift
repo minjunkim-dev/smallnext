@@ -3,69 +3,87 @@ import GRDB
 import Observation
 import OSLog
 
-struct GoalInput: Codable, Equatable, Sendable {
-    var statement = ""
-    var deadline = ""
-    var currentState = ""
-    var blocker = ""
-    var materialLinks = ""
-    var materialExcerpt = ""
-    var availableMinutes = ""
+public struct GoalInput: Codable, Equatable, Sendable {
+    public var statement = ""
+    public var deadline = ""
+    public var currentState = ""
+    public var blocker = ""
+    public var materialLinks = ""
+    public var materialExcerpt = ""
+    public var availableMinutes = ""
+
+    public init(statement: String = "", deadline: String = "", currentState: String = "", blocker: String = "",
+                materialLinks: String = "", materialExcerpt: String = "", availableMinutes: String = "") {
+        self.statement = statement
+        self.deadline = deadline
+        self.currentState = currentState
+        self.blocker = blocker
+        self.materialLinks = materialLinks
+        self.materialExcerpt = materialExcerpt
+        self.availableMinutes = availableMinutes
+    }
 }
 
 /// 화면에 남은 입력 초안이다. 명령 전에 현재 화면에 해당하는 값만 저장한다.
-struct Drafts: Equatable, Sendable {
+public struct Drafts: Equatable, Sendable {
     var goalInput = GoalInput()
     var answer = ""
     var completionCriteria = ""
     var actionNote = ""
-}
 
-struct SuggestionInput: Equatable, Sendable {
-    let requestID: Int64
-    var text: String?
-}
-
-struct GoalSummary: Equatable, Identifiable, Sendable {
-    let id: Int64
-    let statement: String
-    let isStopped: Bool
-    let completedActionCount: Int
-}
-
-struct GoalDetails: Equatable, Sendable {
-    let id: Int64
-    let statement: String
-    let completionCriteria: String?
-    var context = GoalContext()
-}
-
-struct ActionCard: Equatable, Identifiable, Sendable {
-    let id: Int64
-    let task: String
-    let doneWhen: String
-    let estimatedMinutes: Int
-    /// 이 행동을 나눈 분할 원본이다. 분할로 만든 행동만 값이 있다.
-    var origin: Origin? = nil
-    var draft = ""
-    var results: [ActionResult] = []
-    var targetName: String? = nil
-    var targetDescription: String? = nil
-    var materialLinks: [URL] = []
-    var previousResults: [ActionResult] = []
-
-    struct Origin: Equatable, Sendable {
-        let id: Int64
-        let task: String
+    public init(goalInput: GoalInput = GoalInput(), answer: String = "", completionCriteria: String = "", actionNote: String = "") {
+        self.goalInput = goalInput
+        self.answer = answer
+        self.completionCriteria = completionCriteria
+        self.actionNote = actionNote
     }
 }
 
-struct ActionResult: Equatable, Identifiable, Sendable {
-    let id: Int64
-    let body: String
+public struct SuggestionInput: Equatable, Sendable {
+    public let requestID: Int64
+    public var text: String?
 }
 
-enum SuggestionProblem: Equatable, Sendable {
+public struct GoalSummary: Equatable, Identifiable, Sendable {
+    public let id: Int64
+    public let statement: String
+    public let isStopped: Bool
+    public let completedActionCount: Int
+}
+
+public struct GoalDetails: Equatable, Sendable {
+    public let id: Int64
+    public let statement: String
+    public let completionCriteria: String?
+    public var context = GoalContext()
+}
+
+public struct ActionCard: Equatable, Identifiable, Sendable {
+    public let id: Int64
+    public let task: String
+    public let doneWhen: String
+    public let estimatedMinutes: Int
+    /// 이 행동을 나눈 분할 원본이다. 분할로 만든 행동만 값이 있다.
+    public var origin: Origin? = nil
+    public var draft = ""
+    public var results: [ActionResult] = []
+    public var targetName: String? = nil
+    public var targetDescription: String? = nil
+    public var materialLinks: [URL] = []
+    public var previousResults: [ActionResult] = []
+
+    public struct Origin: Equatable, Sendable {
+        public let id: Int64
+        public let task: String
+    }
+}
+
+public struct ActionResult: Equatable, Identifiable, Sendable {
+    public let id: Int64
+    public let body: String
+}
+
+public enum SuggestionProblem: Equatable, Sendable {
     case failure(SuggestionFailure)
     /// 구조 검사를 통과하지 못한 후보다.
     case unsuitable
@@ -76,7 +94,7 @@ enum SuggestionProblem: Equatable, Sendable {
 }
 
 /// 현재 행동의 ‘더 작게’ 요청 상태다.
-enum SmallerStatus: Equatable, Sendable {
+public enum SmallerStatus: Equatable, Sendable {
     case waiting
     /// 공급자가 행동 대신 확인 질문 하나를 돌려줬다. 답은 막힘 원인으로 저장한다.
     case question(String)
@@ -84,7 +102,7 @@ enum SmallerStatus: Equatable, Sendable {
 }
 
 /// 보류 중 화면의 대체 행동 요청 상태다.
-enum HoldStatus: Equatable, Sendable {
+public enum HoldStatus: Equatable, Sendable {
     case waiting
     case problem(SuggestionProblem)
     /// 공급자가 선행 조건이 준비된 다른 행동이 없다고 답했다.
@@ -93,7 +111,7 @@ enum HoldStatus: Equatable, Sendable {
 
 /// 대기 화면의 `problem`이 nil이면 제안을 기다리는 중이다. 값이 있으면 '다시 시도'를 기다린다.
 /// 현재 행동의 `smaller`가 nil이면 더 작게 요청이 없다. 기다리는 중은 `.waiting`이다.
-enum ProgressScreen: Equatable, Sendable {
+public enum ProgressScreen: Equatable, Sendable {
     case goalInput
     case preparingGoal(question: String?, completionCriteria: String?, problem: SuggestionProblem?)
     /// 첫 행동을 받기 전이다. 입력한 목표를 유지한다.
@@ -107,7 +125,7 @@ enum ProgressScreen: Equatable, Sendable {
     case stoppedGoal(ActionCard?)
 }
 
-enum ProgressFlowError: Error {
+public enum ProgressFlowError: Error {
     case emptyGoal
     case goalNotFound
     case emptyAnswer
@@ -125,19 +143,19 @@ enum ProgressFlowError: Error {
 /// 모든 명령은 GRDB 트랜잭션 하나로 저장한다. 저장에 실패하면 `screen`을 바꾸지 않는다.
 @MainActor
 @Observable
-final class ProgressFlow {
-    private(set) var screen: ProgressScreen = .goalInput
-    private(set) var goalInput = GoalInput()
-    private(set) var goalDetails: GoalDetails?
-    private(set) var goals: [GoalSummary] = []
-    private(set) var suggestionInput: SuggestionInput?
+public final class ProgressFlow {
+    public private(set) var screen: ProgressScreen = .goalInput
+    public private(set) var goalInput = GoalInput()
+    public private(set) var goalDetails: GoalDetails?
+    public private(set) var goals: [GoalSummary] = []
+    public private(set) var suggestionInput: SuggestionInput?
     var timingEnabled = SuggestionTiming.enabled
-    private(set) var timingSample: SuggestionTiming?
+    public private(set) var timingSample: SuggestionTiming?
     @ObservationIgnored private var commandStart: TimeInterval?
 
     /// 사용자 명령 하나를 실행한다. 입력 초안을 먼저 저장하고, 시간 측정은 명령 시작부터 잰다.
     /// 초안 저장에 실패하면 명령을 실행하지 않는다.
-    func run(saving drafts: Drafts? = nil, _ command: () throws -> Void) throws {
+    public func run(saving drafts: Drafts? = nil, _ command: () throws -> Void) throws {
         commandStart = timingEnabled ? SuggestionTiming.now : nil
         defer { commandStart = nil }
         if let drafts { try save(drafts) }
@@ -173,7 +191,7 @@ final class ProgressFlow {
     @ObservationIgnored private var unsavedSuggestionID: Int64?
     @ObservationIgnored private let logger = Logger(subsystem: "dev.smallnext.app", category: "progress")
 
-    init(database: AppDatabase, provider: any ActionSuggestionProvider) throws {
+    public init(database: AppDatabase, provider: any ActionSuggestionProvider) throws {
         self.database = database
         self.provider = provider
         screen = try database.writer.write { db in
@@ -188,7 +206,7 @@ final class ProgressFlow {
     }
 
     /// 확인 질문의 답과 수정 중인 완료 조건도 초안으로 보존한다. 이전 요청의 늦은 입력은 거부한다.
-    func updateSuggestionInput(_ text: String, for requestID: Int64) throws {
+    public func updateSuggestionInput(_ text: String, for requestID: Int64) throws {
         try perform { db in
             guard let input = try Self.loadSuggestionInput(db, screen: Self.loadScreen(db)), input.requestID == requestID,
                   let goalID = try Self.selectedGoalID(db) else { throw ProgressFlowError.goalNotReady }
@@ -210,7 +228,7 @@ final class ProgressFlow {
     }
 
     /// 같은 목표를 다시 선택해도 그 목표의 제안은 중단하지 않는다.
-    func selectGoal(_ goalID: Int64) throws {
+    public func selectGoal(_ goalID: Int64) throws {
         if goalDetails?.id == goalID { return }
         try perform { db in
             guard try Bool.fetchOne(db, sql: "SELECT EXISTS (SELECT 1 FROM goal WHERE id = ?)", arguments: [goalID]) == true else {
@@ -238,7 +256,7 @@ final class ProgressFlow {
     }
 
     /// 새 목표 입력으로 이동한다. 작성 중인 새 목표 입력은 따로 보존한다.
-    func startNewGoal() throws {
+    public func startNewGoal() throws {
         try perform { db in
             if let previous = try Self.selectedGoalID(db) {
                 try Self.endPendingRequests(db, goalID: previous, status: "interrupted")
@@ -250,7 +268,7 @@ final class ProgressFlow {
     }
 
     /// 문구만 수정한다. 완료 조건과 행동·입력·완료 기록은 유지한다.
-    func editGoalStatement(_ text: String) throws {
+    public func editGoalStatement(_ text: String) throws {
         guard let statement = Self.nonempty(text) else { throw ProgressFlowError.emptyGoal }
         try perform { db in
             guard let goalID = try Self.selectedGoalID(db) else { throw ProgressFlowError.goalNotFound }
@@ -269,7 +287,7 @@ final class ProgressFlow {
     }
 
     /// 목표 수행을 중단한다. 행동과 입력·결과·완료 기록은 보관한다.
-    func stopGoal() throws {
+    public func stopGoal() throws {
         try perform { db in
             guard let goalID = try Self.selectedGoalID(db) else { throw ProgressFlowError.goalNotFound }
             try db.execute(sql: "UPDATE goal SET status = 'stopped', updated_at = ? WHERE id = ?", arguments: [Date(), goalID])
@@ -280,7 +298,7 @@ final class ProgressFlow {
     }
 
     /// 확인한 목표 하나만 삭제한다. 소속 행동·입력·완료·제안 요청은 외래 키로 함께 지운다.
-    func deleteGoal(_ goalID: Int64, confirmed: Bool = false) throws {
+    public func deleteGoal(_ goalID: Int64, confirmed: Bool = false) throws {
         guard confirmed else { throw ProgressFlowError.deletionNotConfirmed }
         let deletingSelected = goalDetails?.id == goalID
         try perform { db in
@@ -297,7 +315,7 @@ final class ProgressFlow {
     }
 
     /// 제출하기 전의 입력도 그대로 저장한다. 입력 초안은 확인한 목표가 아니다.
-    func updateGoalInput(_ input: GoalInput) throws {
+    public func updateGoalInput(_ input: GoalInput) throws {
         guard screen == .goalInput else { throw ProgressFlowError.goalInputNotActive }
         try database.writer.write { db in
             try db.execute(
@@ -326,7 +344,7 @@ final class ProgressFlow {
     }
 
     /// 선택 입력을 검사해 저장한다. 확인용 요약만 요청한다.
-    func prepareGoal() throws {
+    public func prepareGoal() throws {
         guard screen == .goalInput else { throw ProgressFlowError.goalInputNotActive }
         let input = goalInput
         let statement = input.statement.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -361,7 +379,7 @@ final class ProgressFlow {
     }
 
     /// 사용자가 확인한 완료 조건만 확정한다. 그 뒤 첫 행동을 요청한다.
-    func confirmGoal(completionCriteria: String) throws {
+    public func confirmGoal(completionCriteria: String) throws {
         guard case .preparingGoal(_, .some, nil) = screen else { throw ProgressFlowError.goalNotReady }
         guard let criteria = Self.nonempty(completionCriteria) else { throw ProgressFlowError.goalNotReady }
         try perform { db in
@@ -381,7 +399,7 @@ final class ProgressFlow {
     }
 
     /// 목표의 확인 질문 하나에 답한다. 답은 원래 질문과 함께 목표 맥락으로 보존한다.
-    func answerGoalQuestion(_ text: String) throws {
+    public func answerGoalQuestion(_ text: String) throws {
         guard case .preparingGoal(.some, nil, nil) = screen else { throw ProgressFlowError.goalNotReady }
         guard let answer = Self.nonempty(text) else { throw ProgressFlowError.emptyAnswer }
         try perform { db in
@@ -404,7 +422,7 @@ final class ProgressFlow {
     }
 
     /// 입력 초안을 그대로 자동 저장한다. 결과나 완료 기록으로 바꾸지 않는다.
-    func updateDraft(_ text: String, for actionID: Int64) throws {
+    public func updateDraft(_ text: String, for actionID: Int64) throws {
         guard case .currentAction(let card, _) = screen, card.id == actionID else {
             throw ProgressFlowError.actionNotCurrent
         }
@@ -426,7 +444,7 @@ final class ProgressFlow {
     }
 
     /// 사용자가 남긴 행동 결과를 기록하고 입력 초안을 비운다. 행동을 완료하지 않는다.
-    func recordResult(_ text: String, for actionID: Int64) throws {
+    public func recordResult(_ text: String, for actionID: Int64) throws {
         guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw ProgressFlowError.emptyResult }
         guard case .currentAction(let card, _) = screen, card.id == actionID else {
             throw ProgressFlowError.actionNotCurrent
@@ -447,7 +465,7 @@ final class ProgressFlow {
     }
 
     /// 현재 행동만 완료한다. 이미 완료한 행동에 대한 호출은 무시한다.
-    func complete() throws {
+    public func complete() throws {
         guard case .currentAction(let card, _) = screen else { return }
         try perform { db in
             try db.execute(sql: "UPDATE action SET status = 'done' WHERE id = ? AND status = 'current'", arguments: [card.id])
@@ -466,7 +484,7 @@ final class ProgressFlow {
     }
 
     /// 현재 행동보다 쉬운 행동 하나를 바로 요청한다. 질문을 먼저 하지 않는다. 기다리는 중이면 무시한다.
-    func makeSmaller() throws {
+    public func makeSmaller() throws {
         guard case .currentAction(_, let smaller) = screen, smaller != .waiting else { return }
         try perform { db in
             guard let goalID = try Self.selectedGoalID(db) else { return nil }
@@ -477,7 +495,7 @@ final class ProgressFlow {
     }
 
     /// 확인 질문의 답을 막힘 원인으로 저장하고, 그 원인을 담아 더 쉬운 행동을 다시 요청한다.
-    func answerQuestion(_ text: String) throws {
+    public func answerQuestion(_ text: String) throws {
         guard case .currentAction(_, .question) = screen else { return }
         let answer = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !answer.isEmpty else { throw ProgressFlowError.emptyAnswer }
@@ -497,7 +515,7 @@ final class ProgressFlow {
     }
 
     /// 분할 직전 행동을 현재 행동으로 되돌린다. 작은 행동은 보류로 남긴다. 행동 결과는 지우지 않는다.
-    func undoSplit() throws {
+    public func undoSplit() throws {
         guard case .currentAction(let card, _) = screen, let origin = card.origin else { return }
         defer {
             // 되돌린 뒤 결과를 버릴 공급자 작업은 취소한다.
@@ -517,7 +535,7 @@ final class ProgressFlow {
     }
 
     /// 현재 행동을 보류하고 대체 행동을 요청한다. 완료 기록을 만들지 않고 행동 결과를 지우지 않는다.
-    func deferAction() throws {
+    public func deferAction() throws {
         guard case .currentAction(let card, _) = screen else { return }
         try perform { db in
             guard let goalID = try Self.selectedGoalID(db) else { return nil }
@@ -535,7 +553,7 @@ final class ProgressFlow {
 
     /// 보류 중 화면에서 보류한 행동 하나를 현재 행동으로 되돌린다.
     /// 재개를 선행 조건 해결로 기록하지 않는다.
-    func resume(_ actionID: Int64) throws {
+    public func resume(_ actionID: Int64) throws {
         guard case .onHold = screen else { return }
         defer {
             // 재개한 뒤 결과를 버릴 대체 요청 작업은 취소한다.
@@ -555,7 +573,7 @@ final class ProgressFlow {
     }
 
     /// 실패·중단·취소한 제안과 대체 후보가 없는 보류 중 화면만 다시 요청한다. 기다리는 중이면 무시한다.
-    func retrySuggestion() throws {
+    public func retrySuggestion() throws {
         switch screen {
         case .onHold(_, .noAction), .onHold(_, .problem): break
         case _ where screen.suggestionProblem != nil: break
@@ -580,7 +598,7 @@ final class ProgressFlow {
     }
 
     /// 기다리는 제안을 취소한다. 저장한 뒤 공급자 작업을 취소한다. 늦게 온 결과는 적용하지 않는다.
-    func cancelSuggestion() throws {
+    public func cancelSuggestion() throws {
         guard screen.isWaitingForSuggestion else { return }
         try perform { db in
             guard let goalID = try Self.selectedGoalID(db) else { return nil }

@@ -1,14 +1,14 @@
 import Foundation
 
 /// Debug에서만 명시적으로 켠다. 시각은 프로세스 밖으로 내보내지 않는다.
-final class SuggestionTiming: @unchecked Sendable {
+public final class SuggestionTiming: @unchecked Sendable {
     @TaskLocal static var current: SuggestionTiming?
-    let id = UUID().uuidString
-    let kind: SuggestionKind
+    public let id = UUID().uuidString
+    public let kind: SuggestionKind
     private let start: TimeInterval
     private let lock = NSLock()
     private var record: Record
-    var outcome: String { lock.withLock { record.outcome } }
+    public var outcome: String { lock.withLock { record.outcome } }
 
     struct Server: Codable {
         let run_id: String

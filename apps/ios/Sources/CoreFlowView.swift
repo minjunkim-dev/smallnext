@@ -1,4 +1,5 @@
 import SwiftUI
+import SmallnextCore
 
 enum Motion {
     static let nextCard: Double = 0.18

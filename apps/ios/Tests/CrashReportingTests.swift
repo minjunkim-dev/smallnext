@@ -1,6 +1,7 @@
 import XCTest
 import FirebaseCore
 @testable import Smallnext
+@testable import SmallnextCore
 
 @MainActor
 final class CrashReportingTests: XCTestCase {

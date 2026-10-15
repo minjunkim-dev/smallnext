@@ -1,6 +1,7 @@
 import Foundation
 import FirebaseCore
 import FirebaseCrashlytics
+import SmallnextCore
 
 enum CrashReporting {
     @MainActor
