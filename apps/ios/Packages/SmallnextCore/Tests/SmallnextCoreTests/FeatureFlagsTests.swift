@@ -1,5 +1,5 @@
 import XCTest
-@testable import Smallnext
+@testable import SmallnextCore
 
 final class FeatureFlagsTests: XCTestCase {
     func testNilRegistryIsOff() {
@@ -53,12 +53,6 @@ final class FeatureFlagsTests: XCTestCase {
         XCTAssertFalse(FeatureFlags.isEnabled("ios_core_flow", registry: json(
             #"{"flags":[{"key":"ios_core_flow","default":true}]}"#
         )))
-    }
-
-    func testBundledCoreFlowIsOff() throws {
-        let url = try XCTUnwrap(Bundle.main.url(forResource: "feature-flags", withExtension: "json"))
-        let data = try Data(contentsOf: url)
-        XCTAssertFalse(FeatureFlags.isEnabled("ios_core_flow", registry: data))
     }
 
     #if DEBUG

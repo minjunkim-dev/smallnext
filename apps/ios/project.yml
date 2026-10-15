@@ -14,9 +14,8 @@ packages:
   Firebase:
     url: https://github.com/firebase/firebase-ios-sdk.git
     exactVersion: 12.19.2
-  GRDB:
-    url: https://github.com/groue/GRDB.swift.git
-    exactVersion: 7.11.1
+  SmallnextCore:
+    path: Packages/SmallnextCore
 targets:
   Smallnext:
     type: application
@@ -42,7 +41,7 @@ targets:
         Debug:
           INFOPLIST_FILE: Config/Debug.plist
     dependencies:
-      - package: GRDB
+      - package: SmallnextCore
       - package: Firebase
         product: FirebaseAuth
       - package: Firebase
@@ -61,7 +60,9 @@ targets:
   SmallnextTests:
     type: bundle.unit-test
     platform: iOS
-    sources: [Tests]
+    sources:
+      - Tests
+      - Packages/SmallnextCore/Tests/SmallnextCoreTests/DevelopmentTransport.swift
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dev.smallnext.app.tests

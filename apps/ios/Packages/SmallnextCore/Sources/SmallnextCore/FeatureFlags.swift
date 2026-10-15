@@ -1,7 +1,7 @@
 import Foundation
 
-enum FeatureFlags {
-    static func isEnabled(_ key: String, registry: Data?) -> Bool {
+public enum FeatureFlags {
+    public static func isEnabled(_ key: String, registry: Data?) -> Bool {
         guard let registry,
               let decoded = try? JSONDecoder().decode(Registry.self, from: registry),
               decoded.version == 1
@@ -10,15 +10,15 @@ enum FeatureFlags {
         return matches.count == 1 ? matches[0].default : false
     }
 
-    static var iosCoreFlow: Bool {
+    public static var iosCoreFlow: Bool {
         configured("ios_core_flow")
     }
 
-    static var userServerAI: Bool {
+    public static var userServerAI: Bool {
         configured("user_server_ai")
     }
 
-    static var iosCrashReporting: Bool { configured("ios_crash_reporting") }
+    public static var iosCrashReporting: Bool { configured("ios_crash_reporting") }
 
     private static func configured(_ key: String) -> Bool {
         #if DEBUG

@@ -175,6 +175,16 @@ Release는 HTTP 공급자와 설정 코드를 제외합니다. 평문 HTTP 허�
 서명 팀 없이 시뮬레이터에서 실행할 수 있습니다.
 GRDB 버전과 Git 커밋은 `Package.resolved`에 고정했습니다.
 
+시뮬레이터와 Firebase가 필요 없는 로직은 로컬 패키지 `apps/ios/Packages/SmallnextCore`에 있습니다.
+앱 target은 화면, Firebase 연동, 앱 시작 코드만 가집니다. 로직 테스트는 시뮬레이터 없이 실행합니다.
+
+```sh
+swift test --package-path apps/ios/Packages/SmallnextCore
+```
+
+패키지의 `Package.resolved`와 Xcode 프로젝트의 `Package.resolved`는 같은 GRDB 커밋을 고정합니다. GRDB를 올릴 때 둘을 함께 갱신합니다.
+번들 리소스, Info.plist, Firebase를 쓰는 테스트는 `apps/ios/Tests`의 앱 호스트 테스트에 둡니다.
+
 사용자 iPhone에서 핵심 흐름을 확인할 때는 [실기기 검증 절차](IOS_DEVICE_VALIDATION.md)를 따릅니다.
 설치, 저장 복구, 접근성과 모션 값의 결과는 [#61](https://github.com/minjunkim-dev/smallnext/issues/61)에 기록합니다.
 

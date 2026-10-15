@@ -1,5 +1,6 @@
 import Foundation
 import FirebaseCore
+import SmallnextCore
 @preconcurrency import FirebaseAuth
 
 /// 사용자 서버의 주소와 Firebase 익명 신원을 연결한다.

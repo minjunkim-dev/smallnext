@@ -1,10 +1,10 @@
 import Foundation
 import GRDB
 
-struct AppDatabase {
-    let writer: DatabasePool
+public struct AppDatabase {
+    public let writer: DatabasePool
 
-    init(path: String) throws {
+    public init(path: String) throws {
         writer = try DatabasePool(path: path)
         var migrator = DatabaseMigrator()
         migrator.registerMigration("bootstrap") { db in
@@ -107,7 +107,7 @@ struct AppDatabase {
         try migrator.migrate(writer)
     }
 
-    static func openDefault() throws -> AppDatabase {
+    public static func openDefault() throws -> AppDatabase {
         let directory = try FileManager.default.url(
             for: .applicationSupportDirectory,
             in: .userDomainMask,

@@ -1,5 +1,6 @@
 import SwiftUI
 import OSLog
+import SmallnextCore
 
 @main
 struct SmallnextApp: App {
