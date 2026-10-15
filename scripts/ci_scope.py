@@ -39,18 +39,41 @@ SCOPED_FILES = {
 }
 
 
-def scopes(event):
+# App-hosted simulator tests cover the app shell, bundle and build configuration, not SmallnextCore logic.
+SIMULATOR_PREFIXES = (
+    "apps/ios/Sources/", "apps/ios/Tests/", "apps/ios/Config/", "apps/ios/scripts/",
+    "apps/ios/Smallnext.xcodeproj/",
+)
+SIMULATOR_FILES = {
+    "apps/ios/project.yml", "config/feature-flags.json", ".ci/toolchains.json", "Makefile",
+    ".github/workflows/project-checks.yml", ".github/workflows/ios-checks.yml",
+    "scripts/check_ios.sh", "scripts/ios_simulator.py", "scripts/environment.py", "scripts/ci_scope.py",
+}
+
+
+def changed_paths(event):
+    """Return the full diff, or None when history cannot prove what changed."""
     base = event["pull_request"]["base"]["sha"] if "pull_request" in event else event.get("before")
     if not base or set(base) == {"0"}:
-        return dict.fromkeys(PROJECTS, True)
+        return None
     try:
         # A move between projects must select both the deleted and added paths.
-        paths = subprocess.check_output(
+        return subprocess.check_output(
             ["git", "diff", "--no-renames", "--name-only", base, "HEAD"], text=True,
         ).splitlines()
     except subprocess.CalledProcessError:
-        return dict.fromkeys(PROJECTS, True)
-    return select(paths)
+        return None
+
+
+def scopes(event):
+    paths = changed_paths(event)
+    return dict.fromkeys(PROJECTS, True) if paths is None else select(paths)
+
+
+def needs_simulator(paths):
+    if paths is None:
+        return True
+    return any(path.startswith(SIMULATOR_PREFIXES) or path in SIMULATOR_FILES for path in paths)
 
 
 def select(paths):
@@ -81,7 +104,9 @@ def select(paths):
 
 if __name__ == "__main__":
     event = json.loads(Path(os.environ["GITHUB_EVENT_PATH"]).read_text())
-    selected = scopes(event)
+    paths = changed_paths(event)
+    selected = dict.fromkeys(PROJECTS, True) if paths is None else select(paths)
+    selected["ios_simulator"] = needs_simulator(paths)
     with open(os.environ["GITHUB_OUTPUT"], "a") as output:
         for name, enabled in selected.items():
             output.write(f"{name}={str(enabled).lower()}\n")

@@ -134,8 +134,17 @@ PR에서 만든 캐시는 main에서 바로 사용할 수 없으므로 main의 �
 
 iOS 검사는 먼저 `apps/ios/Packages/SmallnextCore`의 로직 테스트를 macOS에서 `swift test`로 실행합니다.
 PR은 이어서 시뮬레이터 부팅 없이 `build-for-testing`만 수행합니다. 첫 부팅 부하(아래 측정)를 피하기 위해서입니다.
-main push와 수동 실행은 앱 호스트 테스트(번들 리소스·Info.plist·Firebase 연동)까지 시뮬레이터에서 실행합니다.
-따라서 앱 호스트 테스트의 회귀는 병합 후 main 실행에서 드러날 수 있습니다. 로컬 `make ios-check`는 모두 실행합니다.
+앱 호스트 테스트(번들 리소스·Info.plist·Firebase 연동)는 필요할 때만 시뮬레이터에서 실행합니다.
+
+| 이벤트 | 시뮬레이터 테스트 |
+| --- | --- |
+| PR | 실행하지 않음 |
+| main push | 앱 껍데기 입력이 바뀐 경우만: `apps/ios`의 Sources·Tests·Config·scripts·Xcode 프로젝트·`project.yml`, `config/feature-flags.json`, `.ci/toolchains.json`, iOS 검사 스크립트·workflow. 판정할 수 없는 이력이면 실행 |
+| 수동 실행 | 항상 실행 |
+| 로컬 `make ios-check` | 항상 실행 |
+
+`SmallnextCore` 패키지만 바뀐 main push는 시뮬레이터 테스트를 생략합니다. 패키지 변경이 앱 호스트 테스트의 결과를 바꿀 수 있으면 수동 실행으로 확인합니다.
+판정 규칙은 `scripts/ci_scope.py`의 `needs_simulator`입니다.
 
 시뮬레이터 테스트를 실행할 때는 부팅과 `build-for-testing`을 동시에 시작합니다.
 빌드는 실행기 CPU의 generic simulator 대상으로 수행합니다.

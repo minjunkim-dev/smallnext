@@ -8,7 +8,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from ci_scope import scopes
+from ci_scope import needs_simulator, scopes
 
 
 ALL = {"api": True, "container": True, "ios": True, "android": True}
@@ -90,6 +90,22 @@ class ScopeTests(unittest.TestCase):
         for path in [".github/workflows/project-checks.yml", ".github/workflows/new.yml"]:
             with self.subTest(path=path):
                 self.assertEqual(self.selected([path]), ALL)
+
+    def test_simulator_runs_only_for_app_shell_inputs(self):
+        for path in ["apps/ios/Sources/ContentView.swift", "apps/ios/Tests/CrashReportingTests.swift",
+                     "apps/ios/Config/Debug.plist", "apps/ios/project.yml",
+                     "apps/ios/Smallnext.xcodeproj/project.pbxproj", "config/feature-flags.json",
+                     ".ci/toolchains.json", "scripts/check_ios.sh", ".github/workflows/ios-checks.yml"]:
+            with self.subTest(path=path):
+                self.assertTrue(needs_simulator([path]))
+        for path in ["apps/ios/Packages/SmallnextCore/Sources/SmallnextCore/ProgressFlow.swift",
+                     "apps/ios/Packages/SmallnextCore/Tests/SmallnextCoreTests/ProgressFlowTests.swift",
+                     "docs/CI.md", "services/api/src/main.rs", "apps/android/app/build.gradle.kts"]:
+            with self.subTest(path=path):
+                self.assertFalse(needs_simulator([path]))
+
+    def test_unknown_history_runs_simulator(self):
+        self.assertTrue(needs_simulator(None))
 
     def test_new_branch_checks_all_projects(self):
         self.assertEqual(scopes({"before": "0" * 40}), ALL)
