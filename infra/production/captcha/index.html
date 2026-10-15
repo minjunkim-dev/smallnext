@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>익명 로그인 확인</title>
+  <link rel="stylesheet" href="./style.css">
+  <script src="./bridge.js"></script>
+  <script src="https://challenges.cloudflare.com/turnstile/v0/api.js?onload=smallnextTurnstileReady&amp;render=explicit" defer></script>
+</head>
+<body>
+  <main>
+    <h1>익명 로그인 확인</h1>
+    <p>화면의 확인 절차를 완료하십시오. 계정 이름이나 비밀번호는 입력하지 않습니다.</p>
+    <div id="challenge" aria-label="로그인 보안 확인"></div>
+    <p id="status" role="status" aria-live="polite">확인 화면을 준비하고 있습니다.</p>
+  </main>
+</body>
+</html>

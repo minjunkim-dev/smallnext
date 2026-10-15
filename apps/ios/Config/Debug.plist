@@ -12,6 +12,10 @@
     <string>$(SMALLNEXT_SUPABASE_URL)</string>
     <key>SmallnextSupabasePublishableKey</key>
     <string>$(SMALLNEXT_SUPABASE_PUBLISHABLE_KEY)</string>
+    <key>SmallnextAuthCaptchaURL</key>
+    <string>$(SMALLNEXT_AUTH_CAPTCHA_URL)</string>
+    <key>SmallnextTurnstileSiteKey</key>
+    <string>$(SMALLNEXT_TURNSTILE_SITE_KEY)</string>
     <key>SmallnextFirebaseAppID</key>
     <string>$(SMALLNEXT_FIREBASE_APP_ID)</string>
     <key>SmallnextFirebaseSenderID</key>

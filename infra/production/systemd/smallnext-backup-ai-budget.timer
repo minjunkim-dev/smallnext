@@ -1,0 +1,11 @@
+[Unit]
+Description=Back up Smallnext budget every twelve hours
+
+[Timer]
+OnCalendar=*-*-* 00,12:00:00 UTC
+AccuracySec=1s
+Persistent=true
+Unit=smallnext-backup-ai-budget.service
+
+[Install]
+WantedBy=timers.target

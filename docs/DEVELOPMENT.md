@@ -172,6 +172,10 @@ Release는 HTTP 공급자와 설정 코드를 제외합니다. 평문 HTTP 허�
 
 `apps/ios/Smallnext.xcodeproj`를 Xcode에서 엽니다.
 `Smallnext` scheme과 iPhone 시뮬레이터를 선택한 뒤 실행합니다.
+Debug는 `Config/Local.Debug.xcconfig`만 읽습니다. Release는 `Config/Local.Release.xcconfig`만 읽습니다.
+`Config/Local.xcconfig.example`을 필요한 환경의 파일로 복사합니다. 실제 파일은 Git에서 제외합니다.
+운영 Supabase 설정은 Release에만 둡니다. 개발·CI는 로컬 PostgreSQL과 모의 인증을 사용합니다.
+공통 `Local.xcconfig`는 더 이상 읽지 않습니다.
 서명 팀 없이 시뮬레이터에서 실행할 수 있습니다.
 GRDB 버전과 Git 커밋은 `Package.resolved`에 고정했습니다.
 
@@ -192,6 +196,7 @@ CLI 검사에서는 설치한 시뮬레이터 이름을 지정합니다.
 
 ```sh
 make ios-check IOS_SIMULATOR='iPhone 18 Pro'
+node --test apps/ios/scripts/test-turnstile-page.cjs
 ```
 
 커밋한 Xcode 프로젝트를 바로 사용할 수 있습니다.

@@ -21,7 +21,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .acquire_timeout(Duration::from_secs(5))
         .connect(&database_url)
         .await?;
-    smallnext_api::migrate(&database).await?;
+    if env::var("API_AUTO_MIGRATE").as_deref() != Ok("0") {
+        smallnext_api::migrate(&database).await?;
+    }
     smallnext_api::user_ai::budget::purge_expired(&database).await?;
     let maintenance_database = database.clone();
     let maintenance = tokio::spawn(async move {

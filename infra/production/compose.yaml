@@ -9,6 +9,7 @@ services:
     environment:
       DATABASE_URL: ${DATABASE_URL:?Set the managed PostgreSQL connection URL}
       API_BIND_ADDRESS: 0.0.0.0:8080
+      API_AUTO_MIGRATE: "0"
       RUST_LOG: smallnext_api=info
       USER_SERVER_AI:
       SUPABASE_URL:
@@ -23,7 +24,19 @@ services:
       AI_BUDGET_MICRO_USD:
     expose:
       - "8080"
+    volumes:
+      - ./tls:/etc/smallnext/tls:ro
     restart: unless-stopped
+
+  migrate:
+    image: ${SMALLNEXT_API_IMAGE:-smallnext-api:local}
+    profiles: [tools]
+    entrypoint: [migrate-api]
+    env_file:
+      - path: ${MIGRATION_ENV_FILE:-.env.migration}
+        required: false
+    volumes:
+      - ./tls:/etc/smallnext/tls:ro
 
   caddy:
     image: caddy:2-alpine
@@ -34,6 +47,7 @@ services:
       - "443:443"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./captcha:/srv/smallnext-captcha:ro
       - caddy-data:/data
       - caddy-config:/config
     depends_on:

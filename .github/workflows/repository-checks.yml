@@ -36,6 +36,11 @@ jobs:
         env:
           PYTHONDONTWRITEBYTECODE: "1"
         run: python3 -m unittest discover -s scripts -p 'test_*.py'
+      - name: Check authenticated backup encryption
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install --yes age
+          python3 -m unittest discover -s scripts -p 'test_backup_ai_budget.py'
       - name: Validate workflows and shell scripts
         run: |
           curl --fail --silent --show-error --location \

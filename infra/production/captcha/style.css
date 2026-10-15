@@ -1,0 +1,6 @@
+:root { color-scheme: light dark; font: 100% system-ui, sans-serif; }
+body { margin: 0; }
+main { margin: 1.5rem auto; padding: 0 1rem; max-width: 36rem; }
+h1 { font-size: 1.5rem; }
+p { line-height: 1.6; }
+#challenge { min-height: 5rem; }

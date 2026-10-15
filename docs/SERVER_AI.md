@@ -109,7 +109,8 @@ SDK가 익명 계정·요청 시 토큰 갱신·Keychain 보관을 관리합니�
 익명 계정을 유실하면 새 계정을 만들고 허용 UID를 다시 등록할 수 있습니다. 기기의 목표·진행 상태는 유지합니다.
 FirebaseCore와 FirebaseCrashlytics는 Crashlytics에만 유지합니다. Analytics와 FirebaseAuth는 앱에 연결하지 않습니다.
 서버 401 뒤에는 같은 AI 요청을 자동 재전송하지 않습니다.
-`apps/ios/Config/Local.xcconfig.example`을 `apps/ios/Config/Local.xcconfig`로 복사합니다.
+`apps/ios/Config/Local.xcconfig.example`을 운영 준비에는 `Local.Release.xcconfig`로 복사합니다.
+개발용 설정은 같은 폴더의 `Local.Debug.xcconfig`로 분리합니다. 운영 설정을 개발 파일에 복사하지 마십시오.
 실제 파일은 Git에서 제외합니다. 저장소에는 값 없는 예시 파일만 유지합니다.
 다음 Xcode build settings에 Supabase의 공개 client 설정을 넣습니다.
 서버의 제공사 키·DB 비밀번호·Supabase secret key는 이 설정에 넣지 않습니다.
@@ -125,8 +126,8 @@ FirebaseCore와 FirebaseCrashlytics는 Crashlytics에만 유지합니다. Analyt
 두 URL의 `https://`는 xcconfig에서 `https:/$()/`로 씁니다.
 xcconfig는 `//` 뒤를 주석으로 처리합니다. `$()`는 빌드 때 빈 문자열로 확장됩니다.
 다른 값에는 따옴표·줄바꿈·build setting 확장을 넣지 않습니다.
-`Config/Build.xcconfig`가 로컬 파일을 선택적으로 읽습니다.
-Debug와 Release는 같은 로컬 값을 Info.plist에 넣습니다.
+`Config/Debug.xcconfig`와 `Config/Release.xcconfig`가 각각 해당 로컬 파일만 읽습니다.
+공통 `Local.xcconfig`는 더 이상 읽지 않습니다. 이전 값을 필요한 환경 파일로 직접 옮깁니다.
 로컬 파일이 없어도 Debug·Release·CI 빌드는 성공합니다.
 로컬 설정은 기능 플래그를 켜지 않습니다. 모든 기능 플래그 기본값은 OFF로 유지합니다.
 Release는 기존 `Config/Release.plist`를 사용합니다. Debug의 평문 HTTP·로컬 네트워크 예외를 포함하지 않습니다.
@@ -168,7 +169,15 @@ DB 검사는 `TEST_DATABASE_URL`의 격리 schema에서 HTTP 경계를 검증합
 시험 익명 계정 1개는 남아 있습니다. 시험 세션은 로그아웃했습니다.
 이 결과는 실제 서버 배포·iOS 실기기·AI ON 전체 경로를 증명하지 않습니다.
 #162 전체 wizard 실행과 #164 배포는 보류합니다.
-Free 백업 조건과 운영용 DB LOGIN 역할은 [운영 runbook](PRODUCTION.md)의 별도 검토 항목입니다.
+2026-10-16에 SSL 강제 ON·공식 CA를 사용하는 `verify-full` 연결·비암호화 접속 거부를 확인했습니다.
+Email 인증은 OFF로 저장했습니다. 익명 인증과 IP당 시간당 30회 제한은 유지했습니다.
+관리자 MFA 등록을 확인했습니다. 마이그레이션 0005와 runtime·backup의 별도 LOGIN을 적용했습니다.
+runtime과 backup의 허용 권한 및 auth 테이블 직접 접근 차단을 확인했습니다.
+읽기 전용 예산 백업을 Mac의 Git 밖 폴더에 암호화했습니다. 격리한 로컬 PostgreSQL에서 복원을 검사했습니다.
+복원 뒤 현재 UTC 월은 차단 상태를 유지합니다. 복구 키의 별도 안전한 복사본은 사람이 보관해야 합니다.
+자동 백업·만료·실패 알림·RPO/RTO의 실제 운영 검증은 아직 수행하지 않았습니다.
+도메인 준비 후 CAPTCHA를 실제 검증하고 켭니다. 운영 IP 제한은 #164 전에 적용합니다.
+확정한 백업 조건과 역할별 파일 경로는 [운영 runbook](PRODUCTION.md)을 따릅니다.
 
 ## 공식 계약
 

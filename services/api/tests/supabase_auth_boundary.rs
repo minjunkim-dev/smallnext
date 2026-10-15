@@ -34,7 +34,7 @@ async fn session_and_client_privileges_fail_closed_without_changing_auth_schema(
         .await
         .unwrap();
     let mut created = Vec::new();
-    for role in ["anon", "authenticated", "service_role", "smallnext_api"] {
+    for role in ["anon", "authenticated", "service_role"] {
         let exists: bool =
             sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname=$1)")
                 .bind(role)
@@ -114,6 +114,34 @@ async fn session_and_client_privileges_fail_closed_without_changing_auth_schema(
         .await
         .unwrap();
     assert!(active(&pool, user, session).await);
+    for role in ["smallnext_api", "smallnext_backup"] {
+        let options: sqlx::postgres::PgConnectOptions = url.parse().unwrap();
+        let restricted = PgPoolOptions::new()
+            .connect_with(options.options([("search_path", schema.as_str()), ("role", role)]))
+            .await
+            .unwrap();
+        for table in ["auth.users", "auth.sessions"] {
+            assert!(
+                sqlx::query(&format!("SELECT * FROM {table}"))
+                    .fetch_all(&restricted)
+                    .await
+                    .is_err()
+            );
+        }
+        if role == "smallnext_api" {
+            assert!(active(&restricted, user, session).await);
+        } else {
+            assert!(
+                sqlx::query("SELECT smallnext_session_active($1,$2)")
+                    .bind(user)
+                    .bind(session)
+                    .fetch_one(&restricted)
+                    .await
+                    .is_err()
+            );
+        }
+        restricted.close().await;
+    }
     assert!(!active(&pool, "22222222-2222-4222-8222-222222222222", session).await);
     for mutation in [
         "UPDATE auth.sessions SET not_after=now()-interval '1 second'",

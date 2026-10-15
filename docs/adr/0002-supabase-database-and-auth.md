@@ -44,7 +44,7 @@ Neon 등 다른 제품의 Auth 기능 부재를 뜻하지 않는다.
 - Firebase Auth SDK와 서버 검증 경로를 바꾸고 회귀 검사를 수행해야 한다. 익명 계정의 연속성을 자동 이전하는 구현은 포함하지 않는다.
 - DB는 PostgreSQL을 유지하지만 Auth API·JWT·SDK와 `auth.users`·`auth.sessions`를 확인하는 함수에는 Supabase 의존성이 생긴다. 다른 공급자로 이동할 때 인증 경로와 세션 확인 함수를 바꾸고 재검증해야 한다.
 - 같은 프로젝트에 DB와 Auth를 두므로 프로젝트 장애가 두 경로에 함께 영향을 줄 수 있다. Free는 비활성 프로젝트가 일시 중지될 수 있다. [운영 체크리스트](https://supabase.com/docs/guides/deployment/going-into-prod)
-- Free의 복구 계획은 제공사의 자동 백업에 의존하지 않는다. 공식 문서는 정기 export와 외부 백업을 권장한다. 백업 주기·보관 기간·RPO/RTO는 아직 미확정이다. [공식 백업 설명](https://supabase.com/docs/guides/platform/backups)
+- Free의 복구 계획은 제공사의 자동 백업에 의존하지 않는다. 공식 문서는 정기 export와 외부 백업을 권장한다. [#170](https://github.com/minjunkim-dev/smallnext/issues/170)에서 예산 전용 암호화 백업 12시간·최대 보관 7일·RPO/RTO 각 24시간을 확정했다. 실제 운영의 자동 백업과 목표 달성은 별도로 검증한다. [공식 백업 설명](https://supabase.com/docs/guides/platform/backups)
 - 인증 통합은 보안 설정 완료를 뜻하지 않는다. 최소 DB 권한·SSL 강제·접속 IP 제한·관리자 MFA·익명 가입 남용 방지와 복구 검증은 실제 운영 전에 확인해야 한다. 익명 가입 CAPTCHA는 앱 연동도 필요하다. [운영 체크리스트](https://supabase.com/docs/guides/deployment/going-into-prod), [익명 가입 남용 방지](https://supabase.com/docs/guides/auth/auth-anonymous#abuse-prevention-and-rate-limits)
 
 실행 절차와 현재 검증 범위는 [서버 AI](../SERVER_AI.md)와 [운영 runbook](../PRODUCTION.md)을 따른다.

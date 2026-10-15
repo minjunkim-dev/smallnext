@@ -8,7 +8,8 @@ import Security
 @MainActor
 final class UserServerAITests: XCTestCase {
     func testAppBundleIncludesServerConfigurationKeys() {
-        for key in ["SmallnextAPIBaseURL", "SmallnextSupabaseURL", "SmallnextSupabasePublishableKey"] {
+        for key in ["SmallnextAPIBaseURL", "SmallnextSupabaseURL", "SmallnextSupabasePublishableKey",
+                    "SmallnextAuthCaptchaURL", "SmallnextTurnstileSiteKey"] {
             XCTAssertNotNil(Bundle.main.object(forInfoDictionaryKey: key) as? String, key)
         }
     }
@@ -42,11 +43,16 @@ final class UserServerAITests: XCTestCase {
         var secret = valid
         secret["SmallnextSupabasePublishableKey"] = "sb_secret_invalid"
         cases.append(secret)
+        var partialCaptcha = valid
+        partialCaptcha["SmallnextAuthCaptchaURL"] = "https://captcha.example.invalid"
+        cases.append(partialCaptcha)
+        partialCaptcha["SmallnextTurnstileSiteKey"] = "invalid key"
+        cases.append(partialCaptcha)
         UserDefaults.standard.set(true, forKey: "user_server_ai")
         var creations = 0
         for info in cases {
             let bundle = try settingsBundle(info)
-            let provider = try XCTUnwrap(UserServerAI.configured(bundle: bundle, defaults: defaults) { _, _ in
+            let provider = try XCTUnwrap(UserServerAI.configured(bundle: bundle, defaults: defaults) { _, _, _ in
                 creations += 1
                 return self.fixture().identity
             })
@@ -57,17 +63,24 @@ final class UserServerAITests: XCTestCase {
         }
         XCTAssertEqual(creations, 0)
         UserDefaults.standard.set(false, forKey: "user_server_ai")
-        XCTAssertNil(UserServerAI.configured(bundle: try settingsBundle(valid), defaults: defaults) { _, _ in
+        XCTAssertNil(UserServerAI.configured(bundle: try settingsBundle(valid), defaults: defaults) { _, _, _ in
             creations += 1
             return self.fixture().identity
         })
         XCTAssertEqual(creations, 0)
         UserDefaults.standard.set(true, forKey: "user_server_ai")
-        XCTAssertNotNil(UserServerAI.configured(bundle: try settingsBundle(valid), defaults: defaults) { _, _ in
+        XCTAssertNotNil(UserServerAI.configured(bundle: try settingsBundle(valid), defaults: defaults) { _, _, _ in
             creations += 1
             return self.fixture().identity
         })
         XCTAssertEqual(creations, 1)
+        var captchaSettings = valid
+        captchaSettings["SmallnextAuthCaptchaURL"] = "https://captcha.example.invalid"
+        captchaSettings["SmallnextTurnstileSiteKey"] = "synthetic-site"
+        XCTAssertNotNil(UserServerAI.configured(bundle: try settingsBundle(captchaSettings), defaults: defaults) { _, _, captcha in
+            XCTAssertEqual(captcha?.siteKey, "synthetic-site")
+            return self.fixture().identity
+        })
     }
 
     func testBundledUserServerFlagIsOff() throws {
@@ -181,6 +194,82 @@ final class UserServerAITests: XCTestCase {
         XCTAssertNotEqual(attributes[kSecAttrSynchronizable as String] as? Bool, true)
     }
 
+    func testNewAnonymousSignInSharesCaptchaAndSendsItsTokenOnce() async throws {
+        var challenges = 0
+        let f = fixture(delay: true, captchaToken: { challenges += 1; return "synthetic-captcha" })
+        async let first = f.identity.idToken()
+        async let second = f.identity.idToken()
+        _ = try await [first, second]
+        XCTAssertEqual(challenges, 1)
+        let tokens = await f.transport.captchaTokens
+        XCTAssertEqual(tokens, ["synthetic-captcha"])
+    }
+
+    func testExistingSessionRefreshDoesNotAskForCaptcha() async throws {
+        var challenges = 0
+        let f = fixture(captchaToken: { challenges += 1; throw SuggestionFailure.unavailable })
+        try f.storage.store(key: "test-session", value: JSONEncoder().encode(session(expired: true)))
+        _ = try await f.identity.idToken()
+        XCTAssertEqual(challenges, 0)
+        let paths = await f.transport.paths
+        XCTAssertEqual(paths, ["/auth/v1/token"])
+    }
+
+    func testCaptchaFailureAndEmptyTokenNeverCreateAccount() async throws {
+        for token in [nil, "", "invalid token"] as [String?] {
+            let f = fixture(captchaToken: {
+                guard let token else { throw SuggestionFailure.unavailable }
+                return token
+            })
+            do { _ = try await f.identity.idToken(); XCTFail("must fail closed") }
+            catch { XCTAssertEqual(error as? SuggestionFailure, .unavailable) }
+            let paths = await f.transport.paths
+            XCTAssertTrue(paths.isEmpty)
+        }
+    }
+
+    func testCancellingOnlyCaptchaWaiterDismissesChallengeWithoutSignUp() async throws {
+        let challenge = TurnstileChallenge()
+        let configuration = try TurnstileConfiguration(origin: URL(string: "https://captcha.example.invalid")!, siteKey: "synthetic-site")
+        let f = fixture(captchaToken: { try await challenge.token(configuration: configuration) })
+        let task = Task { try await f.identity.idToken() }
+        for _ in 0..<100 where challenge.request == nil { await Task.yield() }
+        XCTAssertNotNil(challenge.request)
+        task.cancel()
+        do { _ = try await task.value; XCTFail("must cancel") }
+        catch { XCTAssertTrue(error is CancellationError) }
+        XCTAssertNil(challenge.request)
+        let paths = await f.transport.paths
+        XCTAssertTrue(paths.isEmpty)
+    }
+
+    func testCaptchaUserCancellationNeverCreatesAccount() async throws {
+        let f = fixture(captchaToken: { throw CancellationError() })
+        do { _ = try await f.identity.idToken(); XCTFail("must cancel") }
+        catch { XCTAssertTrue(error is CancellationError) }
+        let paths = await f.transport.paths
+        XCTAssertTrue(paths.isEmpty)
+    }
+
+    func testCancellingOneWaiterDoesNotCancelSharedChallenge() async throws {
+        let challenge = TurnstileChallenge()
+        let configuration = try TurnstileConfiguration(origin: URL(string: "https://captcha.example.invalid")!, siteKey: "synthetic-site")
+        let f = fixture(captchaToken: { try await challenge.token(configuration: configuration) })
+        let first = Task { try await f.identity.idToken() }
+        let second = Task { try await f.identity.idToken() }
+        for _ in 0..<100 where challenge.request == nil { await Task.yield() }
+        let request = try XCTUnwrap(challenge.request)
+        first.cancel()
+        for _ in 0..<10 { await Task.yield() }
+        XCTAssertEqual(challenge.request?.id, request.id)
+        challenge.finish(id: request.id, result: .success("synthetic-captcha"))
+        do { _ = try await first.value; XCTFail("must cancel") }
+        catch { XCTAssertTrue(error is CancellationError) }
+        _ = try await second.value
+        let paths = await f.transport.paths
+        XCTAssertEqual(paths, ["/auth/v1/signup"])
+    }
+
     private func settingsBundle(_ settings: [String: String]) throws -> Bundle {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".bundle")
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -199,14 +288,15 @@ final class UserServerAITests: XCTestCase {
                            createdAt: Date(), updatedAt: Date(), isAnonymous: anonymous))
     }
 
-    private func fixture(status: Int = 200, delay: Bool = false) -> (identity: SupabaseAnonymousIdentity, transport: AuthTransport, storage: MemoryAuthStorage) {
+    private func fixture(status: Int = 200, delay: Bool = false,
+                         captchaToken: (@MainActor @Sendable () async throws -> String)? = nil) -> (identity: SupabaseAnonymousIdentity, transport: AuthTransport, storage: MemoryAuthStorage) {
         let storage = MemoryAuthStorage()
         let transport = AuthTransport(status: status, delay: delay)
         let client = AuthClient(url: URL(string: "https://auth.example.invalid/auth/v1")!,
                                 headers: ["apikey": "sb_publishable_synthetic"], storageKey: "test-session", localStorage: storage,
                                 fetch: { try await transport.fetch($0) }, autoRefreshToken: false,
                                 emitLocalSessionAsInitialSession: true)
-        return (SupabaseAnonymousIdentity(auth: client, storage: storage, storageKey: "test-session"), transport, storage)
+        return (SupabaseAnonymousIdentity(auth: client, storage: storage, storageKey: "test-session", captchaToken: captchaToken), transport, storage)
     }
 }
 
@@ -214,9 +304,14 @@ private actor AuthTransport {
     let status: Int
     let delay: Bool
     var paths: [String] = []
+    var captchaTokens: [String?] = []
     init(status: Int, delay: Bool) { self.status = status; self.delay = delay }
     func fetch(_ request: URLRequest) async throws -> (Data, URLResponse) {
         paths.append(request.url!.path)
+        if let body = request.httpBody,
+           let value = try JSONSerialization.jsonObject(with: body) as? [String: Any] {
+            captchaTokens.append((value["gotrue_meta_security"] as? [String: Any])?["captcha_token"] as? String)
+        }
         if delay { try await Task.sleep(for: .milliseconds(100)) }
         let body: [String: Any] = status == 200 ? [
             "access_token": "synthetic-access", "token_type": "bearer", "expires_in": 3600,

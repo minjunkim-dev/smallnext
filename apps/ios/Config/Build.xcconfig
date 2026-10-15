@@ -1,2 +1,1 @@
-// The local file is optional so CI builds without developer settings.
-#include? "Local.xcconfig"
+// Shared, value-free defaults only. Each build configuration includes its own local file.

@@ -688,6 +688,61 @@ async fn es256_anonymous_user_passes_current_account_and_session_checks() {
 }
 
 #[tokio::test]
+#[ignore = "requires TEST_DATABASE_URL; runtime role against real isolated PostgreSQL"]
+async fn runtime_role_reserves_settles_and_blocks_budget_through_http() {
+    let mut fixture = Fixture::new().await;
+    // Only this synthetic session fixture needs a grant; managed Auth stays inaccessible.
+    sqlx::query("GRANT SELECT ON fixture_sessions TO smallnext_api")
+        .execute(&fixture.database)
+        .await
+        .unwrap();
+    let url = std::env::var("TEST_DATABASE_URL").unwrap();
+    let options: sqlx::postgres::PgConnectOptions = url.parse().unwrap();
+    let runtime = PgPoolOptions::new()
+        .max_connections(5)
+        .connect_with(options.options([
+            ("search_path", fixture.schema.as_str()),
+            ("role", "smallnext_api"),
+        ]))
+        .await
+        .unwrap();
+    fixture.app = super::router(Some(fixture.config.clone()), runtime.clone());
+    assert_eq!(
+        result(fixture.request("allowed", "runtime-accepted").await).await["disposition"],
+        "accepted"
+    );
+    let charged: i64 = sqlx::query_scalar("SELECT charged_micro_usd FROM ai_budget")
+        .fetch_one(&runtime)
+        .await
+        .unwrap();
+    assert!(charged > 0 && charged < fixture.config.budget_limit);
+    *fixture.remote.mode.lock().unwrap() = "overrun".into();
+    assert_eq!(
+        result(fixture.request("allowed", "runtime-overrun").await).await["disposition"],
+        "failed"
+    );
+    assert_eq!(
+        fixture.request("allowed", "runtime-blocked").await.status(),
+        StatusCode::TOO_MANY_REQUESTS
+    );
+    assert_eq!(fixture.remote.calls.lock().unwrap().len(), 3);
+    assert!(
+        sqlx::query("SELECT * FROM app_metadata")
+            .fetch_all(&runtime)
+            .await
+            .is_err()
+    );
+    assert!(
+        sqlx::query("SELECT * FROM _sqlx_migrations")
+            .fetch_all(&runtime)
+            .await
+            .is_err()
+    );
+    runtime.close().await;
+    fixture.close().await;
+}
+
+#[tokio::test]
 #[ignore = "requires TEST_DATABASE_URL; HTTP against real isolated PostgreSQL"]
 async fn missing_usage_stays_charged_after_restart_and_budget_rejection_never_calls_provider() {
     let mut fixture = Fixture::new().await;

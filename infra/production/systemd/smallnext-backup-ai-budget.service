@@ -1,0 +1,18 @@
+[Unit]
+Description=Encrypt Smallnext budget-only backup
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+# Install an approved notification handler before enabling this service.
+OnFailure=smallnext-backup-alert.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/smallnext
+EnvironmentFile=/etc/smallnext/backup.env
+ExecStart=/usr/bin/python3 scripts/backup_ai_budget.py snapshot --directory ${BACKUP_DIRECTORY} --recipients-file ${BACKUP_RECIPIENTS_FILE}
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=smallnext-backup-ai-budget
+TimeoutStartSec=180
+UMask=0077

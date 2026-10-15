@@ -43,11 +43,14 @@ class DeployTests(unittest.TestCase):
         return argparse.Namespace(target="local", bundle=str(directory / "bundle"), version=VERSION,
                                   source_sha=SOURCE, deploy_dir=str(directory), env_file=str(directory / "private.env"),
                                   project_name="local-check", compose_override=None, ssh_host=None,
+                                  migration_env_file=str(directory / "migration.env"),
                                   url="http://127.0.0.1:8080")
 
     def prepared(self, directory):
         (directory / "bundle").mkdir()
         (directory / "infra/production").mkdir(parents=True)
+        migration = directory / "migration.env"
+        migration.touch(mode=0o600)
         return bundle(directory / "bundle")
 
     def runner(self, metadata, *, enabled=False, label=SOURCE):
@@ -81,7 +84,28 @@ class DeployTests(unittest.TestCase):
             self.assertEqual(pointer.stat().st_mode & 0o777, 0o600)
             self.assertIn(metadata["image_id"][7:], pointer.read_text())
             self.assertEqual(up.args[0].count("--env-file"), 2)
+            migrate = next(call for call in run.call_args_list if "migrate" in call.args[0])
+            self.assertLess(run.call_args_list.index(migrate), run.call_args_list.index(up))
+            self.assertEqual(migrate.args[0][-4:], ["--rm", "-T", "--no-deps", "migrate"])
             self.assertEqual(status.call_args_list[-1].args, ("http://127.0.0.1:8080/v1/suggestions", "POST"))
+
+    def test_migration_failure_keeps_previous_pointer_and_stops_startup(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            metadata = self.prepared(directory)
+            pointer = directory / "infra/production/.env.image"
+            pointer.write_text("SMALLNEXT_API_IMAGE=previous\n")
+            runner = self.runner(metadata)
+
+            def fail(args, **kwargs):
+                if args[-1] == "migrate":
+                    raise RuntimeError("deployment command failed")
+                return runner(args, **kwargs)
+
+            with patch.object(deploy, "command", side_effect=fail) as run, self.assertRaises(RuntimeError):
+                deploy.apply(self.args(directory), directory, metadata, ["smallnext-api:fixture"])
+            self.assertFalse(any("up" in call.args[0] for call in run.call_args_list))
+            self.assertEqual(pointer.read_text(), "SMALLNEXT_API_IMAGE=previous\n")
 
     def test_ai_on_and_wrong_source_stop_before_compose_up(self):
         for enabled, label in ((True, SOURCE), (False, "b" * 40)):

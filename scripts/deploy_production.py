@@ -24,6 +24,11 @@ from draft_release import ASSETS, verify
 ROOT = Path(__file__).resolve().parents[1]
 SNAPSHOT = (
     "infra/production/compose.yaml", "infra/production/Caddyfile",
+    "infra/production/captcha/index.html", "infra/production/captcha/bridge.js",
+    "infra/production/captcha/style.css", "infra/production/tls/README.md",
+    "infra/production/systemd/smallnext-backup-ai-budget.service",
+    "infra/production/systemd/smallnext-backup-ai-budget.timer",
+    "scripts/backup_ai_budget.py",
     "infra/production/systemd/smallnext-purge-ai-budget.service",
     "infra/production/systemd/smallnext-purge-ai-budget.timer",
     "scripts/deploy_production.py", "scripts/draft_release.py", "scripts/trusted_ci.py",
@@ -116,7 +121,11 @@ def response_status(url, method):
 
 def apply(args, directory, metadata, tags):
     image = "smallnext-api:release-" + metadata["image_id"].removeprefix("sha256:")
-    env = dict(os.environ, SMALLNEXT_API_IMAGE=image)
+    migration_file = Path(args.migration_env_file)
+    if (migration_file.is_symlink() or not migration_file.is_file()
+            or migration_file.stat().st_mode & 0o077):
+        raise ValueError("use a private migration environment file with mode 0600")
+    env = dict(os.environ, SMALLNEXT_API_IMAGE=image, MIGRATION_ENV_FILE=str(migration_file))
     compose = ["docker", "compose", "--project-name", args.project_name, "--env-file", args.env_file,
                "-f", str(directory / "infra/production/compose.yaml")]
     pointer = directory / "infra/production/.env.image"
@@ -141,6 +150,8 @@ def apply(args, directory, metadata, tags):
     if command(["docker", "run", "--rm", "--entrypoint", "id", metadata["image_id"], "-u"]).stdout.strip() != "10001":
         raise ValueError("runtime user differs from the draft image contract")
     command(["docker", "image", "tag", metadata["image_id"], image])
+    # Only this one-shot service receives the schema owner's connection URL.
+    command(compose + ["run", "--rm", "-T", "--no-deps", "migrate"], env=env)
     temporary = None
     try:
         with tempfile.NamedTemporaryFile(mode="w", dir=pointer.parent, delete=False) as stream:
@@ -179,7 +190,7 @@ def deploy(args):
     if not re.fullmatch(r"[a-z0-9][a-z0-9_-]*", args.project_name):
         raise ValueError("invalid compose project name")
     if any(not Path(value).is_absolute() or any(char in value for char in "\r\n\0")
-           for value in (args.deploy_dir, args.env_file)):
+           for value in (args.deploy_dir, args.env_file, args.migration_env_file)):
         raise ValueError("use absolute deployment and environment file paths")
     bundle = Path(args.bundle).resolve()
     metadata = verify(bundle, args.version, args.source_sha)
@@ -202,6 +213,7 @@ def deploy(args):
                   "--target", "local", "--bundle", str(Path(args.deploy_dir) / "bundle"),
                   "--version", args.version, "--source-sha", args.source_sha,
                   "--deploy-dir", args.deploy_dir, "--env-file", args.env_file,
+                  "--migration-env-file", args.migration_env_file,
                   "--url", args.url, "--project-name", args.project_name]
         # The remote program emits only fixed status messages; never relay arbitrary SSH output.
         ssh(args.ssh_host, remote)
@@ -226,6 +238,7 @@ def main():
     parser.add_argument("--source-sha", required=True)
     parser.add_argument("--deploy-dir", required=True)
     parser.add_argument("--env-file", required=True)
+    parser.add_argument("--migration-env-file", required=True)
     parser.add_argument("--url", required=True)
     parser.add_argument("--ssh-host")
     parser.add_argument("--project-name", default="smallnext")

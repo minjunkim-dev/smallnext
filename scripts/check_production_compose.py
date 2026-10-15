@@ -78,6 +78,7 @@ def deploy_fixture(image, project, temporary, override, empty_env, address, env,
     result = run([sys.executable, str(ROOT / "scripts/deploy_production.py"), "--target", "local",
                   "--bundle", str(bundle), "--version", metadata["version"], "--source-sha", source,
                   "--deploy-dir", str(deployed), "--env-file", str(empty_env), "--project-name", project,
+                  "--migration-env-file", env["MIGRATION_ENV_FILE"],
                   "--compose-override", str(override), "--url", "http://" + address.replace("127.0.0.1", "localhost")], env)
     print(result.stdout.strip())
     pointer = deployed / "infra/production/.env.image"
@@ -106,6 +107,10 @@ def check(image, check_purge, check_deploy=False):
         temporary = Path(directory)
         empty_env = temporary / "empty.env"
         empty_env.touch()
+        migration_env = temporary / "migration.env"
+        migration_env.touch(mode=0o600)
+        migration_env.write_text("DATABASE_URL=" + DATABASE_URL + "\n")
+        env["MIGRATION_ENV_FILE"] = str(migration_env)
         override = temporary / "compose.yaml"
         override.write_text('''services:
   api:
@@ -144,6 +149,7 @@ def check(image, check_purge, check_deploy=False):
             print("PASS production compose forwards all AI environment settings")
 
             run(compose + ["up", "-d", "--wait", "--wait-timeout", "90", "postgres"], env)
+            run(compose + ["run", "--rm", "-T", "--no-deps", "migrate"], env)
             run(compose + ["up", "-d", "--no-build", "--pull", "missing", "api", "caddy"], env)
             address = run(compose + ["port", "caddy", "80"], env).stdout.strip()
             deadline = time.monotonic() + 60
@@ -161,9 +167,11 @@ def check(image, check_purge, check_deploy=False):
                 if status(f"http://{address}{path}", method) != expected:
                     raise RuntimeError(f"AI OFF response mismatch: {path}")
             print("PASS production Caddy to AI OFF API: health=200 ready=200 suggestions=404")
-            if configured["services"]["api"].get("volumes"):
-                raise RuntimeError("Supabase API must not mount a legacy service account")
-            print("PASS Supabase API requires no mounted service-account file")
+            volumes = configured["services"]["api"].get("volumes", [])
+            if (len(volumes) != 1 or volumes[0].get("target") != "/etc/smallnext/tls"
+                    or not volumes[0].get("read_only") or actual.get("API_AUTO_MIGRATE") != "0"):
+                raise RuntimeError("production API must use only the read-only CA mount and separate migration")
+            print("PASS runtime API skips migrations and mounts only read-only CA files")
             required = {
                 "SUPABASE_URL": "https://test-project.supabase.co",
                 "SUPABASE_PUBLISHABLE_KEY": "sb_publishable_synthetic",

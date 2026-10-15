@@ -75,6 +75,8 @@ jobs:
           IOS_DERIVED_DATA: ${{ runner.temp }}/ios-derived-data
           IOS_RESULTS: ${{ runner.temp }}/ios-results.xcresult
         run: make ios-check
+      - name: Test CAPTCHA page bridge
+        run: node --test apps/ios/scripts/test-turnstile-page.cjs
       - name: Preserve failing iOS test report
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

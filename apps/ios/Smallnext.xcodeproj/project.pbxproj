@@ -15,6 +15,7 @@
 		59FAA074D5AE15B56A5C0A42 /* SuggestionTimingMarker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 913B89E90870C631E7623A67 /* SuggestionTimingMarker.swift */; };
 		5CAD65A62B31DE1BA6FA24EB /* CrashReportingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 288EEEA59C7E1B88F7F39D8A /* CrashReportingTests.swift */; };
 		74BEFAD9B514886F592F8ED9 /* Auth in Frameworks */ = {isa = PBXBuildFile; productRef = CC9F0D066E045CE88A51F1A6 /* Auth */; };
+		75C537B078842D900AE578AC /* TurnstileAuthentication.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD181E27E6503C6DAF49C1F4 /* TurnstileAuthentication.swift */; };
 		7A5BE289278F6095E7EF0BCF /* FirebaseClientConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 23FF829BA7D4678913A15AE8 /* FirebaseClientConfiguration.swift */; };
 		7FC526E773F035A32359426D /* CrashReporting.swift in Sources */ = {isa = PBXBuildFile; fileRef = D404FD8D96A7865FE4901A10 /* CrashReporting.swift */; };
 		A8DEFD6028B1AD5A9F8C75B2 /* FirebaseCore in Frameworks */ = {isa = PBXBuildFile; productRef = 45E3C1CD17348250C2572F8B /* FirebaseCore */; };
@@ -23,6 +24,7 @@
 		C72DBDF74D8A955490D29FB9 /* FirebaseCrashlytics in Frameworks */ = {isa = PBXBuildFile; productRef = C3D20393DB4C9132AA35E656 /* FirebaseCrashlytics */; };
 		F02449B4834E149702AE016B /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1150C4CB7EAB11488B1E454E /* ContentView.swift */; };
 		F224F8FC7FAD5CCDC4FCD8A1 /* CoreFlowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50528CC70F298B20C17329B6 /* CoreFlowView.swift */; };
+		FA0B797F5754B485E6090D2A /* TurnstileAuthenticationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD7D94471284A7FC66F95BE7 /* TurnstileAuthenticationTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -56,10 +58,13 @@
 		A1FB7FB815872124737BBD11 /* UserServerAITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserServerAITests.swift; sourceTree = "<group>"; };
 		AC6969E29D3BEF3575FDFFD0 /* SmallnextTimingUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = SmallnextTimingUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		BEEFE074524634331CB3B0BC /* UserServerAI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserServerAI.swift; sourceTree = "<group>"; };
+		CD7D94471284A7FC66F95BE7 /* TurnstileAuthenticationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TurnstileAuthenticationTests.swift; sourceTree = "<group>"; };
 		D404FD8D96A7865FE4901A10 /* CrashReporting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CrashReporting.swift; sourceTree = "<group>"; };
 		DF3E8B07B08AD16D7D946A22 /* SmallnextApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SmallnextApp.swift; sourceTree = "<group>"; };
-		E8F0B6B75F3ADB73BE1658E2 /* Build.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Build.xcconfig; sourceTree = "<group>"; };
+		DFC4352AAFDB22052C5C85D8 /* Debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Debug.xcconfig; sourceTree = "<group>"; };
+		E6A9C340844AB41ABE13DB14 /* Release.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Release.xcconfig; sourceTree = "<group>"; };
 		F69EB006835546EE382DA65E /* FeatureFlagsBundleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeatureFlagsBundleTests.swift; sourceTree = "<group>"; };
+		FD181E27E6503C6DAF49C1F4 /* TurnstileAuthentication.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TurnstileAuthentication.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -80,7 +85,8 @@
 		0FB755DA5DAE3BB50B5AE41E /* Config */ = {
 			isa = PBXGroup;
 			children = (
-				E8F0B6B75F3ADB73BE1658E2 /* Build.xcconfig */,
+				DFC4352AAFDB22052C5C85D8 /* Debug.xcconfig */,
+				E6A9C340844AB41ABE13DB14 /* Release.xcconfig */,
 			);
 			path = Config;
 			sourceTree = "<group>";
@@ -102,6 +108,7 @@
 				23FF829BA7D4678913A15AE8 /* FirebaseClientConfiguration.swift */,
 				DF3E8B07B08AD16D7D946A22 /* SmallnextApp.swift */,
 				913B89E90870C631E7623A67 /* SuggestionTimingMarker.swift */,
+				FD181E27E6503C6DAF49C1F4 /* TurnstileAuthentication.swift */,
 				BEEFE074524634331CB3B0BC /* UserServerAI.swift */,
 			);
 			path = Sources;
@@ -120,6 +127,7 @@
 			children = (
 				288EEEA59C7E1B88F7F39D8A /* CrashReportingTests.swift */,
 				F69EB006835546EE382DA65E /* FeatureFlagsBundleTests.swift */,
+				CD7D94471284A7FC66F95BE7 /* TurnstileAuthenticationTests.swift */,
 				A1FB7FB815872124737BBD11 /* UserServerAITests.swift */,
 			);
 			path = Tests;
@@ -327,6 +335,7 @@
 			files = (
 				5CAD65A62B31DE1BA6FA24EB /* CrashReportingTests.swift in Sources */,
 				00B432C73AA8BDD3A211E9E4 /* FeatureFlagsBundleTests.swift in Sources */,
+				FA0B797F5754B485E6090D2A /* TurnstileAuthenticationTests.swift in Sources */,
 				2FA2B0B084303CD0EEE1916F /* UserServerAITests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -341,6 +350,7 @@
 				7A5BE289278F6095E7EF0BCF /* FirebaseClientConfiguration.swift in Sources */,
 				30A8576C772C36E2E2FC18A4 /* SmallnextApp.swift in Sources */,
 				59FAA074D5AE15B56A5C0A42 /* SuggestionTimingMarker.swift in Sources */,
+				75C537B078842D900AE578AC /* TurnstileAuthentication.swift in Sources */,
 				0C88E7DCF1E546EDF1AD735D /* UserServerAI.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -539,7 +549,7 @@
 		};
 		D3DF98B76AFD1128AB8FF6C1 /* Debug */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = E8F0B6B75F3ADB73BE1658E2 /* Build.xcconfig */;
+			baseConfigurationReference = DFC4352AAFDB22052C5C85D8 /* Debug.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				"CODE_SIGN_ENTITLEMENTS[sdk=iphonesimulator*]" = Config/Simulator.entitlements;
@@ -564,7 +574,7 @@
 		};
 		DB158F4C1FFC741D4ADF398C /* Release */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = E8F0B6B75F3ADB73BE1658E2 /* Build.xcconfig */;
+			baseConfigurationReference = E6A9C340844AB41ABE13DB14 /* Release.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				"CODE_SIGN_ENTITLEMENTS[sdk=iphonesimulator*]" = Config/Simulator.entitlements;

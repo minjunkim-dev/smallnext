@@ -22,17 +22,20 @@ python3 scripts/prepare_production.py
 wizard는 Linux·방화벽 80/443, DNS, Supabase PostgreSQL·백업 조건, Anonymous 인증, DB 권한 순서로 안내한다.
 wizard는 서버를 배포하거나 계정을 생성하지 않는다.
 Supabase Free에는 자동 백업이 없다. 이전의 공급자 최소 자동 백업 조건을 충족했다고 처리하지 않는다.
-예산 데이터만 12시간마다 암호화해 최대 7일 보관하는 안과 RPO·RTO 각 24시간은 미확정 제안이다.
-백업 저장 위치·암호화·접근 주체·삭제 반영·복원 검증을 포함한 최종 조건을 사람이 확정해야 한다.
-익명 계정과 세션은 백업 대상에서 제외하는 안을 검토한다. 익명 계정 유실 시 재생성은 허용했다.
-백업과 복원은 아직 실행하거나 검증하지 않았다. [공급자 백업 조건](https://supabase.com/docs/guides/platform/backups)을 확인한다.
+[#170](https://github.com/minjunkim-dev/smallnext/issues/170)에서 예산 데이터만 12시간마다 암호화해 최대 7일 보관하는 조건을 확정했다.
+RPO·RTO 목표는 각각 24시간이다. 목표의 확정은 실제 달성 검증과 다르다.
+익명 계정과 세션은 백업하지 않는다. 계정을 유실하면 재생성하고 허용 UID를 다시 등록한다.
+목표·진행 상태는 기기에 유지한다. Mac의 Git 밖 폴더에서 최초 검증을 수행한다.
+실제 서버의 자동 백업 등록은 #164까지 보류한다. [공급자 백업 조건](https://supabase.com/docs/guides/platform/backups)을 확인한다.
 
-다음 두 파일을 권한 `0600`으로 저장한다. 두 파일은 Git에서 제외한다.
+다음 파일을 권한 `0600`으로 저장한다. 실제 파일은 Git에서 제외한다.
 
 | 파일 | 용도 |
 | --- | --- |
-| `infra/production/.env.production` | 서버의 Compose 환경 파일 |
-| `apps/ios/Config/Local.xcconfig` | 로컬 iOS 공개 client 설정 |
+| `infra/production/.env.production` | `smallnext_api` capability를 가진 runtime LOGIN 연결 |
+| `infra/production/.env.migration` | schema owner 연결. migrate 서비스에만 제공 |
+| `infra/production/.env.backup` | `smallnext_backup` capability를 가진 읽기 전용 LOGIN 연결 |
+| `apps/ios/Config/Local.Release.xcconfig` | 운영용 iOS 공개 client 설정 |
 
 예시는 [서버 환경 파일](../infra/production/.env.production.example)과 [iOS 설정](../apps/ios/Config/Local.xcconfig.example)에 있다.
 서버 환경 파일은 `docker compose --env-file`로만 읽는다. 셸에서 `source`하지 않는다.
@@ -49,13 +52,16 @@ SSH 접근과 파일 전송 권한은 로컬 운영 계정에서만 사용한다
 최초 배포 전에 서버에서 `docker pull caddy:2-alpine`로 기존 프록시 이미지를 준비한다.
 
 1. 서버에 `/opt/smallnext/infra/production`을 만든다.
-2. 보호한 파일 전송 경로로 `.env.production`을 같은 서버 경로에 배치한다. 운영 계정 소유와 권한 `0600`을 유지한다.
-3. `DATABASE_URL`의 TLS 연결과 DB 접근 제한을 확인한다. 서버 비밀번호를 앱에 넣지 않는다.
+2. 보호한 파일 전송 경로로 세 환경 파일을 같은 서버 경로에 배치한다. 운영 계정 소유와 권한 `0600`을 유지한다.
+3. 공식 CA를 `tls/supabase-ca.crt`로 배치한다. DB URL에 `sslmode=verify-full&sslrootcert=/etc/smallnext/tls/supabase-ca.crt`를 지정한다. 서버 비밀번호를 앱에 넣지 않는다.
 4. 운영용 LOGIN 역할·마이그레이션 권한·실행 권한을 #164 전에 사람이 검토한다. 관리용 DB 연결의 성공은 이 승인을 대신하지 않는다.
 5. DNS A/AAAA가 이 서버를 가리키는지 확인한다. Caddy가 80/443으로 인증서를 발급할 수 있게 한다.
 
 마이그레이션 0004는 앱 테이블의 RLS를 켜고 client 역할의 테이블 접근과 인증 함수 실행을 차단한다.
-`smallnext_session_active`는 계정·세션의 활성 여부만 반환한다. 운영 서버 역할에 필요한 권한을 따로 검토한다.
+마이그레이션 0005는 `smallnext_api`와 `smallnext_backup` NOLOGIN capability를 만든다.
+runtime은 예산 CRUD와 `smallnext_session_active` 실행만 허용한다. backup은 예산의 명시한 네 열만 읽는다.
+별도 LOGIN에는 해당 capability만 부여한다. owner·BYPASSRLS·앱 schema CREATE 권한을 부여하지 않는다.
+API는 `API_AUTO_MIGRATE=0`으로 실행한다. 배포 스크립트가 별도 migrate 서비스로 먼저 마이그레이션한다.
 Firebase 서비스 계정과 credential JSON mount는 사용하지 않는다.
 `docker compose config`의 전체 출력에는 비밀 값이 포함될 수 있으므로 출력·게시하지 않는다.
 
@@ -90,6 +96,7 @@ python3 scripts/deploy_production.py \
   --version VERSION --source-sha FULL_MAIN_SOURCE_SHA \
   --deploy-dir /opt/smallnext \
   --env-file /opt/smallnext/infra/production/.env.production \
+  --migration-env-file /opt/smallnext/infra/production/.env.migration \
   --url https://API_DOMAIN
 ```
 
@@ -147,6 +154,48 @@ iOS 설정과 빌드 명령은 [iOS 연결](SERVER_AI.md#ios-연결)과 [개발 
 #164의 Release 익명 로그인 조건은 [기존 OFF 경로에 대한 질문](https://github.com/minjunkim-dev/smallnext/issues/164#issuecomment-6190868774)을 먼저 확정한다.
 이 질문을 해결하려고 기능 플래그를 임의로 켜지 않는다.
 유료 API·사람 검토·실기기·공개 승인은 각각 별도 확인 범위다.
+
+## 예산 백업과 복원 검사
+
+개발은 로컬 PostgreSQL과 인증 fixture를 사용한다. 기존 Supabase 프로젝트는 운영 준비용이다.
+개발·CI의 `TEST_DATABASE_URL`에 운영 연결을 지정하지 않는다.
+백업은 운영 DB와 분리한 Git 밖 `0700` 폴더에 보관한다. 생성 파일과 설정은 `0600`으로 제한한다.
+`age` 공개 recipient만 백업 호스트에 배치한다. 복호화 identity는 별도 경로의 복구 기기에 둔다.
+identity의 별도 안전한 복사본 보관은 사람이 완료한다.
+
+```sh
+python3 scripts/backup_ai_budget.py snapshot \
+  --directory /PRIVATE/BACKUP_DIRECTORY --recipients-file /PRIVATE/RECIPIENTS_FILE
+python3 scripts/backup_ai_budget.py check-restore /PRIVATE/BACKUP_DIRECTORY/SNAPSHOT.age \
+  --identity-file /SEPARATE/IDENTITY_FILE
+python3 scripts/backup_ai_budget.py expire --directory /PRIVATE/BACKUP_DIRECTORY
+```
+
+`snapshot`은 읽기 전용 `BACKUP_DATABASE_URL` 환경변수를 사용한다.
+공식 CA 파일의 호스트 경로는 `BACKUP_SSL_ROOT_CERT_FILE`로 지정한다. 컨테이너에 읽기 전용으로 연결한다.
+셸의 입력 기록에 비밀 값을 넣지 않는다. 보호한 파일에서 환경변수로 읽는다.
+예시는 [백업 설정](../infra/production/.env.backup.example)을 따른다.
+`check-restore`는 명시한 로컬 `TEST_DATABASE_URL`의 새 격리 schema만 사용한다.
+운영 복원 명령은 제공하지 않는다. 복구 시 현재 UTC 월을 항상 차단하고 기존 비용을 낮추지 않는다.
+복원 검사 성공은 AI 재개 승인이나 최신 실제 비용 확인을 대신하지 않는다.
+파일명과 암호문 내부의 최초 생성 시각을 검증한다. 복사나 mtime 변경으로 7일 기한을 연장하지 않는다.
+
+timer 정의는 00:00/12:00 UTC에 백업한다. `age`·Docker·보호한 설정·승인한 실패 알림 handler가 필요하다.
+실제 서버의 `/etc/smallnext/backup.env`와 외부 백업 경로를 준비한다.
+`smallnext-backup-alert.service`가 실패를 전달하는지 검증하기 전에는 timer를 활성화하지 않는다.
+실제 timer 설치·자동 만료·실패 알림·정기 복원·RPO/RTO 달성 검증은 #164에서 수행한다.
+
+## CAPTCHA와 접근 제한의 배포 전 조건
+
+Caddy는 `/auth/captcha/`에서 정적 Turnstile 페이지를 제공한다.
+iOS에는 HTTPS 원점인 `SMALLNEXT_AUTH_CAPTCHA_URL`과 공개 `SMALLNEXT_TURNSTILE_SITE_KEY`를 함께 지정한다.
+앱은 정확한 원점·main frame·nonce를 검증하고 신규 익명 가입에만 CAPTCHA 토큰을 전달한다.
+기존 세션 갱신은 CAPTCHA를 요구하지 않는다. 토큰·페이지 query·UID를 로그에 남기지 않는다.
+도메인이 없으므로 실제 widget 생성과 Supabase CAPTCHA 활성화는 보류한다.
+도메인 준비 후 실제 iOS 가입·취소·실패를 검증하고 활성화한다.
+운영 서버의 고정 egress IP와 승인한 관리 접속 경로가 정해지면 #164 전에 DB IP 제한을 적용한다.
+익명 가입 제한은 IP당 시간당 30회다. 부하 근거 없이 연결 수와 제한 값을 조정하지 않는다.
+관리자 MFA는 앱 사용자의 MFA와 별도다. 관리자 인증 앱을 등록하고 접근 수단을 안전하게 보관한다.
 
 ## 7. 직전 이미지로 되돌린다
 
