@@ -67,6 +67,8 @@ jobs:
     uses: ./.github/workflows/ios-checks.yml
     with:
       use-cache: ${{ github.event_name != 'workflow_dispatch' || inputs.use-cache }}
+      # PRs skip the simulator boot; main pushes and manual runs keep app-hosted tests.
+      simulator-tests: ${{ github.event_name != 'pull_request' }}
 
   android:
     needs: scope

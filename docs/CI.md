@@ -111,6 +111,7 @@ GitHub runner의 미리 설치한 SDK, OS 업데이트와 외부 패키지 저�
 | Rust | Cargo 레지스트리·Git 의존성·Debug 컴파일 출력 | OS·CPU·Rust 도구 버전·Cargo 설정·잠금 파일 |
 | Docker | BuildKit 레이어(의존성 빌드 레이어 중심) | OS·CPU·Dockerfile·Cargo.toml·잠금 파일·베이스 이미지 digest |
 | iOS 패키지 | SwiftPM 소스 | OS·CPU·Xcode·SDK·Package.resolved |
+| iOS 로직 패키지 | SmallnextCore의 SwiftPM 빌드 디렉터리 | OS·CPU·Xcode·SDK·패키지 manifest와 잠금 파일이 같으면 소스 변경 전 출력도 복원 |
 | iOS 컴파일 | DerivedData의 Build·ModuleCache.noindex·SDKStatCaches.noindex·SDKExplicitPrecompiledModules | OS·CPU·Xcode·SDK·잠금 파일·프로젝트·빌드 스크립트·워크플로가 같으면 소스 변경 전 출력도 복원. Xcode가 변경 입력을 다시 빌드 |
 | Android | Gradle 의존성·작업 출력 | OS·CPU·Gradle Wrapper·빌드 설정·버전 목록; 작업 입력은 Gradle이 확인 |
 
@@ -131,7 +132,12 @@ PR에서 만든 캐시는 main에서 바로 사용할 수 없으므로 main의 �
 
 ## 진단과 비교
 
-iOS는 시뮬레이터 부팅과 `build-for-testing`을 동시에 시작합니다.
+iOS 검사는 먼저 `apps/ios/Packages/SmallnextCore`의 로직 테스트를 macOS에서 `swift test`로 실행합니다.
+PR은 이어서 시뮬레이터 부팅 없이 `build-for-testing`만 수행합니다. 첫 부팅 부하(아래 측정)를 피하기 위해서입니다.
+main push와 수동 실행은 앱 호스트 테스트(번들 리소스·Info.plist·Firebase 연동)까지 시뮬레이터에서 실행합니다.
+따라서 앱 호스트 테스트의 회귀는 병합 후 main 실행에서 드러날 수 있습니다. 로컬 `make ios-check`는 모두 실행합니다.
+
+시뮬레이터 테스트를 실행할 때는 부팅과 `build-for-testing`을 동시에 시작합니다.
 빌드는 실행기 CPU의 generic simulator 대상으로 수행합니다.
 빌드와 부팅이 모두 성공한 뒤 같은 출력으로 `test-without-building`을 수행합니다.
 빌드 실패와 부팅 실패는 모두 검사를 실패 처리합니다.

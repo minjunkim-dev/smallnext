@@ -1,4 +1,4 @@
-"""Exercise build/boot overlap and failure propagation through make ios-check."""
+"""Exercise package tests, build/boot overlap and failure propagation through make ios-check."""
 import json
 import os
 from pathlib import Path
@@ -23,14 +23,17 @@ def wait_for(name):
             return
         time.sleep(0.01)
     sys.exit(90)
-if tool == "xcodebuild":
+if tool == "swift":
+    sys.exit(int(os.environ["SWIFT_EXIT"]))
+elif tool == "xcodebuild":
     if args == ["-version"]:
         print(f'Xcode {pins["xcode"]}\nBuild version {pins["xcode_build"]}')
     elif "build-for-testing" in args:
         if "-destination" in args and "-arch" in args:
             print("destination implies architecture, architecture must not also be specified.", file=sys.stderr)
             sys.exit(70)
-        wait_for("boot-started")
+        if os.environ["IOS_SIMULATOR_TESTS"] == "1":
+            wait_for("boot-started")
         (root / "build-started").touch()
         sys.exit(int(os.environ["BUILD_EXIT"]))
     elif "test-without-building" in args:
@@ -58,16 +61,18 @@ else:
 
 
 class IOSCheckTests(unittest.TestCase):
-    def run_check(self, build_exit=0, boot_exit=0, test_exit=0):
+    def run_check(self, build_exit=0, boot_exit=0, test_exit=0, swift_exit=0, simulator_tests="1"):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            for tool in ("xcodebuild", "xcrun"):
+            for tool in ("swift", "xcodebuild", "xcrun"):
                 executable = root / tool
                 executable.write_text(f"#!{sys.executable}\n" + FAKE_TOOL)
                 executable.chmod(0o755)
             env = dict(os.environ, PATH=f"{root}:{os.environ['PATH']}", PROBE=str(root),
                        PINS=(ROOT / ".ci/toolchains.json").read_text(),
                        BUILD_EXIT=str(build_exit), BOOT_EXIT=str(boot_exit), TEST_EXIT=str(test_exit),
+                       SWIFT_EXIT=str(swift_exit), IOS_SIMULATOR_TESTS=simulator_tests,
+                       IOS_PACKAGE_BUILD=str(root / "package-build"),
                        IOS_DERIVED_DATA=str(root / "derived"), IOS_PACKAGES_DIR=str(root / "packages"),
                        IOS_RESULTS=str(root / "results.xcresult"),
                        DEVELOPER_DIR=os.environ.get("DEVELOPER_DIR", "/Applications/Xcode.app/Contents/Developer"),
@@ -76,6 +81,7 @@ class IOSCheckTests(unittest.TestCase):
                                     capture_output=True, text=True, timeout=10)
             self.assertTrue((root / "calls").exists(), result.stdout + result.stderr)
             calls = [json.loads(line) for line in (root / "calls").read_text().splitlines()]
+            self.calls = calls
             return result, [call for call in calls if call[0] == "xcodebuild" and call[1:] != ["-version"]]
 
     def test_build_overlaps_boot_and_tests_reuse_outputs(self):
@@ -101,6 +107,30 @@ class IOSCheckTests(unittest.TestCase):
                 self.assertNotEqual(result.returncode, 0)
                 self.assertEqual(len(calls), 1)
                 self.assertEqual(calls[0][-1], "build-for-testing")
+
+    def test_package_tests_run_first_with_locked_versions(self):
+        result, _ = self.run_check()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        tools = [call[0] for call in self.calls if call[1:] != ["-version"] and call[1:2] != ["--sdk"]]
+        self.assertEqual(tools[0], "swift")
+        swift = next(call for call in self.calls if call[0] == "swift")
+        self.assertEqual(swift[:2], ["swift", "test"])
+        self.assertIn("--force-resolved-versions", swift)
+        self.assertEqual(swift[swift.index("--package-path") + 1], "apps/ios/Packages/SmallnextCore")
+        self.assertIn("--scratch-path", swift)
+        self.assertIn("iOS package swift test:", result.stdout)
+
+    def test_package_failure_blocks_app_build(self):
+        result, calls = self.run_check(swift_exit=6)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(calls, [])
+
+    def test_pr_mode_builds_without_booting(self):
+        result, calls = self.run_check(simulator_tests="0")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual([call[-1] for call in calls], ["build-for-testing"])
+        self.assertFalse(any(call[0] == "xcrun" and "simctl" in call for call in self.calls))
+        self.assertIn("iOS simulator tests: skipped", result.stdout)
 
     def test_test_failure_propagates(self):
         result, calls = self.run_check(test_exit=5)

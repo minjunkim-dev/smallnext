@@ -6,6 +6,9 @@ on:
       use-cache:
         type: boolean
         default: true
+      simulator-tests:
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -55,8 +58,19 @@ jobs:
           key: xcode-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.fingerprint }}-${{ hashFiles('apps/ios/**/Package.resolved', 'apps/ios/**/*.pbxproj', 'apps/ios/**/*.xcscheme', 'apps/ios/**/*.xcconfig', 'scripts/check_ios.sh', '.github/workflows/ios-checks.yml') }}-${{ hashFiles('apps/ios/**') }}
           restore-keys: |
             xcode-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.fingerprint }}-${{ hashFiles('apps/ios/**/Package.resolved', 'apps/ios/**/*.pbxproj', 'apps/ios/**/*.xcscheme', 'apps/ios/**/*.xcconfig', 'scripts/check_ios.sh', '.github/workflows/ios-checks.yml') }}-
+      - name: Restore SmallnextCore package build
+        id: core-cache
+        if: inputs.use-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/ios-core-build
+          key: core-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.fingerprint }}-${{ hashFiles('apps/ios/Packages/SmallnextCore/Package.*') }}-${{ hashFiles('apps/ios/Packages/SmallnextCore/**') }}
+          restore-keys: |
+            core-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.fingerprint }}-${{ hashFiles('apps/ios/Packages/SmallnextCore/Package.*') }}-
       - name: Build and test iOS
         env:
+          IOS_SIMULATOR_TESTS: ${{ inputs.simulator-tests && '1' || '0' }}
+          IOS_PACKAGE_BUILD: ${{ runner.temp }}/ios-core-build
           IOS_PACKAGES_DIR: ${{ runner.temp }}/swift-packages
           IOS_DERIVED_DATA: ${{ runner.temp }}/ios-derived-data
           IOS_RESULTS: ${{ runner.temp }}/ios-results.xcresult
@@ -75,5 +89,7 @@ jobs:
           CACHE_ENABLED: ${{ inputs.use-cache }}
           PACKAGES_HIT: ${{ steps.packages-cache.outputs.cache-hit }}
           BUILD_HIT: ${{ steps.build-cache.outputs.cache-hit }}
+          CORE_HIT: ${{ steps.core-cache.outputs.cache-hit }}
+          SIMULATOR_TESTS: ${{ inputs.simulator-tests }}
         run: |
-          printf 'iOS cache enabled: %s; packages hit: %s; exact compiler hit: %s\n' "$CACHE_ENABLED" "${PACKAGES_HIT:-false}" "${BUILD_HIT:-false}" >> "$GITHUB_STEP_SUMMARY"
+          printf 'iOS cache enabled: %s; packages hit: %s; exact compiler hit: %s; core package hit: %s; simulator tests: %s\n' "$CACHE_ENABLED" "${PACKAGES_HIT:-false}" "${BUILD_HIT:-false}" "${CORE_HIT:-false}" "$SIMULATOR_TESTS" >> "$GITHUB_STEP_SUMMARY"
