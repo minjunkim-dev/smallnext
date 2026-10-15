@@ -1247,6 +1247,13 @@ class PrivateRootTests(unittest.TestCase):
             self.assertEqual(launch.private_root(main), main/'work')
             with patch.dict(os.environ, {'GIT_DIR': str(other/'.git'), 'GIT_COMMON_DIR': str(other/'.git')}):
                 self.assertEqual(launch.private_root(linked), main/'work')
+            real = launch.private_root
+            with patch.object(launch, 'private_root', lambda: real(linked)):
+                for bundle in [linked/'work'/'launch', main/'work'/'..'/'launch']:
+                    with self.subTest(bundle=bundle), self.assertRaisesRegex(ValueError, 'main checkout work'):
+                        launch.freeze(bundle, owner='minjunkim-dev', delete_method='delete directory',
+                                      ends_at=(datetime.now(timezone.utc)+timedelta(days=1)).isoformat())
+                    self.assertFalse(bundle.exists())
 
     def test_freeze_rejects_bundles_outside_main_checkout_work(self):
         root = launch.private_root()
