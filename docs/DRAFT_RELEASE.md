@@ -12,7 +12,6 @@ source는 `main`에 포함되어야 한다. 정확히 같은 SHA의 기본 브�
 Project checks의 모든 플랫폼 job과 Repository hygiene가 최신 attempt에서 성공해야 한다.
 실패·취소·누락·skipped·이전 attempt의 복사 결과는 거부한다.
 문서 변경으로 플랫폼 검사가 생략되었다면 같은 source에서 전체 Project checks를 수동 실행한다.
-main push에서 iOS 시뮬레이터 테스트가 생략되었어도 같은 source에서 Project checks를 수동 실행한다. 수동 실행은 시뮬레이터 테스트를 항상 포함한다.
 이미 있는 Draft·Release·태그·asset은 덮어쓰지 않는다.
 
 1. 최종 PR의 전체 diff 독립 리뷰와 필수 CI를 완료한다.

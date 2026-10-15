@@ -7,7 +7,7 @@ if [ -z "${DEVELOPER_DIR:-}" ]; then
   fi
 fi
 python3 scripts/environment.py ios
-# PR CI sets IOS_SIMULATOR_TESTS=0: the first simulator boot holds the runner CPU for minutes.
+# CI sets IOS_SIMULATOR_TESTS=0 to skip the first simulator boot, which holds the runner CPU for minutes.
 simulator_tests=${IOS_SIMULATOR_TESTS:-1}
 case "$simulator_tests" in
   0|1) ;;

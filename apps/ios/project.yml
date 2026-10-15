@@ -60,9 +60,7 @@ targets:
   SmallnextTests:
     type: bundle.unit-test
     platform: iOS
-    sources:
-      - Tests
-      - Packages/SmallnextCore/Tests/SmallnextCoreTests/DevelopmentTransport.swift
+    sources: [Tests]
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dev.smallnext.app.tests

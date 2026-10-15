@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """Prevent project selection from hiding checks after edits, deletions or moves."""
 
+import io
 import os
 from pathlib import Path
+import runpy
 import subprocess
 import tempfile
 import unittest
@@ -106,6 +108,19 @@ class ScopeTests(unittest.TestCase):
 
     def test_unknown_history_runs_simulator(self):
         self.assertTrue(needs_simulator(None))
+
+    def test_entry_point_writes_projects_and_simulator_decision(self):
+        with tempfile.TemporaryDirectory() as directory:
+            event, output = Path(directory) / "event.json", Path(directory) / "output"
+            event.write_text('{"before": "' + "b" * 40 + '"}')
+            core = "apps/ios/Packages/SmallnextCore/Sources/SmallnextCore/FeatureFlags.swift"
+            with patch.dict(os.environ, {"GITHUB_EVENT_PATH": str(event), "GITHUB_OUTPUT": str(output)}), \
+                 patch("ci_scope.subprocess.check_output", return_value=core), \
+                 patch("sys.stdout", new_callable=io.StringIO):
+                runpy.run_module("ci_scope", run_name="__main__")
+            self.assertEqual(output.read_text().splitlines(), [
+                "api=false", "container=false", "ios=true", "android=false", "ios_simulator=false",
+            ])
 
     def test_new_branch_checks_all_projects(self):
         self.assertEqual(scopes({"before": "0" * 40}), ALL)

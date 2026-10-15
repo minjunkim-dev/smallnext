@@ -39,7 +39,7 @@ SCOPED_FILES = {
 }
 
 
-# App-hosted simulator tests cover the app shell, bundle and build configuration, not SmallnextCore logic.
+# App-hosted simulator tests check the bundle, Info.plist and Firebase setup; SmallnextCore logic runs in swift test.
 SIMULATOR_PREFIXES = (
     "apps/ios/Sources/", "apps/ios/Tests/", "apps/ios/Config/", "apps/ios/scripts/",
     "apps/ios/Smallnext.xcodeproj/",
@@ -52,7 +52,7 @@ SIMULATOR_FILES = {
 
 
 def changed_paths(event):
-    """Return the full diff, or None when history cannot prove what changed."""
+    """Return the changed paths, or None when history cannot prove what changed."""
     base = event["pull_request"]["base"]["sha"] if "pull_request" in event else event.get("before")
     if not base or set(base) == {"0"}:
         return None
@@ -65,9 +65,18 @@ def changed_paths(event):
         return None
 
 
-def scopes(event):
-    paths = changed_paths(event)
+def projects(paths):
     return dict.fromkeys(PROJECTS, True) if paths is None else select(paths)
+
+
+def scopes(event):
+    return projects(changed_paths(event))
+
+
+def outputs(event):
+    """Project selection plus the iOS simulator decision, from one diff."""
+    paths = changed_paths(event)
+    return {**projects(paths), "ios_simulator": needs_simulator(paths)}
 
 
 def needs_simulator(paths):
@@ -104,9 +113,7 @@ def select(paths):
 
 if __name__ == "__main__":
     event = json.loads(Path(os.environ["GITHUB_EVENT_PATH"]).read_text())
-    paths = changed_paths(event)
-    selected = dict.fromkeys(PROJECTS, True) if paths is None else select(paths)
-    selected["ios_simulator"] = needs_simulator(paths)
+    selected = outputs(event)
     with open(os.environ["GITHUB_OUTPUT"], "a") as output:
         for name, enabled in selected.items():
             output.write(f"{name}={str(enabled).lower()}\n")

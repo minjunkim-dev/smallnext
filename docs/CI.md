@@ -143,7 +143,8 @@ PR은 이어서 시뮬레이터 부팅 없이 `build-for-testing`만 수행합�
 | 수동 실행 | 항상 실행 |
 | 로컬 `make ios-check` | 항상 실행 |
 
-`SmallnextCore` 패키지만 바뀐 main push는 시뮬레이터 테스트를 생략합니다. 패키지 변경이 앱 호스트 테스트의 결과를 바꿀 수 있으면 수동 실행으로 확인합니다.
+`SmallnextCore` 패키지만 바뀐 main push는 시뮬레이터 테스트를 생략합니다. 서버 경로 계약을 포함한 패키지 로직은 `swift test`가 검사합니다.
+앱 호스트 테스트는 번들 리소스·Info.plist·Firebase 초기화만 확인합니다. 패키지 로직 테스트를 앱 호스트 테스트에 추가하지 않습니다.
 판정 규칙은 `scripts/ci_scope.py`의 `needs_simulator`입니다.
 
 시뮬레이터 테스트를 실행할 때는 부팅과 `build-for-testing`을 동시에 시작합니다.
