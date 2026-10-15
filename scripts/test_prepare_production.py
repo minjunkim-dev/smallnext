@@ -4,6 +4,7 @@ from pathlib import Path
 import stat
 import tempfile
 import unittest
+from unittest.mock import patch
 
 import prepare_production as wizard
 
@@ -52,6 +53,24 @@ class PreparationTests(unittest.TestCase):
         for value in ("$(OTHER)", "x // comment", "x\nSETTING=y"):
             with self.assertRaises(ValueError):
                 wizard.xcconfig_value(value)
+
+    def test_noninteractive_terminal_refuses_before_collecting(self):
+        with patch.object(wizard.sys.stdin, "isatty", return_value=False), patch.object(wizard, "prepare") as prepare:
+            with contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(wizard.main(), 1)
+            prepare.assert_not_called()
+
+    def test_confirmed_overwrite_replaces_old_values_privately(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for name in (wizard.SERVER_FILE, wizard.IOS_FILE):
+                wizard.save_private(root / name, "original\n")
+            values = self.values()
+            with contextlib.redirect_stdout(io.StringIO()):
+                self.assertTrue(wizard.prepare(root, lambda _: next(values), lambda _: "y", lambda _: None))
+            for name in (wizard.SERVER_FILE, wizard.IOS_FILE):
+                self.assertNotIn("original", (root / name).read_text())
+                self.assertEqual(stat.S_IMODE((root / name).stat().st_mode), 0o600)
 
     def test_symlink_does_not_overwrite_target(self):
         with tempfile.TemporaryDirectory() as directory:
