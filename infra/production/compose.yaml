@@ -9,11 +9,12 @@ services:
     environment:
       DATABASE_URL: ${DATABASE_URL:?Set the managed PostgreSQL connection URL}
       API_BIND_ADDRESS: 0.0.0.0:8080
+      API_AUTO_MIGRATE: "0"
       RUST_LOG: smallnext_api=info
       USER_SERVER_AI:
-      FIREBASE_PROJECT_ID:
-      AI_ALLOWED_FIREBASE_UIDS:
-      FIREBASE_SERVICE_ACCOUNT_FILE: ${FIREBASE_SERVICE_ACCOUNT_FILE:-/run/secrets/firebase/service-account.json}
+      SUPABASE_URL:
+      SUPABASE_PUBLISHABLE_KEY:
+      AI_ALLOWED_SUPABASE_UIDS:
       AI_MODEL_CONFIRMED:
       ANTHROPIC_API_KEY:
       AI_MODEL_CONTEXT_TOKENS:
@@ -21,14 +22,21 @@ services:
       AI_INPUT_MICRO_USD_PER_MILLION:
       AI_OUTPUT_MICRO_USD_PER_MILLION:
       AI_BUDGET_MICRO_USD:
-    volumes:
-      - type: bind
-        source: ${FIREBASE_CREDENTIALS_DIR:-./credentials}
-        target: /run/secrets/firebase
-        read_only: true
     expose:
       - "8080"
+    volumes:
+      - ./tls:/etc/smallnext/tls:ro
     restart: unless-stopped
+
+  migrate:
+    image: ${SMALLNEXT_API_IMAGE:-smallnext-api:local}
+    profiles: [tools]
+    entrypoint: [migrate-api]
+    env_file:
+      - path: ${MIGRATION_ENV_FILE:-.env.migration}
+        required: false
+    volumes:
+      - ./tls:/etc/smallnext/tls:ro
 
   caddy:
     image: caddy:2-alpine
@@ -39,6 +47,7 @@ services:
       - "443:443"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./captcha:/srv/smallnext-captcha:ro
       - caddy-data:/data
       - caddy-config:/config
     depends_on:

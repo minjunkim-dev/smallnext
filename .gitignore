@@ -21,6 +21,9 @@ Thumbs.db
 *.mobileprovision
 /infra/production/credentials/
 /apps/ios/Config/Local.xcconfig
+/apps/ios/Config/Local.Debug.xcconfig
+/apps/ios/Config/Local.Release.xcconfig
+/infra/production/tls/*.crt
 
 # Generated files and caches
 node_modules/

@@ -9,6 +9,7 @@ struct SmallnextApp: App {
     @State private var database: AppDatabase?
     @State private var flow: ProgressFlow?
     @State private var storageFailed = false
+    @State private var captcha = TurnstileChallenge.shared
     private let logger = Logger(subsystem: "dev.smallnext.app", category: "storage")
 
     var body: some Scene {
@@ -19,6 +20,13 @@ struct SmallnextApp: App {
                 } else {
                     ContentView(storageFailed: storageFailed)
                 }
+            }
+            .sheet(item: Binding(get: { captcha.request }, set: { value in
+                if value == nil, let request = captcha.request {
+                    captcha.finish(id: request.id, result: .failure(CancellationError()))
+                }
+            })) { request in
+                TurnstileSheet(request: request, challenge: captcha)
             }
             .task {
                 guard database == nil, !storageFailed else { return }

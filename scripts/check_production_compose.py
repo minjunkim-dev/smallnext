@@ -15,8 +15,8 @@ import uuid
 
 ROOT = Path(__file__).resolve().parents[1]
 AI_SETTINGS = (
-    "USER_SERVER_AI", "FIREBASE_PROJECT_ID", "AI_ALLOWED_FIREBASE_UIDS",
-    "FIREBASE_SERVICE_ACCOUNT_FILE", "AI_MODEL_CONFIRMED", "ANTHROPIC_API_KEY",
+    "USER_SERVER_AI", "SUPABASE_URL", "AI_ALLOWED_SUPABASE_UIDS",
+    "SUPABASE_PUBLISHABLE_KEY", "AI_MODEL_CONFIRMED", "ANTHROPIC_API_KEY",
     "AI_MODEL_CONTEXT_TOKENS", "AI_MAX_OUTPUT_TOKENS",
     "AI_INPUT_MICRO_USD_PER_MILLION", "AI_OUTPUT_MICRO_USD_PER_MILLION",
     "AI_BUDGET_MICRO_USD",
@@ -78,6 +78,7 @@ def deploy_fixture(image, project, temporary, override, empty_env, address, env,
     result = run([sys.executable, str(ROOT / "scripts/deploy_production.py"), "--target", "local",
                   "--bundle", str(bundle), "--version", metadata["version"], "--source-sha", source,
                   "--deploy-dir", str(deployed), "--env-file", str(empty_env), "--project-name", project,
+                  "--migration-env-file", env["MIGRATION_ENV_FILE"],
                   "--compose-override", str(override), "--url", "http://" + address.replace("127.0.0.1", "localhost")], env)
     print(result.stdout.strip())
     pointer = deployed / "infra/production/.env.image"
@@ -100,17 +101,16 @@ def check(image, check_purge, check_deploy=False):
     # Do not inherit operator AI settings, database URLs or Compose overrides.
     env = {key: value for key, value in os.environ.items()
            if key not in AI_SETTINGS and not key.startswith("COMPOSE_")
-           and key not in {"DATABASE_URL", "API_DOMAIN", "FIREBASE_CREDENTIALS_DIR", "SMALLNEXT_API_IMAGE"}}
+           and key not in {"DATABASE_URL", "API_DOMAIN", "SMALLNEXT_API_IMAGE"}}
     env.update(DATABASE_URL=DATABASE_URL, API_DOMAIN="http://localhost", SMALLNEXT_API_IMAGE=image)
     with tempfile.TemporaryDirectory(prefix="smallnext-compose-") as directory:
         temporary = Path(directory)
-        credentials = temporary / "credentials"
-        credentials.mkdir(mode=0o755)
-        # Docker's unprivileged image user must be able to traverse the temporary parent.
-        temporary.chmod(0o755)
-        env["FIREBASE_CREDENTIALS_DIR"] = str(credentials)
         empty_env = temporary / "empty.env"
         empty_env.touch()
+        migration_env = temporary / "migration.env"
+        migration_env.touch(mode=0o600)
+        migration_env.write_text("DATABASE_URL=" + DATABASE_URL + "\n")
+        env["MIGRATION_ENV_FILE"] = str(migration_env)
         override = temporary / "compose.yaml"
         override.write_text('''services:
   api:
@@ -120,6 +120,7 @@ def check(image, check_purge, check_deploy=False):
       - "127.0.0.1::80"
     volumes:
       - "CADDY_FILE:/etc/caddy/Caddyfile:ro"
+      - "CAPTCHA_DIRECTORY:/srv/smallnext-captcha:ro"
   postgres:
     image: postgres:18-alpine@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873
     environment:
@@ -131,7 +132,8 @@ def check(image, check_purge, check_deploy=False):
       interval: 1s
       timeout: 3s
       retries: 60
-'''.replace("CADDY_FILE", str(ROOT / "infra/production/Caddyfile")))
+'''.replace("CADDY_FILE", str(ROOT / "infra/production/Caddyfile"))
+           .replace("CAPTCHA_DIRECTORY", str(ROOT / "infra/production/captcha")))
         compose = ["docker", "compose", "--project-name", project, "--env-file", str(empty_env),
                    "-f", str(ROOT / "infra/production/compose.yaml"), "-f", str(override)]
         cleanup_images = []
@@ -149,6 +151,7 @@ def check(image, check_purge, check_deploy=False):
             print("PASS production compose forwards all AI environment settings")
 
             run(compose + ["up", "-d", "--wait", "--wait-timeout", "90", "postgres"], env)
+            run(compose + ["run", "--rm", "-T", "--no-deps", "migrate"], env)
             run(compose + ["up", "-d", "--no-build", "--pull", "missing", "api", "caddy"], env)
             address = run(compose + ["port", "caddy", "80"], env).stdout.strip()
             deadline = time.monotonic() + 60
@@ -165,26 +168,20 @@ def check(image, check_purge, check_deploy=False):
                                            ("/v1/suggestions", "POST", 404)):
                 if status(f"http://{address}{path}", method) != expected:
                     raise RuntimeError(f"AI OFF response mismatch: {path}")
-            print("PASS production Caddy to AI OFF API without credential file: health=200 ready=200 suggestions=404")
-
-            credential = credentials / "service-account.json"
-            credential.write_text("{}")
-            credential.chmod(0o644)
-            # Root bypasses discretionary permissions, so only a read-only mount blocks this write.
-            run(compose + ["run", "--rm", "-T", "--no-deps", "--user", "0", "--entrypoint", "sh",
-                           "api", "-c", 'test -r "$FIREBASE_SERVICE_ACCOUNT_FILE" && ! touch /run/secrets/firebase/probe'], env)
-            print("PASS credential directory is readable and mounted read-only")
-            failures = (
-                ({"FIREBASE_PROJECT_ID": ""}, "FIREBASE_PROJECT_ID"),
-                ({"FIREBASE_PROJECT_ID": "synthetic", "AI_ALLOWED_FIREBASE_UIDS": ""}, "AI_ALLOWED_FIREBASE_UIDS"),
-                ({"FIREBASE_PROJECT_ID": "synthetic", "AI_ALLOWED_FIREBASE_UIDS": "synthetic",
-                  "FIREBASE_SERVICE_ACCOUNT_FILE": ""}, "FIREBASE_SERVICE_ACCOUNT_FILE"),
-                ({"FIREBASE_PROJECT_ID": "synthetic", "AI_ALLOWED_FIREBASE_UIDS": "synthetic",
-                  "AI_MODEL_CONFIRMED": ""}, "AI_MODEL_CONFIRMED"),
-                ({"FIREBASE_PROJECT_ID": "synthetic", "AI_ALLOWED_FIREBASE_UIDS": "synthetic",
-                  "AI_MODEL_CONFIRMED": "1", "ANTHROPIC_API_KEY": ""}, "ANTHROPIC_API_KEY"),
-            )
-            for settings, missing in failures:
+            print("PASS production Caddy to AI OFF API: health=200 ready=200 suggestions=404")
+            volumes = configured["services"]["api"].get("volumes", [])
+            if (len(volumes) != 1 or volumes[0].get("target") != "/etc/smallnext/tls"
+                    or not volumes[0].get("read_only") or actual.get("API_AUTO_MIGRATE") != "0"):
+                raise RuntimeError("production API must use only the read-only CA mount and separate migration")
+            print("PASS runtime API skips migrations and mounts only read-only CA files")
+            required = {
+                "SUPABASE_URL": "https://test-project.supabase.co",
+                "SUPABASE_PUBLISHABLE_KEY": "sb_publishable_synthetic",
+                "AI_ALLOWED_SUPABASE_UIDS": "00000000-0000-0000-0000-000000000001",
+                "AI_MODEL_CONFIRMED": "1", "ANTHROPIC_API_KEY": "synthetic-provider",
+            }
+            for missing in required:
+                settings = dict(required, **{missing: ""})
                 command = compose + ["run", "--rm", "-T", "--no-deps", "-e", "USER_SERVER_AI=1"]
                 for key, value in settings.items():
                     command += ["-e", f"{key}={value}"]

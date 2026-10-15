@@ -134,7 +134,7 @@ PR에서 만든 캐시는 main에서 바로 사용할 수 없으므로 main의 �
 
 iOS 검사는 먼저 `apps/ios/Packages/SmallnextCore`의 로직 테스트를 macOS에서 `swift test`로 실행합니다.
 PR은 이어서 시뮬레이터 부팅 없이 `build-for-testing`만 수행합니다. 첫 부팅 부하(아래 측정)를 피하기 위해서입니다.
-앱 호스트 테스트(번들 리소스·Info.plist·Firebase 연동)는 필요할 때만 시뮬레이터에서 실행합니다.
+앱 호스트 테스트(번들 리소스·Info.plist·Supabase Auth·Keychain·Crashlytics)는 필요할 때만 시뮬레이터에서 실행합니다.
 
 | 이벤트 | 시뮬레이터 테스트 |
 | --- | --- |
@@ -144,13 +144,15 @@ PR은 이어서 시뮬레이터 부팅 없이 `build-for-testing`만 수행합�
 | 로컬 `make ios-check` | 항상 실행 |
 
 `SmallnextCore` 패키지만 바뀐 main push는 시뮬레이터 테스트를 생략합니다. 서버 경로 계약을 포함한 패키지 로직은 `swift test`가 검사합니다.
-앱 호스트 테스트는 번들 리소스·Info.plist·Firebase 초기화만 확인합니다. 패키지 로직 테스트를 앱 호스트 테스트에 추가하지 않습니다.
+앱 호스트 테스트는 번들 설정, 모의 전송을 주입한 Supabase Auth, 실제 simulator Keychain과 Crashlytics 초기화를 확인합니다.
+실제 프로젝트·UID·토큰·DB 자격 증명을 CI에 넣지 않습니다. 패키지 로직 테스트를 앱 호스트 테스트에 추가하지 않습니다.
 남는 위험: 앱 호스트 테스트는 패키지의 `FeatureFlags.isEnabled`를 호출하고, 호스트 앱 실행 중 `AppDatabase.openDefault()`와 `FeatureFlags` 조회가 실행됩니다.
 패키지만 바뀐 main push에서는 이 경로의 실행 회귀가 다음 앱 껍데기 push나 수동 실행에서 드러납니다. 컴파일 회귀는 `build-for-testing`이 잡습니다.
 판정 규칙은 `scripts/ci_scope.py`의 `needs_simulator`입니다.
 
 시뮬레이터 테스트를 실행할 때는 부팅과 `build-for-testing`을 동시에 시작합니다.
 빌드는 실행기 CPU의 generic simulator 대상으로 수행합니다.
+Keychain 권한을 위해 simulator에만 ad-hoc 서명을 적용합니다. 개발자 계정·인증서·서명 private key는 사용하지 않습니다.
 빌드와 부팅이 모두 성공한 뒤 같은 출력으로 `test-without-building`을 수행합니다.
 빌드 실패와 부팅 실패는 모두 검사를 실패 처리합니다.
 잠금 파일 검증을 유지하고 `-skipPackageUpdates`로 원격 패키지 갱신 조회를 생략합니다.

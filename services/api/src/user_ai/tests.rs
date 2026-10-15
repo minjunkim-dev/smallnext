@@ -19,7 +19,9 @@ use tower::ServiceExt;
 struct Remote {
     calls: Mutex<Vec<serde_json::Value>>,
     disabled: std::sync::atomic::AtomicBool,
-    revoked_after: AtomicU64,
+    deleted: std::sync::atomic::AtomicBool,
+    user_failure: std::sync::atomic::AtomicBool,
+    user_mode: Mutex<String>,
     mode: Mutex<String>,
     delay_ms: AtomicU64,
 }
@@ -168,13 +170,54 @@ impl Fixture {
         let remote = Arc::new(Remote::default());
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let url = format!("http://{}", listener.local_addr().unwrap());
-        let upstream = Router::new().route("/keys", get(|| async {
-            ([("Cache-Control","max-age=300")], Json(json!({"test":super::test_key::CERTIFICATE})))
-        })).route("/oauth", post(|| async { Json(json!({"access_token":"test-admin","token_type":"Bearer","expires_in":3600})) }))
-        .route("/accounts", post(|State(remote): State<Arc<Remote>>, Json(body): Json<serde_json::Value>| async move {
-            Json(json!({"users":[{"localId":body["localId"][0],"disabled":remote.disabled.load(Ordering::SeqCst),
-                "validSince":remote.revoked_after.load(Ordering::SeqCst).to_string()}]}))
-        })).route("/messages", post(external_provider)).with_state(remote.clone());
+        sqlx::query(
+            "CREATE TABLE fixture_sessions (user_id TEXT PRIMARY KEY, active BOOLEAN NOT NULL)",
+        )
+        .execute(&database)
+        .await
+        .unwrap();
+        for uid in [identity("allowed"), identity("other")] {
+            sqlx::query("INSERT INTO fixture_sessions VALUES ($1, TRUE)")
+                .bind(uid)
+                .execute(&database)
+                .await
+                .unwrap();
+        }
+        sqlx::query(&format!("CREATE OR REPLACE FUNCTION smallnext_session_active(user_id TEXT,session_id TEXT) RETURNS BOOLEAN LANGUAGE SQL SECURITY INVOKER SET search_path = '' AS 'SELECT EXISTS(SELECT 1 FROM {schema}.fixture_sessions WHERE user_id = $1 AND active AND $2 = ''{SESSION}'')'"))
+            .execute(&database).await.unwrap();
+        let upstream = Router::new()
+            .route(
+                "/keys",
+                get(|| async { ([("Cache-Control", "max-age=300")], Json(jwks())) }),
+            )
+            .route(
+                "/user",
+                get(
+                    |State(remote): State<Arc<Remote>>, headers: axum::http::HeaderMap| async move {
+                        assert_eq!(headers["apikey"], "sb_publishable_test");
+                        if remote.user_failure.load(Ordering::SeqCst) {
+                            return Err(StatusCode::SERVICE_UNAVAILABLE);
+                        }
+                        if remote.deleted.load(Ordering::SeqCst)
+                            || remote.disabled.load(Ordering::SeqCst)
+                        {
+                            return Err(StatusCode::UNAUTHORIZED);
+                        }
+                        let token = headers["authorization"]
+                            .to_str()
+                            .unwrap()
+                            .strip_prefix("Bearer ")
+                            .unwrap();
+                        let data =
+                            jsonwebtoken::dangerous::insecure_decode::<serde_json::Value>(token)
+                                .unwrap();
+            let mode = remote.user_mode.lock().unwrap().clone();
+            Ok(Json(json!({"id":if mode=="wrong_user" { json!(identity("other")) } else { data.claims["sub"].clone() },"is_anonymous":mode!="permanent"})))
+                    },
+                ),
+            )
+            .route("/messages", post(external_provider))
+            .with_state(remote.clone());
         let server = tokio::spawn(async move {
             axum::serve(listener, upstream).await.unwrap();
         });
@@ -509,17 +552,32 @@ async fn disabled_revoked_and_lookup_failure_never_spend_ai_budget() {
         StatusCode::UNAUTHORIZED
     );
     fixture.remote.disabled.store(false, Ordering::SeqCst);
-    fixture.remote.revoked_after.store(
-        jsonwebtoken::get_current_timestamp() + 3600,
-        Ordering::SeqCst,
-    );
+    sqlx::query("UPDATE fixture_sessions SET active=FALSE")
+        .execute(&fixture.database)
+        .await
+        .unwrap();
     assert_eq!(
         fixture.request("allowed", "revoked").await.status(),
         StatusCode::UNAUTHORIZED
     );
-    fixture.remote.revoked_after.store(0, Ordering::SeqCst);
+    sqlx::query("UPDATE fixture_sessions SET active=TRUE")
+        .execute(&fixture.database)
+        .await
+        .unwrap();
+    fixture.remote.deleted.store(true, Ordering::SeqCst);
+    assert_eq!(
+        fixture.request("allowed", "deleted").await.status(),
+        StatusCode::UNAUTHORIZED
+    );
+    fixture.remote.deleted.store(false, Ordering::SeqCst);
+    fixture.remote.user_failure.store(true, Ordering::SeqCst);
+    assert_eq!(
+        fixture.request("allowed", "lookup-failed").await.status(),
+        StatusCode::SERVICE_UNAVAILABLE
+    );
+    fixture.remote.user_failure.store(false, Ordering::SeqCst);
     let mut config = fixture.config.clone();
-    config.firebase.endpoints.lookup += "/missing";
+    config.supabase.endpoints.user += "/missing";
     let unavailable = super::router(Some(config), fixture.database.clone());
     let response = unavailable
         .oneshot(
@@ -531,13 +589,156 @@ async fn disabled_revoked_and_lookup_failure_never_spend_ai_budget() {
         )
         .await
         .unwrap();
-    assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
     assert!(fixture.remote.calls.lock().unwrap().is_empty());
+    let charged: Option<i64> = sqlx::query_scalar("SELECT charged_micro_usd FROM ai_budget")
+        .fetch_optional(&fixture.database)
+        .await
+        .unwrap();
+    assert_eq!(charged, None);
     // Revocation status is checked again, so the same cached signing key cannot bypass re-enable.
     assert_eq!(
         result(fixture.request("allowed", "enabled").await).await["disposition"],
         "accepted"
     );
+    fixture.close().await;
+}
+
+#[tokio::test]
+#[ignore = "requires TEST_DATABASE_URL; HTTP against real isolated PostgreSQL"]
+async fn current_user_mismatch_and_session_lookup_failure_never_call_provider() {
+    let fixture = Fixture::new().await;
+    for mode in ["wrong_user", "permanent"] {
+        *fixture.remote.user_mode.lock().unwrap() = mode.into();
+        assert_eq!(
+            fixture.request("allowed", mode).await.status(),
+            StatusCode::UNAUTHORIZED
+        );
+    }
+    fixture.remote.user_mode.lock().unwrap().clear();
+    let mut payload = claims("allowed");
+    payload["session_id"] = json!("44444444-4444-4444-8444-444444444444");
+    let mut head = jsonwebtoken::Header::new(jsonwebtoken::Algorithm::RS256);
+    head.kid = Some("test".into());
+    let token = jsonwebtoken::encode(
+        &head,
+        &payload,
+        &jsonwebtoken::EncodingKey::from_rsa_pem(super::test_key::PRIVATE.as_bytes()).unwrap(),
+    )
+    .unwrap();
+    let response = fixture
+        .app
+        .clone()
+        .oneshot(
+            Request::post("/v1/suggestions")
+                .header("Content-Type", "application/json")
+                .header("Authorization", format!("Bearer {token}"))
+                .body(Body::from("{}"))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    sqlx::query("DROP FUNCTION smallnext_session_active(TEXT,TEXT)")
+        .execute(&fixture.database)
+        .await
+        .unwrap();
+    assert_eq!(
+        fixture
+            .request("allowed", "session-lookup-failed")
+            .await
+            .status(),
+        StatusCode::SERVICE_UNAVAILABLE
+    );
+    assert!(fixture.remote.calls.lock().unwrap().is_empty());
+    fixture.close().await;
+}
+
+#[tokio::test]
+#[ignore = "requires TEST_DATABASE_URL; HTTP against real isolated PostgreSQL"]
+async fn es256_anonymous_user_passes_current_account_and_session_checks() {
+    let fixture = Fixture::new().await;
+    let mut head = jsonwebtoken::Header::new(jsonwebtoken::Algorithm::ES256);
+    head.kid = Some("test-ec".into());
+    let token = jsonwebtoken::encode(
+        &head,
+        &claims("allowed"),
+        &jsonwebtoken::EncodingKey::from_ec_pem(super::test_key::EC_PRIVATE.as_bytes()).unwrap(),
+    )
+    .unwrap();
+    let input: serde_json::Value =
+        serde_json::from_str(include_str!("../../examples/development-ai-input.json")).unwrap();
+    let response = fixture
+        .app
+        .clone()
+        .oneshot(
+            Request::post("/v1/suggestions")
+                .header("Content-Type", "application/json")
+                .header("Authorization", format!("Bearer {token}"))
+                .body(Body::from(
+                    json!({"state_key":"ec-session", "input":input}).to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(result(response).await["disposition"], "accepted");
+    assert_eq!(fixture.remote.calls.lock().unwrap().len(), 2);
+    fixture.close().await;
+}
+
+#[tokio::test]
+#[ignore = "requires TEST_DATABASE_URL; runtime role against real isolated PostgreSQL"]
+async fn runtime_role_reserves_settles_and_blocks_budget_through_http() {
+    let mut fixture = Fixture::new().await;
+    // Only this synthetic session fixture needs a grant; managed Auth stays inaccessible.
+    sqlx::query("GRANT SELECT ON fixture_sessions TO smallnext_api")
+        .execute(&fixture.database)
+        .await
+        .unwrap();
+    let url = std::env::var("TEST_DATABASE_URL").unwrap();
+    let options: sqlx::postgres::PgConnectOptions = url.parse().unwrap();
+    let runtime = PgPoolOptions::new()
+        .max_connections(5)
+        .connect_with(options.options([
+            ("search_path", fixture.schema.as_str()),
+            ("role", "smallnext_api"),
+        ]))
+        .await
+        .unwrap();
+    fixture.app = super::router(Some(fixture.config.clone()), runtime.clone());
+    assert_eq!(
+        result(fixture.request("allowed", "runtime-accepted").await).await["disposition"],
+        "accepted"
+    );
+    let charged: i64 = sqlx::query_scalar("SELECT charged_micro_usd FROM ai_budget")
+        .fetch_one(&runtime)
+        .await
+        .unwrap();
+    assert!(charged > 0 && charged < fixture.config.budget_limit);
+    *fixture.remote.mode.lock().unwrap() = "overrun".into();
+    assert_eq!(
+        result(fixture.request("allowed", "runtime-overrun").await).await["disposition"],
+        "failed"
+    );
+    assert_eq!(
+        fixture.request("allowed", "runtime-blocked").await.status(),
+        StatusCode::TOO_MANY_REQUESTS
+    );
+    assert_eq!(fixture.remote.calls.lock().unwrap().len(), 3);
+    assert!(
+        sqlx::query("SELECT * FROM app_metadata")
+            .fetch_all(&runtime)
+            .await
+            .is_err()
+    );
+    assert!(
+        sqlx::query("SELECT * FROM _sqlx_migrations")
+            .fetch_all(&runtime)
+            .await
+            .is_err()
+    );
+    runtime.close().await;
     fixture.close().await;
 }
 
@@ -751,15 +952,38 @@ async fn cache_tokens_beyond_full_context_block_budget_after_restart() {
     fixture.close().await;
 }
 
-fn token(uid: &str) -> String {
+const SESSION: &str = "33333333-3333-4333-8333-333333333333";
+pub(super) fn identity(uid: &str) -> String {
+    match uid {
+        "allowed" => "11111111-1111-4111-8111-111111111111".into(),
+        "other" => "22222222-2222-4222-8222-222222222222".into(),
+        _ => "99999999-9999-4999-8999-999999999999".into(),
+    }
+}
+fn jwks() -> serde_json::Value {
+    let key = jsonwebtoken::EncodingKey::from_rsa_pem(super::test_key::PRIVATE.as_bytes()).unwrap();
+    let mut jwk =
+        jsonwebtoken::jwk::Jwk::from_encoding_key(&key, jsonwebtoken::Algorithm::RS256).unwrap();
+    jwk.common.key_id = Some("test".into());
+    let signing =
+        jsonwebtoken::EncodingKey::from_ec_pem(super::test_key::EC_PRIVATE.as_bytes()).unwrap();
+    let mut ec =
+        jsonwebtoken::jwk::Jwk::from_encoding_key(&signing, jsonwebtoken::Algorithm::ES256)
+            .unwrap();
+    ec.common.key_id = Some("test-ec".into());
+    json!({"keys":[jwk, ec]})
+}
+fn claims(uid: &str) -> serde_json::Value {
     let now = jsonwebtoken::get_current_timestamp();
+    json!({"sub":identity(uid),"aud":"authenticated", "iss":"https://test-project.supabase.co/auth/v1",
+        "iat":now,"exp":now+3600,"role":"authenticated","is_anonymous":true,"session_id":SESSION})
+}
+fn token(uid: &str) -> String {
     let mut header = jsonwebtoken::Header::new(jsonwebtoken::Algorithm::RS256);
     header.kid = Some("test".into());
     jsonwebtoken::encode(
         &header,
-        &json!({"sub":uid,"aud":"test-project",
-        "iss":"https://securetoken.google.com/test-project","iat":now,"exp":now+3600,
-        "auth_time":now,"firebase":{"sign_in_provider":"anonymous"}}),
+        &claims(uid),
         &jsonwebtoken::EncodingKey::from_rsa_pem(super::test_key::PRIVATE.as_bytes()).unwrap(),
     )
     .unwrap()
@@ -774,12 +998,7 @@ async fn wrong_project_signature_algorithm_expiry_and_subject_never_authorize() 
             listener,
             Router::new().route(
                 "/keys",
-                get(|| async {
-                    (
-                        [("Cache-Control", "max-age=300")],
-                        Json(json!({"test":super::test_key::CERTIFICATE})),
-                    )
-                }),
+                get(|| async { ([("Cache-Control", "max-age=300")], Json(jwks())) }),
             ),
         )
         .await
@@ -793,17 +1012,19 @@ async fn wrong_project_signature_algorithm_expiry_and_subject_never_authorize() 
         database,
     );
     let now = jsonwebtoken::get_current_timestamp();
-    let baseline = json!({"sub":"allowed","aud":"test-project","iss":"https://securetoken.google.com/test-project",
-        "iat":now,"exp":now+3600,"auth_time":now,"firebase":{"sign_in_provider":"anonymous"}});
+    let baseline = claims("allowed");
     for (field, value) in [
         ("aud", json!("wrong-project")),
-        ("aud", json!(["test-project"])),
+        ("aud", json!(["authenticated"])),
         ("iss", json!("https://securetoken.google.com/wrong")),
         ("exp", json!(now - 1)),
         ("iat", json!(now + 3600)),
-        ("auth_time", json!(now + 3600)),
+        ("nbf", json!(now + 3600)),
+        ("is_anonymous", json!(false)),
+        ("role", json!("anon")),
+        ("session_id", json!("bad-session")),
         ("sub", json!("")),
-        ("user_id", json!("other")),
+        ("sub", json!("not-a-uuid")),
     ] {
         let mut claims = baseline.clone();
         claims[field] = value;
@@ -931,10 +1152,7 @@ async fn signed_user_without_permission_cannot_reach_database_or_ai() {
             axum::Router::new().route(
                 "/keys",
                 axum::routing::get(|| async {
-                    (
-                        [("Cache-Control", "max-age=300")],
-                        axum::Json(json!({"test":super::test_key::CERTIFICATE})),
-                    )
+                    ([("Cache-Control", "max-age=300")], axum::Json(jwks()))
                 }),
             ),
         )

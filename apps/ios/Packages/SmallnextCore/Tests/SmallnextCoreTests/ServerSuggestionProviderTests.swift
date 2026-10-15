@@ -33,7 +33,7 @@ final class ServerSuggestionProviderTests: XCTestCase {
             "preserved_completed_ids":input["completed_ids"]!,"goal_completed":complete,"current_action_completed":complete]])
     }
 
-    func testFirebaseTokenAndServerPathPreserveAllCandidateTypes() async throws {
+    func testAuthTokenAndServerPathPreserveAllCandidateTypes() async throws {
         for (kind,status,expected) in [
             (SuggestionKind.firstAction,"action",SuggestionCandidate.action(ProposedAction(task:"펜 하나 옮기기",doneWhen:"펜이 펜꽂이에 있다",estimatedMinutes:1,marksGoalComplete:false))),
             (.smaller,"minimum",.minimalAction(ProposedAction(task:"펜 하나 옮기기",doneWhen:"펜이 펜꽂이에 있다",estimatedMinutes:1,marksGoalComplete:false))),

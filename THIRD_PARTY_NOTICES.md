@@ -16,9 +16,10 @@
 | 구성 요소 | 잠금 버전 | 조건과 출처 |
 | --- | --- | --- |
 | GRDB.swift | 7.11.1, `b83108d10f42680d78f23fe4d4d80fc88dab3212` | MIT. Copyright 2015–2025 Gwendal Roué. [해당 커밋의 LICENSE](https://github.com/groue/GRDB.swift/blob/b83108d10f42680d78f23fe4d4d80fc88dab3212/LICENSE) |
-| FirebaseCore / FirebaseAuth / FirebaseCrashlytics | 12.19.2, `8c29ca981990a32e626c8617544fa65d22b1834f` | Apache-2.0. [해당 커밋의 LICENSE](https://github.com/firebase/firebase-ios-sdk/blob/8c29ca981990a32e626c8617544fa65d22b1834f/LICENSE) |
+| FirebaseCore / FirebaseCrashlytics | 12.19.2, `8c29ca981990a32e626c8617544fa65d22b1834f` | Apache-2.0. [해당 커밋의 LICENSE](https://github.com/firebase/firebase-ios-sdk/blob/8c29ca981990a32e626c8617544fa65d22b1834f/LICENSE) |
+| Supabase Auth | 2.55.4, `fee4bd78997f8b4e919c1c9711e0cfb346fd7a55` | MIT. Copyright (c) 2021 Supabase. [해당 커밋의 LICENSE](https://github.com/supabase/supabase-swift/blob/fee4bd78997f8b4e919c1c9711e0cfb346fd7a55/LICENSE) |
 
-Firebase의 전이 의존성은 `Package.resolved`에 고정합니다. 앱은 FirebaseCore, FirebaseAuth와 FirebaseCrashlytics를 연결합니다.
+Firebase와 Supabase의 전이 의존성은 `Package.resolved`에 고정합니다. 앱은 FirebaseCore, FirebaseCrashlytics와 Supabase의 Auth product를 연결합니다.
 Analytics와 광고 제품은 연결하지 않습니다. 출시 시 실제 포함된 전이 의존성의 고지를 확인합니다.
 
 ## Rust API의 직접 의존성

@@ -3,6 +3,10 @@
 검증일: 2026-10-03 KST.
 검증 대상: `chore/initial-monorepo-setup` 작업 브랜치.
 
+아래 기록은 초기 셋업 당시의 결과입니다. 과거 Firebase 인증의 미확인 상태도 그대로 보존합니다.
+현재 인증·DB 계약은 [#168](https://github.com/minjunkim-dev/smallnext/issues/168)의 Supabase로 전환했습니다.
+2026-10-15 로컬 연결의 확인 범위와 남은 항목은 [서버 AI](SERVER_AI.md#supabase-free-연결-확인과-남은-조건)를 따릅니다.
+
 ## 로컬에서 통과한 검사
 
 | 대상 | 확인 결과 |

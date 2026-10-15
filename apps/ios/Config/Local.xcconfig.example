@@ -1,6 +1,14 @@
-// Copy to Local.xcconfig. Never commit the filled file.
+// Copy to Local.Debug.xcconfig for local development or Local.Release.xcconfig for production preparation.
+// Legacy Local.xcconfig is no longer loaded. Never commit a filled local file.
 // Use https:/$()/ instead of https:// because xcconfig treats // as a comment.
 SMALLNEXT_API_BASE_URL =
+SMALLNEXT_SUPABASE_URL =
+SMALLNEXT_SUPABASE_PUBLISHABLE_KEY =
+// Optional pair. Keep both empty while the server CAPTCHA setting is OFF.
+// URL is an HTTPS origin only. The app adds /auth/captcha/.
+SMALLNEXT_AUTH_CAPTCHA_URL =
+SMALLNEXT_TURNSTILE_SITE_KEY =
+// Optional: Crashlytics only. Auth uses Supabase.
 SMALLNEXT_FIREBASE_APP_ID =
 SMALLNEXT_FIREBASE_SENDER_ID =
 SMALLNEXT_FIREBASE_PROJECT_ID =

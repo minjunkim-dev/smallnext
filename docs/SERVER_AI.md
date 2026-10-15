@@ -1,7 +1,10 @@
 # 사용자용 서버 AI 실행과 검증
 
 인증·권한·철회·보관의 확정 답은 [#75](https://github.com/minjunkim-dev/smallnext/issues/75)에 있습니다.
-코드는 기본 OFF입니다. 서버 배포와 실제 Firebase 연결은 아직 검증하지 않았습니다.
+인증 공급자 변경은 [#168](https://github.com/minjunkim-dev/smallnext/issues/168)을 따릅니다.
+DB·인증의 선택 이유와 대안·제약은 [Supabase 선택 ADR](adr/0002-supabase-database-and-auth.md)에 기록합니다.
+코드는 기본 OFF입니다. Supabase Free 프로젝트의 DB·인증을 로컬에서 확인했습니다.
+실제 서버 배포와 앱에서 서버까지의 전체 인증 경로는 아직 검증하지 않았습니다.
 실제 API 품질·청구·지연은 [#47](https://github.com/minjunkim-dev/smallnext/issues/47)에서 검증합니다.
 사용자용 서버 모델 변경은 [#47의 Haiku 결정](https://github.com/minjunkim-dev/smallnext/issues/47#issuecomment-6074604866)을 따릅니다.
 추론 강도 변경은 [#47의 xhigh 승인과 검증 범위](https://github.com/minjunkim-dev/smallnext/issues/47#issuecomment-6075071867)를 따릅니다.
@@ -15,12 +18,16 @@
 공개 계약은 Rust에서 생성한 [OpenAPI](../contracts/openapi.json)가 기준입니다.
 `POST /v1/suggestions`는 `user_server_ai`가 ON일 때만 등록됩니다. OFF에서는 404입니다.
 요청은 `state_key`와 기존 `AiInput`을 포함합니다. 본문 전체의 한도는 32 KiB입니다.
-앱은 HTTPS의 `Authorization: Bearer`로 Firebase ID token을 보냅니다.
-서버는 RS256 서명, 발급자, 프로젝트, 만료, 발급·인증 시각, 주체와 익명 인증을 확인합니다.
-서버는 UID 허용 목록과 Firebase의 계정 비활성화·삭제·철회를 확인합니다.
-계정 상태는 각 요청에서 조회합니다. 조회 실패에서는 AI를 호출하지 않습니다.
-Firebase 공개 키와 서버 OAuth access token만 유효기간 동안 메모리에 캐시합니다.
-서버 OAuth는 Firebase 관리용 서비스 계정입니다. 개인 Codex OAuth와 다릅니다.
+앱은 HTTPS의 `Authorization: Bearer`로 Supabase access token을 보냅니다.
+서버는 프로젝트 JWKS의 ES256 또는 RS256 서명과 `iss`, `aud`, `exp`, `iat`, `sub`를 확인합니다.
+`role=authenticated`, `is_anonymous=true`와 유효한 `session_id`를 요구합니다. HS256 토큰은 허용하지 않습니다.
+서버는 UID 허용 목록을 확인합니다. 각 요청에서 Auth의 `/auth/v1/user`와 DB의 `smallnext_session_active`를 함께 조회합니다.
+계정 삭제·차단, 세션 로그아웃·만료 또는 조회 실패에서는 AI를 호출하지 않습니다.
+공개 JWKS만 응답의 유효기간 내 최대 10분 동안 메모리에 캐시합니다. 계정·세션 판정은 캐시하지 않습니다.
+서버는 공개 publishable key를 사용합니다. Firebase 서비스 계정·Supabase secret key·개인 Codex OAuth를 사용하지 않습니다.
+DB는 기존 Rust 서버가 TLS PostgreSQL로 직접 연결합니다. Data API와 Storage는 사용하지 않습니다.
+앱 테이블에는 RLS를 적용합니다. `anon`, `authenticated`, `service_role`의 앱 테이블 접근과 인증 확인 함수 실행을 차단합니다.
+운영용 DB LOGIN 역할과 최소 권한은 #164 전에 사람이 검토합니다. 관리용 DB 연결 확인은 운영용 권한 승인과 다릅니다.
 
 서버는 요청자 UID·목표 상태 키·요청 종류의 활성 요청을 PostgreSQL transaction advisory lock으로 제한합니다.
 다른 사용자도 공유 개인 검증 예산을 사용합니다. 이 한도는 일반 사용자 서비스 요금이 아닙니다.
@@ -56,20 +63,21 @@ Firebase 공개 키와 서버 OAuth access token만 유효기간 동안 메모�
 초기 실행 한도는 첫 평가 3 USD로 더 좁게 제한합니다. 월 개인 검증 최대 10 USD를 늘리지 않습니다.
 초기 평가 이후 추가 실행 범위는 #47에서 정합니다. 한도 변경으로 예약 비용을 초기화하지 않습니다.
 
-요청 메타데이터와 UID·목표·자료·AI 응답·인증 토큰 원문을 DB나 운영 로그에 저장하지 않습니다.
+요청 메타데이터와 UID·목표·자료·AI 응답·인증 토큰 원문을 애플리케이션 테이블이나 운영 로그에 저장하지 않습니다.
+Supabase 관리 Auth schema의 익명 계정·세션 정보는 인증에 사용합니다. 목표와 진행 상태는 이 schema에 넣지 않습니다.
 역할별 사용량은 요청 응답에서만 확인합니다. 이 구현의 요청 메타데이터 보관 기간은 0일입니다.
 DB에는 현재 UTC 월의 합계와 초과 차단 상태 하나만 저장합니다.
 이전 월의 합계는 서버 시작과 실행 중 매분 삭제합니다. OFF에서도 삭제를 수행합니다.
 배포자는 API가 중지된 때에도 월 경계의 삭제 작업을 실행해야 합니다.
 배포 전 월 경계의 스케줄러와 DB 백업 보관 범위를 확인합니다.
 월 삭제 바이너리와 호스트 timer 정의를 제공합니다. 실제 서버의 등록·실행은 아직 검증하지 않았습니다.
-환경 파일·서비스 계정 배치·AI OFF 배포·월 삭제 일정·되돌리기는 [운영 runbook](PRODUCTION.md)을 따릅니다.
+환경 파일·DB 권한 준비·AI OFF 배포·월 삭제 일정·되돌리기는 [운영 runbook](PRODUCTION.md)을 따릅니다.
 
 ## 실제 연결 전에 설정할 값
 
 1. `.env.example`의 사용자용 항목을 로컬 비밀정보 제공 경로에 설정합니다. 기존 `.env`를 덮어쓰지 마십시오.
-2. `FIREBASE_PROJECT_ID`와 실제 허용 UID 목록을 설정합니다. `AI_ALLOWED_FIREBASE_UIDS`는 쉼표로 구분합니다.
-3. 같은 프로젝트의 서비스 계정 파일 경로를 설정합니다. 최소 권한 `firebaseauth.users.get`을 확인합니다. 파일을 앱·이미지·Git에 넣지 마십시오.
+2. `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`와 실제 허용 UID 목록을 설정합니다. `AI_ALLOWED_SUPABASE_UIDS`는 쉼표로 구분합니다.
+3. 비대칭 JWT 서명 키, 익명 인증과 서버 전용 DB 권한을 확인합니다. Data API는 OFF로 유지합니다. DB 비밀번호와 제공사 키를 앱·이미지·Git에 넣지 마십시오.
 4. #47에서 `claude-haiku-5-5 / xhigh`의 계정 API 접근, 현재 단가와 전송·보관 조건을 확인합니다. `ANTHROPIC_API_KEY`는 서버에만 설정합니다.
 5. 확인 근거를 남긴 뒤 `AI_MODEL_CONFIRMED=1`과 `USER_SERVER_AI=1`을 설정합니다. 첫 평가 합계는 3 USD 이하로 유지합니다.
 
@@ -84,7 +92,7 @@ DB에는 현재 UTC 월의 합계와 초과 차단 상태 하나만 저장합니
 필수 값이 없거나 두 호출 예약이 평가 예산보다 크면 서버 시작을 거부합니다.
 `USER_SERVER_AI=0`은 정적 기본값보다 우선합니다. 잘못된 명시 값도 OFF입니다.
 `AI_MODEL_CONFIRMED=1`은 확인 기록을 대신하지 않습니다. 모의 응답으로 API 가용성을 확인했다고 보고하지 마십시오.
-TLS·서버 주소·허용 사용자·IAM·삭제 스케줄러를 준비하기 전에는 사용자용 서버를 공개하지 마십시오.
+TLS·서버 주소·허용 사용자·DB 최소 권한·삭제 스케줄러를 준비하기 전에는 사용자용 서버를 공개하지 마십시오.
 제공사 요청은 Anthropic Messages의 단일 user message와 JSON schema 출력입니다.
 `tools=[]`, `stream=false`, `service_tier=standard_only`를 지정합니다. cache_control과 사용자 식별 메타데이터를 보내지 않습니다.
 OpenAI 전용 `store`·`background` 필드는 보내지 않습니다. 제공사의 보관을 끄는 요청 옵션으로 보고하지 마십시오.
@@ -94,27 +102,32 @@ OpenAI 전용 `store`·`background` 필드는 보내지 않습니다. 제공사�
 
 ## iOS 연결
 
-FirebaseAuth와 FirebaseCore 12.19.2를 사용합니다. Analytics 제품은 앱에 연결하지 않습니다.
-Firebase가 익명 계정과 토큰 갱신·Keychain 보관을 관리합니다. 앱의 진행 상태는 GRDB에 유지합니다.
+Supabase Swift SDK 2.55.4의 Auth product를 사용합니다.
+SDK가 익명 계정·요청 시 토큰 갱신·Keychain 보관을 관리합니다. 앱의 진행 상태는 GRDB에 유지합니다.
+설정 오류와 OFF 경로에서는 Auth client를 만들지 않습니다. 동시 익명 로그인은 한 번으로 합칩니다.
+취소 뒤 토큰을 반환하지 않습니다. Keychain 읽기·쓰기 오류에서는 인증을 차단합니다.
+익명 계정을 유실하면 새 계정을 만들고 허용 UID를 다시 등록할 수 있습니다. 기기의 목표·진행 상태는 유지합니다.
+FirebaseCore와 FirebaseCrashlytics는 Crashlytics에만 유지합니다. Analytics와 FirebaseAuth는 앱에 연결하지 않습니다.
 서버 401 뒤에는 같은 AI 요청을 자동 재전송하지 않습니다.
-`apps/ios/Config/Local.xcconfig.example`을 `apps/ios/Config/Local.xcconfig`로 복사합니다.
+`apps/ios/Config/Local.xcconfig.example`을 운영 준비에는 `Local.Release.xcconfig`로 복사합니다.
+개발용 설정은 같은 폴더의 `Local.Debug.xcconfig`로 분리합니다. 운영 설정을 개발 파일에 복사하지 마십시오.
 실제 파일은 Git에서 제외합니다. 저장소에는 값 없는 예시 파일만 유지합니다.
-다음 Xcode build settings에 해당 Firebase 앱의 공개 client 설정을 넣습니다.
-서버의 제공사 API 키와 서비스 계정 파일은 이 설정에 넣지 않습니다.
+다음 Xcode build settings에 Supabase의 공개 client 설정을 넣습니다.
+서버의 제공사 키·DB 비밀번호·Supabase secret key는 이 설정에 넣지 않습니다.
 
 | 설정 | 값 |
 | --- | --- |
 | `SMALLNEXT_API_BASE_URL` | 경로·쿼리·사용자 정보가 없는 HTTPS 서버 원점 |
-| `SMALLNEXT_FIREBASE_APP_ID` | 등록한 iOS Firebase app ID |
-| `SMALLNEXT_FIREBASE_SENDER_ID` | 같은 app ID의 숫자 sender ID |
-| `SMALLNEXT_FIREBASE_PROJECT_ID` | 서버와 같은 Firebase project ID |
-| `SMALLNEXT_FIREBASE_API_KEY` | Firebase client API key; 서버 AI 제공사 키가 아님 |
+| `SMALLNEXT_SUPABASE_URL` | 경로·쿼리·사용자 정보가 없는 HTTPS 프로젝트 원점 |
+| `SMALLNEXT_SUPABASE_PUBLISHABLE_KEY` | `sb_publishable_` 공개 key; secret key는 사용하지 않음 |
 
-`SMALLNEXT_API_BASE_URL`의 `https://`는 xcconfig에서 `https:/$()/`로 씁니다.
+선택적인 `SMALLNEXT_FIREBASE_*` 설정은 Crashlytics에만 사용합니다. 인증 설정과 분리합니다.
+
+두 URL의 `https://`는 xcconfig에서 `https:/$()/`로 씁니다.
 xcconfig는 `//` 뒤를 주석으로 처리합니다. `$()`는 빌드 때 빈 문자열로 확장됩니다.
 다른 값에는 따옴표·줄바꿈·build setting 확장을 넣지 않습니다.
-`Config/Build.xcconfig`가 로컬 파일을 선택적으로 읽습니다.
-Debug와 Release는 같은 로컬 값을 Info.plist에 넣습니다.
+`Config/Debug.xcconfig`와 `Config/Release.xcconfig`가 각각 해당 로컬 파일만 읽습니다.
+공통 `Local.xcconfig`는 더 이상 읽지 않습니다. 이전 값을 필요한 환경 파일로 직접 옮깁니다.
 로컬 파일이 없어도 Debug·Release·CI 빌드는 성공합니다.
 로컬 설정은 기능 플래그를 켜지 않습니다. 모든 기능 플래그 기본값은 OFF로 유지합니다.
 Release는 기존 `Config/Release.plist`를 사용합니다. Debug의 평문 HTTP·로컬 네트워크 예외를 포함하지 않습니다.
@@ -134,9 +147,9 @@ make api-test-db
 make ios-check IOS_SIMULATOR='iPhone 18 Pro'
 ```
 
-일반 API 검사는 실제 서비스 계정과 키를 사용하지 않습니다.
+일반 API 검사는 실제 프로젝트·UID·토큰·키를 사용하지 않습니다.
 DB 검사는 `TEST_DATABASE_URL`의 격리 schema에서 HTTP 경계를 검증합니다.
-합성 RSA 키·Firebase 키 응답·계정 상태·제공사 응답을 사용합니다.
+합성 RSA·EC 키, Supabase JWKS·계정 응답·세션 상태·제공사 응답을 사용합니다.
 정상·거부·불확실·잘못된 구조·위조 토큰·철회·예산 경합·재시작·취소를 확인합니다.
 생성 결정 5필드와 검사 결정 3필드를 공개 응답으로 변환합니다. 남은 작업·완료 ID와 두 미완료 플래그는 서버가 보존합니다.
 `smaller`의 `need_info`만 질문 검사 지침을 사용합니다. 다섯 기준과 최종 보존 검사를 유지합니다.
@@ -144,13 +157,33 @@ DB 검사는 `TEST_DATABASE_URL`의 격리 schema에서 HTTP 경계를 검증합
 진단 기록에는 역할·고정 오류 분류·허용 필드 이름만 남깁니다. 모델 원문은 남기지 않습니다.
 이 계약은 모의 Messages 전송에서 검증합니다. 실제 공급자의 schema 지원과 품질·응답 시간은 이 검사로 증명하지 않습니다.
 앱 공급자 검사는 인증·전송 오류에서 재시도하지 않는지와 기존 후보 매핑을 확인합니다.
-실제 Firebase 프로젝트·서버 IAM·API 청구·배포·실기기 검사는 별도로 남깁니다.
+실제 앱·서버의 인증 연결·운영 DB 권한·API 청구·배포·실기기 검사는 별도로 남깁니다.
+
+## Supabase Free 연결 확인과 남은 조건
+
+2026-10-15에 Free 프로젝트·익명 인증·Data API OFF·자동 RLS ON을 확인했습니다.
+실제 DB에서 TLS `SELECT 1`과 마이그레이션 0001~0004 적용을 확인했습니다.
+이 DB에 연결한 로컬 Rust API의 AI OFF 응답은 `/health` 200·`/ready` 200·AI 경로 404였습니다.
+클라이언트 세 역할의 앱 테이블 CRUD와 인증 확인 함수 실행 권한이 없음을 확인했습니다.
+실제 익명 계정 생성·현재 사용자 조회·DB 세션 활성 판정을 확인했습니다. 로그아웃 뒤 DB 함수는 비활성으로 판정했습니다.
+시험 익명 계정 1개는 남아 있습니다. 시험 세션은 로그아웃했습니다.
+이 결과는 실제 서버 배포·iOS 실기기·AI ON 전체 경로를 증명하지 않습니다.
+#162 전체 wizard 실행과 #164 배포는 보류합니다.
+2026-10-16에 SSL 강제 ON·공식 CA를 사용하는 `verify-full` 연결·비암호화 접속 거부를 확인했습니다.
+Email 인증은 OFF로 저장했습니다. 익명 인증과 IP당 시간당 30회 제한은 유지했습니다.
+관리자 MFA 등록을 확인했습니다. 마이그레이션 0005와 runtime·backup의 별도 LOGIN을 적용했습니다.
+runtime과 backup의 허용 권한 및 auth 테이블 직접 접근 차단을 확인했습니다.
+읽기 전용 예산 백업을 Mac의 Git 밖 폴더에 암호화했습니다. 격리한 로컬 PostgreSQL에서 복원을 검사했습니다.
+복원 뒤 현재 UTC 월은 차단 상태를 유지합니다. 복구 키의 별도 안전한 복사본은 사람이 보관해야 합니다.
+자동 백업·만료·실패 알림·RPO/RTO의 실제 운영 검증은 아직 수행하지 않았습니다.
+도메인 준비 후 CAPTCHA를 실제 검증하고 켭니다. 운영 IP 제한은 #164 전에 적용합니다.
+확정한 백업 조건과 역할별 파일 경로는 [운영 runbook](PRODUCTION.md)을 따릅니다.
 
 ## 공식 계약
 
-- [Firebase ID token 검증](https://firebase.google.com/docs/auth/admin/verify-id-tokens)
-- [Firebase 철회 확인](https://firebase.google.com/docs/auth/admin/manage-sessions)
-- [Firebase 계정 조회](https://docs.cloud.google.com/identity-platform/docs/reference/rest/v1/projects.accounts/lookup)
+- [Supabase JWT와 JWKS](https://supabase.com/docs/guides/auth/jwts)
+- [Supabase 익명 인증](https://supabase.com/docs/guides/auth/auth-anonymous)
+- [Supabase 세션](https://supabase.com/docs/guides/auth/sessions)
 - [Anthropic Messages 요청·응답·사용량](https://platform.claude.com/docs/en/api/messages/create)
 - [Haiku 5.5 모델·가격·한도](https://platform.claude.com/docs/en/models/haiku-5-5/overview)
 - [추론 강도](https://platform.claude.com/docs/en/build-with-claude/effort)

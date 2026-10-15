@@ -29,10 +29,12 @@ args=()
 if [ -n "${IOS_PACKAGES_DIR:-}" ]; then args+=(-clonedSourcePackagesDirPath "$IOS_PACKAGES_DIR"); fi
 if [ -n "${IOS_DERIVED_DATA:-}" ]; then args+=(-derivedDataPath "$IOS_DERIVED_DATA"); fi
 build_started=$SECONDS
+# Ad-hoc simulator signing enables Keychain entitlements without a developer account.
 xcodebuild -project apps/ios/Smallnext.xcodeproj -scheme Smallnext \
   -destination 'generic/platform=iOS Simulator' ${args[@]+"${args[@]}"} \
   -onlyUsePackageVersionsFromResolvedFile -skipPackageUpdates -showBuildTimingSummary \
-  ARCHS="$(uname -m)" ONLY_ACTIVE_ARCH=YES CODE_SIGNING_ALLOWED=NO build-for-testing
+  ARCHS="$(uname -m)" ONLY_ACTIVE_ARCH=YES \
+  CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- CODE_SIGNING_REQUIRED=NO build-for-testing
 printf 'iOS build-for-testing: %ss\n' "$((SECONDS - build_started))"
 if [ "$simulator_tests" = 0 ]; then
   echo 'iOS simulator tests: skipped (IOS_SIMULATOR_TESTS=0)'
@@ -44,5 +46,6 @@ if [ -n "${IOS_RESULTS:-}" ]; then args+=(-resultBundlePath "$IOS_RESULTS"); fi
 test_started=$SECONDS
 xcodebuild -project apps/ios/Smallnext.xcodeproj -scheme Smallnext \
   -destination "platform=iOS Simulator,id=$simulator" ${args[@]+"${args[@]}"} \
-  -onlyUsePackageVersionsFromResolvedFile -skipPackageUpdates CODE_SIGNING_ALLOWED=NO test-without-building
+  -onlyUsePackageVersionsFromResolvedFile -skipPackageUpdates \
+  CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- CODE_SIGNING_REQUIRED=NO test-without-building
 printf 'iOS test-without-building: %ss\n' "$((SECONDS - test_started))"

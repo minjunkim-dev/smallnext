@@ -16,9 +16,9 @@
 Android는 기본 실행과 저장 검증을 함께 수행합니다.
 현재 두 앱에는 시작 화면과 DB 초기화만 있습니다.
 iOS 핵심 흐름과 개발 AI 연결은 기본 OFF로 구현했습니다.
-사용자용 서버 AI와 Firebase 익명 인증의 설정·검증은 [SERVER_AI](SERVER_AI.md)를 따릅니다.
+사용자용 서버 AI와 Supabase 익명 인증의 설정·검증은 [SERVER_AI](SERVER_AI.md)를 따릅니다.
 iOS Crashlytics의 로컬 실행과 심볼 업로드는 [CRASHLYTICS](CRASHLYTICS.md)를 따릅니다.
-실제 Firebase 연결·API 평가·동기화·배포는 별도 작업입니다.
+Supabase DB·인증의 로컬 연결은 확인했습니다. 실제 앱·서버 전체 경로·API 평가·동기화·배포는 별도 작업입니다.
 
 ## 필요한 도구
 
@@ -172,18 +172,22 @@ Release는 HTTP 공급자와 설정 코드를 제외합니다. 평문 HTTP 허�
 
 `apps/ios/Smallnext.xcodeproj`를 Xcode에서 엽니다.
 `Smallnext` scheme과 iPhone 시뮬레이터를 선택한 뒤 실행합니다.
+Debug는 `Config/Local.Debug.xcconfig`만 읽습니다. Release는 `Config/Local.Release.xcconfig`만 읽습니다.
+`Config/Local.xcconfig.example`을 필요한 환경의 파일로 복사합니다. 실제 파일은 Git에서 제외합니다.
+운영 Supabase 설정은 Release에만 둡니다. 개발·CI는 로컬 PostgreSQL과 모의 인증을 사용합니다.
+공통 `Local.xcconfig`는 더 이상 읽지 않습니다.
 서명 팀 없이 시뮬레이터에서 실행할 수 있습니다.
 GRDB 버전과 Git 커밋은 `Package.resolved`에 고정했습니다.
 
-시뮬레이터와 Firebase가 필요 없는 로직은 로컬 패키지 `apps/ios/Packages/SmallnextCore`에 있습니다.
-앱 target은 화면, Firebase 연동, 앱 시작 코드만 가집니다. 로직 테스트는 시뮬레이터 없이 실행합니다.
+시뮬레이터와 인증 SDK가 필요 없는 로직은 로컬 패키지 `apps/ios/Packages/SmallnextCore`에 있습니다.
+앱 target은 화면, Supabase Auth·Crashlytics 연동, 앱 시작 코드만 가집니다. 로직 테스트는 시뮬레이터 없이 실행합니다.
 
 ```sh
 swift test --package-path apps/ios/Packages/SmallnextCore
 ```
 
 패키지의 `Package.resolved`와 Xcode 프로젝트의 `Package.resolved`는 같은 GRDB 커밋을 고정합니다. GRDB를 올릴 때 둘을 함께 갱신합니다.
-번들 리소스, Info.plist, Firebase를 쓰는 테스트는 `apps/ios/Tests`의 앱 호스트 테스트에 둡니다.
+번들 리소스, Info.plist, Supabase Auth·Keychain·Crashlytics를 쓰는 테스트는 `apps/ios/Tests`의 앱 호스트 테스트에 둡니다.
 
 사용자 iPhone에서 핵심 흐름을 확인할 때는 [실기기 검증 절차](IOS_DEVICE_VALIDATION.md)를 따릅니다.
 설치, 저장 복구, 접근성과 모션 값의 결과는 [#61](https://github.com/minjunkim-dev/smallnext/issues/61)에 기록합니다.
@@ -192,12 +196,14 @@ CLI 검사에서는 설치한 시뮬레이터 이름을 지정합니다.
 
 ```sh
 make ios-check IOS_SIMULATOR='iPhone 18 Pro'
+node --test apps/ios/scripts/test-turnstile-page.cjs
 ```
 
 커밋한 Xcode 프로젝트를 바로 사용할 수 있습니다.
 검사는 iOS 27.0 runtime에 있는 iPhone만 선택합니다.
 `IOS_SIMULATOR`를 생략하면 해당 runtime의 기기를 자동 선택합니다.
 다른 runtime의 부팅한 기기는 대신 사용하지 않습니다.
+시뮬레이터 빌드는 Keychain 권한을 적용하기 위해 ad-hoc 서명을 사용합니다. 개발자 계정과 서명 private key는 사용하지 않습니다.
 고정 Xcode가 `/Applications/Xcode_27.0.app`에 있으면 검사에서 자동 선택합니다.
 다른 경로이면 `DEVELOPER_DIR`을 해당 Xcode의 `Contents/Developer` 경로로 지정합니다.
 전역 `xcode-select` 설정은 변경하지 않습니다.
@@ -221,7 +227,7 @@ xcrun simctl launch booted dev.smallnext.app -ios_core_flow YES
 
 Debug 빌드는 서버 주소가 없으면 고정 제안 공급자를 사용합니다. 서버 주소가 있으면 위 HTTP 공급자를 사용합니다.
 사용자용 서버 AI가 OFF인 Release 빌드는 `사용 불가`를 반환합니다.
-사용자용 서버 AI의 별도 플래그와 HTTPS·Firebase 설정은 [SERVER_AI](SERVER_AI.md)를 따릅니다.
+사용자용 서버 AI의 별도 플래그와 HTTPS·Supabase 설정은 [SERVER_AI](SERVER_AI.md)를 따릅니다.
 
 ## Android
 
@@ -281,7 +287,7 @@ Room이 생성한 스키마 JSON의 마지막 줄 형식은 생성기 출력을 
 ## 운영 템플릿
 
 준비 wizard·이미지 묶음 배포·AI OFF 확인·월 삭제 일정·되돌리기는 [운영 runbook](PRODUCTION.md)을 따릅니다.
-아래 로컬 검사는 실제 서버·공인 TLS·Firebase·유료 API를 검증하지 않습니다.
+아래 로컬 검사는 실제 서버·공인 TLS·실제 Supabase 인증·유료 API를 검증하지 않습니다.
 
 아래 명령은 구성만 검사합니다. 운영 서비스를 시작하지 않습니다.
 
