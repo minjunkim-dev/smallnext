@@ -14,7 +14,7 @@ class CrlfPathsTests(unittest.TestCase):
         self.addCleanup(folder.cleanup)
         self.root = Path(folder.name).resolve()
         self.git("init", "-q")
-        (self.root / ".gitattributes").write_bytes(b"* text=auto eol=lf\n")
+        (self.root / ".gitattributes").write_bytes(b"* text=auto eol=lf\n*.pdf binary\n")
         self.git("add", ".gitattributes")
 
     def git(self, *args, stdin=None):
@@ -32,9 +32,10 @@ class CrlfPathsTests(unittest.TestCase):
         self.stage_raw("gradlew", b"#!/bin/sh\n")
         self.assertEqual(crlf_paths(self.root), ["gradlew.bat"])
 
-    def test_reports_untracked_crlf_and_ignores_lf(self):
+    def test_reports_untracked_crlf_and_ignores_lf_and_binary(self):
         (self.root / "notes.txt").write_bytes(b"a\r\nb\n")
         (self.root / "ok.txt").write_bytes(b"a\nb\n")
+        (self.root / "fixture.pdf").write_bytes(b"%PDF\r\n")
         self.assertEqual(crlf_paths(self.root), ["notes.txt"])
 
 

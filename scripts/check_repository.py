@@ -33,8 +33,9 @@ def crlf_paths(root):
     found = []
     for entry in filter(None, listing.split("\0")):
         info, name = entry.split("\t", 1)
+        fields = info.split()
         # Bot commits made through the API skip .gitattributes normalization.
-        if {"i/crlf", "i/mixed", "w/crlf", "w/mixed"} & set(info.split()[:2]):
+        if "attr/-text" not in fields and {"i/crlf", "i/mixed", "w/crlf", "w/mixed"} & set(fields[:2]):
             found.append(name)
     return found
 
