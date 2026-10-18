@@ -45,12 +45,16 @@ def read_api(endpoint):
 def codeql_source_drift(profile):
     """Offline PR check: the pinned main blob must match the checked-out workflow,
     and every github/codeql-action step must use one commit (init and analyze fail apart)."""
-    source = profile["expected"]["codeql_main_source"]
+    source = profile["expected"].get("codeql_main_source")
+    if source is None:  # default setup: no workflow file to pin
+        return []
     data = (ROOT / source["path"]).read_bytes()
     blob = hashlib.sha1(b"blob %d\0" % len(data) + data).hexdigest()
     result = [] if blob == source["sha"] else ["codeql_main_source.sha"]
-    pins = set(re.findall(rb"github/codeql-action/[\w-]+@([0-9a-f]{40})\b", data))
-    return result + (["codeql_workflow.action_pins"] if len(pins) > 1 else [])
+    refs = {ref.lower() for ref in re.findall(
+        rb"^\s*(?:-\s+)?uses:\s*[\"']?github/codeql-action/[\w-]+@([^\s\"'#]+)", data, re.MULTILINE)}
+    pinned = len(refs) == 1 and re.fullmatch(rb"[0-9a-f]{40}", next(iter(refs)))
+    return result + ([] if pinned or not refs else ["codeql_workflow.action_pins"])
 
 
 # Required controls cannot disappear when someone edits the baseline.
@@ -68,6 +72,8 @@ REQUIRED_FIELDS = {
     "codeql_workflow": "path state",
     "codeql_main_source": "path type sha",
 }
+# Only advanced setup has a workflow file; default setup must not list it.
+ADVANCED_CODEQL = {"codeql_workflow", "codeql_main_source"}
 STRING_FIELDS = {
     "default_branch", "visibility", "squash_merge_commit_title", "squash_merge_commit_message",
     "status", "allowed_actions", "default_workflow_permissions", "approval_policy", "state", "path", "type", "sha",
@@ -78,9 +84,16 @@ def validate_profile(profile):
     if not isinstance(profile, dict):
         raise ValueError("Baseline must be an object")
     expected = profile.get("expected")
-    if not isinstance(expected, dict) or set(expected) != set(REQUIRED_FIELDS):
+    if not isinstance(expected, dict):
+        raise ValueError("Baseline must include every required control")
+    codeql = expected.get("codeql")
+    default_setup = isinstance(codeql, dict) and codeql.get("state") == "configured"
+    required = set(REQUIRED_FIELDS) - ADVANCED_CODEQL if default_setup else set(REQUIRED_FIELDS)
+    if set(expected) != required:
         raise ValueError("Baseline must include every required control")
     for control, fields in REQUIRED_FIELDS.items():
+        if control not in required:
+            continue
         value = expected[control]
         if control == "rulesets":
             if not isinstance(value, list):

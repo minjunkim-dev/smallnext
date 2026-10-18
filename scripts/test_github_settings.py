@@ -48,14 +48,32 @@ class GitHubSettingsTests(unittest.TestCase):
             workflow = Path(folder) / BASELINE["expected"]["codeql_main_source"]["path"]
             workflow.parent.mkdir(parents=True)
             profile = copy.deepcopy(BASELINE)
-            for analyze, expected in [("a" * 40, []), ("b" * 40, ["codeql_workflow.action_pins"])]:
-                data = (f"- uses: github/codeql-action/init@{'a' * 40} # v4\n"
-                        f"- uses: github/codeql-action/analyze@{analyze} # v4\n").encode()
+            mismatch = ["codeql_workflow.action_pins"]
+            cases = [
+                (f"- uses: github/codeql-action/analyze@{'a' * 40} # v4\n", []),
+                (f"- uses: 'github/codeql-action/analyze@{'A' * 40}'\n", []),
+                (f"# was github/codeql-action/analyze@{'c' * 40}\n"
+                 f"- uses: github/codeql-action/analyze@{'a' * 40}\n", []),
+                (f"- uses: github/codeql-action/analyze@{'b' * 40} # v4\n", mismatch),
+                ("- uses: github/codeql-action/analyze@v4\n", mismatch),
+            ]
+            for analyze, expected in cases:
+                data = (f"- uses: github/codeql-action/init@{'a' * 40} # v4\n" + analyze).encode()
                 workflow.write_bytes(data)
                 profile["expected"]["codeql_main_source"]["sha"] = settings.hashlib.sha1(
                     b"blob %d\0" % len(data) + data).hexdigest()
                 with self.subTest(analyze=analyze), patch.object(settings, "ROOT", Path(folder)):
                     self.assertEqual(codeql_source_drift(profile), expected)
+
+    def test_default_setup_profile_has_no_workflow_controls(self):
+        profile = copy.deepcopy(BASELINE)
+        profile["expected"]["codeql"] = {"state": "configured"}
+        with self.assertRaisesRegex(ValueError, "every required control"):
+            settings.validate_profile(profile)
+        for name in settings.ADVANCED_CODEQL:
+            del profile["expected"][name]
+        settings.validate_profile(profile)
+        self.assertEqual(codeql_source_drift(profile), [])
 
     def profile(self):
         profile = copy.deepcopy(BASELINE)
