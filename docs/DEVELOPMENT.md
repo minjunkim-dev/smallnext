@@ -7,7 +7,7 @@
 | 대상 | 구성 |
 | --- | --- |
 | iOS | SwiftUI, GRDB 7.11.1, URLSession |
-| Android | Compose, Room 2.8.5, Retrofit 3.0.0, OkHttp 4.12.0 |
+| Android | Compose, Room 2.8.5, Retrofit 3.0.0, OkHttp 5.5.0 |
 | API | Rust 1.98.0, Axum, Tokio, Serde, SQLx, utoipa, tracing |
 | 개발 DB | PostgreSQL 18, Docker Compose |
 | 운영 템플릿 | Caddy, API 컨테이너, 외부 관리형 PostgreSQL |
