@@ -51,10 +51,40 @@ def codeql_source_drift(profile):
     data = (ROOT / source["path"]).read_bytes()
     blob = hashlib.sha1(b"blob %d\0" % len(data) + data).hexdigest()
     result = [] if blob == source["sha"] else ["codeql_main_source.sha"]
-    refs = {ref.lower() for ref in re.findall(
-        rb"^\s*(?:-\s+)?uses:\s*[\"']?github/codeql-action/[\w-]+@([^\s\"'#]+)", data, re.MULTILINE)}
-    pinned = len(refs) == 1 and re.fullmatch(rb"[0-9a-f]{40}", next(iter(refs)))
+    refs = set(codeql_action_refs(data.decode("utf-8")))
+    pinned = len(refs) == 1 and re.fullmatch(r"[0-9a-f]{40}", next(iter(refs)))
     return result + ([] if pinned or not refs else ["codeql_workflow.action_pins"])
+
+
+def codeql_action_refs(text):
+    """Refs of github/codeql-action steps, from step-level `uses:` keys only.
+    `run:` block text and `with:` inputs sit deeper than a step's keys, so they are skipped."""
+    refs, keys, block = [], None, None
+    for raw in text.splitlines():
+        line = "" if raw.lstrip().startswith("#") else raw.split(" #", 1)[0].rstrip()
+        if not line.strip():
+            continue
+        indent = len(line) - len(line.lstrip())
+        if block is not None and indent > block:
+            continue
+        block = None
+        item = re.match(r"(\s*)-\s+(\S.*)", line)
+        if item:  # a sequence item; its mapping keys start after "- "
+            indent = keys = len(item[1]) + 2
+            line = item[2]
+        match = re.match(r"[\"']?([\w-]+)[\"']?\s*:\s*(.*)", line.strip())
+        if not match:
+            continue
+        key, value = match[1], match[2].strip()
+        if value[:1] in ("|", ">"):
+            block = indent
+        if key == "uses" and indent == keys:
+            value = value.strip("\"'")
+            if value[:1] in ("|", ">"):
+                refs.append(value)  # a folded value cannot be read here; never treat it as pinned
+            elif value.startswith("github/codeql-action/"):
+                refs.append(value.partition("@")[2].lower())
+    return refs
 
 
 # Required controls cannot disappear when someone edits the baseline.
