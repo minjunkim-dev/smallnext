@@ -56,22 +56,41 @@ def codeql_source_drift(profile):
     return result + ([] if pinned or not refs else ["codeql_workflow.action_pins"])
 
 
+def strip_comment(line):
+    """Drop a YAML comment: a `#` at line start or after whitespace, outside quotes."""
+    quote = None
+    for i, char in enumerate(line):
+        if quote:
+            if char == "\\" and quote == '"':
+                continue
+            if char == quote and not (quote == '"' and i and line[i - 1] == "\\"):
+                quote = None
+        elif char in "'\"":
+            quote = char
+        elif char == "#" and (i == 0 or line[i - 1].isspace()):
+            return line[:i].rstrip()
+    return line.rstrip()
+
+
 def codeql_action_refs(text):
     """Every github/codeql-action ref outside comments and block-scalar text (`run:` scripts).
-    YAML structure is not parsed, so no step syntax can hide a ref. A ref that cannot be read,
-    or a `uses:` given as a block scalar, counts as unpinned and fails the check."""
+    YAML structure is not parsed, so step layout cannot hide a ref. A ref that cannot be read,
+    or a `uses:` given as a block scalar, counts as unpinned and fails the check.
+    shortcut: escapes or line continuation inside quoted scalars are not decoded; this guards
+    honest edits (Dependabot, people, agents), not a hostile author who could edit this file."""
     refs, block = [], None
     for raw in text.splitlines():
-        line = "" if raw.lstrip().startswith("#") else raw.split(" #", 1)[0].rstrip()
+        line = strip_comment(raw)
         if not line.strip():
             continue
         indent = len(line) - len(line.lstrip())
         if block is not None and indent > block:
             continue
         block = None
-        if re.search(r":\s*[|>][-+0-9]*$", line):
-            block = indent
-            if re.search(r"[\"']?uses[\"']?\s*:\s*[|>]", line):
+        unquoted = re.sub(r"\"(?:[^\"\\]|\\.)*\"|'[^']*'", "''", line)
+        if re.search(r":\s*[|>][-+0-9]*$", unquoted):
+            block = len(re.match(r"\s*(?:-\s+)*", line)[0])  # the owning key's column
+            if re.search(r"(?:^|[\s{,])[\"']?uses[\"']?\s*:\s*[|>]", line):
                 refs.append("unrecognized")
         for match in re.finditer(r"github/codeql-action/[\w-]*(?:@([^\s\"',}\]]+))?", line):
             refs.append(match[1].lower() if match[1] else "unrecognized")

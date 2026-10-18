@@ -10,11 +10,11 @@
     },
     "scripts/check_github_settings.py": {
       "source": "scripts/check_github_settings.py",
-      "sha256": "490f71e3c69a08a94fe2d771f2d89b67b5e97da450722fae8bd059d11b45a725"
+      "sha256": "2a5ce5ef277740b0ce380197c9892c6f4a2121dca862c405b4b063a94e24531c"
     },
     "scripts/test_github_settings.py": {
       "source": "scripts/test_github_settings.py",
-      "sha256": "f64ebec95d6aa1fb62ff2a91a1ed0e3d50c08bcd2726b87168a448114b7b75c1"
+      "sha256": "e1b7271fc51627728cf178bd01477eb4c1f4b53bfb0c643d64d05d1e7b05cad2"
     },
     "scripts/check_bugbot_rules.py": {
       "source": "scripts/check_bugbot_rules.py",
@@ -35,5 +35,5 @@
     "services/api/.cursor/BUGBOT.md"
   ],
   "source": "minjunkim-dev/repo-baseline",
-  "source_commit": "4cec71b760c169f291288fbab5017fe5573c3970"
+  "source_commit": "4a1a9bc8f6fbf32501c15aa9c5afe76540626861"
 }
