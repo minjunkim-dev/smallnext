@@ -64,13 +64,17 @@ class GitHubSettingsTests(unittest.TestCase):
             (f"      - name: Analyze\n        \"uses\": github/codeql-action/analyze@{a}\n", []),
             (f"      # was github/codeql-action/analyze@{b}\n      - uses: github/codeql-action/analyze@{a}\n", []),
             (f"      - run: |\n          - uses: github/codeql-action/analyze@{b}\n", []),
-            (f"      - uses: actions/x@{a}\n        with:\n          uses: github/codeql-action/analyze@{b}\n", []),
+            # Inputs are not parsed apart from steps; a mismatched ref anywhere fails closed.
+            (f"      - uses: actions/x@{a}\n        with:\n          uses: github/codeql-action/analyze@{b}\n", mismatch),
             (f"      - uses: github/codeql-action/analyze@{b} # v4\n", mismatch),
             ("      - uses: github/codeql-action/analyze@v4\n", mismatch),
             ("      - uses: >-\n          github/codeql-action/analyze@v4\n", mismatch),
             ("      - {uses: github/codeql-action/analyze@v4}\n", mismatch),
             (f"      -   name: Analyze\n          uses: github/codeql-action/analyze@{b}\n", mismatch),
             (f"      -   name: Analyze\n          uses: github/codeql-action/analyze@{a}\n", []),
+            (f"      -\n          uses: github/codeql-action/analyze@{b}\n", mismatch),
+            (f"      - {{name: Analyze,\n          uses: github/codeql-action/analyze@{b}}}\n", mismatch),
+            ("      - uses: |\n          github/codeql-action/analyze@v4\n", mismatch),
         ]
         with tempfile.TemporaryDirectory() as folder:
             profile = advanced(BASELINE)
