@@ -22,6 +22,24 @@ LINK_PATTERN = re.compile(r"!?\[[^\]]*\]\(([^\s)]+)(?:\s+[^)]*)?\)")
 ACTION_PATTERN = re.compile(r"^\s*(?:-\s*)?uses:\s*([^\s#]+)", re.MULTILINE)
 
 
+def crlf_paths(root):
+    """Return files whose index or working copy has CRLF, whatever their suffix."""
+    listing = subprocess.run(
+        ["git", "ls-files", "--eol", "--cached", "--others", "--exclude-standard", "-z"],
+        cwd=root,
+        check=True,
+        stdout=subprocess.PIPE,
+    ).stdout.decode("utf-8")
+    found = []
+    for entry in filter(None, listing.split("\0")):
+        info, name = entry.split("\t", 1)
+        fields = info.split()
+        # Bot commits made through the API skip .gitattributes normalization.
+        if "attr/-text" not in fields and {"i/crlf", "i/mixed", "w/crlf", "w/mixed"} & set(fields[:2]):
+            found.append(name)
+    return found
+
+
 def main():
     tracked = subprocess.run(
         ["git", "ls-files", "--cached", "--others", "--exclude-standard", "-z"],
@@ -30,7 +48,8 @@ def main():
         stdout=subprocess.PIPE,
     ).stdout.decode("utf-8").split("\0")
     paths = [ROOT / name for name in tracked if name]
-    errors = []
+    crlf = crlf_paths(ROOT)
+    errors = [f"{name}: use LF line endings" for name in crlf]
     checked = 0
 
     if not paths:
@@ -55,7 +74,7 @@ def main():
         # Room's schema exporter writes JSON without a final newline.
         if raw and not raw.endswith(b"\n") and not room_schema:
             errors.append(f"{name}: missing final newline")
-        if b"\r" in raw:
+        if b"\r" in raw and name not in crlf:
             errors.append(f"{name}: use LF line endings")
         for number, line in enumerate(text.splitlines(), 1):
             if line.rstrip(" \t") != line:
