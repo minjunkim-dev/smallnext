@@ -9,7 +9,7 @@
 
 | 구성 요소 | 버전·위치 | 조건과 출처 |
 | --- | --- | --- |
-| Gradle Wrapper | 9.8.0, `apps/android/gradle/wrapper/gradle-wrapper.jar`, `gradlew`, `gradlew.bat` | Apache-2.0. JAR의 `META-INF/LICENSE`와 스크립트의 원래 고지를 유지합니다. [Gradle 라이선스](https://github.com/gradle/gradle/blob/v9.8.0/LICENSE) |
+| Gradle Wrapper | 9.8.1, `apps/android/gradle/wrapper/gradle-wrapper.jar`, `gradlew`, `gradlew.bat` | Apache-2.0. JAR의 `META-INF/LICENSE`와 스크립트의 원래 고지를 유지합니다. [Gradle 라이선스](https://github.com/gradle/gradle/blob/v9.8.1/LICENSE) |
 
 ## iOS 의존성
 
