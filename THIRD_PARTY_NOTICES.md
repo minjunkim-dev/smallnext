@@ -3,7 +3,7 @@
 자체 코드의 권리 방침은 [COPYRIGHT](COPYRIGHT.md)에 있습니다.
 아래 구성 요소에는 해당 권리자의 라이선스가 적용됩니다. 이 목록은 그 조건을 변경하지 않습니다.
 
-확인 기준: 2026-10-09의 소스와 잠금 파일. 출시 패키지의 전체 고지를 완료했다는 뜻은 아닙니다.
+확인 기준: 2026-10-18의 소스와 잠금 파일. 출시 패키지의 전체 고지를 완료했다는 뜻은 아닙니다.
 
 ## 저장소에 포함된 도구
 
@@ -38,7 +38,7 @@ Cargo.lock과 `cargo metadata --locked`의 패키지 메타데이터를 확인�
 | sqlx | 0.8.6 | MIT OR Apache-2.0 | [launchbadge/sqlx](https://github.com/launchbadge/sqlx) |
 | tokio | 1.53.3 | MIT | [tokio-rs/tokio](https://github.com/tokio-rs/tokio) |
 | tracing / tracing-subscriber | 0.1.44 / 0.3.23 | MIT | [tokio-rs/tracing](https://github.com/tokio-rs/tracing) |
-| utoipa | 5.5.0 | MIT OR Apache-2.0 | [juhaku/utoipa](https://github.com/juhaku/utoipa) |
+| utoipa | 6.0.0 | MIT OR Apache-2.0 | [juhaku/utoipa](https://github.com/juhaku/utoipa) |
 | http-body-util / tower (개발용) | 0.1.5 / 0.5.3 | MIT | [hyperium/http-body](https://github.com/hyperium/http-body), [tower-rs/tower](https://github.com/tower-rs/tower) |
 
 ## Android의 직접 의존성과 빌드 도구
@@ -58,7 +58,7 @@ Cargo.lock과 `cargo metadata --locked`의 패키지 메타데이터를 확인�
 
 ## 이미지·음악·폰트
 
-현재 추적된 저장소 파일에는 별도의 이미지·음악·폰트 원본이 없습니다.
+현재 추적된 저장소 파일에는 제3자 이미지·음악·폰트 원본이 없습니다. `docs/research/fixtures/oauth-decision-ios.jpg`는 자체 iOS 앱 화면을 캡처한 연구 기록입니다.
 시스템 글꼴이나 SDK 사용 권한을 자체 코드의 권리로 주장하지 않습니다.
 새 에셋을 추가할 때 원본 출처, 권리자, 라이선스, 원본 공개 허용 여부와 배포 고지를 함께 기록합니다.
 
