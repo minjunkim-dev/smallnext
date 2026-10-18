@@ -65,7 +65,7 @@ Codex 외부 설정은 사용자 지시로 미완료다. Bugbot base YAML 적용
 ## artifact action major bump 재검증
 
 확인일: 2026-10-18 KST. 대상: #148 `actions/upload-artifact` v7.0.2, #147 `actions/download-artifact` v8.0.2.
-PR CI는 Draft의 build→draft 전달과 `if: failure()` upload를 실행하지 않는다. 그래서 병합 후 실제 실행으로 확인했다.
+성공한 PR CI만으로는 Draft의 build→draft 전달과 실패 시 artifact upload를 검증할 수 없다. 그래서 병합 후 실제 실행으로 확인했다.
 
 [Private API draft run 39117047452](https://github.com/minjunkim-dev/smallnext/actions/runs/39117047452)을 사용자 승인 후 실행했다.
 입력은 `v0.1.0-alpha.20261018`, source `d43bfe7515798d6a04f6c91af201579d60a4594e`다. 모든 단계가 성공했다.
