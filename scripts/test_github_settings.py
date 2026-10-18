@@ -10,7 +10,7 @@ from unittest.mock import patch
 import check_github_settings as settings
 import unittest
 
-from check_github_settings import audit, differences
+from check_github_settings import audit, codeql_source_drift, differences
 
 BASELINE = json.loads((settings.ROOT / ".github/repository-settings.json").read_text())
 
@@ -31,6 +31,14 @@ class GitHubSettingsTests(unittest.TestCase):
         self.assertEqual(differences([{"context": "CI", "app_id": 15368}],
                                      [{"context": "CI", "app_id": 1}], "checks"), ["checks"])
         self.assertEqual(differences(True, 1, "enabled"), ["enabled"])
+
+    def test_baseline_pins_checked_out_codeql_workflow(self):
+        # Dependabot edits only codeql.yml; a stale pin would report drift after merge.
+        self.assertEqual(codeql_source_drift(BASELINE), [],
+                         "Set codeql_main_source.sha to `git hash-object .github/workflows/codeql.yml`")
+        profile = copy.deepcopy(BASELINE)
+        profile["expected"]["codeql_main_source"]["sha"] = "0" * 40
+        self.assertEqual(codeql_source_drift(profile), ["codeql_main_source.sha"])
 
     def profile(self):
         profile = copy.deepcopy(BASELINE)
