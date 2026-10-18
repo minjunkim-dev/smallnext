@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Read GitHub settings and report drift; never change repository settings."""
 
+import hashlib
 import json
 from pathlib import Path
 import re
@@ -40,6 +41,13 @@ def read_api(endpoint):
     )
     return json.loads(result.stdout) if result.stdout.strip() else None
 
+
+def codeql_source_drift(profile, root=ROOT):
+    """Offline PR check: the pinned main blob must match the checked-out workflow."""
+    source = profile["expected"]["codeql_main_source"]
+    data = (root / source["path"]).read_bytes()
+    blob = hashlib.sha1(b"blob %d\0" % len(data) + data).hexdigest()
+    return [] if blob == source["sha"] else ["codeql_main_source.sha"]
 
 # Required controls cannot disappear when someone edits the baseline.
 REQUIRED_FIELDS = {
