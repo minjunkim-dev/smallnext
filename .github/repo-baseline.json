@@ -1,0 +1,39 @@
+{
+  "files": {
+    "scripts/check_repo_baseline.py": {
+      "source": "scripts/check_repo_baseline.py",
+      "sha256": "640c1a1c3f0f51184be6b6f415b5f34f8684533ac4289febf054b75d9d9e9f97"
+    },
+    "scripts/test_repo_baseline.py": {
+      "source": "scripts/test_repo_baseline.py",
+      "sha256": "fe307d6f94ef24bd4435e94f38f9121f0876bb5b592a96d273e9746a2470447a"
+    },
+    "scripts/check_github_settings.py": {
+      "source": "scripts/check_github_settings.py",
+      "sha256": "e6e65c971c63b73d82aed63501f4a21979ed5829c19a37127c3c2198265061be"
+    },
+    "scripts/test_github_settings.py": {
+      "source": "scripts/test_github_settings.py",
+      "sha256": "b9151141a670abb4601d1b5686eac8293ed9777c599ccf5660681de3f73db577"
+    },
+    "scripts/check_bugbot_rules.py": {
+      "source": "scripts/check_bugbot_rules.py",
+      "sha256": "0866ae613b79a979d85a3215ea86830f414e5a679df08ebcfeaaafba14c78b37"
+    },
+    "scripts/test_bugbot_rules.py": {
+      "source": "scripts/test_bugbot_rules.py",
+      "sha256": "8716cbbd3de9e8762716930e6302aa647d2e15dd2f1cacae84b6fa32e6df7003"
+    }
+  },
+  "bugbot_rules": [
+    ".cursor/BUGBOT.md",
+    ".github/.cursor/BUGBOT.md",
+    "apps/android/.cursor/BUGBOT.md",
+    "apps/ios/.cursor/BUGBOT.md",
+    "docs/.cursor/BUGBOT.md",
+    "scripts/.cursor/BUGBOT.md",
+    "services/api/.cursor/BUGBOT.md"
+  ],
+  "source": "minjunkim-dev/repo-baseline",
+  "source_commit": "9c3934bf4c5e51791f1f5c70cd2b1f7e267c8f38"
+}

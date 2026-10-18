@@ -197,3 +197,4 @@ Project checks는 iOS·Android·API와 컨테이너를 검사합니다.
 실제 AI 품질과 운영 배포는 초기 셋업의 검증 범위에 포함하지 않습니다.
 
 CodeQL workflow를 바꾸면 기준선의 `codeql_main_source.sha`도 새 Git blob SHA로 갱신합니다. PR의 `Repository hygiene` unittest가 갱신하지 않은 SHA를 거부합니다. 감사 도구는 필수 제어 항목이나 보호 필드가 빠진 기준선을 `UNVERIFIED`로 거부합니다.
+공통 검사기(`check_github_settings.py`·`check_bugbot_rules.py`·`check_repo_baseline.py`)와 테스트는 비공개 `minjunkim-dev/repo-baseline`에서 복사합니다. 이 저장소에서 직접 고치지 않습니다. 원본을 고친 뒤 `tools/apply_baseline.py`로 다시 적용합니다. 복사본이 `.github/repo-baseline.json`의 해시와 다르면 unittest가 실패합니다. CodeQL 단계들이 서로 다른 `github/codeql-action` commit을 쓰는 것도 거부합니다.

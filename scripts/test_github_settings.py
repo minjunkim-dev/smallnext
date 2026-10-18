@@ -7,12 +7,24 @@ import json
 from pathlib import Path
 import tempfile
 from unittest.mock import patch
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import check_github_settings as settings
 import unittest
 
 from check_github_settings import audit, codeql_source_drift, differences
 
 BASELINE = json.loads((settings.ROOT / ".github/repository-settings.json").read_text())
+
+
+def advanced(profile):
+    """The project's profile as an advanced CodeQL setup, whatever setup the project uses."""
+    profile = copy.deepcopy(profile)
+    workflow = ".github/workflows/codeql.yml"
+    profile["expected"]["codeql"] = {"state": "not-configured"}
+    profile["expected"].setdefault("codeql_workflow", {"path": workflow, "state": "active"})
+    profile["expected"].setdefault("codeql_main_source", {"path": workflow, "type": "file", "sha": "0" * 40})
+    return profile
 
 
 class GitHubSettingsTests(unittest.TestCase):
@@ -36,9 +48,61 @@ class GitHubSettingsTests(unittest.TestCase):
         # Dependabot edits only codeql.yml; a stale pin would report drift after merge.
         self.assertEqual(codeql_source_drift(BASELINE), [],
                          "Set codeql_main_source.sha to `git hash-object .github/workflows/codeql.yml`")
+        if "codeql_main_source" not in BASELINE["expected"]:
+            return  # default setup: validate_profile forbids a workflow pin
         profile = copy.deepcopy(BASELINE)
         profile["expected"]["codeql_main_source"]["sha"] = "0" * 40
         self.assertEqual(codeql_source_drift(profile), ["codeql_main_source.sha"])
+
+    def test_codeql_action_steps_must_share_one_commit(self):
+        # Split Dependabot PRs bumped init without analyze; every analyze job failed.
+        a, b = "a" * 40, "b" * 40
+        mismatch = ["codeql_workflow.action_pins"]
+        cases = [
+            (f"      - uses: github/codeql-action/analyze@{a} # v4\n", []),
+            (f"      - uses: 'github/codeql-action/analyze@{a.upper()}'\n", []),
+            (f"      - name: Analyze\n        \"uses\": github/codeql-action/analyze@{a}\n", []),
+            (f"      # was github/codeql-action/analyze@{b}\n      - uses: github/codeql-action/analyze@{a}\n", []),
+            (f"      - run: |\n          - uses: github/codeql-action/analyze@{b}\n", []),
+            # Inputs are not parsed apart from steps; a mismatched ref anywhere fails closed.
+            (f"      - uses: actions/x@{a}\n        with:\n          uses: github/codeql-action/analyze@{b}\n", mismatch),
+            (f"      - uses: github/codeql-action/analyze@{b} # v4\n", mismatch),
+            ("      - uses: github/codeql-action/analyze@v4\n", mismatch),
+            ("      - uses: >-\n          github/codeql-action/analyze@v4\n", mismatch),
+            ("      - {uses: github/codeql-action/analyze@v4}\n", mismatch),
+            (f"      -   name: Analyze\n          uses: github/codeql-action/analyze@{b}\n", mismatch),
+            (f"      -   name: Analyze\n          uses: github/codeql-action/analyze@{a}\n", []),
+            (f"      -\n          uses: github/codeql-action/analyze@{b}\n", mismatch),
+            (f"      - {{name: Analyze,\n          uses: github/codeql-action/analyze@{b}}}\n", mismatch),
+            ("      - uses: |\n          github/codeql-action/analyze@v4\n", mismatch),
+            ("      - name: |-\n          Analyze\n        uses: github/codeql-action/analyze@v4\n", mismatch),
+            ("      - {name: \"Analyze #2\", uses: github/codeql-action/analyze@v4}\n", mismatch),
+            (f"      - name: \"x: |\"\n        uses: github/codeql-action/analyze@{b}\n", mismatch),
+            (f"      - name: \"Analyze #2\"\n        uses: github/codeql-action/analyze@{a}\n", []),
+            (f"      - uses: GitHub/CodeQL-Action/analyze@{b}\n", mismatch),
+        ]
+        with tempfile.TemporaryDirectory() as folder:
+            profile = advanced(BASELINE)
+            workflow = Path(folder) / profile["expected"]["codeql_main_source"]["path"]
+            workflow.parent.mkdir(parents=True)
+            for analyze, expected in cases:
+                data = (f"jobs:\n  analyze:\n    steps:\n      - uses: github/codeql-action/init@{a} # v4\n"
+                        + analyze).encode()
+                workflow.write_bytes(data)
+                profile["expected"]["codeql_main_source"]["sha"] = settings.hashlib.sha1(
+                    b"blob %d\0" % len(data) + data).hexdigest()
+                with self.subTest(analyze=analyze), patch.object(settings, "ROOT", Path(folder)):
+                    self.assertEqual(codeql_source_drift(profile), expected)
+
+    def test_default_setup_profile_has_no_workflow_controls(self):
+        profile = advanced(BASELINE)
+        profile["expected"]["codeql"] = {"state": "configured"}
+        with self.assertRaisesRegex(ValueError, "every required control"):
+            settings.validate_profile(profile)
+        for name in settings.ADVANCED_CODEQL:
+            del profile["expected"][name]
+        settings.validate_profile(profile)
+        self.assertEqual(codeql_source_drift(profile), [])
 
     def profile(self):
         profile = copy.deepcopy(BASELINE)
@@ -71,7 +135,7 @@ class GitHubSettingsTests(unittest.TestCase):
                 value["allow_merge_commit"] = True
             return value
         self.assertEqual(audit(self.profile(), read), ["repository.allow_merge_commit"])
-        self.assertEqual(len(calls), 12)
+        self.assertEqual(len(calls), len(self.profile()["expected"]))  # metadata + each other control
         self.assertTrue(all(path.startswith("repos/owner/repo") for path in calls))
 
     def test_wrong_repository_and_request_paths_stop_before_extra_reads(self):

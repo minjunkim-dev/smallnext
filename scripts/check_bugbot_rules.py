@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Validate bounded core/scoped Bugbot rules without importing detailed docs."""
 
+import json
 from pathlib import Path
 import re
 import subprocess
@@ -10,7 +11,18 @@ from urllib.parse import urlsplit
 TOTAL_LIMIT = 95_000
 RULE_LIMIT = 30_000
 ROOT_RULE = ".cursor/BUGBOT.md"
-REQUIRED = {'services/api/.cursor/BUGBOT.md', '.github/.cursor/BUGBOT.md', 'docs/.cursor/BUGBOT.md', 'apps/android/.cursor/BUGBOT.md', 'apps/ios/.cursor/BUGBOT.md', 'scripts/.cursor/BUGBOT.md', '.cursor/BUGBOT.md'}
+MANIFEST = ".github/repo-baseline.json"
+
+
+def required_rules(root):
+    """Each project lists its scoped rules in the repo-baseline manifest."""
+    manifest = json.loads((root / MANIFEST).read_text(encoding="utf-8"))
+    rules = manifest.get("bugbot_rules") if isinstance(manifest, dict) else None
+    if (not isinstance(rules, list) or ROOT_RULE not in rules
+            or any(not isinstance(name, str) or not (name == ROOT_RULE or name.endswith("/" + ROOT_RULE))
+                   for name in rules)):
+        raise ValueError(f"{MANIFEST} bugbot_rules must list {ROOT_RULE} and scoped rule paths")
+    return set(rules)
 
 
 def markdown_targets(text, *, coverage=False):
@@ -77,7 +89,7 @@ def check_rules(root):
     tracked = set(subprocess.check_output(
         ["git", "ls-files", "-z"], cwd=root, text=True).split("\0")) - {""}
     roots = {name for name in tracked if name == ROOT_RULE or name.endswith("/" + ROOT_RULE)}
-    missing = REQUIRED - roots
+    missing = required_rules(root) - roots
     if missing:
         raise ValueError(f"Missing tracked rule files: {sorted(missing)!r}")
     sizes = {}
