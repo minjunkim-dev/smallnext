@@ -92,7 +92,8 @@ def codeql_action_refs(text):
             block = len(re.match(r"\s*(?:-\s+)*", line)[0])  # the owning key's column
             if re.search(r"(?:^|[\s{,])[\"']?uses[\"']?\s*:\s*[|>]", line):
                 refs.append("unrecognized")
-        for match in re.finditer(r"github/codeql-action/[\w-]*(?:@([^\s\"',}\]]+))?", line):
+        # GitHub owner/repo names are case-insensitive: GitHub/CodeQL-Action is the same action.
+        for match in re.finditer(r"github/codeql-action/[\w-]*(?:@([^\s\"',}\]]+))?", line, re.IGNORECASE):
             refs.append(match[1].lower() if match[1] else "unrecognized")
     return refs
 

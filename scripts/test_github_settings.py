@@ -79,6 +79,7 @@ class GitHubSettingsTests(unittest.TestCase):
             ("      - {name: \"Analyze #2\", uses: github/codeql-action/analyze@v4}\n", mismatch),
             (f"      - name: \"x: |\"\n        uses: github/codeql-action/analyze@{b}\n", mismatch),
             (f"      - name: \"Analyze #2\"\n        uses: github/codeql-action/analyze@{a}\n", []),
+            (f"      - uses: GitHub/CodeQL-Action/analyze@{b}\n", mismatch),
         ]
         with tempfile.TemporaryDirectory() as folder:
             profile = advanced(BASELINE)
