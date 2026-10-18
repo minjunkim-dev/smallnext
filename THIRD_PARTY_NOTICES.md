@@ -36,7 +36,7 @@ Cargo.lock과 `cargo metadata --locked`의 패키지 메타데이터를 확인�
 | serde | 1.0.229 | MIT OR Apache-2.0 | [serde-rs/serde](https://github.com/serde-rs/serde) |
 | serde_json | 1.0.151 | MIT OR Apache-2.0 | [serde-rs/json](https://github.com/serde-rs/json) |
 | sqlx | 0.8.6 | MIT OR Apache-2.0 | [launchbadge/sqlx](https://github.com/launchbadge/sqlx) |
-| tokio | 1.53.1 | MIT | [tokio-rs/tokio](https://github.com/tokio-rs/tokio) |
+| tokio | 1.53.3 | MIT | [tokio-rs/tokio](https://github.com/tokio-rs/tokio) |
 | tracing / tracing-subscriber | 0.1.44 / 0.3.23 | MIT | [tokio-rs/tracing](https://github.com/tokio-rs/tracing) |
 | utoipa | 5.5.0 | MIT OR Apache-2.0 | [juhaku/utoipa](https://github.com/juhaku/utoipa) |
 | http-body-util / tower (개발용) | 0.1.5 / 0.5.3 | MIT | [hyperium/http-body](https://github.com/hyperium/http-body), [tower-rs/tower](https://github.com/tower-rs/tower) |
