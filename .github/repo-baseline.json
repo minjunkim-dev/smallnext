@@ -23,6 +23,24 @@
     "scripts/test_bugbot_rules.py": {
       "source": "scripts/test_bugbot_rules.py",
       "sha256": "8716cbbd3de9e8762716930e6302aa647d2e15dd2f1cacae84b6fa32e6df7003"
+    },
+    ".github/dependabot.yml": {
+      "source": "templates/dependabot.yml",
+      "ecosystems": [
+        {
+          "package-ecosystem": "cargo",
+          "directory": "/services/api"
+        },
+        {
+          "package-ecosystem": "gradle",
+          "directory": "/apps/android"
+        },
+        {
+          "package-ecosystem": "docker",
+          "directory": "/services/api"
+        }
+      ],
+      "sha256": "70ff016b340818a25acc8d7d3843565de6b74212ade46095bd514e09425f0937"
     }
   },
   "bugbot_rules": [
@@ -35,5 +53,5 @@
     "services/api/.cursor/BUGBOT.md"
   ],
   "source": "minjunkim-dev/repo-baseline",
-  "source_commit": "9c3934bf4c5e51791f1f5c70cd2b1f7e267c8f38"
+  "source_commit": "9e695b8f5b3cc94588b6174da37a66dab8bdc9bc"
 }
