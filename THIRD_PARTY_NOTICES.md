@@ -34,7 +34,7 @@ Cargo.lock과 `cargo metadata --locked`의 패키지 메타데이터를 확인�
 | jsonwebtoken | 11.1.0 | MIT | [Keats/jsonwebtoken](https://github.com/Keats/jsonwebtoken) |
 | reqwest | 0.13.5 | MIT OR Apache-2.0 | [seanmonstar/reqwest](https://github.com/seanmonstar/reqwest) |
 | serde | 1.0.229 | MIT OR Apache-2.0 | [serde-rs/serde](https://github.com/serde-rs/serde) |
-| serde_json | 1.0.151 | MIT OR Apache-2.0 | [serde-rs/json](https://github.com/serde-rs/json) |
+| serde_json | 1.0.154 | MIT OR Apache-2.0 | [serde-rs/json](https://github.com/serde-rs/json) |
 | sqlx | 0.8.6 | MIT OR Apache-2.0 | [launchbadge/sqlx](https://github.com/launchbadge/sqlx) |
 | tokio | 1.53.3 | MIT | [tokio-rs/tokio](https://github.com/tokio-rs/tokio) |
 | tracing / tracing-subscriber | 0.1.44 / 0.3.23 | MIT | [tokio-rs/tracing](https://github.com/tokio-rs/tracing) |
