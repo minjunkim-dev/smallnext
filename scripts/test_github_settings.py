@@ -7,6 +7,8 @@ import json
 from pathlib import Path
 import tempfile
 from unittest.mock import patch
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import check_github_settings as settings
 import unittest
 
@@ -39,6 +41,21 @@ class GitHubSettingsTests(unittest.TestCase):
         profile = copy.deepcopy(BASELINE)
         profile["expected"]["codeql_main_source"]["sha"] = "0" * 40
         self.assertEqual(codeql_source_drift(profile), ["codeql_main_source.sha"])
+
+    def test_codeql_action_steps_must_share_one_commit(self):
+        # Split Dependabot PRs bumped init without analyze; every analyze job failed.
+        with tempfile.TemporaryDirectory() as folder:
+            workflow = Path(folder) / BASELINE["expected"]["codeql_main_source"]["path"]
+            workflow.parent.mkdir(parents=True)
+            profile = copy.deepcopy(BASELINE)
+            for analyze, expected in [("a" * 40, []), ("b" * 40, ["codeql_workflow.action_pins"])]:
+                data = (f"- uses: github/codeql-action/init@{'a' * 40} # v4\n"
+                        f"- uses: github/codeql-action/analyze@{analyze} # v4\n").encode()
+                workflow.write_bytes(data)
+                profile["expected"]["codeql_main_source"]["sha"] = settings.hashlib.sha1(
+                    b"blob %d\0" % len(data) + data).hexdigest()
+                with self.subTest(analyze=analyze), patch.object(settings, "ROOT", Path(folder)):
+                    self.assertEqual(codeql_source_drift(profile), expected)
 
     def profile(self):
         profile = copy.deepcopy(BASELINE)

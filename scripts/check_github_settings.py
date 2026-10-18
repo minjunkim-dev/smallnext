@@ -43,11 +43,14 @@ def read_api(endpoint):
 
 
 def codeql_source_drift(profile):
-    """Offline PR check: the pinned main blob must match the checked-out workflow."""
+    """Offline PR check: the pinned main blob must match the checked-out workflow,
+    and every github/codeql-action step must use one commit (init and analyze fail apart)."""
     source = profile["expected"]["codeql_main_source"]
     data = (ROOT / source["path"]).read_bytes()
     blob = hashlib.sha1(b"blob %d\0" % len(data) + data).hexdigest()
-    return [] if blob == source["sha"] else ["codeql_main_source.sha"]
+    result = [] if blob == source["sha"] else ["codeql_main_source.sha"]
+    pins = set(re.findall(rb"github/codeql-action/[\w-]+@([0-9a-f]{40})\b", data))
+    return result + (["codeql_workflow.action_pins"] if len(pins) > 1 else [])
 
 
 # Required controls cannot disappear when someone edits the baseline.

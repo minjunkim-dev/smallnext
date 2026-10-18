@@ -1,12 +1,15 @@
 """Exercise rule budgets, scoped coverage, and unwanted context expansion."""
 
+import json
 from pathlib import Path
 import subprocess
 import sys
 import tempfile
 import unittest
 
-from check_bugbot_rules import REQUIRED, ROOT_RULE, check_rules
+from check_bugbot_rules import MANIFEST, ROOT_RULE, check_rules
+
+REQUIRED = {ROOT_RULE, ".github/.cursor/BUGBOT.md", "docs/.cursor/BUGBOT.md", "scripts/.cursor/BUGBOT.md"}
 
 
 class BugbotRulesTests(unittest.TestCase):
@@ -15,8 +18,14 @@ class BugbotRulesTests(unittest.TestCase):
         self.addCleanup(folder.cleanup)
         self.root = Path(folder.name).resolve()
         subprocess.run(["git", "init", "-q"], cwd=self.root, check=True)
+        self.manifest({"bugbot_rules": sorted(REQUIRED)})
         for name in REQUIRED:
             self.write(name, "핵심 규칙\n")
+
+    def manifest(self, data):
+        path = self.root / MANIFEST
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(data), encoding="utf-8")
 
     def write(self, name, text, tracked=True):
         path = self.root / name
@@ -69,6 +78,17 @@ class BugbotRulesTests(unittest.TestCase):
         (self.root / ROOT_RULE).symlink_to(self.root / "docs/detail.md")
         subprocess.run(["git", "add", "--", ROOT_RULE], cwd=self.root, check=True)
         with self.assertRaisesRegex(ValueError, "Missing or symlink"):
+            check_rules(self.root)
+
+    def test_required_rules_come_from_a_valid_manifest(self):
+        for data in [None, [], {}, {"bugbot_rules": []}, {"bugbot_rules": ["docs/.cursor/BUGBOT.md"]},
+                     {"bugbot_rules": [ROOT_RULE, "docs/notes.md"]}]:
+            with self.subTest(data=data):
+                self.manifest(data)
+                with self.assertRaisesRegex(ValueError, "bugbot_rules must list"):
+                    check_rules(self.root)
+        (self.root / MANIFEST).unlink()
+        with self.assertRaises(OSError):
             check_rules(self.root)
 
     def test_local_links_cannot_expand_context_or_cross_scopes(self):
