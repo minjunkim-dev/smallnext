@@ -57,8 +57,10 @@ def codeql_source_drift(profile):
 
 
 def codeql_action_refs(text):
-    """Refs of github/codeql-action steps, from step-level `uses:` keys only.
-    `run:` block text and `with:` inputs sit deeper than a step's keys, so they are skipped."""
+    """Refs of github/codeql-action steps, from block-style step `uses:` keys.
+    `run:` block text and `with:` inputs sit deeper than a step's keys, so they are skipped.
+    Any other step-level mention of github/codeql-action (flow style, folded values) yields an unpinned
+    ref, so unusual syntax fails the check instead of passing it."""
     refs, keys, block = [], None, None
     for raw in text.splitlines():
         line = "" if raw.lstrip().startswith("#") else raw.split(" #", 1)[0].rstrip()
@@ -68,22 +70,18 @@ def codeql_action_refs(text):
         if block is not None and indent > block:
             continue
         block = None
-        item = re.match(r"(\s*)-\s+(\S.*)", line)
-        if item:  # a sequence item; its mapping keys start after "- "
-            indent = keys = len(item[1]) + 2
+        item = re.match(r"(\s*-\s+)(\S.*)", line)
+        if item:  # a sequence item; its mapping keys start after "-" and the spaces
+            indent = keys = len(item[1])
             line = item[2]
         match = re.match(r"[\"']?([\w-]+)[\"']?\s*:\s*(.*)", line.strip())
-        if not match:
-            continue
-        key, value = match[1], match[2].strip()
+        key, value = (match[1], match[2].strip().strip("\"'")) if match else (None, "")
         if value[:1] in ("|", ">"):
             block = indent
-        if key == "uses" and indent == keys:
-            value = value.strip("\"'")
-            if value[:1] in ("|", ">"):
-                refs.append(value)  # a folded value cannot be read here; never treat it as pinned
-            elif value.startswith("github/codeql-action/"):
-                refs.append(value.partition("@")[2].lower())
+        if key == "uses" and indent == keys and value.startswith("github/codeql-action/"):
+            refs.append(value.partition("@")[2].lower())
+        elif indent == keys and ("github/codeql-action/" in line or (key == "uses" and value[:1] in ("|", ">"))):
+            refs.append("unrecognized")  # step-level syntax this scanner does not read
     return refs
 
 
