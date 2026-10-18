@@ -62,6 +62,24 @@ Codex 외부 설정은 사용자 지시로 미완료다. Bugbot base YAML 적용
 최종 PR 승인 뒤 main의 새 정책으로 이 기존 main 제품 source를 빌드한다. API 제품 코드는 이번 PR에서 변경하지 않았다.
 공개 배포·production 변경·데이터 삭제·스토어 업로드를 수행하지 않았다.
 
+## artifact action major bump 재검증
+
+확인일: 2026-10-18 KST. 대상: #148 `actions/upload-artifact` v7.0.2, #147 `actions/download-artifact` v8.0.2.
+PR CI는 Draft의 build→draft 전달과 `if: failure()` upload를 실행하지 않는다. 그래서 병합 후 실제 실행으로 확인했다.
+
+[Private API draft run 39117047452](https://github.com/minjunkim-dev/smallnext/actions/runs/39117047452)을 사용자 승인 후 실행했다.
+입력은 `v0.1.0-alpha.20261018`, source `d43bfe7515798d6a04f6c91af201579d60a4594e`다. 모든 단계가 성공했다.
+upload는 파일 3개를 zip artifact 하나로 올렸다. download는 `digest-mismatch: error`로 받았다. 예상 digest와 받은 digest가 같았다.
+새 Draft는 `draft=true`·`prerelease=true`·source `d43bfe7`이다. asset은 3개다. 기존 Draft `v0.1.0-alpha.20261014`는 보존되었다.
+빈 디렉터리에 내려받아 `scripts/draft_release.py verify`를 실행했다. 통과했다. 로컬 SHA-256 3개가 GitHub asset digest와 같았다.
+로컬 OrbStack에서 image를 load했다. source label `d43bfe7`, `linux/amd64`, `id -u` 10001을 확인했다.
+containerd 저장소는 manifest digest를 image ID로 보인다. tarball config digest는 metadata `image_id`와 같았다. load한 image는 삭제했다.
+
+실패 경로는 임시 브랜치에서 확인했다. android build·android device-tests·iOS 테스트 직후에 `exit 1`을 넣었다.
+[Project checks run 39118888928](https://github.com/minjunkim-dev/smallnext/actions/runs/39118888928)을 수동 실행했다. 세 `Preserve failing` 단계가 모두 성공했다.
+lint 보고서·기기 테스트 결과와 emulator 로그·xcresult artifact를 내려받았다. 모두 비어 있지 않았다.
+임시 브랜치는 PR 없이 삭제했다. 실패 run은 Actions 기록에 남는다. 그 artifact는 7일 뒤 만료된다.
+
 공식 근거: [Cursor Bugbot](https://cursor.com/docs/bugbot),
 [GitHub Release API](https://docs.github.com/en/rest/releases/releases),
 [GitHub asset API](https://docs.github.com/en/rest/releases/assets).
