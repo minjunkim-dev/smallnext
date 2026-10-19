@@ -8,6 +8,8 @@ import subprocess
 import sys
 import contextlib
 import io
+import os
+import signal
 import unittest
 from unittest.mock import patch
 
@@ -16,26 +18,37 @@ import oauth_quality as qa
 
 class FrozenEvaluationTests(unittest.TestCase):
     def test_generation_cleanup_failure_never_calls_checker(self):
-        for cleanup in ({"process_group_alive": True}, {"cli_pid": 1, "process_reaped": False}):
-            with self.subTest(cleanup=cleanup), tempfile.TemporaryDirectory() as directory:
+        failures = [({"process_group_alive": True}, "process_cleanup"),
+                    ({"cli_pid": 1, "process_reaped": False}, "process_cleanup"),
+                    ({"cli_pid": 1}, "process_cleanup"),
+                    ({"cli_pid": 1, "process_reaped": True}, "process_cleanup"),
+                    ({"error": ""}, "runner_failed"),
+                    ({"error": None}, "runner_failed"),
+                    ({"error": False}, "runner_failed"),
+                    ({"error": "cancelled", "process_reaped": False}, "cancelled")]
+        for failure, reason in failures:
+            with self.subTest(failure=failure), tempfile.TemporaryDirectory() as directory:
                 frozen = Path(directory) / "frozen"
                 qa.freeze(frozen, "quality", sequential=True)
                 manifest = qa.load(frozen)
                 (frozen / "results").mkdir()
                 case = next(c for c in manifest["cases"] if c["id"] == "useful-minimum-known")
                 candidate = next(c["candidate"] for c in manifest["cases"] if c["id"] == "known-blocker-action-valid")
-                with patch.object(qa, "_call", return_value=dict(output=candidate, **cleanup)) as provider:
+                with patch.object(qa, "_call", return_value=dict(output=candidate, **failure)) as provider:
                     record = qa.evaluate(frozen, manifest, 0,
                         {"case": case["id"], "variant": "baseline", "repeat": 0}, "unused", threading.Event())
                 self.assertEqual(provider.call_count, 1)
-                self.assertEqual(record["calls"][0]["error"], "process_cleanup")
+                self.assertEqual(record["calls"][0]["error"], reason)
                 self.assertNotIn("output", record["calls"][0])
                 self.assertFalse(record["matched"])
 
     def test_sequential_quality_stops_on_role_failure_even_when_reference_matches(self):
         failures = [{"matched": True, "error": "runner_failed", "calls": []},
+                    {"matched": True, "error": "", "calls": []},
                     {"matched": True, "calls": [{"error": "provider_failed"}]},
+                    {"matched": True, "calls": [{"error": None}]},
                     {"matched": True, "calls": [{"process_group_alive": True}]},
+                    {"matched": True, "calls": [{"cli_pid": 1}]},
                     {"matched": True, "calls": [{"cli_pid": 1, "process_reaped": False}]}]
         for failed in failures:
             with self.subTest(failed=failed), tempfile.TemporaryDirectory() as directory:
@@ -500,6 +513,109 @@ class FrozenEvaluationTests(unittest.TestCase):
             self.assertEqual(summary["reference_mismatches"], 0)
             self.assertEqual(summary["cancelled_role_calls"], 1)
             self.assertEqual(summary["failed_role_calls"], 0)
+
+    def test_complete_run_and_recovery_share_failure_policy_without_rewriting_records(self):
+        cases = [({}, {}, True),
+                 ({"error": ""}, {}, False),
+                 ({}, {"error": None}, False),
+                 ({}, {"error": False}, False),
+                 ({}, {"error": "cancelled", "process_reaped": False}, False),
+                 ({}, {"error": "timed_out"}, False),
+                 ({}, {"process_group_alive": True}, False),
+                 ({}, {"cli_pid": 123}, False),
+                 ({}, {"cli_pid": 123, "process_reaped": True}, False),
+                 ({}, {"cli_pid": 123, "process_reaped": 1, "process_group_alive": False}, False),
+                 ({}, {"cli_pid": 123, "process_reaped": True, "process_group_alive": False}, True),
+                 ({}, {"subcalls": [{"cli_pid": 123, "process_reaped": False}]}, False)]
+        for record_fields, call_fields, passed in cases:
+            with self.subTest(record=record_fields, call=call_fields), tempfile.TemporaryDirectory() as directory:
+                frozen = Path(directory) / "frozen"
+                qa.freeze(frozen, "latency", repetitions=1)
+                manifest = qa.load(frozen)
+                manifest_hash = qa.digest((frozen / "manifest.json").read_bytes())
+                (frozen / "results").mkdir()
+                qa.save(frozen / "run-started.json", {"manifest_sha256": manifest_hash})
+                records = []
+                for index, row in enumerate(manifest["schedule"]):
+                    call = qa.Tracker().metadata() | {"role": "check", "seconds": 0} | call_fields
+                    record = dict(row, index=index, calls=[call], matched=True, legacy_matched=True,
+                                  manifest_sha256=manifest_hash) | record_fields
+                    records.append(record)
+                    qa.save(frozen / "results" / f"{index:03d}.json", record)
+                before = {path: path.read_bytes() for path in (frozen / "results").iterdir()}
+                with contextlib.redirect_stdout(io.StringIO()):
+                    self.assertEqual(qa.summarize(frozen, manifest, records, target="direct-summary.json"), passed)
+                    with patch.object(qa, "_call", side_effect=AssertionError("must not call provider")):
+                        qa.recover_summary(frozen)
+                summary = json.loads((frozen / "summary.json").read_bytes())
+                self.assertEqual(summary, json.loads((frozen / "direct-summary.json").read_bytes()))
+                self.assertEqual(summary["passed"], passed)
+                self.assertEqual(summary["failed_cases"], 0 if passed else len(records))
+                self.assertEqual(summary["reference_mismatches"], 0)
+                self.assertEqual(before, {path: path.read_bytes() for path in before})
+                with contextlib.redirect_stdout(io.StringIO()):
+                    qa.recover_summary(frozen)
+                self.assertEqual(summary, json.loads((frozen / "summary.json").read_bytes()))
+
+    def test_cancellation_after_last_result_stays_failed_in_recovery(self):
+        for stage in ("after_result", "summary_entry", "summary_save", "after_publish"):
+            with self.subTest(stage=stage), tempfile.TemporaryDirectory() as directory:
+                frozen = Path(directory) / "frozen"
+                qa.freeze(frozen, "quality", case_ids=["useful-minimum-known"], sequential=True)
+                manifest_hash = qa.digest((frozen / "manifest.json").read_bytes())
+
+                def completed(directory, manifest, index, row, claude, cancelled):
+                    record = dict(row, index=index, calls=[], matched=True, legacy_matched=True,
+                                  manifest_sha256=manifest_hash)
+                    qa.save(directory / "results" / f"{index:03d}.json", record)
+                    if stage == "after_result":
+                        os.kill(os.getpid(), signal.SIGINT)
+                        os.kill(os.getpid(), signal.SIGTERM)
+                    return record
+
+                summarize = qa.summarize
+                save = qa.save
+                interrupted = False
+
+                def interrupted_summary(*args, **kwargs):
+                    nonlocal interrupted
+                    if stage == "summary_entry" and not interrupted:
+                        interrupted = True
+                        os.kill(os.getpid(), signal.SIGINT)
+                        os.kill(os.getpid(), signal.SIGTERM)
+                    return summarize(*args, **kwargs)
+
+                def interrupted_save(path, value):
+                    nonlocal interrupted
+                    if stage == "summary_save" and path.name == "summary.json" and not interrupted:
+                        interrupted = True
+                        os.kill(os.getpid(), signal.SIGINT)
+                    result = save(path, value)
+                    if stage == "after_publish" and path.name == "summary.json":
+                        os.kill(os.getpid(), signal.SIGINT)
+                    return result
+
+                auth = subprocess.CompletedProcess([], 0, json.dumps({"loggedIn": True,
+                    "authMethod": "claude.ai", "apiProvider": "firstParty"}).encode())
+                previous = {sig: signal.getsignal(sig) for sig in (signal.SIGINT, signal.SIGTERM)}
+                with contextlib.redirect_stdout(io.StringIO()), \
+                     patch.object(qa.subprocess, "run", return_value=auth), \
+                     patch.object(qa, "evaluate", side_effect=completed) as evaluate, \
+                     patch.object(qa, "summarize", side_effect=interrupted_summary), \
+                     patch.object(qa, "save", side_effect=interrupted_save):
+                    try:
+                        self.assertEqual(qa.run(frozen, "unused"), stage == "after_publish")
+                    except KeyboardInterrupt:
+                        self.fail("cancellation must remain handled until the summary is published")
+                self.assertEqual(previous, {sig: signal.getsignal(sig) for sig in previous})
+                self.assertEqual(evaluate.call_count, 1)
+                summary = json.loads((frozen / "summary.json").read_bytes())
+                self.assertEqual(summary["missing_cases"], 0)
+                self.assertEqual(summary["cancelled"], stage != "after_publish")
+                (frozen / "summary.json").unlink()
+                with contextlib.redirect_stdout(io.StringIO()), patch.object(qa, "process_birth", return_value=""):
+                    qa.recover_summary(frozen)
+                self.assertEqual(summary, json.loads((frozen / "summary.json").read_bytes()))
 
     def test_frozen_artifact_is_portable_and_runner_drift_is_rejected(self):
         with tempfile.TemporaryDirectory() as directory:
