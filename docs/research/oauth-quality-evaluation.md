@@ -129,6 +129,11 @@ marker와 receipt는 최대 4 KiB의 바이트로 고정한다. 로컬 하네스
 프로세스가 종료됐는데 summary가 없으면 `python3 scripts/oauth_quality.py summarize <동결 디렉터리>`로 부분 결과를 집계한다.
 이 명령은 모델을 호출하지 않는다. 기존 결과를 덮어쓰지 않는다.
 누락한 사례가 있으면 `passed=false`다. 실행 중인 프로세스의 집계는 거부한다.
+새 실행과 같은 실행기 버전의 복구는 같은 결과 판정을 사용한다.
+참조 결과가 맞아도 오류·취소·시간 초과·프로세스 정리 실패가 있으면 `passed=false`다.
+빈 `error` 필드도 실패다. CLI PID가 있으면 `process_reaped=true`와 `process_group_alive=false`를 모두 확인한다.
+실행 전에 취소한 호출은 취소로 분류한다. 실행 중 받은 취소는 `run-cancelled.json`에 보존하고 복구에서도 통과를 막는다.
+순차 조기 중단과 병렬 실행 방식은 유지한다. 과거 기록의 새 규칙 재판정은 지원하지 않는다.
 잘린 JSON·잘못된 UTF-8 파일은 `unreadable_records`로 보고한다. 다른 정상 기록은 집계한다.
 잘린 파일은 덮어쓰지 않는다. 해당 파일의 호출 수와 비용은 확인할 수 없다.
 JSON은 같은 디렉터리의 임시 파일에 완전히 쓴 뒤 hard link로 원자적으로 게시한다.
