@@ -47,8 +47,10 @@ HTTP 대기와 서버 시간을 더하지 않는다.
 ## 서버 없는 핵심 흐름 화면 회귀
 
 `TimingValidation`의 `testLocalCoreFlowRestoresDraftThroughActionsAndRelaunch`와
-`testLocalCoreFlowKeepsLearningAndPersonalGoalsSeparate`는 Debug 고정 공급자만 사용한다.
-새 검증 전용 simulator에서 두 테스트만 선택해 실행한다.
+`testLocalCoreFlowKeepsLearningAndPersonalGoalsSeparate`,
+`testLocalCoreFlowRestoresInputBeforeGoalPreparation`,
+`testLocalCoreFlowPreservesProgressDuringGoalManagement`는 Debug 고정 공급자만 사용한다.
+새 검증 전용 simulator에서 네 테스트만 선택해 실행한다.
 기존 목표가 있는 simulator는 사용하지 않는다. 같은 이름의 목표 선택을 섞지 않기 위해서다.
 
 ```sh
@@ -58,6 +60,8 @@ xcodebuild -project apps/ios/Smallnext.xcodeproj -scheme TimingValidation \
   -onlyUsePackageVersionsFromResolvedFile -skipPackageUpdates \
   -only-testing:SmallnextTimingUITests/ScreenTimingTests/testLocalCoreFlowRestoresDraftThroughActionsAndRelaunch \
   -only-testing:SmallnextTimingUITests/ScreenTimingTests/testLocalCoreFlowKeepsLearningAndPersonalGoalsSeparate \
+  -only-testing:SmallnextTimingUITests/ScreenTimingTests/testLocalCoreFlowRestoresInputBeforeGoalPreparation \
+  -only-testing:SmallnextTimingUITests/ScreenTimingTests/testLocalCoreFlowPreservesProgressDuringGoalManagement \
   CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- CODE_SIGNING_REQUIRED=NO test
 ```
 
@@ -65,8 +69,11 @@ xcodebuild -project apps/ios/Smallnext.xcodeproj -scheme TimingValidation \
 `development_ai_url`을 지정하지 않는다. Rust 서버·DB·모델·OAuth·실제 인증은 필요하지 않다.
 업무 목표의 완료·축소·되돌리기·보류·재개와 입력 초안 복구를 검사한다.
 학습 목표와 개인 목표의 전환·선택 상태·입력 초안 복구도 검사한다.
+첫 행동 전 입력 복구와 확인 질문→완료 조건 확인→첫 행동도 검사한다.
+목표 문구 수정·중단 뒤 진행을 보존한다. 삭제 확인 취소와 명시적 확인 뒤 삭제를 구분한다.
+삭제 대상은 해당 테스트가 새로 만든 UUID 포함 합성 목표 하나다. 다른 합성 목표의 초안은 보존한다.
 화면 사진은 `xcresult`에 첨부한다. 시간 목표와 실제 모델 품질의 근거로 사용하지 않는다.
-이 두 테스트만으로 모션·VoiceOver·큰 글자·실기기와 #49 전체 완료를 판정하지 않는다.
+이 네 테스트만으로 모션·VoiceOver·큰 글자·실기기와 #49 전체 완료를 판정하지 않는다.
 기능 플래그 기본값과 #61 실기기 보류는 유지한다.
 
 ## 모의 시뮬레이터 검증
