@@ -161,6 +161,8 @@ iOS 설정과 빌드 명령은 [iOS 연결](SERVER_AI.md#ios-연결)과 [개발 
 기존 `SupabaseAnonymousIdentity`를 직접 사용한다. 제품의 Keychain session과 분리한 고유 service·key를 만들고 자기 key만 제거한다.
 검증 transport는 Release 번들의 프로젝트로 보내는 `POST /auth/v1/signup` 한 번만 허용한다. redirect·재시도·AI 요청을 거부한다.
 CAPTCHA 설정이 있으면 기존 앱 sheet에서 사람이 완료한다. 부분 설정은 실패한다. CAPTCHA를 임의로 끄지 않는다.
+실제 CAPTCHA 검증 전 [#193](https://github.com/minjunkim-dev/smallnext/issues/193)의 delegate 수정과 selector 회귀 통과를 확인한다.
+Xcode 27.1에서 기존 callback의 SDK 서명이 달라 navigation 제한이 등록되지 않는 결함을 확인했다. 이 조건을 해결하기 전에는 CAPTCHA 경로를 실행하지 않는다.
 
 1. Release 공개 client 설정·대상 Supabase 프로젝트·익명 인증 허용 상태를 확인한다. [iOS 연결](SERVER_AI.md#ios-연결)의 설정을 사용한다. 토큰·UID·key·설정 원문을 결과에 복사하지 않는다.
 2. 기존 검사와 충돌하지 않는 본인 소유 simulator를 선택한다. 아래 `SIMULATOR_UDID`를 해당 UUID로 바꾼다. 저장소 기준 Xcode를 선택한다.
