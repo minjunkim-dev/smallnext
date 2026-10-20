@@ -119,7 +119,7 @@ struct TurnstileSheet: View {
     }
 }
 
-private struct TurnstileWebView: UIViewRepresentable {
+struct TurnstileWebView: UIViewRepresentable {
     let request: TurnstileChallenge.Request
     let completion: @MainActor (Result<String, any Error>) -> Void
 
@@ -168,7 +168,7 @@ private struct TurnstileWebView: UIViewRepresentable {
             } catch { completion(.failure(SuggestionFailure.unavailable)) }
         }
 
-        func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+        func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction, decisionHandler: @escaping @MainActor (WKNavigationActionPolicy) -> Void) {
             guard let frame = action.targetFrame, let url = action.request.url else { decisionHandler(.cancel); return }
             if frame.isMainFrame {
                 let allowed = url == request.configuration.pageURL(nonce: request.id) && action.request.httpMethod == "GET"
