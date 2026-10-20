@@ -1,9 +1,75 @@
 import XCTest
 import CryptoKit
 
-/// 별도 TimingValidation scheme에서 모의 Rust 서버와 실행한다.
+/// 별도 TimingValidation scheme에서 고정 공급자 또는 모의 Rust 서버와 실행한다.
 @MainActor
 final class ScreenTimingTests: XCTestCase {
+    func testLocalCoreFlowRestoresDraftThroughActionsAndRelaunch() {
+        continueAfterFailure = false
+        let app = localApp()
+        startLocalGoal(app, goal: "분기 업무 보고서 초안 쓰기", firstAction: "업무 보고서 문서 하나 열기")
+        app.buttons["완료"].tap()
+        let nextAction = "이번 분기에 끝낸 업무 하나 적기"
+        XCTAssertTrue(app.staticTexts[nextAction].waitForExistence(timeout: 10))
+        let draft = "분기 보고서 검증 메모"
+        app.textFields["행동 결과 입력"].tap()
+        app.textFields["행동 결과 입력"].typeText(draft)
+        XCTAssertEqual(app.textFields["행동 결과 입력"].value as? String, draft)
+
+        app.terminate()
+        app.launch()
+        XCTAssertTrue(app.staticTexts[nextAction].waitForExistence(timeout: 10))
+        XCTAssertEqual(app.textFields["행동 결과 입력"].value as? String, draft)
+        XCTAssertNotNil(attach(app, name: "local-core-restored-draft"))
+
+        app.buttons["더 작게"].tap()
+        XCTAssertTrue(app.staticTexts["첫 부분만: \(nextAction)"].waitForExistence(timeout: 10))
+        app.buttons["더 보기"].tap()
+        app.buttons["되돌리기"].tap()
+        XCTAssertTrue(app.staticTexts[nextAction].waitForExistence(timeout: 10))
+        XCTAssertEqual(app.textFields["행동 결과 입력"].value as? String, draft)
+        XCTAssertNotNil(attach(app, name: "local-core-undo"))
+
+        app.buttons["더 보기"].tap()
+        app.buttons["나중에"].tap()
+        XCTAssertTrue(app.staticTexts["목표에 대해 떠오르는 생각 한 줄 적기"].waitForExistence(timeout: 10))
+        app.buttons["더 보기"].tap()
+        app.buttons["나중에"].tap()
+        XCTAssertTrue(app.staticTexts["보류 중"].waitForExistence(timeout: 10))
+        XCTAssertNotNil(attach(app, name: "local-core-on-hold"))
+        app.buttons["재개: \(nextAction)"].tap()
+        XCTAssertTrue(app.staticTexts[nextAction].waitForExistence(timeout: 10))
+        XCTAssertEqual(app.textFields["행동 결과 입력"].value as? String, draft)
+        XCTAssertNotNil(attach(app, name: "local-core-resumed-draft"))
+    }
+
+    func testLocalCoreFlowKeepsLearningAndPersonalGoalsSeparate() {
+        continueAfterFailure = false
+        let app = localApp()
+        let learning = "통계 기초 단원 하나 학습하기"
+        let personal = "개인 프로젝트로 베란다 화분 옮겨 심기"
+        startLocalGoal(app, goal: learning, firstAction: "학습 자료에서 다음 단원 열기")
+        app.textFields["행동 결과 입력"].tap()
+        app.textFields["행동 결과 입력"].typeText("학습 메모")
+        startLocalGoal(app, goal: personal, firstAction: "옮길 화분 하나 정하기")
+        app.textFields["행동 결과 입력"].tap()
+        app.textFields["행동 결과 입력"].typeText("화분 메모")
+
+        selectLocalGoal(app, goal: learning)
+        XCTAssertTrue(app.staticTexts["학습 자료에서 다음 단원 열기"].waitForExistence(timeout: 10))
+        XCTAssertEqual(app.textFields["행동 결과 입력"].value as? String, "학습 메모")
+        app.terminate()
+        app.launch()
+        XCTAssertTrue(app.staticTexts["학습 자료에서 다음 단원 열기"].waitForExistence(timeout: 10))
+        XCTAssertEqual(app.textFields["행동 결과 입력"].value as? String, "학습 메모")
+        XCTAssertNotNil(attach(app, name: "local-core-learning-restored"))
+
+        selectLocalGoal(app, goal: personal)
+        XCTAssertTrue(app.staticTexts["옮길 화분 하나 정하기"].waitForExistence(timeout: 10))
+        XCTAssertEqual(app.textFields["행동 결과 입력"].value as? String, "화분 메모")
+        XCTAssertNotNil(attach(app, name: "local-core-personal-restored"))
+    }
+
     func testActualMockScreensWithTimingOnAndOff() throws {
         continueAfterFailure = false
         let url = try XCTUnwrap(ProcessInfo.processInfo.environment["SMALLNEXT_TIMING_TEST_URL"])
@@ -54,6 +120,29 @@ final class ScreenTimingTests: XCTestCase {
         XCTAssertEqual(termination(elapsed: 59, budget: 60, screenshotHash: "hash"), "observed")
     }
 
+    private func localApp() -> XCUIApplication {
+        let app = XCUIApplication()
+        app.launchArguments = ["-ios_core_flow", "YES", "-user_server_ai", "NO", "-suggestion_timing", "NO"]
+        app.launch()
+        XCTAssertTrue(app.buttons["목표 목록"].waitForExistence(timeout: 10))
+        return app
+    }
+    private func startLocalGoal(_ app: XCUIApplication, goal: String, firstAction: String) {
+        newGoal(app)
+        app.textFields["목표 한 문장"].tap()
+        app.textFields["목표 한 문장"].typeText(goal)
+        app.buttons["목표 정리"].tap()
+        XCTAssertTrue(app.buttons["확인하고 시작"].waitForExistence(timeout: 10))
+        app.buttons["확인하고 시작"].tap()
+        XCTAssertTrue(app.staticTexts[firstAction].waitForExistence(timeout: 10))
+        XCTAssertNotNil(attach(app, name: "local-core-\(goal)"))
+    }
+    private func selectLocalGoal(_ app: XCUIApplication, goal: String) {
+        app.buttons["목표 목록"].tap()
+        let entry = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", goal + ",")).firstMatch
+        XCTAssertTrue(entry.waitForExistence(timeout: 10))
+        entry.tap()
+    }
     private func newGoal(_ app: XCUIApplication) {
         if !app.textFields["목표 한 문장"].exists {
             app.buttons["목표 목록"].tap()
