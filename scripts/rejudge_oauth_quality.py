@@ -92,10 +92,12 @@ def rejudge(frozen, output):
     if output.is_symlink():
         raise ValueError("unsafe_output")
     frozen, output = frozen.resolve(), output.resolve()
-    if frozen == output or frozen in output.parents or output in frozen.parents:
-        raise ValueError("output_overlaps_input")
     if not frozen.is_dir():
         raise ValueError("unsupported_input")
+    # Case aliases can name the same directory on case-insensitive filesystems.
+    if (any(path.exists() and path.samefile(frozen) for path in (output, *output.parents))
+            or (output.exists() and any(path.samefile(output) for path in frozen.parents))):
+        raise ValueError("output_overlaps_input")
     files = {}
 
     def read(name, *, required=False):

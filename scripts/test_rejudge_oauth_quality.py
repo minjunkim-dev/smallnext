@@ -240,6 +240,16 @@ class RejudgmentTests(unittest.TestCase):
                 self.assertEqual(self.command(output=path).returncode, 2)
         self.assertEqual(before, self.snapshot())
 
+    def test_output_case_alias_cannot_write_inside_input(self):
+        alias = self.frozen.with_name(self.frozen.name.upper())
+        if not alias.exists():
+            self.skipTest("case-sensitive filesystem")
+        before = self.snapshot()
+        result = self.command(output=alias / "nested")
+        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+        self.assertEqual(before, self.snapshot())
+        self.assertFalse((self.frozen / "nested").exists())
+
     def test_input_file_and_results_directory_symlinks_are_rejected(self):
         original = self.frozen / "results/000.json"
         outside = self.root / "private.json"
