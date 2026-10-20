@@ -18,6 +18,7 @@
 		75C537B078842D900AE578AC /* TurnstileAuthentication.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD181E27E6503C6DAF49C1F4 /* TurnstileAuthentication.swift */; };
 		7A5BE289278F6095E7EF0BCF /* FirebaseClientConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 23FF829BA7D4678913A15AE8 /* FirebaseClientConfiguration.swift */; };
 		7FC526E773F035A32359426D /* CrashReporting.swift in Sources */ = {isa = PBXBuildFile; fileRef = D404FD8D96A7865FE4901A10 /* CrashReporting.swift */; };
+		9C1D4954A3522A542337C631 /* ReleaseAuthValidationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34ACD3C29C635C972AB64317 /* ReleaseAuthValidationTests.swift */; };
 		A8DEFD6028B1AD5A9F8C75B2 /* FirebaseCore in Frameworks */ = {isa = PBXBuildFile; productRef = 45E3C1CD17348250C2572F8B /* FirebaseCore */; };
 		A9CF16D2206FF500083EBDC6 /* feature-flags.json in Resources */ = {isa = PBXBuildFile; fileRef = 11C1F69DF05E9AE74CF34A04 /* feature-flags.json */; };
 		B71B69141C6C67E9D1493408 /* SmallnextCore in Frameworks */ = {isa = PBXBuildFile; productRef = 1B88103B7194E0316C964DDD /* SmallnextCore */; };
@@ -49,6 +50,7 @@
 		11C1F69DF05E9AE74CF34A04 /* feature-flags.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "feature-flags.json"; sourceTree = "<group>"; };
 		23FF829BA7D4678913A15AE8 /* FirebaseClientConfiguration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FirebaseClientConfiguration.swift; sourceTree = "<group>"; };
 		288EEEA59C7E1B88F7F39D8A /* CrashReportingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CrashReportingTests.swift; sourceTree = "<group>"; };
+		34ACD3C29C635C972AB64317 /* ReleaseAuthValidationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReleaseAuthValidationTests.swift; sourceTree = "<group>"; };
 		3975D918CC3E367877088F76 /* ScreenTimingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenTimingTests.swift; sourceTree = "<group>"; };
 		3A3FBB5EEE28F6040A5A323C /* SmallnextCore */ = {isa = PBXFileReference; lastKnownFileType = folder; name = SmallnextCore; path = Packages/SmallnextCore; sourceTree = SOURCE_ROOT; };
 		3E93A4009080939BA076E576 /* SmallnextTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = SmallnextTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -127,6 +129,7 @@
 			children = (
 				288EEEA59C7E1B88F7F39D8A /* CrashReportingTests.swift */,
 				F69EB006835546EE382DA65E /* FeatureFlagsBundleTests.swift */,
+				34ACD3C29C635C972AB64317 /* ReleaseAuthValidationTests.swift */,
 				CD7D94471284A7FC66F95BE7 /* TurnstileAuthenticationTests.swift */,
 				A1FB7FB815872124737BBD11 /* UserServerAITests.swift */,
 			);
@@ -335,6 +338,7 @@
 			files = (
 				5CAD65A62B31DE1BA6FA24EB /* CrashReportingTests.swift in Sources */,
 				00B432C73AA8BDD3A211E9E4 /* FeatureFlagsBundleTests.swift in Sources */,
+				9C1D4954A3522A542337C631 /* ReleaseAuthValidationTests.swift in Sources */,
 				FA0B797F5754B485E6090D2A /* TurnstileAuthenticationTests.swift in Sources */,
 				2FA2B0B084303CD0EEE1916F /* UserServerAITests.swift in Sources */,
 			);
