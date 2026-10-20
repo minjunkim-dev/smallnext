@@ -10,6 +10,13 @@ final class TurnstileAuthenticationTests: XCTestCase {
         try TurnstileConfiguration(origin: URL(string: "https://captcha.example.invalid")!, siteKey: "synthetic-site")
     }
 
+    func testNavigationPolicyIsRegisteredAsAnObjectiveCDelegate() throws {
+        let request = TurnstileChallenge.Request(id: nonce, configuration: try configuration())
+        let coordinator = TurnstileWebView.Coordinator(request: request) { _ in }
+        XCTAssertTrue(coordinator.responds(to: NSSelectorFromString("webView:decidePolicyForNavigationAction:decisionHandler:")),
+                      "WebKit must invoke the existing navigation allowlist.")
+    }
+
     func testConfigurationPairIsOptionalButPartialOrUnsafeSettingsFailClosed() throws {
         XCTAssertNil(try TurnstileConfiguration.load(info: [:]))
         XCTAssertNil(try TurnstileConfiguration.load(info: ["SmallnextAuthCaptchaURL": "$(EMPTY)", "SmallnextTurnstileSiteKey": ""]))
