@@ -118,7 +118,7 @@ final class ScreenTimingTests: XCTestCase {
         app.buttons["문구 수정"].tap()
         let statement = app.textFields["목표 문구"]
         statement.tap()
-        statement.typeText(" (수정)")
+        statement.typeText("(수정)")
         let edited = try XCTUnwrap(statement.value as? String)
         XCTAssertNotEqual(edited, original)
         XCTAssertTrue(edited.contains("(수정)"))
