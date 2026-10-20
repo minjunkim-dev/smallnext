@@ -70,6 +70,101 @@ final class ScreenTimingTests: XCTestCase {
         XCTAssertNotNil(attach(app, name: "local-core-personal-restored"))
     }
 
+    func testLocalCoreFlowRestoresInputBeforeGoalPreparation() {
+        continueAfterFailure = false
+        let app = localApp()
+        newGoal(app)
+        app.textFields["목표 한 문장"].tap()
+        app.textFields["목표 한 문장"].typeText("정리하기")
+        app.terminate()
+        app.launch()
+        XCTAssertTrue(app.buttons["목표 목록"].waitForExistence(timeout: 10))
+        newGoal(app)
+        XCTAssertEqual(app.textFields["목표 한 문장"].value as? String, "정리하기")
+        app.buttons["목표 정리"].tap()
+        let answer = app.textFields["목표 확인 질문 답"]
+        XCTAssertTrue(answer.waitForExistence(timeout: 10))
+        XCTAssertFalse(app.buttons["확인하고 시작"].exists)
+        XCTAssertNotNil(attach(app, name: "local-core-preparation-question"))
+        answer.tap()
+        answer.typeText("집 책상 위 물건을 정리해요.")
+        app.buttons["답 보내기"].tap()
+        XCTAssertTrue(app.buttons["확인하고 시작"].waitForExistence(timeout: 10))
+        XCTAssertFalse(answer.exists)
+        XCTAssertNotNil(attach(app, name: "local-core-preparation-summary"))
+        app.buttons["확인하고 시작"].tap()
+        XCTAssertTrue(app.staticTexts["목표와 관련된 첫 자료 하나 열기"].waitForExistence(timeout: 10))
+        XCTAssertNotNil(attach(app, name: "local-core-preparation-first-action"))
+    }
+
+    func testLocalCoreFlowPreservesProgressDuringGoalManagement() throws {
+        continueAfterFailure = false
+        let app = localApp()
+        let runID = UUID().uuidString
+        let original = "목표 관리 검증 \(runID)"
+        let retained = "보존할 검증 목표 \(runID)"
+        let firstAction = "목표와 관련된 첫 자료 하나 열기"
+        let nextAction = "연 자료에서 지금 할 한 가지를 고르기"
+        startLocalGoal(app, goal: original, firstAction: firstAction)
+        app.buttons["완료"].tap()
+        XCTAssertTrue(app.staticTexts[nextAction].waitForExistence(timeout: 10))
+        app.textFields["행동 결과 입력"].tap()
+        app.textFields["행동 결과 입력"].typeText("수정 전 진행 메모")
+        startLocalGoal(app, goal: retained, firstAction: firstAction)
+        app.textFields["행동 결과 입력"].tap()
+        app.textFields["행동 결과 입력"].typeText("남길 목표의 메모")
+        selectLocalGoal(app, goal: original)
+        app.buttons["목표 보기"].tap()
+        app.buttons["문구 수정"].tap()
+        let statement = app.textFields["목표 문구"]
+        statement.tap()
+        statement.typeText("(수정)")
+        let edited = try XCTUnwrap(statement.value as? String)
+        XCTAssertNotEqual(edited, original)
+        XCTAssertTrue(edited.contains("(수정)"))
+        app.buttons["문구 저장"].tap()
+        XCTAssertTrue(app.staticTexts[edited].waitForExistence(timeout: 10))
+        app.buttons["닫기"].tap()
+        app.terminate()
+        app.launch()
+        XCTAssertTrue(app.staticTexts[nextAction].waitForExistence(timeout: 10))
+        XCTAssertEqual(app.textFields["행동 결과 입력"].value as? String, "수정 전 진행 메모")
+        app.buttons["목표 보기"].tap()
+        XCTAssertTrue(app.staticTexts[edited].waitForExistence(timeout: 10))
+        app.buttons["목표 삭제"].tap()
+        let confirmation = app.alerts["목표를 삭제할까요?"]
+        XCTAssertTrue(confirmation.waitForExistence(timeout: 10))
+        confirmation.buttons["취소"].tap()
+        XCTAssertTrue(app.buttons["문구 수정"].waitForExistence(timeout: 10))
+        XCTAssertNotNil(attach(app, name: "local-core-delete-cancelled"))
+        app.buttons["목표 중단"].tap()
+        XCTAssertTrue(app.staticTexts["진행 상태와 입력·기록을 보관했어요."].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["수정 전 진행 메모"].exists)
+        XCTAssertNotNil(attach(app, name: "local-core-stopped-records"))
+        app.buttons["목표 목록"].tap()
+        let editedEntry = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", edited + ","))
+        XCTAssertTrue(editedEntry.firstMatch.waitForExistence(timeout: 10))
+        XCTAssertTrue(editedEntry.firstMatch.label.contains("목표 중단"))
+        XCTAssertTrue(editedEntry.firstMatch.label.contains("완료한 행동 1개"))
+        app.buttons["닫기"].tap()
+        app.buttons["목표 보기"].tap()
+        app.buttons["목표 삭제"].tap()
+        XCTAssertTrue(confirmation.waitForExistence(timeout: 10))
+        confirmation.buttons["삭제"].tap()
+        app.buttons["목표 목록"].tap()
+        XCTAssertEqual(editedEntry.count, 0)
+        let retainedEntry = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", retained + ",")).firstMatch
+        XCTAssertTrue(retainedEntry.waitForExistence(timeout: 10))
+        retainedEntry.tap()
+        app.terminate()
+        app.launch()
+        XCTAssertTrue(app.staticTexts[firstAction].waitForExistence(timeout: 10))
+        XCTAssertEqual(app.textFields["행동 결과 입력"].value as? String, "남길 목표의 메모")
+        XCTAssertNotNil(attach(app, name: "local-core-retained-after-delete"))
+        app.buttons["목표 목록"].tap()
+        XCTAssertEqual(editedEntry.count, 0)
+    }
+
     func testActualMockScreensWithTimingOnAndOff() throws {
         continueAfterFailure = false
         let url = try XCTUnwrap(ProcessInfo.processInfo.environment["SMALLNEXT_TIMING_TEST_URL"])
