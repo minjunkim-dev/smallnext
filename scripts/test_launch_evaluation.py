@@ -1,5 +1,6 @@
 """Offline regression at the frozen launch evaluator's execution/report boundary."""
 from collections import Counter
+from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 import json
 import os
@@ -15,6 +16,49 @@ from unittest.mock import patch
 
 import launch_evaluation as launch
 import oauth_quality as qa
+
+
+class TransitionTests(unittest.TestCase):
+    def test_stops_use_frozen_expectations_and_preserve_termination_priority(self):
+        expected = {'verdicts': ['accept'], 'statuses': ['action', 'need_info', 'minimum', 'no_action']}
+        for verdict, status, step, reference, outcome in [
+                ('reject', 'action', 0, expected, (False, None, None)),
+                ('accept', 'action', 0, {'verdicts': ['accept'], 'statuses': ['minimum']},
+                 (False, None, None)),
+                ('reject', 'minimum', 2, {'verdicts': ['reject'], 'statuses': ['minimum']},
+                 (True, 'expected_reject', None)),
+                ('uncertain', 'no_action', 2, {'verdicts': ['uncertain'], 'statuses': ['no_action']},
+                 (True, 'expected_uncertain', None)),
+                ('accept', 'need_info', 2, expected, (True, 'need_info', None)),
+                ('accept', 'minimum', 2, expected, (True, 'minimum', None)),
+                ('accept', 'no_action', 2, expected, (True, 'no_action', None)),
+                ('accept', 'action', 2, expected, (True, 'planned_limit', None))]:
+            with self.subTest(verdict=verdict, status=status, reference=reference):
+                self.assertEqual(launch.transition({}, {'status': status}, verdict, reference, 2, step),
+                                 outcome)
+
+    def test_next_input_copies_nested_state_and_candidate_without_changing_sources(self):
+        data = {'request_kind': 'first_action', 'user_request': 'original',
+                'previous_proposals': [{'remaining_work': ['older']}], 'remaining_work': ['todo']}
+        candidate = {'status': 'action', 'remaining_work': ['next']}
+        original, proposal = deepcopy(data), deepcopy(candidate)
+        expected = {'verdicts': ['accept'], 'statuses': ['action']}
+        matched, termination, next_input = launch.transition(data, candidate, 'accept', expected, 2, 0)
+        self.assertTrue(matched)
+        self.assertIsNone(termination)
+        self.assertEqual(next_input, {
+            'request_kind': 'smaller',
+            'user_request': '현재 행동을 실질적으로 줄인다. 반복 막힘이면 첫 막힘 한 가지를 확인한다.',
+            'previous_proposals': [{'remaining_work': ['older']},
+                                   {'status': 'action', 'remaining_work': ['next']}],
+            'remaining_work': ['todo']})
+        self.assertEqual((data, candidate), (original, proposal))
+        next_input['remaining_work'].append('changed')
+        next_input['previous_proposals'][0]['remaining_work'].append('changed')
+        next_input['previous_proposals'][1]['remaining_work'].append('changed')
+        self.assertEqual((data, candidate), (original, proposal))
+        other = launch.transition(data, candidate, 'accept', expected, 2, 0)[2]
+        self.assertEqual(other['previous_proposals'], [original['previous_proposals'][0], proposal])
 
 
 def isolate_private_root(test):
@@ -209,8 +253,8 @@ class LaunchEvaluationTests(unittest.TestCase):
 
     def test_independent_repeats_share_only_their_own_generated_proposals(self):
         with tempfile.TemporaryDirectory() as directory:
-            root, _ = self.freeze(directory)
-            inputs = []
+            root, manifest = self.freeze(directory)
+            inputs, proposals = [], []
 
             def invoke(role, *args):
                 result = self.response(role, *args)
@@ -218,12 +262,70 @@ class LaunchEvaluationTests(unittest.TestCase):
                     inputs.append(json.loads(json.dumps(args[2])))
                     if not args[2]['unknown']:
                         result['output']['status'] = 'action'
+                    result['output']['reason'] = f"합성 제안 {len(inputs)}"
+                    proposals.append(deepcopy(result['output']))
                 return result
 
-            launch.run(root, invoke=invoke)
+            summary = launch.run(root, invoke=invoke)
+            self.assertTrue(summary['automatic_passed'])
             self.assertEqual([len(x['previous_proposals']) for x in inputs[:9]], [0, 1, 2, 0, 1, 2, 0, 1, 2])
             self.assertEqual([x['request_kind'] for x in inputs[:3]], ['first_action', 'smaller', 'smaller'])
             self.assertTrue(all(x['completed_ids'] == [] for x in inputs[:72]))
+            offset = 0
+            for flow in manifest['flows']:
+                expected_input = deepcopy(flow['input'])
+                for step in range(flow['max_smaller'] + 1):
+                    self.assertEqual(inputs[offset], expected_input)
+                    row = json.loads((root/'results'/f'{offset:03d}.json').read_bytes())
+                    self.assertNotIn('next_input', row)
+                    offset += 1
+                    if row.get('termination'):
+                        break
+                    self.assertNotIn('termination', row)
+                    expected_input['previous_proposals'].append(proposals[offset - 1])
+                    expected_input['request_kind'] = 'smaller'
+                    expected_input['user_request'] = '현재 행동을 실질적으로 줄인다. 반복 막힘이면 첫 막힘 한 가지를 확인한다.'
+            self.assertEqual(launch.load(root), manifest)
+
+    def test_checked_action_stops_before_next_request_after_cancellation_ownership_or_save_failure(self):
+        for fault, reason in [('cancelled', 'cancelled'), ('ownership', 'ownership_lost'),
+                              ('result_save', 'runner_failed'), ('receipt_save', 'runner_failed')]:
+            with self.subTest(fault=fault), tempfile.TemporaryDirectory() as directory:
+                root, manifest = self.freeze(directory)
+                roles, cancelled = [], threading.Event()
+                lock = Path(directory)/'model.lock'
+                save = qa.save
+
+                def invoke(role, *args):
+                    roles.append(role)
+                    result = self.response(role, *args)
+                    if role == 'generate':
+                        result['output']['status'] = 'action'
+                    elif fault == 'cancelled':
+                        cancelled.set()
+                    elif fault == 'ownership':
+                        lock.unlink()
+                    return result
+
+                def failing_save(path, value):
+                    if (fault == 'result_save' and path.parent.name == 'results'
+                            or fault == 'receipt_save' and path.parent.name == 'requests'
+                            and path.suffix == '.receipt'):
+                        raise OSError('synthetic save failure')
+                    save(path, value)
+
+                with patch.object(qa, 'save', failing_save):
+                    summary = launch.run(root, invoke=invoke, cancelled=cancelled, lock_path=lock)
+                self.assertEqual(roles, ['generate', 'check'])
+                self.assertEqual(summary['stop_reason'], reason)
+                self.assertEqual(summary['requests']['started'], 1)
+                self.assertFalse(summary['automatic_passed'])
+                self.assertEqual(launch.load(root), manifest)
+                if fault in ('cancelled', 'ownership'):
+                    row = json.loads((root/'results/000.json').read_bytes())
+                    self.assertTrue(row['reference_matched'])
+                    self.assertEqual(row['error'], reason)
+                    self.assertNotIn('termination', row)
 
     def test_screen_report_uses_even_median_nearest_rank_and_excludes_failures(self):
         with tempfile.TemporaryDirectory() as directory:

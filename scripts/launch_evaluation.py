@@ -275,6 +275,23 @@ class Budget:
                 'basis': self.policy['basis'], 'actual_billing': None}
 
 
+def transition(data, candidate, verdict, expected, max_smaller, step):
+    matched = verdict in expected['verdicts'] and candidate['status'] in expected['statuses']
+    if not matched:
+        return False, None, None
+    if verdict != 'accept':
+        return True, 'expected_' + verdict, None
+    if candidate['status'] in {'need_info', 'minimum', 'no_action'}:
+        return True, candidate['status'], None
+    if step == max_smaller:
+        return True, 'planned_limit', None
+    next_input = deepcopy(data)
+    next_input['previous_proposals'].append(deepcopy(candidate))
+    next_input['request_kind'] = 'smaller'
+    next_input['user_request'] = '현재 행동을 실질적으로 줄인다. 반복 막힘이면 첫 막힘 한 가지를 확인한다.'
+    return True, None, next_input
+
+
 def metrics(values, measurement):
     values = sorted(values)
     lower = statistics.median_low(values) if values else None
@@ -519,8 +536,8 @@ def report_bundle(directory, descriptor, observations):
                        or call.get('cli_pid') and (not call.get('process_reaped') or call.get('process_group_alive'))
                        for call in row['calls']):
                     raise ValueError('inconsistent successful role')
-                matched = (checked['verdict'] in flow['expected']['verdicts']
-                           and candidate['status'] in flow['expected']['statuses'])
+                matched, termination, next_input = transition(data, candidate, checked['verdict'],
+                    flow['expected'], flow['max_smaller'], row['step'])
                 if (not qa.proposal_valid(flow['input'], candidate) or not qa.check_valid(checked)
                         or row['verdict'] != checked['verdict']
                         or row.get('criteria') != checked['criteria'] or row.get('status') != candidate['status']
@@ -528,10 +545,6 @@ def report_bundle(directory, descriptor, observations):
                         or type(row.get('step')) is not int or not 0 <= row['step'] <= flow['max_smaller']
                         or any(call.get('error') for call in row['calls'])):
                     raise ValueError('inconsistent decision record')
-                termination = (None if not matched else 'expected_' + checked['verdict']
-                    if checked['verdict'] != 'accept' else candidate['status']
-                    if candidate['status'] in {'need_info', 'minimum', 'no_action'} else
-                    'planned_limit' if row['step'] == flow['max_smaller'] else None)
                 if row.get('termination') != termination:
                     raise ValueError('inconsistent termination')
             elif not row.get('error'):
@@ -542,9 +555,7 @@ def report_bundle(directory, descriptor, observations):
             seen.add(row['request_id'])
             usage_totals = pending_usage
             if not row.get('error') and not row.get('termination'):
-                states[row['flow']]['previous_proposals'].append(deepcopy(row['calls'][0]['output']))
-                states[row['flow']]['request_kind'] = 'smaller'
-                states[row['flow']]['user_request'] = '현재 행동을 실질적으로 줄인다. 반복 막힘이면 첫 막힘 한 가지를 확인한다.'
+                states[row['flow']] = next_input
                 steps[row['flow']] += 1
         except (OSError, ValueError, KeyError, TypeError, OverflowError, RecursionError):
             unreadable.append(path.name)
@@ -795,16 +806,13 @@ def run(directory, *, claude='claude', invoke=None, cancelled=None, clock=monoto
                                     row['error'] = 'invalid_check'
                                     break
                                 row.update(verdict=output['verdict'], criteria=output['criteria'], status=candidate['status'])
-                                row['reference_matched'] = (output['verdict'] in flow['expected']['verdicts']
-                                    and candidate['status'] in flow['expected']['statuses'])
-                                if not row['reference_matched']:
+                                matched, termination, next_input = transition(data, candidate, output['verdict'],
+                                    flow['expected'], flow['max_smaller'], step)
+                                row['reference_matched'] = matched
+                                if not matched:
                                     row['error'] = 'unexpected_quality'
-                                elif output['verdict'] != 'accept':
-                                    row['termination'] = 'expected_' + output['verdict']
-                                elif candidate['status'] in {'need_info', 'minimum', 'no_action'}:
-                                    row['termination'] = candidate['status']
-                                elif step == flow['max_smaller']:
-                                    row['termination'] = 'planned_limit'
+                                elif termination:
+                                    row['termination'] = termination
                     except qa.OutputError as error:
                         row['error'] = 'invalid_output'
                         row['output_error'] = error.detail
@@ -825,9 +833,7 @@ def run(directory, *, claude='claude', invoke=None, cancelled=None, clock=monoto
                         break
                     if row.get('termination'):
                         break
-                    data['previous_proposals'].append(deepcopy(candidate))
-                    data['request_kind'] = 'smaller'
-                    data['user_request'] = '현재 행동을 실질적으로 줄인다. 반복 막힘이면 첫 막힘 한 가지를 확인한다.'
+                    data = next_input
                 if reason != 'completed':
                     break
         except Exception:
