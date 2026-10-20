@@ -151,9 +151,43 @@ API의 시작·매분 삭제도 유지한다. 일정 등록만으로 실제 삭�
 실제 도메인의 공인 TLS 인증서 유효성도 확인한다. 로컬 HTTP smoke로 공인 TLS를 확인했다고 보고하지 않는다.
 
 iOS 설정과 빌드 명령은 [iOS 연결](SERVER_AI.md#ios-연결)과 [개발 환경](DEVELOPMENT.md#ios)을 따른다.
-#164의 Release 익명 로그인 조건은 [기존 OFF 경로에 대한 질문](https://github.com/minjunkim-dev/smallnext/issues/164#issuecomment-6190868774)을 먼저 확정한다.
-이 질문을 해결하려고 기능 플래그를 임의로 켜지 않는다.
+#164의 Release 익명 로그인은 아래 인증 전용 테스트를 사용한다. [확정 범위](https://github.com/minjunkim-dev/smallnext/issues/164#issuecomment-6286553318)와 [준비 티켓 #191](https://github.com/minjunkim-dev/smallnext/issues/191)을 따른다.
 유료 API·사람 검토·실기기·공개 승인은 각각 별도 확인 범위다.
+
+### Release AI OFF 인증 전용 검증
+
+이 절차는 실제 실행 승인을 받은 뒤 사람이 수행한다. 준비 구현·기본 skip은 실제 인증 성공의 근거가 아니다.
+제품의 `user_server_ai`·`ios_core_flow`는 OFF로 유지한다. 테스트는 제품 AI 공급자가 비활성 상태인지 확인한다.
+기존 `SupabaseAnonymousIdentity`를 직접 사용한다. 제품의 Keychain session과 분리한 고유 service·key를 만들고 자기 key만 제거한다.
+검증 transport는 Release 번들의 프로젝트로 보내는 `POST /auth/v1/signup` 한 번만 허용한다. redirect·재시도·AI 요청을 거부한다.
+CAPTCHA 설정이 있으면 기존 앱 sheet에서 사람이 완료한다. 부분 설정은 실패한다. CAPTCHA를 임의로 끄지 않는다.
+
+1. Release 공개 client 설정·대상 Supabase 프로젝트·익명 인증 허용 상태를 확인한다. [iOS 연결](SERVER_AI.md#ios-연결)의 설정을 사용한다. 토큰·UID·key·설정 원문을 결과에 복사하지 않는다.
+2. 기존 검사와 충돌하지 않는 본인 소유 simulator를 선택한다. 아래 `SIMULATOR_UDID`를 해당 UUID로 바꾼다. 저장소 기준 Xcode를 선택한다.
+3. 아래 명령을 실행한다. 익명 계정이 서버에 한 개 생길 수 있다. Keychain 정리는 서버의 익명 계정을 삭제하지 않는다. 실패했을 때 자동 재실행하지 말고 프로젝트 상태를 먼저 확인한다.
+
+```sh
+TEST_RUNNER_SMALLNEXT_LIVE_AUTH_CHECK=1 \
+python3 ~/.agents/tools/agent_workflow.py check -- \
+xcodebuild -project apps/ios/Smallnext.xcodeproj -scheme Smallnext \
+  -configuration Release ENABLE_TESTABILITY=YES \
+  -destination 'platform=iOS Simulator,id=SIMULATOR_UDID' \
+  -onlyUsePackageVersionsFromResolvedFile -skipPackageUpdates \
+  -only-testing:SmallnextTests/ReleaseAuthValidationTests/testOptInReleaseAnonymousAuthentication \
+  -test-timeouts-enabled YES -maximum-test-execution-time-allowance 180 \
+  CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- CODE_SIGNING_REQUIRED=NO test
+```
+
+[`TEST_RUNNER_`](https://developer.apple.com/documentation/xcode/environment-variable-reference)는 Xcode가 접두사를 제거한 뒤 테스트 프로세스로 전달한다.
+[`ENABLE_TESTABILITY=YES`](https://developer.apple.com/documentation/xcode/build-settings-reference)는 Release의 `@testable import`를 허용하는 해당 명령의 설정이다.
+명시적 opt-in이 없으면 신원·Keychain·네트워크 생성 전에 skip한다. Debug에서 opt-in하면 실패한다.
+일반 로컬 검사·CI에는 opt-in을 설정하지 않는다. 이 경로는 앱 사용자에게 로그인 버튼을 추가하지 않는다.
+테스트에는 실제 토큰·UID·key·HTTP 본문·공급자 오류 원문을 출력하는 진단 코드를 추가하지 않는다.
+
+4. 성공하면 #164에 source SHA·Xcode 버전·Release·두 플래그 OFF·익명 인증 성공·Auth 요청 1회·로컬 session 정리 결과만 기록한다. 테스트 로그·xcresult 원문을 공개 첨부하지 않는다.
+5. 실패·취소·timeout이면 성공으로 표시하지 않는다. 자기 session 정리 실패가 있으면 테스트가 기록한 고정 오류를 남긴다. 프로세스가 강제 종료되면 정리를 보장할 수 없으므로 해당 simulator를 본인 검증 절차로 정리한다.
+
+이 검증은 Supabase 인증만 확인한다. 실제 서버 배포·TLS·200/200/404·timer·AI 호출·실기기 완료는 각각 별도 근거가 필요하다.
 
 ## 예산 백업과 복원 검사
 
