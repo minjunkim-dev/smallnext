@@ -144,5 +144,5 @@ Rust/Python question_prompt의 후보를 다음 세 문장으로 선택한다.
 목표 자체가 문법·위치 확인을 요구하면 그 특징은 유용한 결과일 수 있다. 제공된 자료의 일부 확인·이미 제공한 기록 문맥·제목/표시 자체가 필요한 목표 결과·글자/항목/선택 부담 감소를 유지한다. 총분량 질문을 일괄 강제하거나 임의 단어를 목표 결과로 간주하지 않는다.
 reason의 주장은 계속 대조 대상이다. 다른 근거로 입증된 실패는 기존 `reject`를 따른다. 결정적 근거 부족은 `uncertain`을 유지한다. 정상 `minimum/need_info`·사실·남은 범위·보류를 유지한다.
 검증은 공식 fixture의 generate·check·check-unpreserved 변경과 check-question·공유 계약·schema·12사례/status 보존을 구분한다. 새 인터페이스·문자열 의미 검사·자동 모델 재시도는 제안하지 않는다. 전달 검증은 실제 AI 품질 개선을 증명하지 않는다.
-보관 식별자는 #220 승인 MD SHA `b30cdf33edb4d3e90b5bdacfa2d700e10c8be8c50dbe5d189c5204fe1b5e7780`, 판정 JSON SHA `b82d2a02ac89163cbbce5a918a97227069dfbdb83757a5b44067c47a14e1cd0b`이다. 담당자 minjunkim-dev와 삭제 상한 `2026-11-20T15:10:10.145476+09:00`을 유지한다.
+보관 식별자는 #220 승인판정표 SHA `b30cdf33edb4d3e90b5bdacfa2d700e10c8be8c50dbe5d189c5204fe1b5e7780`, 출처기록 SHA `b82d2a02ac89163cbbce5a918a97227069dfbdb83757a5b44067c47a14e1cd0b`이다. 담당자 minjunkim-dev와 삭제 상한 `2026-11-20T15:10:10.145476+09:00`을 유지한다.
 이 연구는 공개 승인 요약과 공식 소스만 대조했다. private 원문을 읽지 않았다. 검사·모델·OAuth·유료 API를 실행하지 않았다. 실제 수행·품질 개선·화면·서버·실기기·출시는 검증하지 않았다.
