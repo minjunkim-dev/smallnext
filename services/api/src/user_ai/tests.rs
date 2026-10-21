@@ -596,6 +596,13 @@ async fn disabled_revoked_and_lookup_failure_never_spend_ai_budget() {
         .await
         .unwrap();
     assert_eq!(charged, None);
+    let recorded: i64 = sqlx::query_scalar(
+        "SELECT (SELECT count(*) FROM ai_daily_usage) + (SELECT count(*) FROM ai_request_metrics)",
+    )
+    .fetch_one(&fixture.database)
+    .await
+    .unwrap();
+    assert_eq!(recorded, 0);
     // Revocation status is checked again, so the same cached signing key cannot bypass re-enable.
     assert_eq!(
         result(fixture.request("allowed", "enabled").await).await["disposition"],
@@ -797,6 +804,11 @@ async fn active_identity_is_user_scoped_and_disconnect_stops_checker_without_ref
     // A duplicate cannot start even from another router instance.
     let duplicate = fixture.request("allowed", "same-state").await;
     assert_eq!(duplicate.status(), StatusCode::CONFLICT);
+    // Another goal of the same user cannot occupy the second shared slot.
+    assert_eq!(
+        fixture.request("allowed", "other-state").await.status(),
+        StatusCode::CONFLICT
+    );
     assert_eq!(
         fixture.request("other", "same-state").await.status(),
         StatusCode::TOO_MANY_REQUESTS
@@ -1110,12 +1122,19 @@ async fn overrun_remains_blocked_after_other_instances_refund_and_restart() {
     let mut fixture = Fixture::new().await;
     fixture.config.budget_limit = 128_000;
     fixture.app = super::router(Some(fixture.config.clone()), fixture.database.clone());
+    // Each user has one active request, so the replica's request needs a third session.
+    sqlx::query("INSERT INTO fixture_sessions VALUES ($1, TRUE)")
+        .bind(identity("stranger"))
+        .execute(&fixture.database)
+        .await
+        .unwrap();
+    fixture.config.supabase.allowed = None;
     let overrun = fixture.request("allowed", "overrun").await;
     let normal = fixture.request("other", "normal").await;
     // A second API instance has its own capacity, but shares the durable monthly budget.
     let mut replica = super::router(Some(fixture.config.clone()), fixture.database.clone());
     std::mem::swap(&mut replica, &mut fixture.app);
-    let other_normal = fixture.request("other", "other-normal").await;
+    let other_normal = fixture.request("stranger", "other-normal").await;
     std::mem::swap(&mut replica, &mut fixture.app);
     assert_eq!(overrun.status(), StatusCode::OK);
     assert_eq!(normal.status(), StatusCode::OK);

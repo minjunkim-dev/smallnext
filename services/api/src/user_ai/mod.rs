@@ -196,7 +196,6 @@ pub(crate) async fn suggest(
         &server.database,
         &uid,
         &metrics::user_hash(&server.config.usage_key, &uid),
-        &request.state_key,
         request
             .input
             .request_kind

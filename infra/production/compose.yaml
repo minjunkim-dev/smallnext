@@ -26,6 +26,12 @@ services:
       AI_USER_DAILY_REQUESTS:
       AI_PUBLIC_ACCESS:
       AI_USAGE_HASH_KEY:
+    # Rejected-request logs are unauthenticated input; cap their disk use.
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "5"
     expose:
       - "8080"
     volumes:
@@ -54,6 +60,11 @@ services:
       - ./captcha:/srv/smallnext-captcha:ro
       - caddy-data:/data
       - caddy-config:/config
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "5"
     depends_on:
       - api
     restart: unless-stopped

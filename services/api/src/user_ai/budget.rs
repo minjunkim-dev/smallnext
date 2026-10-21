@@ -22,7 +22,6 @@ pub(super) async fn reserve(
     pool: &PgPool,
     uid: &str,
     user_hash: &[u8],
-    state: &str,
     kind: &str,
     amount: i64,
     limits: Limits,
@@ -31,9 +30,8 @@ pub(super) async fn reserve(
         .begin()
         .await
         .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
-    // Length-delimited identity prevents uid/state/kind concatenation collisions.
-    let identity =
-        serde_json::to_string(&(uid, state, kind)).map_err(|_| StatusCode::BAD_REQUEST)?;
+    // One active request per user: other goals or kinds cannot take the shared slots.
+    let identity = serde_json::to_string(&("user", uid)).map_err(|_| StatusCode::BAD_REQUEST)?;
     let locked: bool = sqlx::query_scalar(
         "SELECT pg_try_advisory_xact_lock(hashtextextended(current_schema() || ':' || $1, 0))",
     )
@@ -99,15 +97,18 @@ pub(super) async fn reserve(
     .await
     .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
     if counted.is_none() {
-        drop(transaction);
-        // Record the block outside the rolled-back reservation; a failed count still blocks.
-        let _ = sqlx::query(
+        // Release the budget row lock before recording the block outside the reservation.
+        let _ = transaction.rollback().await;
+        let recorded = sqlx::query(
             "INSERT INTO ai_daily_usage(day, user_hash, limited) VALUES($1::date, $2, 1) ON CONFLICT(day, user_hash) DO UPDATE SET limited=ai_daily_usage.limited+1",
         )
         .bind(&day)
         .bind(user_hash)
         .execute(pool)
         .await;
+        if recorded.is_err() {
+            tracing::warn!("AI request limit count failed");
+        }
         tracing::warn!("AI request rejected: user daily limit");
         return Err(StatusCode::TOO_MANY_REQUESTS);
     }

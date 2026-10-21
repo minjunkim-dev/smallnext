@@ -94,6 +94,16 @@ async fn session_and_client_privileges_fail_closed_without_changing_auth_schema(
                 .unwrap();
         assert!(!permission, "client role must not inspect sessions");
     }
+    for table in ["ai_daily_usage", "ai_request_metrics"] {
+        let permission: bool = sqlx::query_scalar(
+            "SELECT has_table_privilege('smallnext_backup', $1, 'SELECT,INSERT,UPDATE,DELETE')",
+        )
+        .bind(format!("{schema}.{table}"))
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert!(!permission, "backup reads only the budget columns");
+    }
     let execute: bool =
         sqlx::query_scalar("SELECT has_function_privilege('smallnext_api', $1, 'EXECUTE')")
             .bind(format!("{schema}.smallnext_session_active(text,text)"))

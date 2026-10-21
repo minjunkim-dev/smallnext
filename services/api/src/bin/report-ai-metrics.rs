@@ -2,10 +2,20 @@
 #[tokio::main]
 async fn main() -> std::process::ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
+    let date = |v: &str| {
+        v.len() == 10
+            && v.bytes().enumerate().all(|(i, b)| {
+                matches!(i, 4 | 7) == (b == b'-') && (b == b'-' || b.is_ascii_digit())
+            })
+    };
     let [from, to] = args.as_slice() else {
         eprintln!("usage: report-ai-metrics YYYY-MM-DD YYYY-MM-DD");
         return std::process::ExitCode::FAILURE;
     };
+    if !date(from) || !date(to) || from >= to {
+        eprintln!("usage: report-ai-metrics FROM TO (YYYY-MM-DD, FROM before TO)");
+        return std::process::ExitCode::FAILURE;
+    }
     match report(from, to).await {
         Ok(json) => {
             println!("{json}");

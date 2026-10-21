@@ -156,6 +156,7 @@ docker compose --env-file infra/production/.env.production --env-file infra/prod
 ```
 
 출력은 요청 수·결과별 수·서버 처리 ms의 p50/p95/p99·정산 비용·고유 사용자 수·한도 차단 수·일별 사용자 수다.
+`started` 결과는 취소된 요청이거나 조회 시점에 진행 중인 요청이다. 사용자 수는 30일 보관 범위 안에서만 정확하다.
 비용은 설정 단가로 계산한 값이다. Anthropic 청구액과 대조하기 전에는 실제 비용으로 보고하지 않는다.
 지표를 기록할 때 기간·배포 이미지 source SHA·서버 지역·모델/effort·표본 수를 함께 남긴다.
 인증 실패·예산 차단·동시 요청·처리 용량 초과는 API 컨테이너 로그의 `AI request rejected: <사유>` 고정 문구로 센다. 로그에는 UID·토큰·본문이 없다.
