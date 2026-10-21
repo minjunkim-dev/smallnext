@@ -13,7 +13,8 @@ use tokio::sync::Mutex;
 pub(super) struct Supabase {
     issuer: String,
     publishable_key: String,
-    allowed: HashSet<String>,
+    /// None is the explicit public beta mode.
+    pub(super) allowed: Option<HashSet<String>>,
     http: reqwest::Client,
     keys: Arc<Mutex<Keys>>,
     pub(super) endpoints: Endpoints,
@@ -37,7 +38,12 @@ mod tests {
             "https://project.supabase.co?value=1",
         ] {
             assert!(
-                Supabase::new(url.into(), "sb_publishable_test".into(), allowed.clone()).is_err()
+                Supabase::new(
+                    url.into(),
+                    "sb_publishable_test".into(),
+                    Some(allowed.clone())
+                )
+                .is_err()
             );
         }
         for key in ["sb_secret_test", "legacy-token", "sb_publishable_"] {
@@ -45,7 +51,7 @@ mod tests {
                 Supabase::new(
                     "https://project.supabase.co".into(),
                     key.into(),
-                    allowed.clone()
+                    Some(allowed.clone())
                 )
                 .is_err()
             );
@@ -54,7 +60,26 @@ mod tests {
             Supabase::new(
                 "https://project.supabase.co".into(),
                 "sb_publishable_test-A".into(),
-                allowed
+                Some(allowed)
+            )
+            .is_ok()
+        );
+        for allowed in [Some(HashSet::new()), Some(["invalid".into()].into())] {
+            assert!(
+                Supabase::new(
+                    "https://project.supabase.co".into(),
+                    "sb_publishable_test-A".into(),
+                    allowed
+                )
+                .is_err()
+            );
+        }
+        // Public mode is a distinct None, never an accidentally empty allowlist.
+        assert!(
+            Supabase::new(
+                "https://project.supabase.co".into(),
+                "sb_publishable_test-A".into(),
+                None
             )
             .is_ok()
         );
@@ -92,7 +117,7 @@ mod tests {
             let mut auth = Supabase::new(
                 "https://project.supabase.co".into(),
                 "sb_publishable_test".into(),
-                ["11111111-1111-4111-8111-111111111111".into()].into(),
+                Some(["11111111-1111-4111-8111-111111111111".into()].into()),
             )
             .unwrap();
             auth.endpoints.keys = format!("http://{address}/keys");
@@ -185,7 +210,7 @@ impl Supabase {
     pub(super) fn new(
         url: String,
         publishable_key: String,
-        allowed: HashSet<String>,
+        allowed: Option<HashSet<String>>,
     ) -> Result<Self, &'static str> {
         let parsed = reqwest::Url::parse(&url).map_err(|_| "invalid Supabase configuration")?;
         if parsed.scheme() != "https"
@@ -200,8 +225,9 @@ impl Supabase {
                 .bytes()
                 .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-'))
             || publishable_key.len() <= "sb_publishable_".len()
-            || allowed.is_empty()
-            || allowed.iter().any(|uid| !valid_uuid(uid))
+            || allowed
+                .as_ref()
+                .is_some_and(|a| a.is_empty() || a.iter().any(|uid| !valid_uuid(uid)))
         {
             return Err("invalid Supabase configuration");
         }
@@ -263,7 +289,11 @@ impl Supabase {
         {
             return Err(StatusCode::UNAUTHORIZED);
         }
-        if !self.allowed.contains(&claims.sub) {
+        if self
+            .allowed
+            .as_ref()
+            .is_some_and(|a| !a.contains(&claims.sub))
+        {
             return Err(StatusCode::FORBIDDEN);
         }
         // A signed JWT does not prove that the account or its session still exists.
