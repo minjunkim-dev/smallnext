@@ -227,12 +227,12 @@ def load(directory, *, descriptor=None):
         raise ValueError('launch runner differs from frozen version')
     if qa.digest(private_bytes(source, 'regression/manifest.json')) != manifest['regression']['manifest_sha256']:
         raise ValueError('regression changed')
+    models = manifest.get('role_models')
+    if (type(models) is not dict or set(models) != {'generate', 'check'}
+            or models['generate'] not in GENERATE_MODELS or models['check'] != qa.MODEL):
+        raise ValueError('role models changed')
     return manifest
 
-
-def role_model(manifest, role):
-    # Manifests frozen before #252 have no role_models and used one model for both roles.
-    return manifest.get('role_models', {}).get(role, manifest['model'])
 
 
 class Budget:
@@ -537,7 +537,7 @@ def report_bundle(directory, descriptor, observations):
                 candidate, checked = [call['output'] for call in row['calls']]
                 qa.validate(candidate, qa.schema_for(manifest, row))
                 qa.validate(checked, manifest['schemas']['check'])
-                if any(call.get('actual_models') != [role_model(manifest, call['role'])]
+                if any(call.get('actual_models') != [manifest['role_models'][call['role']]]
                        or call.get('provider_messages') != 1 or call.get('provider_retries', 0)
                        or call.get('additional_provider_requests', 0)
                        or any(type(call['usage'].get(key)) not in (int, float)
@@ -691,7 +691,7 @@ def report_bundle(directory, descriptor, observations):
                                      'cache_read_input_tokens', 'cache_creation_input_tokens')}
                        for role in ('generate', 'check')},
         'paid_budget_verified': False, 'model': manifest['model'], 'requested_effort': manifest['effort'],
-        'role_models': {role: role_model(manifest, role) for role in ('generate', 'check')}}
+        'role_models': manifest['role_models']}
 
 
 def run(directory, *, claude='claude', invoke=None, cancelled=None, clock=monotonic, lock_path=None,
@@ -746,7 +746,7 @@ def run(directory, *, claude='claude', invoke=None, cancelled=None, clock=monoto
                     raise ValueError('subscription OAuth login required')
                 invoke = lambda role, prompt, schema, data, deadline, cancel: qa.call(
                     claude, prompt, schema, data, deadline, cancel, output_mode=manifest['output_mode'],
-                    model=role_model(manifest, role))
+                    model=manifest['role_models'][role])
             for flow in manifest['flows']:
                 data = deepcopy(flow['input'])
                 for step in range(flow['max_smaller'] + 1):
@@ -796,7 +796,7 @@ def run(directory, *, claude='claude', invoke=None, cancelled=None, clock=monoto
                             if settlement or clock() >= deadline:
                                 row['error'] = settlement or 'timed_out'
                                 break
-                            if result.get('actual_models') != [role_model(manifest, role)] or result.get('provider_messages') != 1:
+                            if result.get('actual_models') != [manifest['role_models'][role]] or result.get('provider_messages') != 1:
                                 row['error'] = 'model_or_call_count'
                                 break
                             if result.get('provider_retries', 0) or result.get('additional_provider_requests', 0):

@@ -47,11 +47,12 @@ python3 scripts/launch_evaluation.py report work/launch-new --observations work/
 ```
 
 한 흐름만 다시 실행하려면 동결에 `--flow <흐름 ID> --max-smaller <회수>`를 더한다.
-생성 역할만 다른 모델로 비교하려면 동결에 `--generate-model claude-sonnet-5-5`를 더한다([#251](https://github.com/minjunkim-dev/smallnext/issues/251#issuecomment-6321796468)).
-검사 역할은 `claude-haiku-5-5`로 고정되고, 역할별 모델은 manifest `role_models`에 동결된다. run·report는 역할마다 실제 모델을 확인한다.
-역할 계획 예약은 모델과 관계없이 같은 값이다. 상위 모델의 가격을 반영하지 않으므로 유료 전환 비용의 근거로 쓰지 않는다.
-`oauth_quality.py`의 모델 인수 추가로 바뀐 실행기 SHA는 취소·종료·회수·오류 판정 코드가 그대로임을 확인한 뒤 재판정 `PROTOCOLS`에 같은 `cancellation-marker-v1`로 등록했다([#252](https://github.com/minjunkim-dev/smallnext/issues/252)).
 요청 상한은 회수+1개, 역할 호출 상한은 그 두 배다. 예: `--flow fixed-ready-1 --max-smaller 1`은 요청 2개·호출 4개다([#154](https://github.com/minjunkim-dev/smallnext/issues/154)).
+생성 역할만 다른 모델로 비교하려면 동결에 `--generate-model claude-sonnet-5-5`를 더한다([#251](https://github.com/minjunkim-dev/smallnext/issues/251#issuecomment-6321796468)).
+비교 실험일 뿐 제품 모델 채택이 아니다. 채택은 비용·지연 근거로 별도 결정한다.
+검사 역할은 `claude-haiku-5-5`로 고정된다. 역할별 모델은 manifest `role_models`에 동결되고, load·run·report가 허용 목록과 역할별 실제 모델을 확인한다.
+역할 계획 예약은 모델과 관계없이 같은 값이다. 상위 모델의 가격을 반영하지 않으므로 유료 전환 비용의 근거로 쓰지 않는다.
+모델 인수 추가로 `oauth_quality.py` SHA가 `1e2d25eb61b3c52ef34fe1f54f1e1ebc73c9e938108da58f8768bedaa5d6ddff`에서 `a52650b83cca7c5213aad7009853e0e8c4db74ae66e592f11793b814c8586927`로 바뀌었다. 취소·종료·회수·오류 판정 코드가 그대로임을 바이트 비교로 확인한 뒤 재판정 `PROTOCOLS`에 같은 `cancellation-marker-v1`로 등록했다([#252](https://github.com/minjunkim-dev/smallnext/issues/252)).
 예시의 `work/`는 [보관 규칙](../WORKFLOW.md#검증과-문서-관리)의 위치다. worktree에서는 그 절대 경로를 지정한다.
 같은 실행 판의 재실행과 덮어쓰기를 거부한다. 같은 위치의 `launch-model.lock`으로 worktree 사이의 하네스 실행 소유권을 배타적으로 유지한다.
 별도 clone과 수동 모델 호출도 겹치지 않게 운영한다. 이 잠금이 외부 호출까지 잠그지는 않는다.
