@@ -1320,8 +1320,13 @@ print('maximum report passed')
                     return result
 
                 summary = launch.run(root, invoke=invoke)
-                self.assertEqual(summary['requests']['started'], 33 if expected else 1)
-                self.assertEqual(summary['reference_mismatches'], 0 if expected else 1)
+                # #236: a quality mismatch ends only its own flow; every flow still runs once.
+                self.assertEqual(summary['requests']['started'], 33)
+                self.assertEqual(summary['reference_mismatches'], 0 if expected else 33)
+                self.assertEqual(summary['errors'], {} if expected else {'unexpected_quality': 33})
+                self.assertEqual(summary['incomplete_flows'], [] if expected else [f['id'] for f in manifest['flows']])
+                self.assertEqual(summary['stop_reason'], 'completed')
+                self.assertIs(summary['automatic_passed'], expected)
                 self.assertEqual(summary['timings']['first_action']['samples'], 0)
                 self.assertEqual(summary['terminations'], {'expected_reject': 33} if expected else {})
 
