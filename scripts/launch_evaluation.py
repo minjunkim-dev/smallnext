@@ -234,7 +234,6 @@ def load(directory, *, descriptor=None):
     return manifest
 
 
-
 class Budget:
     def __init__(self, manifest, clock):
         self.limits, self.policy, self.clock = manifest['limits'], manifest['cost_policy'], clock

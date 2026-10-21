@@ -606,13 +606,13 @@ class LaunchEvaluationTests(unittest.TestCase):
 
     def test_cli_reuses_subscription_transport_without_extra_model_calls_or_raw_summary(self):
         for generate_model in launch.GENERATE_MODELS:
-          with self.subTest(generate_model=generate_model), tempfile.TemporaryDirectory() as directory:
-            root = Path(directory).resolve() / 'launch'
-            launch.freeze(root, owner='minjunkim-dev', delete_method='delete this private directory',
-                          ends_at=(datetime.now(timezone.utc) + timedelta(days=1)).isoformat(),
-                          generate_model=generate_model)
-            fake = Path(directory)/'claude'
-            fake.write_text('#!' + sys.executable + '\n' + f'GENERATE={generate_model!r}\n' + '''import json,sys
+            with self.subTest(generate_model=generate_model), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory).resolve() / 'launch'
+                launch.freeze(root, owner='minjunkim-dev', delete_method='delete this private directory',
+                              ends_at=(datetime.now(timezone.utc) + timedelta(days=1)).isoformat(),
+                              generate_model=generate_model)
+                fake = Path(directory)/'claude'
+                fake.write_text('#!' + sys.executable + '\n' + f'GENERATE={generate_model!r}\n' + '''import json,sys
 if sys.argv[1:] == ['auth','status']:
  print(json.dumps({'loggedIn':True,'authMethod':'claude.ai','apiProvider':'firstParty'}))
  sys.exit()
@@ -631,19 +631,19 @@ print(json.dumps({'type':'stream_event','event':{'type':'message_start'}}))
 print(json.dumps({'type':'result','subtype':'success','is_error':False,'modelUsage':{model:{}},
                   'usage':{'input_tokens':100,'output_tokens':30},'result':json.dumps(out)}))
 ''')
-            fake.chmod(0o700)
-            command = [sys.executable, str(qa.REPO/'scripts/launch_evaluation.py'), 'run', str(root), '--claude', str(fake)]
-            result = subprocess.run(command, capture_output=True, timeout=30)
-            self.assertEqual(result.returncode, 0, result.stderr)
-            summary = json.loads(result.stdout)
-            self.assertEqual(summary['roles']['model_messages'], 66)
-            self.assertEqual(summary['role_usage']['generate']['input_tokens']['known_total'], 3300)
-            self.assertEqual(summary['role_usage']['generate']['thinking_tokens']['unknown_calls'], 33)
-            self.assertNotIn('private synthetic', result.stdout.decode())
-            self.assertEqual(summary['costs']['conservative_roles'], 66)
-            self.assertEqual(summary['role_models'], {'generate': generate_model, 'check': qa.MODEL})
-            again = subprocess.run(command, capture_output=True, timeout=5)
-            self.assertNotEqual(again.returncode, 0)
+                fake.chmod(0o700)
+                command = [sys.executable, str(qa.REPO/'scripts/launch_evaluation.py'), 'run', str(root), '--claude', str(fake)]
+                result = subprocess.run(command, capture_output=True, timeout=30)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                summary = json.loads(result.stdout)
+                self.assertEqual(summary['roles']['model_messages'], 66)
+                self.assertEqual(summary['role_usage']['generate']['input_tokens']['known_total'], 3300)
+                self.assertEqual(summary['role_usage']['generate']['thinking_tokens']['unknown_calls'], 33)
+                self.assertNotIn('private synthetic', result.stdout.decode())
+                self.assertEqual(summary['costs']['conservative_roles'], 66)
+                self.assertEqual(summary['role_models'], {'generate': generate_model, 'check': qa.MODEL})
+                again = subprocess.run(command, capture_output=True, timeout=5)
+                self.assertNotEqual(again.returncode, 0)
 
     def test_partial_report_preserves_missing_records_and_refuses_active_controller(self):
         with tempfile.TemporaryDirectory() as directory:
