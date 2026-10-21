@@ -27,6 +27,7 @@ struct CoreFlowView: View {
     @State private var storageFailed = false
     /// 분할 직전 행동의 할 일이다. 값이 있는 동안 나뉘는 움직임을 보여준다.
     @State private var splitGhost: SplitGhost?
+    @AppStorage(AIConsent.key) private var aiConsent = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
@@ -269,6 +270,20 @@ struct CoreFlowView: View {
                     .buttonStyle(.plain)
                 }
                 if storageFailed { Text("저장하지 못했어요. 다시 시도해 주세요.") }
+                Section {
+                    if let url = AIConsent.privacyPolicyURL() {
+                        Link("개인정보 처리방침", destination: url)
+                            .frame(minHeight: 44)
+                    }
+                    if FeatureFlags.userServerAI && aiConsent {
+                        Button("AI 전송 동의 철회", role: .destructive) {
+                            showingGoals = false
+                            aiConsent = false
+                        }
+                        .frame(minHeight: 44)
+                        .accessibilityHint("이후 목표와 자료를 AI로 보내지 않습니다.")
+                    }
+                }
             }
             .navigationTitle("목표 목록")
             .toolbar {
