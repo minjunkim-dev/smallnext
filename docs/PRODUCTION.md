@@ -233,6 +233,11 @@ iOS에는 HTTPS 원점인 `SMALLNEXT_AUTH_CAPTCHA_URL`과 공개 `SMALLNEXT_TURN
 익명 가입 제한은 IP당 시간당 30회다. 부하 근거 없이 연결 수와 제한 값을 조정하지 않는다.
 관리자 MFA는 앱 사용자의 MFA와 별도다. 관리자 인증 앱을 등록하고 접근 수단을 안전하게 보관한다.
 
+## 개인정보 처리방침·지원 페이지
+
+Caddy는 `/privacy/`와 `/support/`에서 정적 페이지를 제공한다. 원본은 `infra/production/site/`다.
+문안은 [#240](https://github.com/minjunkim-dev/smallnext/issues/240)의 초안이다. #238·#239가 반영된 뒤 사람이 `[확정 필요]` 항목을 채워 확정한다.
+
 ## 7. 직전 이미지로 되돌린다
 
 배포 전에 직전 검증 이미지의 세 asset, 버전과 source SHA를 별도 경로에 보존한다.
