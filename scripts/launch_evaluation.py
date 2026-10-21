@@ -613,7 +613,7 @@ def report_bundle(directory, descriptor, observations):
                 or started_requests > manifest['limits']['requests'] or started_roles > manifest['limits']['calls']):
             raise ValueError('completed execution exceeds limits')
         if (end['reason'] == 'completed' and not unreadable and started_roles == len(calls)
-                and all(not row.get('error') for row in records)):
+                and all(row.get('error') in (None, 'unexpected_quality') for row in records)):
             charged = conservative = 0
             for call in calls:
                 cost = call.get('cost_estimate_micro_usd')
@@ -827,6 +827,9 @@ def run(directory, *, claude='claude', invoke=None, cancelled=None, clock=monoto
                     qa.save(directory/'requests'/f'{ident}.receipt',
                         {key: row[key] for key in ('run_id', 'manifest_sha256', 'request_id', 'result_file')}
                         | {'record_sha256': qa.digest(qa.encoded(row))})
+                    # #236: a reference mismatch ends only its flow so one run shows the whole distribution.
+                    if row.get('error') == 'unexpected_quality':
+                        break
                     if row.get('error'):
                         reason = ('time_limit' if row['error'] == 'timed_out'
                                   and clock() - budget.started >= manifest['limits']['seconds'] else row['error'])
