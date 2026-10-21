@@ -144,7 +144,7 @@ pub fn router(config: Option<Config>, database: PgPool) -> Router {
     responses((status=200,description="Checked disposition; only accepted includes a proposal",body=SuggestionResponse),
         (status=400,description="Invalid input"),(status=401,description="Invalid or revoked identity"),
         (status=403,description="UID is not allowed, or browser origin"),(status=404,description="Feature is OFF"),
-        (status=409,description="Same user, state and request kind is already active"),
+        (status=409,description="The same user already has an active request"),
         (status=413,description="Body exceeds 32 KiB"),(status=415,description="JSON required"),
         (status=429,description="Monthly or daily budget, or the user's daily request limit, is reached"),
         (status=503,description="Authentication, database or request capacity unavailable"),

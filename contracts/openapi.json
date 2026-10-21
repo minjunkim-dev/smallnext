@@ -92,7 +92,7 @@
             "description": "Feature is OFF"
           },
           "409": {
-            "description": "Same user, state and request kind is already active"
+            "description": "The same user already has an active request"
           },
           "413": {
             "description": "Body exceeds 32 KiB"

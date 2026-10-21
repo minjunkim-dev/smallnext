@@ -160,6 +160,7 @@ docker compose --env-file infra/production/.env.production --env-file infra/prod
 비용은 설정 단가로 계산한 값이다. Anthropic 청구액과 대조하기 전에는 실제 비용으로 보고하지 않는다.
 지표를 기록할 때 기간·배포 이미지 source SHA·서버 지역·모델/effort·표본 수를 함께 남긴다.
 인증 실패·예산 차단·동시 요청·처리 용량 초과는 API 컨테이너 로그의 `AI request rejected: <사유>` 고정 문구로 센다. 로그에는 UID·토큰·본문이 없다.
+로그는 10 MB × 5로 회전한다. 대량 요청이 오면 오래된 거부 로그가 밀려나 건수가 줄어든다. 매일 같은 시각에 세어 기록한다.
 
 ## 6. 확인 결과와 미확인 범위를 기록한다
 

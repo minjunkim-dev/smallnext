@@ -1128,11 +1128,12 @@ async fn overrun_remains_blocked_after_other_instances_refund_and_restart() {
         .execute(&fixture.database)
         .await
         .unwrap();
-    fixture.config.supabase.allowed = None;
     let overrun = fixture.request("allowed", "overrun").await;
     let normal = fixture.request("other", "normal").await;
     // A second API instance has its own capacity, but shares the durable monthly budget.
-    let mut replica = super::router(Some(fixture.config.clone()), fixture.database.clone());
+    let mut public = fixture.config.clone();
+    public.supabase.allowed = None;
+    let mut replica = super::router(Some(public), fixture.database.clone());
     std::mem::swap(&mut replica, &mut fixture.app);
     let other_normal = fixture.request("stranger", "other-normal").await;
     std::mem::swap(&mut replica, &mut fixture.app);
