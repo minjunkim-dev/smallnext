@@ -221,7 +221,7 @@ minimum을 항상 더 작은 작업으로 바꾸지 않는다. 추가 축소 없
 
 기존 미확인 사실 안내의 "Do not assume memory or unstated knowledge supplies it." 뒤에 다음 문장을 더한다.
 
-> Knowing that a source exists does not establish that it contains the needed fact; when the work checks a source for that fact, specify the useful result to leave if the source lacks it.
+> Knowing that a source exists does not establish that it contains the needed fact. A bounded check of that source can still establish it when the work also specifies a useful result to leave if the source lacks it.
 
 필요한 사실이 자료에 있다고 명시된 경우의 한정된 옮기기, 찾은 경우와 없는 경우를 모두 정한 자료 확인, 미확인 사실과 무관한 유용한 부분 행동은 질문 없이 허용한다. 자료 총분량 미제공만으로 질문을 요구하지 않는다. 옮긴 문장을 그 사실의 근거 확인으로 보지 않는다. 필요한 사실이 없다고 알려진 경우의 기존 need_info 경로를 유지한다.
 
