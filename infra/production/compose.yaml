@@ -48,6 +48,7 @@ services:
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - ./captcha:/srv/smallnext-captcha:ro
+      - ./site:/srv/smallnext-site:ro
       - caddy-data:/data
       - caddy-config:/config
     depends_on:
