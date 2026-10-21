@@ -175,3 +175,33 @@ minimum을 항상 더 작은 작업으로 바꾸지 않는다. 추가 축소 없
 공식 전달 경계의 red와 fixture 재생성을 재사용한다. 이 전달 검증은 실제 minimum의 품질 개선을 증명하지 않는다. 새 제품 규칙·문자열 의미 검사·모의 통과 사례·자동 재시도·추상화는 제안하지 않는다. 실제 모델 평가는 별도 실행 범위 기록 뒤에 판단한다.
 보관 식별자는 #223 승인판정표 SHA `a4753f01e0a829349a1358780b4d40f55d1a18b69f1d5d981912510c02772697`, 출처기록 SHA `be2ea81acfa1ab8b08cd63fbd8673a7621a8e3aee7a1eec8f84ffe95b477130f`이다. 담당자 minjunkim-dev와 삭제 상한 `2026-11-20T16:29:53.192046+09:00`을 유지한다.
 이 연구는 모델·CLI·테스트·원격 변경을 실행하지 않았다. 파일 변경은 기존 노트 뒤의 이 절뿐이다. 실제 수행·품질 개선·화면·서버·실기기·출시는 검증하지 않았다.
+
+## #227 후속: 판단 근거와 실질 필수 작업의 비교
+
+2026-10-21, [#227](https://github.com/minjunkim-dev/smallnext/issues/227). 기준 소스는 `c89def3004b99b97d130580cd14e01c056189259`다. 앞선 연구와 판정을 보존한다.
+[#226 직접 승인](https://github.com/minjunkim-dev/smallnext/issues/226#issuecomment-6315848849)은 000·001 기준3 불확실, 002 기준4 불확실, 008 action 기준4 거부 유지다. 008 기준3과 수행 시간은 미확인이다. 실제로 잘못 분류했다고 확정한 판정이 아니다. minimum 대상은 미시작이므로 #224의 실제 효과를 판단할 근거도 아니다.
+공개 승인 요약은 판단 근거를 확인할 수 없는 분류와 같은 필수 내용을 한 줄로 재배치한 축소를 구분한다. 이 연구는 공개 요약과 공식 소스만 확인했다. private 원문을 읽거나 복사하지 않았다.
+
+### 근거와 가설
+
+[공유 계약의 지식 조건과 기준3](../../services/api/src/suggestion/contract.md#L25)은 미확인 지식을 공급된 사실로 바꾸지 않는다. [필수 작업 비교](../../services/api/src/suggestion/contract.md#L18)와 [기준4](../../services/api/src/suggestion/contract.md#L26)는 실제 축소와 짧아진 추정 시간을 구분한다. 기준 소스의 [generate](https://github.com/minjunkim-dev/smallnext/blob/c89def3004b99b97d130580cd14e01c056189259/services/api/src/suggestion/generate.md#L3)도 형식 변경만으로는 축소가 되지 않는다고 명시했다. 규칙 부재를 원인으로 단정하지 않는다.
+[Anthropic 공식 지침](https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices#be-clear-and-direct)은 원하는 제약과 동작을 구체적으로 전달하도록 권한다. 이는 구체화의 참고 근거다. 이 앱이나 지정 모델의 품질 개선을 입증한 근거는 아니다.
+**가설:** 남은 찾기·쓰기·판단을 비교 대상으로 명시하고, 문장의 존재와 판단 근거를 구분하면 기존 규칙을 적용할 때의 모호함을 줄일 수 있다. 모델 내부의 실제 실패 원인은 확인하지 못했다. 일반 검사는008을 이미 거부했으므로 검사 기준을 바꿀 근거는 없다.
+
+### 선택 문구와 반례
+
+기존 생성 지침의 형식 비교 한 문장을 다음 두 문장으로 바꾼다.
+
+> For smaller, compare what the latest task still requires the user to find, write and decide with the proposed task. Changing only line breaks, labels or the time estimate does not reduce that work; supported reductions in required words/items or selection work still count under the shared contract.
+
+기존 미확인 사실 안내 뒤에 다음 두 문장을 더한다.
+
+> For a required judgment or classification, establish its grounds from supplied information or a specified source check. Finding or copying a statement alone does not establish its truth or evidential support.
+
+같은 위치·조작에서도 실제로 필요한 문구·항목·선택 부담이 줄어드는 경우를 유지한다. 모든 분류를 금지하거나 자료의 총분량을 일괄 질문하지 않는다. 공급된 자료의 제한된 유용한 일부와 확인 절차를 허용한다. 필수 확인을 제거하고 주제만 남기는 것은 유용한 결과 보존으로 보지 않는다. minimum에 추가 축소를 강제하지 않는다. 막힘 미확인의 기존 need_info 규칙·사실·미완료·남은 범위·보류를 유지한다.
+
+### 검증 경계와 보관
+
+전달 경로는 [Rust instructions](../../services/api/src/suggestion.rs#L189)·[개발 runner](../../services/api/src/development_ai.rs#L395)·[compact instructions](../../services/api/src/suggestion/compact.rs#L291)·[OAuth freeze](../../scripts/oauth_quality.py#L59)다. 구현 범위는 generate.md·공식compact fixture의generate 전달·이 노트다. 나머지 역할·공유계약·schema·12사례/status·47회귀·33흐름·참조·실행기·PROTOCOLS·상한을 보존한다.
+공식fixture 전달 경계의red→공식재생성 및 기존 전체 검사를 재사용한다. 새 의미 문자열 검사·모의통과 사례·모델 재시도·추상화를 추가하지 않는다. 실제 품질은 별도 구독 평가로 확인해야 한다.
+보관 식별자는 #226 승인판정표SHA `18efef816bea5976b3debc653dd704f572659efac15097fe87fdd5b3edfc7a4f`, 출처기록SHA `7d82410e38d736fd054002d25261739c95251fabda2d96832326583fa7992312`다. 담당자minjunkim-dev·삭제상한 `2026-11-20T17:19:47.288980+09:00`을 유지한다.
