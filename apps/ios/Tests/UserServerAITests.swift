@@ -69,10 +69,10 @@ final class UserServerAITests: XCTestCase {
         })
         XCTAssertEqual(creations, 0)
         UserDefaults.standard.set(true, forKey: "user_server_ai")
-        XCTAssertNotNil(UserServerAI.configured(bundle: try settingsBundle(valid), defaults: defaults) { _, _, _ in
+        XCTAssertTrue(UserServerAI.configured(bundle: try settingsBundle(valid), defaults: defaults) { _, _, _ in
             creations += 1
             return self.fixture().identity
-        })
+        } is ConsentGatedProvider)
         XCTAssertEqual(creations, 1)
         var captchaSettings = valid
         captchaSettings["SmallnextAuthCaptchaURL"] = "https://captcha.example.invalid"

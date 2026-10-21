@@ -10,13 +10,18 @@ struct SmallnextApp: App {
     @State private var flow: ProgressFlow?
     @State private var storageFailed = false
     @State private var captcha = TurnstileChallenge.shared
+    @AppStorage(AIConsent.key) private var aiConsent = false
     private let logger = Logger(subsystem: "dev.smallnext.app", category: "storage")
 
     var body: some Scene {
         WindowGroup {
             Group {
                 if let flow {
-                    CoreFlowView(flow: flow)
+                    if FeatureFlags.userServerAI && !aiConsent {
+                        AIConsentView { aiConsent = true }
+                    } else {
+                        CoreFlowView(flow: flow)
+                    }
                 } else {
                     ContentView(storageFailed: storageFailed)
                 }

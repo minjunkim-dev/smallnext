@@ -34,7 +34,7 @@ enum UserServerAI {
         do { captcha = try TurnstileConfiguration.load(info: bundle.infoDictionary ?? [:]) }
         catch { return UnavailableSuggestionProvider() }
         let identity = identityFactory(projectURL, key, captcha)
-        return HTTPActionSuggestionProvider.server(baseURL: url, token: { try await identity.idToken() })
+        return ConsentGatedProvider(base: HTTPActionSuggestionProvider.server(baseURL: url, token: { try await identity.idToken() }))
     }
 }
 
