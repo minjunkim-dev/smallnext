@@ -224,6 +224,7 @@ timer 정의는 00:00/12:00 UTC에 백업한다. `age`·Docker·보호한 설정
 ## CAPTCHA와 접근 제한의 배포 전 조건
 
 Caddy는 `/auth/captcha/`에서 정적 Turnstile 페이지를 제공한다.
+Caddy는 `/privacy/`와 `/support/`에서 개인정보 처리방침·지원 정적 페이지를 제공한다. 문안은 [#240](https://github.com/minjunkim-dev/smallnext/issues/240)의 초안이며 사람이 `[확정 필요]` 항목을 채워 확정한다.
 iOS에는 HTTPS 원점인 `SMALLNEXT_AUTH_CAPTCHA_URL`과 공개 `SMALLNEXT_TURNSTILE_SITE_KEY`를 함께 지정한다.
 앱은 정확한 원점·main frame·nonce를 검증하고 신규 익명 가입에만 CAPTCHA 토큰을 전달한다.
 기존 세션 갱신은 CAPTCHA를 요구하지 않는다. 토큰·페이지 query·UID를 로그에 남기지 않는다.
