@@ -48,3 +48,28 @@ unknown이 있어도 현재 행동에 그 사실이 필요하지 않으면 질�
 manifest SHA는 `d4fb85332f811c49b51b53ccc6b639fafa16f9f63fc6e7fd5dc5e5a8dab09903`, 승인 MD SHA는 `55a584421a461982ab369d0a38ae4f971b4c0d9dd55cfd4aa1c8c8db9c46b271`이다.
 원문은 기존 private 묶음에만 둔다. 담당자는 minjunkim-dev이다. 삭제 상한 `2026-11-20 11:36:56 KST`를 연장하지 않는다. [보관·검증 경계](../WORKFLOW.md#검증과-문서-관리)를 따른다.
 이 연구는 검사·모델·OAuth·유료 API를 실행하지 않았다. 실제 수행·화면·서버·실기기·출시 품질은 검증하지 않았다.
+
+## #215 후속: 축소 후에도 남는 확인 결과
+
+2026-10-21, [#215](https://github.com/minjunkim-dev/smallnext/issues/215). 비교 기준 소스는 `8a4af7693937ce5ecf204a9835f0bf6eaccf9db8`이다. 앞의 #212 연구와 #211 판정은 보존한다.
+[#214의 직접 승인](https://github.com/minjunkim-dev/smallnext/issues/214#issuecomment-6308047209)은 000·001·002 충족과 010의 기준 2·4 거부이다. 010의 기준 1은 미확인이다. 자동 거부의 기준 1·2·4와 사람 판정을 구분한다.
+000·001은 제공된 원고에서 역할 문장의 존재 또는 근거 부족을 확인하고 결과 대상을 남기는 정상 경로이다. 002는 유용한 최소 이후의 첫 막힘 질문이다. 009는 직전 비교 자료이며 별도 사람 통과로 세지 않는다.
+010은 직전 제안의 사실 확인 작업을 제거하고 경험 참조 문구만 남겼다. 이 사실은 승인된 실패의 요약이다. 원문을 새로 읽거나 별도 사람 판정을 수행한 결과가 아니다. 실제 수행 시간도 추정이다.
+
+기준 소스의 [생성 지침 3행](https://github.com/minjunkim-dev/smallnext/blob/8a4af7693937ce5ecf204a9835f0bf6eaccf9db8/services/api/src/suggestion/generate.md#L3)은 직전 필수 작업과 필요한 확인 작업을 이미 비교하게 한다. [5행](https://github.com/minjunkim-dev/smallnext/blob/8a4af7693937ce5ecf204a9835f0bf6eaccf9db8/services/api/src/suggestion/generate.md#L5)은 미확인 과거 사실의 출처를 요구한다. [7행](https://github.com/minjunkim-dev/smallnext/blob/8a4af7693937ce5ecf204a9835f0bf6eaccf9db8/services/api/src/suggestion/generate.md#L7)은 결과의 대상·의미와 유용함을 요구한다.
+그런데 알아볼 수 있는 참조가 남았다는 사실만으로 직전 확인 작업의 유용한 결과까지 남는 것은 아니다. 비교할 대상은 수행할 경우 얻게 될 정보·확인 결과이다. 직전 제안을 이미 수행했다고 가정하지 않는다. [공유 계약 3행](../../services/api/src/suggestion/contract.md#L3), [18행](../../services/api/src/suggestion/contract.md#L18), [20행](../../services/api/src/suggestion/contract.md#L20), [기준 2·4](../../services/api/src/suggestion/contract.md#L24)가 이 구분의 기준이다.
+**가설:** 대상 식별을 보존하는 축소에서 정보 진전까지 보존되는지를 더 직접 비교하면 이번 위험을 다룰 수 있다. 기존 규칙이 없었다거나 모델이 이를 특정 방식으로 해석했다고 확정하지 않는다. 모델 내부 원인은 미확인이다.
+
+생성 지침 7행의 첫 문장 뒤에 다음 두 문장을 보완하도록 권장한다. 나머지 예외와 문맥 규칙은 유지한다.
+
+> For smaller, compare the useful information, verification result or other goal result the latest proposal and the reduced action would each leave. Removing required finding, reading or checking and leaving only its subject does not preserve that work's useful result.
+
+`finding, reading or checking`을 선택한 이유는 원고 내용을 찾아 읽고 얻는 진전도 비교에 포함하기 위해서다. 별도 검증 절차가 있었는지만으로 유용함을 판정하지 않는다. 알려진 참조만 남기는 것과 원고에서 새로운 정보를 얻는 작업을 구분한다.
+
+이 후보는 확인 작업 전체나 확인 결과 원문의 복사를 요구하지 않는다. 제공된 자료에서 한 부분만 확인하거나 근거 부족을 확인하는 유용한 결과도 허용한다. 식별 가능한 기록 위치의 문맥을 다시 쓰게 하지 않는다.
+제목·표시 자체가 필요한 목표 결과인 기존 예외를 유지한다. 유용한 글자·항목·선택 부담 감소와 정상 `minimum`·`need_info`도 유지한다. 000·001·002 및 #211의 정상 정보 질문은 이 경계를 확인할 반례이다.
+검사기는 이번 후보를 이미 거부했다. [기준 소스의 일반 검사 지침](https://github.com/minjunkim-dev/smallnext/blob/8a4af7693937ce5ecf204a9835f0bf6eaccf9db8/services/api/src/suggestion/check.md#L5)을 변경하지 않는다. 공유 계약·schema·기존 사례·하네스·모델도 유지한다.
+생성 역할 전달은 [Rust](../../services/api/src/suggestion/compact.rs#L291)와 [Python](../../scripts/oauth_quality.py#L354)의 기존 경계를 쓴다. 공식 compact fixture에서는 generate만 갱신한다. 전달 검증과 실제 의미 품질 개선을 구분한다. check·check-unpreserved·check-question 보존도 확인한다.
+
+보관 식별자는 승인 MD SHA `2458e5962513a6d700c081c869adad19169bcb2002f29d526e5d4e7fd7d82dda`, 판정 JSON SHA `a2123e4d325a2b70662708df5f0984900ea2fe200f6987ae94816440a59282c7`이다. 담당자는 minjunkim-dev이다. #214 삭제 상한 `2026-11-20 13:03:00.271319 KST`를 연장하지 않는다.
+이 후속 연구는 검사·모델·OAuth·유료 API를 실행하지 않았다. 추가 사례·문자열 기반 의미 검사·반복 재시도·구조 변경은 제안하지 않는다. 후속 실제 평가는 별도 범위 기록 뒤에 판단한다. 실제 수행·품질 개선·화면·서버·실기기·출시는 검증하지 않았다.
