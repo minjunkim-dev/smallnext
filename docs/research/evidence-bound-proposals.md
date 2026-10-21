@@ -73,3 +73,35 @@ manifest SHA는 `d4fb85332f811c49b51b53ccc6b639fafa16f9f63fc6e7fd5dc5e5a8dab0990
 
 보관 식별자는 승인 MD SHA `2458e5962513a6d700c081c869adad19169bcb2002f29d526e5d4e7fd7d82dda`, 판정 JSON SHA `a2123e4d325a2b70662708df5f0984900ea2fe200f6987ae94816440a59282c7`이다. 담당자는 minjunkim-dev이다. #214 삭제 상한 `2026-11-20 13:03:00.271319 KST`를 연장하지 않는다.
 이 후속 연구는 검사·모델·OAuth·유료 API를 실행하지 않았다. 추가 사례·문자열 기반 의미 검사·반복 재시도·구조 변경은 제안하지 않는다. 후속 실제 평가는 별도 범위 기록 뒤에 판단한다. 실제 수행·품질 개선·화면·서버·실기기·출시는 검증하지 않았다.
+
+## #218 후속: 자료 작업의 범위와 질문 판정 근거
+
+2026-10-21, [#218](https://github.com/minjunkim-dev/smallnext/issues/218). 비교 기준 소스는 `8430a00aa6245d03877e378a93aa9986dce84670`이다. 앞의 #212·#215 연구와 판정을 보존한다.
+[#217의 직접 승인](https://github.com/minjunkim-dev/smallnext/issues/217#issuecomment-6308711977)은 001 충족·000 기준 3 불확실·002/011 기준 4 불확실이다. 다른 미확인 칸을 통과로 채우지 않는다. 자동 `accept` 11건과 `reject` 1건 및 011의 자동 기준 4 거부도 보존한다.
+000은 전체 복사량을 알 수 없어 시간 적합성을 입증하지 못했다. 실제 분량 초과를 확인한 것은 아니다. 002·011은 유용한 추가 축소와 유용한 최소 도달을 모두 입증하지 못했다. 두 기록 항목이나 반복 실패 부재만으로 어느 결론도 확정하지 않는다.
+직접 승인은 기존 초안의 승인이다. 수행 시간은 추정이다. 이 조사는 공개 승인 요약과 소스를 대조한 연구이다. private 원문을 읽거나 새로운 사람 판정·실제 품질 관측을 수행하지 않았다.
+
+### 기존 기준과 도달 범위
+
+[공유 계약 3행](../../services/api/src/suggestion/contract.md#L3)은 제공한 사실의 범위를 정한다. [20행](../../services/api/src/suggestion/contract.md#L20)과 [기준 3](../../services/api/src/suggestion/contract.md#L25)은 필수 준비·복사·작성 등을 모두 제약에 포함한다. 알 수 없는 자료 분량이 짧은 추정 시간에 맞는다고 가정하지 않는 보완은 기존 기준의 강조이다.
+[계약 12~15행](../../services/api/src/suggestion/contract.md#L12)은 정보 질문과 유용한 최소의 경계를 정한다. 최소 이후 첫 막힘 질문에는 반복 실패 보고가 필수가 아니다. [18행](../../services/api/src/suggestion/contract.md#L18)은 유용함을 보존한 글자·항목·선택 부담 감소를 허용한다. 항목 수는 이 유용함을 대신 증명하지 않는다.
+기준 소스의 [generate 3행](https://github.com/minjunkim-dev/smallnext/blob/8430a00aa6245d03877e378a93aa9986dce84670/services/api/src/suggestion/generate.md#L3)과 [7행](https://github.com/minjunkim-dev/smallnext/blob/8430a00aa6245d03877e378a93aa9986dce84670/services/api/src/suggestion/generate.md#L7)은 필요한 자료 확인과 축소 후 결과를 이미 다룬다. 전체 작업량의 미확인과 유용한 일부 작업의 가능성을 더 직접 구분하는 것이 이번 후보이다. 지침 누락이나 모델 내부 원인으로 확정하지 않는다.
+[Rust instructions](../../services/api/src/suggestion/compact.rs#L291)는 `smaller/need_info` 검사에서 [question_prompt](../../services/api/src/suggestion/compact.rs#L316)로 check prefix를 교체한다. [Python question_prompt](../../scripts/oauth_quality.py#L524)도 같은 투영을 한다. 따라서 일반 check.md 수정으로 이 경로의 강조를 전달할 수 없다. 기존 공유 계약 투영은 유지하고 양쪽 question prefix에 같은 문구를 넣는다.
+
+### 선택한 문구와 반례
+
+생성 지침 후보를 다음 세 문장으로 선택한다.
+
+> For source work, bound the required finding, reading, copying and checking to the supplied constraints. Do not assume an unknown total amount fits a short estimate. A useful supported partial action may still be possible without asking about total length.
+
+Rust/Python question_prompt의 후보를 다음 세 문장으로 선택한다.
+
+> Item count alone establishes neither useful further reduction nor the useful minimum; compare required work, useful results and supplied recording context. Absence of repeated failure alone does not invalidate a first-impediment question. If decisive evidence for the stopping route is missing, return uncertain.
+
+후보의 reason은 계속 독립 증거가 아니다. 근거가 없는 추가 축소를 만들어 질문을 거부하지 않는다. 반대로 항목이 하나라는 사실만으로 최소나 질문의 적합성을 수용하지 않는다. 다른 기준의 입증된 실패는 기존 거부 규칙을 따른다. 이번 보완은 근거가 부족한 질문 경로를 통과시키는 규칙이 아니다.
+총분량을 몰라도 제약에 맞는 유용한 일부 확인이 뒷받침되면 행동을 허용한다. 분량 확인 질문을 일괄 강제하지 않는다. 제공된 기록 문맥·제목 자체가 필요한 목표 결과·유용한 글자/항목/선택 부담 감소·정상 `minimum/need_info`·적격성과 보류를 유지한다.
+검증은 generate와 check-question의 전달 변경 및 Rust/Python 일치를 확인한다. 일반 check·check-unpreserved·공유 계약·schema·12사례·참조·상한은 유지한다. 전달 검증은 실제 의미 품질 개선의 증명이 아니다. 새로운 문자열 의미 검사·모의 통과 사례·반복 재시도를 추가하지 않는다.
+최초 전체 검사와 PR #219의 Repository 검사에서 재판정 명령 회귀 4건이 실패했다. 질문 prefix가 바뀌어 동결 실행기 SHA가 새 값이 됐지만, [재판정 도구](../../scripts/rejudge_oauth_quality.py#L12)의 검토한 실행기 목록에는 이전 SHA만 있었다. 미확인 실행기를 `unknown`으로 남기는 보호는 정상 동작했다. 이 실패는 실제 과거 원문을 재판정한 결과가 아니다.
+이전 실행기 SHA `1799cb2c4ef7c5cddd58f2a275cdad37750bae8b45d26286f21fcfd69d18afe2`와 새 SHA `1e2d25eb61b3c52ef34fe1f54f1e1ebc73c9e938108da58f8768bedaa5d6ddff`의 차이는 위 질문 지침 세 문장뿐이다. 취소 표식·종료 기록·회수·오류 판정 코드는 그대로다. 새 SHA를 같은 `cancellation-marker-v1`로 명시 등록하고 별도 Security 리뷰로 이 바이트 비교를 확인한다. 기존 두 SHA와 미등록 SHA의 불확실 처리는 유지한다. 현재 실행기를 자동 신뢰하는 규칙이나 해시 검사를 우회하는 규칙을 추가하지 않는다. 기존 명령 경계의 정상·미확인·취소·원본 보존 회귀를 그대로 재사용한다. 실행기 바이트 변경 시 이 목록의 검토 필요성도 함께 확인한다.
+보관 식별자는 #217 승인 MD SHA `e042aa2b3fe188a3b36e990077f42b643a2010a49818e4d54d2289bb5eac70ff`, 판정 JSON SHA `30dac0248eca71fedc30d1ba6c83c8d67b04047857ccdad482d4ca8e8487e584`이다. 담당자 minjunkim-dev와 삭제 상한 `2026-11-20T14:01:44.609418+09:00`을 유지한다.
+이 후속 연구에서는 검사·모델·OAuth·유료 API를 실행하지 않았다. 기존 불확실을 실제 분량 초과나 검사 오류로 바꾸지 않는다. 실제 수행·품질 개선·화면·서버·실기기·출시는 검증하지 않았다.
