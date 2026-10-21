@@ -205,3 +205,28 @@ minimum을 항상 더 작은 작업으로 바꾸지 않는다. 추가 축소 없
 전달 경로는 [Rust instructions](../../services/api/src/suggestion.rs#L189)·[개발 runner](../../services/api/src/development_ai.rs#L395)·[compact instructions](../../services/api/src/suggestion/compact.rs#L291)·[OAuth freeze](../../scripts/oauth_quality.py#L59)다. 구현 범위는 generate.md·공식compact fixture의generate 전달·이 노트다. 나머지 역할·공유계약·schema·12사례/status·47회귀·33흐름·참조·실행기·PROTOCOLS·상한을 보존한다.
 공식fixture 전달 경계의red→공식재생성 및 기존 전체 검사를 재사용한다. 새 의미 문자열 검사·모의통과 사례·모델 재시도·추상화를 추가하지 않는다. 실제 품질은 별도 구독 평가로 확인해야 한다.
 보관 식별자는 #226 승인판정표SHA `18efef816bea5976b3debc653dd704f572659efac15097fe87fdd5b3edfc7a4f`, 출처기록SHA `7d82410e38d736fd054002d25261739c95251fabda2d96832326583fa7992312`다. 담당자minjunkim-dev·삭제상한 `2026-11-20T17:19:47.288980+09:00`을 유지한다.
+
+## #233 후속: 자료의 존재와 필요한 사실의 확인
+
+2026-10-21, [#233](https://github.com/minjunkim-dev/smallnext/issues/233). 기준 소스는 `bf8599fca6d3fc2077a2b2e8ff88d8d4ee58c676`다. 앞선 연구와 판정을 보존한다.
+[#231 직접 판정](https://github.com/minjunkim-dev/smallnext/issues/231#issuecomment-6317821398)은 #229의 000 기준3 불확실 유지다. 공급 정보는 경험 설명이 원고에 있다는 사실뿐인데, 후보는 그 설명에 개인 역할·기여 사실이 있다고 전제하고 작성을 요구했다. 실제 허위 작성 관찰이 아니다. 수행 시간은 추정이다.
+경계는 [#232 결정](https://github.com/minjunkim-dev/smallnext/issues/232#issuecomment-6317888307)(위임 권장안)을 따른다. 이 연구는 공개 기록과 공식 소스만 인용한다. private 원문을 복사하지 않았다.
+
+### 근거와 가설
+
+기준 소스의 [generate](https://github.com/minjunkim-dev/smallnext/blob/bf8599fca6d3fc2077a2b2e8ff88d8d4ee58c676/services/api/src/suggestion/generate.md#L3)에서 존재와 내용을 구분하는 문장은 smaller 문맥에만 있다. 이번 실패는 first_action이다. [공유 계약](../../services/api/src/suggestion/contract.md)의 출처 질문 규칙과 일반 check의 출처 확인 요구는 이미 이 경계를 담고 있으므로 바꾸지 않는다.
+같은 입력의 첫 행동은 이전 9회 모두 자동 accept였다. 직접 판정은 #217·#220·#226에서 기준3을 불확실로 봤다. 후보는 범위 문제에서 판단 근거 문제로, 다시 확인 단계를 뺀 작성으로 옮겨 갔다. **가설:** 존재·내용 구분과 사실이 없을 때의 결과를 모든 action·minimum에 전달하면, 확인 단계를 지우는 방식으로 판단 근거 요구를 피하는 일이 줄어든다. 모델 내부 원인은 확인하지 못했다.
+
+### 선택 문구와 반례
+
+기존 미확인 사실 안내의 "Do not assume memory or unstated knowledge supplies it." 뒤에 다음 문장을 더한다.
+
+> Knowing that a source exists does not establish that it contains the needed fact; when the work checks a source for that fact, specify the useful result to leave if the source lacks it.
+
+필요한 사실이 자료에 있다고 명시된 경우의 한정된 옮기기, 찾은 경우와 없는 경우를 모두 정한 자료 확인, 미확인 사실과 무관한 유용한 부분 행동은 질문 없이 허용한다. 자료 총분량 미제공만으로 질문을 요구하지 않는다. 옮긴 문장을 그 사실의 근거 확인으로 보지 않는다. 필요한 사실이 없다고 알려진 경우의 기존 need_info 경로를 유지한다.
+
+### 검증 경계와 보관
+
+구현 범위는 generate.md·공식 compact fixture의 generate 전달·이 노트다. 나머지 역할·공유 계약·schema·사례·입력·고정 참조·실행기·PROTOCOLS·상한을 보존한다. 공식 fixture 전달 경계의 red→공식 재생성과 기존 전체 검사를 재사용한다. 전달 검사는 실제 품질을 증명하지 않는다.
+다음 새 평가에서 같은 입력의 기준3 자료 사실 문제가 다시 나오면, 지침을 다시 보완하기 전에 원인 보고서와 구조 후보를 먼저 만든다.
+보관 식별자는 #229 승인판정표 SHA `61c6e82553b21288e16e1a54675f982cf06509b311a51b217f49c09fa5d5e235`, 출처기록 SHA `9beb4dd4f7bc73efcfa8f63a0e74cc04e018339e5480460a5285c0ae272bb26b`다. 담당자 minjunkim-dev와 삭제 상한 `2026-11-20T22:04:12.923869+09:00`을 유지한다.
