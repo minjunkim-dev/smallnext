@@ -101,7 +101,7 @@
             "description": "JSON required"
           },
           "429": {
-            "description": "Two-call reservation exceeds budget"
+            "description": "Monthly or daily budget, or the user's daily request limit, is reached"
           },
           "503": {
             "description": "Authentication, database or request capacity unavailable"

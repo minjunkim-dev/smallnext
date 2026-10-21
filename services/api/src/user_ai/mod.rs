@@ -1,6 +1,7 @@
 //! User API. The registered flag is OFF until a separate release decision.
 mod auth;
 pub mod budget;
+pub mod metrics;
 pub(crate) mod provider;
 use crate::suggestion::{AiInput, Disposition, Proposal, validate_input};
 use axum::{
@@ -26,6 +27,9 @@ pub struct Config {
     supabase: auth::Supabase,
     provider: provider::Provider,
     budget_limit: i64,
+    daily_limit: i64,
+    user_daily_requests: i64,
+    usage_key: Vec<u8>,
 }
 
 #[derive(Deserialize, ToSchema)]
@@ -62,12 +66,24 @@ impl Config {
         }
         let url = required("SUPABASE_URL")?;
         let publishable_key = required("SUPABASE_PUBLISHABLE_KEY")?;
-        let allowed = required("AI_ALLOWED_SUPABASE_UIDS")?
-            .split(',')
-            .map(|v| v.trim().to_owned())
-            .collect();
+        // Public access is explicit; any other value keeps the UID allowlist mandatory.
+        let allowed = if std::env::var("AI_PUBLIC_ACCESS").as_deref() == Ok("1") {
+            None
+        } else {
+            Some(
+                required("AI_ALLOWED_SUPABASE_UIDS")?
+                    .split(',')
+                    .map(|v| v.trim().to_owned())
+                    .collect(),
+            )
+        };
+        let usage_key = required("AI_USAGE_HASH_KEY")?;
+        if usage_key.len() < 32 {
+            return Err("AI_USAGE_HASH_KEY must be a random value of at least 32 characters");
+        }
         let provider = provider::Provider::from_environment()?;
-        let budget_limit = provider::number("AI_BUDGET_MICRO_USD", 3_000_000)? as i64;
+        // #237 beta ceilings: 30 USD a month, 3 USD a day, 20 requests per user a day.
+        let budget_limit = provider::number("AI_BUDGET_MICRO_USD", 30_000_000)? as i64;
         if provider.role_ceiling() * 2 > budget_limit {
             return Err("two full model calls exceed the approved evaluation budget");
         }
@@ -75,6 +91,9 @@ impl Config {
             supabase: auth::Supabase::new(url, publishable_key, allowed)?,
             provider,
             budget_limit,
+            daily_limit: provider::number("AI_DAILY_BUDGET_MICRO_USD", 3_000_000)? as i64,
+            user_daily_requests: provider::number("AI_USER_DAILY_REQUESTS", 20)? as i64,
+            usage_key: usage_key.into_bytes(),
         }))
     }
 }
@@ -86,11 +105,14 @@ impl Config {
             supabase: auth::Supabase::new(
                 "https://test-project.supabase.co".into(),
                 "sb_publishable_test".into(),
-                [tests::identity("allowed"), tests::identity("other")].into(),
+                Some([tests::identity("allowed"), tests::identity("other")].into()),
             )
             .unwrap(),
             provider: provider::Provider::test_provider(),
             budget_limit: 100_000,
+            daily_limit: 100_000,
+            user_daily_requests: 1_000,
+            usage_key: b"test-usage-key-with-at-least-32-bytes".to_vec(),
         }
     }
     fn with_test_server(mut self, url: String) -> Self {
@@ -124,7 +146,7 @@ pub fn router(config: Option<Config>, database: PgPool) -> Router {
         (status=403,description="UID is not allowed, or browser origin"),(status=404,description="Feature is OFF"),
         (status=409,description="Same user, state and request kind is already active"),
         (status=413,description="Body exceeds 32 KiB"),(status=415,description="JSON required"),
-        (status=429,description="Two-call reservation exceeds budget"),
+        (status=429,description="Monthly or daily budget, or the user's daily request limit, is reached"),
         (status=503,description="Authentication, database or request capacity unavailable"),
         (status=504,description="Authentication deadline exceeded"))) ]
 pub(crate) async fn suggest(
@@ -144,8 +166,18 @@ pub(crate) async fn suggest(
     .await
     {
         Ok(Ok(uid)) => uid,
-        Ok(Err(status)) => return status.into_response(),
-        Err(_) => return StatusCode::GATEWAY_TIMEOUT.into_response(),
+        Ok(Err(status)) => {
+            // Fixed text and status only: operators count rejected identities from host logs.
+            tracing::warn!(
+                status = status.as_u16(),
+                "AI request rejected: authentication"
+            );
+            return status.into_response();
+        }
+        Err(_) => {
+            tracing::warn!(status = 504, "AI request rejected: authentication");
+            return StatusCode::GATEWAY_TIMEOUT.into_response();
+        }
     };
     let Ok(request) = serde_json::from_slice::<SuggestionRequest>(&body) else {
         return StatusCode::BAD_REQUEST.into_response();
@@ -157,11 +189,13 @@ pub(crate) async fn suggest(
         return StatusCode::BAD_REQUEST.into_response();
     }
     let Ok(slot) = server.slots.clone().try_acquire_owned() else {
+        tracing::warn!("AI request rejected: capacity");
         return StatusCode::SERVICE_UNAVAILABLE.into_response();
     };
     let reservation = match budget::reserve(
         &server.database,
         &uid,
+        &metrics::user_hash(&server.config.usage_key, &uid),
         &request.state_key,
         request
             .input
@@ -169,7 +203,11 @@ pub(crate) async fn suggest(
             .as_deref()
             .unwrap_or("first_action"),
         server.config.provider.role_ceiling() * 2,
-        server.config.budget_limit,
+        budget::Limits {
+            month: server.config.budget_limit,
+            day: server.config.daily_limit,
+            user_requests: server.config.user_daily_requests,
+        },
     )
     .await
     {
@@ -180,13 +218,14 @@ pub(crate) async fn suggest(
     // The committed reservation remains charged if cancellation prevents settlement.
     let future = async move {
         let _slot = slot;
-        let (disposition, proposal, usage) = match tokio::time::timeout(
+        let metric = reservation.metric;
+        let (disposition, proposal, usage, cost) = match tokio::time::timeout(
             Duration::from_secs(120),
             server.config.provider.evaluate(&request.input),
         )
         .await
         {
-            Err(_) => (Disposition::TimedOut, None, Vec::new()),
+            Err(_) => (Disposition::TimedOut, None, Vec::new(), None),
             Ok(evaluation) => {
                 if reservation
                     .settle(
@@ -198,24 +237,33 @@ pub(crate) async fn suggest(
                     .await
                     .is_err()
                 {
-                    (Disposition::Failed, None, evaluation.usage)
+                    (Disposition::Failed, None, evaluation.usage, None)
                 } else {
+                    let cost = Some(evaluation.charged);
                     match evaluation.result {
-                        Ok(proposal) => (Disposition::Accepted, Some(proposal), evaluation.usage),
-                        Err(reason) => (reason, None, evaluation.usage),
+                        Ok(proposal) => (
+                            Disposition::Accepted,
+                            Some(proposal),
+                            evaluation.usage,
+                            cost,
+                        ),
+                        Err(reason) => (reason, None, evaluation.usage, cost),
                     }
                 }
             }
         };
+        let disposition: String = serde_json::to_value(disposition)
+            .unwrap()
+            .as_str()
+            .unwrap()
+            .into();
+        let elapsed_ms = started.elapsed().as_millis().min(u64::MAX as u128) as u64;
+        metrics::record(&server.database, metric, &disposition, elapsed_ms, cost).await;
         let response = SuggestionResponse {
-            disposition: serde_json::to_value(disposition)
-                .unwrap()
-                .as_str()
-                .unwrap()
-                .into(),
+            disposition,
             proposal,
             usage,
-            elapsed_ms: started.elapsed().as_millis().min(u64::MAX as u128) as u64,
+            elapsed_ms,
         };
         Bytes::from(serde_json::to_vec(&response).expect("finite checked response"))
     };

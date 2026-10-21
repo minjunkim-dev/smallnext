@@ -1215,3 +1215,136 @@ async fn enabled_route_rejects_missing_or_malformed_bearer_before_database() {
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
     }
 }
+
+#[tokio::test]
+#[ignore = "requires TEST_DATABASE_URL; mock auth/provider against isolated PostgreSQL"]
+async fn public_mode_limits_each_user_per_day_and_keeps_only_anonymous_metrics() {
+    let mut fixture = Fixture::new().await;
+    sqlx::query("INSERT INTO fixture_sessions VALUES ($1, TRUE)")
+        .bind(identity("stranger"))
+        .execute(&fixture.database)
+        .await
+        .unwrap();
+    fixture.config.supabase.allowed = None;
+    fixture.config.user_daily_requests = 2;
+    fixture.app = super::router(Some(fixture.config.clone()), fixture.database.clone());
+    for key in ["public-1", "public-2"] {
+        assert_eq!(
+            result(fixture.request("stranger", key).await).await["disposition"],
+            "accepted"
+        );
+    }
+    assert_eq!(
+        fixture.request("stranger", "public-3").await.status(),
+        StatusCode::TOO_MANY_REQUESTS
+    );
+    assert_eq!(
+        result(fixture.request("other", "public-4").await).await["disposition"],
+        "accepted"
+    );
+    assert_eq!(fixture.remote.calls.lock().unwrap().len(), 6);
+    let (requests, limited): (i32, i32) =
+        sqlx::query_as("SELECT requests, limited FROM ai_daily_usage WHERE user_hash=$1")
+            .bind(
+                super::metrics::user_hash(&fixture.config.usage_key, &identity("stranger"))
+                    .as_slice(),
+            )
+            .fetch_one(&fixture.database)
+            .await
+            .unwrap();
+    assert_eq!((requests, limited), (2, 1));
+    let raw: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM ai_daily_usage WHERE position(convert_to($1, 'UTF8') IN user_hash) > 0",
+    )
+    .bind(identity("stranger"))
+    .fetch_one(&fixture.database)
+    .await
+    .unwrap();
+    assert_eq!(raw, 0);
+    let rows: Vec<(String, String, Option<i64>, Option<i64>)> = sqlx::query_as(
+        "SELECT kind, outcome, elapsed_ms, cost_micro_usd FROM ai_request_metrics ORDER BY id",
+    )
+    .fetch_all(&fixture.database)
+    .await
+    .unwrap();
+    assert_eq!(rows.len(), 3);
+    assert!(
+        rows.iter()
+            .all(|(kind, outcome, elapsed, cost)| kind == "first_action"
+                && outcome == "accepted"
+                && elapsed.is_some()
+                && cost.is_some_and(|c| c > 0))
+    );
+    let (charged, day_charged): (i64, i64) =
+        sqlx::query_as("SELECT charged_micro_usd, day_charged_micro_usd FROM ai_budget")
+            .fetch_one(&fixture.database)
+            .await
+            .unwrap();
+    assert_eq!(charged, day_charged);
+    let (from, to): (String, String) = sqlx::query_as(
+        "SELECT to_char(d, 'YYYY-MM-DD'), to_char(d + 1, 'YYYY-MM-DD') FROM (SELECT (CURRENT_TIMESTAMP AT TIME ZONE 'UTC')::date AS d) t",
+    )
+    .fetch_one(&fixture.database)
+    .await
+    .unwrap();
+    let report: serde_json::Value = serde_json::from_str(
+        &super::metrics::report(&fixture.database, &from, &to)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(report["requests"], 3);
+    assert_eq!(report["outcomes"]["accepted"], 3);
+    assert_eq!(report["latency_ms"]["samples"], 3);
+    assert!(report["latency_ms"]["p99"].as_u64().is_some());
+    assert_eq!(report["cost_micro_usd"]["settled_requests"], 3);
+    assert_eq!(
+        report["users"],
+        json!({"distinct": 2, "limited_requests": 1})
+    );
+    assert_eq!(report["daily_users"][&from], 2);
+    fixture.close().await;
+}
+
+#[tokio::test]
+#[ignore = "requires TEST_DATABASE_URL; mock auth/provider against isolated PostgreSQL"]
+async fn daily_budget_stops_new_requests_before_provider_and_purge_expires_usage() {
+    let fixture = Fixture::new().await;
+    sqlx::query("INSERT INTO ai_budget(singleton, month, charged_micro_usd, day, day_charged_micro_usd) SELECT TRUE, to_char(t, 'YYYY-MM'), 0, to_char(t, 'YYYY-MM-DD'), $1 FROM (SELECT CURRENT_TIMESTAMP AT TIME ZONE 'UTC' AS t) now")
+        .bind(fixture.config.daily_limit)
+        .execute(&fixture.database)
+        .await
+        .unwrap();
+    assert_eq!(
+        fixture.request("allowed", "daily-cap").await.status(),
+        StatusCode::TOO_MANY_REQUESTS
+    );
+    assert!(fixture.remote.calls.lock().unwrap().is_empty());
+    let metrics: i64 = sqlx::query_scalar("SELECT count(*) FROM ai_request_metrics")
+        .fetch_one(&fixture.database)
+        .await
+        .unwrap();
+    assert_eq!(metrics, 0);
+    sqlx::raw_sql(
+        "INSERT INTO ai_daily_usage(day, user_hash, requests) VALUES
+            ((CURRENT_TIMESTAMP AT TIME ZONE 'UTC')::date - 31, decode(repeat('01', 32), 'hex'), 1),
+            ((CURRENT_TIMESTAMP AT TIME ZONE 'UTC')::date - 30, decode(repeat('02', 32), 'hex'), 1);
+         INSERT INTO ai_request_metrics(started_at, kind) VALUES
+            (CURRENT_TIMESTAMP - INTERVAL '91 days', 'first_action'),
+            (CURRENT_TIMESTAMP - INTERVAL '89 days', 'first_action');",
+    )
+    .execute(&fixture.database)
+    .await
+    .unwrap();
+    super::budget::purge_expired(&fixture.database)
+        .await
+        .unwrap();
+    let kept: (i64, i64) = sqlx::query_as(
+        "SELECT (SELECT count(*) FROM ai_daily_usage), (SELECT count(*) FROM ai_request_metrics)",
+    )
+    .fetch_one(&fixture.database)
+    .await
+    .unwrap();
+    assert_eq!(kept, (1, 1));
+    fixture.close().await;
+}
