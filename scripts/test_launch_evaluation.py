@@ -1330,6 +1330,41 @@ print('maximum report passed')
                 self.assertEqual(summary['timings']['first_action']['samples'], 0)
                 self.assertEqual(summary['terminations'], {'expected_reject': 33} if expected else {})
 
+    def test_quality_mismatch_ends_only_its_flow_keeps_ledger_and_hard_errors_stop_run(self):
+        for later_error in (False, True):
+            with self.subTest(later_error=later_error), tempfile.TemporaryDirectory() as directory:
+                root, manifest = self.freeze(directory)
+                calls = []
+
+                def invoke(role, *args):
+                    calls.append(role)
+                    result = self.response(role, *args)
+                    if len(calls) == 2:
+                        result['output']['verdict'] = 'reject'
+                    elif later_error and len(calls) == 3:
+                        result.pop('output')
+                        result['error'] = 'provider_failed'
+                    return result
+
+                summary = launch.run(root, invoke=invoke)
+                first = manifest['flows'][0]['id']
+                if later_error:
+                    self.assertEqual(summary['requests']['started'], 2)
+                    self.assertEqual(summary['stop_reason'], 'provider_failed')
+                    self.assertEqual(len(summary['unexecuted_flows']), 31)
+                    continue
+                self.assertEqual(summary['stop_reason'], 'completed')
+                self.assertEqual(summary['errors'], {'unexpected_quality': 1})
+                self.assertEqual(summary['incomplete_flows'], [first])
+                self.assertEqual(summary['completed_flows'], 32)
+                self.assertFalse(summary['automatic_passed'])
+                path = root/'run-ended.json'
+                end = json.loads(path.read_bytes())
+                end['budget']['charged_micro_usd'] = 0
+                path.write_bytes(qa.encoded(end))
+                with self.assertRaises(ValueError):
+                    launch.report(root)
+
     def test_cancelled_request_timing_is_not_reported_as_normal_or_generic_failure(self):
         with tempfile.TemporaryDirectory() as directory:
             root, _ = self.freeze(directory)
