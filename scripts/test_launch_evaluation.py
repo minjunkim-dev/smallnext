@@ -1365,6 +1365,36 @@ print('maximum report passed')
                 with self.assertRaises(ValueError):
                     launch.report(root)
 
+    def test_generate_role_model_is_frozen_separately_and_verified(self):
+        ends_at = (datetime.now(timezone.utc) + timedelta(days=1)).isoformat()
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaises(ValueError):
+                launch.freeze(Path(directory).resolve() / 'other', owner='minjunkim-dev', ends_at=ends_at,
+                              delete_method='delete directory', generate_model='claude-unknown')
+        self.assertEqual(launch.role_model({'model': qa.MODEL}, 'generate'), qa.MODEL)
+        for generate_actual in ('claude-sonnet-5-5', qa.MODEL):
+            with self.subTest(generate_actual=generate_actual), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory).resolve() / 'launch'
+                launch.freeze(root, owner='minjunkim-dev', ends_at=ends_at, delete_method='delete directory',
+                              generate_model='claude-sonnet-5-5')
+                manifest = launch.load(root)
+                self.assertEqual(manifest['role_models'], {'generate': 'claude-sonnet-5-5', 'check': qa.MODEL})
+
+                def invoke(role, *args):
+                    result = self.response(role, *args)
+                    if role == 'generate':
+                        result['actual_models'] = [generate_actual]
+                    return result
+
+                summary = launch.run(root, invoke=invoke)
+                if generate_actual == qa.MODEL:
+                    self.assertEqual(summary['stop_reason'], 'model_or_call_count')
+                    self.assertEqual(summary['requests']['started'], 1)
+                    continue
+                self.assertTrue(summary['automatic_passed'])
+                self.assertEqual(summary['role_models'], manifest['role_models'])
+                self.assertEqual(launch.report(root)['completed_flows'], 33)
+
     def test_cancelled_request_timing_is_not_reported_as_normal_or_generic_failure(self):
         with tempfile.TemporaryDirectory() as directory:
             root, _ = self.freeze(directory)
