@@ -105,3 +105,44 @@ Rust/Python question_prompt의 후보를 다음 세 문장으로 선택한다.
 이전 실행기 SHA `1799cb2c4ef7c5cddd58f2a275cdad37750bae8b45d26286f21fcfd69d18afe2`와 새 SHA `1e2d25eb61b3c52ef34fe1f54f1e1ebc73c9e938108da58f8768bedaa5d6ddff`의 차이는 위 질문 지침 세 문장뿐이다. 취소 표식·종료 기록·회수·오류 판정 코드는 그대로다. 새 SHA를 같은 `cancellation-marker-v1`로 명시 등록하고 별도 Security 리뷰로 이 바이트 비교를 확인한다. 기존 두 SHA와 미등록 SHA의 불확실 처리는 유지한다. 현재 실행기를 자동 신뢰하는 규칙이나 해시 검사를 우회하는 규칙을 추가하지 않는다. 기존 명령 경계의 정상·미확인·취소·원본 보존 회귀를 그대로 재사용한다. 실행기 바이트 변경 시 이 목록의 검토 필요성도 함께 확인한다.
 보관 식별자는 #217 승인 MD SHA `e042aa2b3fe188a3b36e990077f42b643a2010a49818e4d54d2289bb5eac70ff`, 판정 JSON SHA `30dac0248eca71fedc30d1ba6c83c8d67b04047857ccdad482d4ca8e8487e584`이다. 담당자 minjunkim-dev와 삭제 상한 `2026-11-20T14:01:44.609418+09:00`을 유지한다.
 이 후속 연구에서는 검사·모델·OAuth·유료 API를 실행하지 않았다. 기존 불확실을 실제 분량 초과나 검사 오류로 바꾸지 않는다. 실제 수행·품질 개선·화면·서버·실기기·출시는 검증하지 않았다.
+
+## #221 후속: 유용한 일부 단위와 선택 규칙의 결과
+
+2026-10-21, [#221](https://github.com/minjunkim-dev/smallnext/issues/221). 비교 기준 소스는 `0e372bdee6c511a8852b87caf8e5f0800b8f017a`이다. 앞의 107행과 기존 판정은 보존한다.
+[#220의 직접 승인](https://github.com/minjunkim-dev/smallnext/issues/220#issuecomment-6309806394)은 001·002 충족·000 기준 3 불확실·011 기준 2·4 불확실이다. 자동 `accept` 11건과 `reject` 1건 및 011의 자동 기준 4 거부는 보존한다. 다른 미확인 칸을 통과로 채우지 않는다.
+000은 요구한 역할·기여 문장 전체의 분량을 알 수 없다. 011은 선택을 단순화했지만 실제 원고에서 고르는 단위의 역할 관련성과 유용한 결과 보존을 입증하지 못했다. 같은 위치·동작·개수·시간만으로 감소를 부정할 수도 없다. 후보 reason만으로 감소를 입증할 수도 없다.
+실제 분량 초과·무관한 동사·감소 실패를 확인한 것은 아니다. 011의 영어 근거와 복사된 reason은 한국어 지침과 다른 출력의 관측이다. 이를 새 사람 품질 실패 기준으로 바꾸지 않는다. 직접 승인은 기존 초안의 승인이고 수행 시간은 추정이다. 이 연구는 추가 사람 판정이나 실제 품질 관측이 아니다.
+
+### 기준과 도달 범위
+
+[공유 계약 18행](../../services/api/src/suggestion/contract.md#L18)은 유용한 단위를 보존한 수량·선택 부담 감소를 허용한다. [20행](../../services/api/src/suggestion/contract.md#L20)과 [기준 3](../../services/api/src/suggestion/contract.md#L25)은 필수 작업 전체를 제약에 포함한다. 따라서 범위가 정해진 유용한 일부와 미확인 전체량의 구분은 기존 기준의 강조이다.
+기준 소스의 [generate 5행](https://github.com/minjunkim-dev/smallnext/blob/0e372bdee6c511a8852b87caf8e5f0800b8f017a/services/api/src/suggestion/generate.md#L5)은 자료 작업의 범위를 이미 다룬다. [7행](https://github.com/minjunkim-dev/smallnext/blob/0e372bdee6c511a8852b87caf8e5f0800b8f017a/services/api/src/suggestion/generate.md#L7)은 축소 후 유용한 결과를 요구한다. 일부 단위의 명시와 선택 규칙의 목표 관련성을 더 직접 대조하는 후보를 선택한다. 지침 누락이나 모델 내부 원인으로 확정하지 않는다.
+기준 소스의 [일반 check 3행](https://github.com/minjunkim-dev/smallnext/blob/0e372bdee6c511a8852b87caf8e5f0800b8f017a/services/api/src/suggestion/check.md#L3)은 같은 위치·조작의 선택 부담 감소를 허용한다. [7행](https://github.com/minjunkim-dev/smallnext/blob/0e372bdee6c511a8852b87caf8e5f0800b8f017a/services/api/src/suggestion/check.md#L7)은 reason의 독립 증거 사용을 금지하고 입증된 실패와 근거 부족을 구분한다. 두 방향의 근거 대조를 더 직접 강조하며 기준을 완화하지 않는다.
+[Rust instructions](../../services/api/src/suggestion.rs#L189)는 역할 MD와 공유 계약을 합친다. [Python evaluate](../../scripts/oauth_quality.py#L623)는 동결 manifest의 생성 prompt를 사용한다. [request](../../scripts/oauth_quality.py#L354)는 전달받은 prompt를 compact 형태로 바꾼다. [기존 공식 fixture 대조](../../scripts/test_oauth_contract.py#L18)는 Python 전달값과 Rust fixture를 비교한다.
+[Rust compact](../../services/api/src/suggestion/compact.rs#L293)와 Python request는 `smaller/need_info`에서 일반 check prefix를 교체한다. 이번 일반 check 보완은 그 경로에 전달되지 않는다. check-question·Rust/Python 실행기·등록한 `PROTOCOLS`를 변경하지 않는다.
+
+### 선택한 최소 문구
+
+생성 지침의 기존 source-work 세 문장을 다음으로 대체한다.
+
+> For source work of unknown total amount, specify a bounded useful part to find, read, copy or check rather than all matching material. A short estimate alone does not bound that work. Unknown total length alone does not require a question when a useful supported partial action is possible.
+
+생성 지침에 선택 규칙의 결과 보존을 다음과 같이 강조한다.
+
+> When reducing selection work, keep a rule that yields a unit useful for the goal. Position or grammatical form alone does not establish the needed relevance unless that feature is itself the required goal result.
+
+일반 검사 지침의 추가 후보는 다음 두 문장이다.
+
+> Matching location, operation, item count or estimate alone proves neither reduction nor its absence. For a claimed reduction in selection work, verify both the selected unit's usefulness for the goal and the supported decrease in required selection work.
+
+한국어 정당화와 원문 인용의 언어를 다음 문장으로 구분한다.
+
+> Write the justification in Korean; exact input or candidate quotes may retain their original language.
+
+### 반례와 검증 경계
+
+목표 자체가 문법·위치 확인을 요구하면 그 특징은 유용한 결과일 수 있다. 제공된 자료의 일부 확인·이미 제공한 기록 문맥·제목/표시 자체가 필요한 목표 결과·글자/항목/선택 부담 감소를 유지한다. 총분량 질문을 일괄 강제하거나 임의 단어를 목표 결과로 간주하지 않는다.
+reason의 주장은 계속 대조 대상이다. 다른 근거로 입증된 실패는 기존 `reject`를 따른다. 결정적 근거 부족은 `uncertain`을 유지한다. 정상 `minimum/need_info`·사실·남은 범위·보류를 유지한다.
+검증은 공식 fixture의 generate·check·check-unpreserved 변경과 check-question·공유 계약·schema·12사례/status 보존을 구분한다. 새 인터페이스·문자열 의미 검사·자동 모델 재시도는 제안하지 않는다. 전달 검증은 실제 AI 품질 개선을 증명하지 않는다.
+보관 식별자는 #220 승인판정표 SHA `b30cdf33edb4d3e90b5bdacfa2d700e10c8be8c50dbe5d189c5204fe1b5e7780`, 출처기록 SHA `b82d2a02ac89163cbbce5a918a97227069dfbdb83757a5b44067c47a14e1cd0b`이다. 담당자 minjunkim-dev와 삭제 상한 `2026-11-20T15:10:10.145476+09:00`을 유지한다.
+이 연구는 공개 승인 요약과 공식 소스만 대조했다. private 원문을 읽지 않았다. 검사·모델·OAuth·유료 API를 실행하지 않았다. 실제 수행·품질 개선·화면·서버·실기기·출시는 검증하지 않았다.
