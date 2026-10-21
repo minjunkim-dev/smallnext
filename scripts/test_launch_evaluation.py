@@ -605,39 +605,45 @@ class LaunchEvaluationTests(unittest.TestCase):
                     observed_upper_seconds=.1, sample_interval_seconds=0, method='state callback')])
 
     def test_cli_reuses_subscription_transport_without_extra_model_calls_or_raw_summary(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root, _ = self.freeze(directory)
-            fake = Path(directory)/'claude'
-            fake.write_text('#!' + sys.executable + '\n' + '''import json,sys
+        for generate_model in launch.GENERATE_MODELS:
+            with self.subTest(generate_model=generate_model), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory).resolve() / 'launch'
+                launch.freeze(root, owner='minjunkim-dev', delete_method='delete this private directory',
+                              ends_at=(datetime.now(timezone.utc) + timedelta(days=1)).isoformat(),
+                              generate_model=generate_model)
+                fake = Path(directory)/'claude'
+                fake.write_text('#!' + sys.executable + '\n' + f'GENERATE={generate_model!r}\n' + '''import json,sys
 if sys.argv[1:] == ['auth','status']:
  print(json.dumps({'loggedIn':True,'authMethod':'claude.ai','apiProvider':'firstParty'}))
  sys.exit()
-assert sys.argv[sys.argv.index('--model')+1] == 'claude-haiku-5-5'
+data=json.load(sys.stdin)
+model='claude-haiku-5-5' if 'candidate' in data else GENERATE
+assert sys.argv[sys.argv.index('--model')+1] == model
 assert sys.argv[sys.argv.index('--effort')+1] == 'xhigh'
 assert sys.argv[sys.argv.index('--tools')+1] == ''
 assert '--json-schema' not in sys.argv
-data=json.load(sys.stdin)
 if 'candidate' in data:
  out={'verdict':'accept','criteria':[1,2,3,4,5],'evidence':'private quote; fits'}
 else:
  out={'status':'need_info','action':'private synthetic question','completion_condition':'answer unknown',
       'estimated_minutes':1,'reason':'private synthetic reason'}
 print(json.dumps({'type':'stream_event','event':{'type':'message_start'}}))
-print(json.dumps({'type':'result','subtype':'success','is_error':False,'modelUsage':{'claude-haiku-5-5':{}},
+print(json.dumps({'type':'result','subtype':'success','is_error':False,'modelUsage':{model:{}},
                   'usage':{'input_tokens':100,'output_tokens':30},'result':json.dumps(out)}))
 ''')
-            fake.chmod(0o700)
-            command = [sys.executable, str(qa.REPO/'scripts/launch_evaluation.py'), 'run', str(root), '--claude', str(fake)]
-            result = subprocess.run(command, capture_output=True, timeout=30)
-            self.assertEqual(result.returncode, 0, result.stderr)
-            summary = json.loads(result.stdout)
-            self.assertEqual(summary['roles']['model_messages'], 66)
-            self.assertEqual(summary['role_usage']['generate']['input_tokens']['known_total'], 3300)
-            self.assertEqual(summary['role_usage']['generate']['thinking_tokens']['unknown_calls'], 33)
-            self.assertNotIn('private synthetic', result.stdout.decode())
-            self.assertEqual(summary['costs']['conservative_roles'], 66)
-            again = subprocess.run(command, capture_output=True, timeout=5)
-            self.assertNotEqual(again.returncode, 0)
+                fake.chmod(0o700)
+                command = [sys.executable, str(qa.REPO/'scripts/launch_evaluation.py'), 'run', str(root), '--claude', str(fake)]
+                result = subprocess.run(command, capture_output=True, timeout=30)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                summary = json.loads(result.stdout)
+                self.assertEqual(summary['roles']['model_messages'], 66)
+                self.assertEqual(summary['role_usage']['generate']['input_tokens']['known_total'], 3300)
+                self.assertEqual(summary['role_usage']['generate']['thinking_tokens']['unknown_calls'], 33)
+                self.assertNotIn('private synthetic', result.stdout.decode())
+                self.assertEqual(summary['costs']['conservative_roles'], 66)
+                self.assertEqual(summary['role_models'], {'generate': generate_model, 'check': qa.MODEL})
+                again = subprocess.run(command, capture_output=True, timeout=5)
+                self.assertNotEqual(again.returncode, 0)
 
     def test_partial_report_preserves_missing_records_and_refuses_active_controller(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -1364,6 +1370,47 @@ print('maximum report passed')
                 path.write_bytes(qa.encoded(end))
                 with self.assertRaises(ValueError):
                     launch.report(root)
+
+    def test_generate_role_model_is_frozen_separately_and_verified(self):
+        ends_at = (datetime.now(timezone.utc) + timedelta(days=1)).isoformat()
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaises(ValueError):
+                launch.freeze(Path(directory).resolve() / 'other', owner='minjunkim-dev', ends_at=ends_at,
+                              delete_method='delete directory', generate_model='claude-unknown')
+        for tampered in ({'generate': 'claude-unknown', 'check': qa.MODEL},
+                         {'generate': qa.MODEL, 'check': 'claude-sonnet-5-5'}, None):
+            with self.subTest(tampered=tampered), tempfile.TemporaryDirectory() as directory:
+                root, manifest = self.freeze(directory)
+                if tampered is None:
+                    del manifest['role_models']
+                else:
+                    manifest['role_models'] = tampered
+                (root/'manifest.json').write_bytes(qa.encoded(manifest))
+                (root/'integrity.json').write_bytes(qa.encoded({'manifest_sha256': qa.digest((root/'manifest.json').read_bytes())}))
+                with self.assertRaises(ValueError):
+                    launch.load(root)
+        for generate_actual in ('claude-sonnet-5-5', qa.MODEL):
+            with self.subTest(generate_actual=generate_actual), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory).resolve() / 'launch'
+                launch.freeze(root, owner='minjunkim-dev', ends_at=ends_at, delete_method='delete directory',
+                              generate_model='claude-sonnet-5-5')
+                manifest = launch.load(root)
+                self.assertEqual(manifest['role_models'], {'generate': 'claude-sonnet-5-5', 'check': qa.MODEL})
+
+                def invoke(role, *args):
+                    result = self.response(role, *args)
+                    if role == 'generate':
+                        result['actual_models'] = [generate_actual]
+                    return result
+
+                summary = launch.run(root, invoke=invoke)
+                if generate_actual == qa.MODEL:
+                    self.assertEqual(summary['stop_reason'], 'model_or_call_count')
+                    self.assertEqual(summary['requests']['started'], 1)
+                    continue
+                self.assertTrue(summary['automatic_passed'])
+                self.assertEqual(summary['role_models'], manifest['role_models'])
+                self.assertEqual(launch.report(root)['completed_flows'], 33)
 
     def test_cancelled_request_timing_is_not_reported_as_normal_or_generic_failure(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -26,6 +26,8 @@ import oauth_quality as qa
 
 LIMITS = {'requests': 81, 'calls': 162, 'seconds': 5400,
           'initial_micro_usd': 3_000_000, 'monthly_micro_usd': 10_000_000}
+# #251: only the generate role may be compared with a stronger model; check stays fixed.
+GENERATE_MODELS = (qa.MODEL, 'claude-sonnet-5-5')
 # Two 4 MiB role streams plus record metadata and JSON encoding overhead.
 REPORT_JSON_LIMIT = 16 * 1024 * 1024
 MARKER_JSON_LIMIT = 4096
@@ -163,7 +165,7 @@ def private_root(repo=qa.REPO):
 
 
 def freeze(directory, *, owner, ends_at, delete_method, role_reservation_micro_usd=20_000,
-           monthly_spent_micro_usd=0, flow_id=None, max_smaller=None):
+           monthly_spent_micro_usd=0, flow_id=None, max_smaller=None, generate_model=qa.MODEL):
     directory = Path(directory).resolve()
     end = datetime.fromisoformat(ends_at)
     if not owner.strip() or not delete_method.strip() or end.tzinfo is None or end <= datetime.now(timezone.utc):
@@ -174,6 +176,8 @@ def freeze(directory, *, owner, ends_at, delete_method, role_reservation_micro_u
     if (flow_id is None) != (max_smaller is None) or max_smaller is not None and (
             type(max_smaller) is not int or max_smaller < 0):
         raise ValueError('a single flow needs a nonnegative smaller count')
+    if generate_model not in GENERATE_MODELS:
+        raise ValueError('unsupported generate model')
     root = private_root()
     if directory == root or not directory.is_relative_to(root):
         raise ValueError(f'raw bundles must be inside the main checkout work directory: {root}')
@@ -197,6 +201,7 @@ def freeze(directory, *, owner, ends_at, delete_method, role_reservation_micro_u
     evidence = {p.relative_to(qa.REPO).as_posix(): qa.digest(p.read_bytes())
                 for p in (qa.REPO / 'docs/research/fixtures').glob('*') if p.is_file()}
     manifest = {'version': 1, 'suite': 'launch', 'model': qa.MODEL, 'effort': qa.EFFORT,
+        'role_models': {'generate': generate_model, 'check': qa.MODEL},
         'sources': sources, 'prompts': regression['prompts'], 'schemas': regression['schemas'],
         'flows': flows, 'limits': limits, 'measurement': MEASUREMENT,
         'pipeline_seconds': 120, 'output_mode': 'text-json', 'parallelism': 1,
@@ -222,6 +227,10 @@ def load(directory, *, descriptor=None):
         raise ValueError('launch runner differs from frozen version')
     if qa.digest(private_bytes(source, 'regression/manifest.json')) != manifest['regression']['manifest_sha256']:
         raise ValueError('regression changed')
+    models = manifest.get('role_models')
+    if (type(models) is not dict or set(models) != {'generate', 'check'}
+            or models['generate'] not in GENERATE_MODELS or models['check'] != qa.MODEL):
+        raise ValueError('role models changed')
     return manifest
 
 
@@ -527,7 +536,7 @@ def report_bundle(directory, descriptor, observations):
                 candidate, checked = [call['output'] for call in row['calls']]
                 qa.validate(candidate, qa.schema_for(manifest, row))
                 qa.validate(checked, manifest['schemas']['check'])
-                if any(call.get('actual_models') != [manifest['model']]
+                if any(call.get('actual_models') != [manifest['role_models'][call['role']]]
                        or call.get('provider_messages') != 1 or call.get('provider_retries', 0)
                        or call.get('additional_provider_requests', 0)
                        or any(type(call['usage'].get(key)) not in (int, float)
@@ -680,7 +689,8 @@ def report_bundle(directory, descriptor, observations):
                          for key in ('input_tokens', 'output_tokens', 'thinking_tokens',
                                      'cache_read_input_tokens', 'cache_creation_input_tokens')}
                        for role in ('generate', 'check')},
-        'paid_budget_verified': False, 'model': manifest['model'], 'requested_effort': manifest['effort']}
+        'paid_budget_verified': False, 'model': manifest['model'], 'requested_effort': manifest['effort'],
+        'role_models': manifest['role_models']}
 
 
 def run(directory, *, claude='claude', invoke=None, cancelled=None, clock=monotonic, lock_path=None,
@@ -734,7 +744,8 @@ def run(directory, *, claude='claude', invoke=None, cancelled=None, clock=monoto
                         and account.get('apiProvider') == 'firstParty'):
                     raise ValueError('subscription OAuth login required')
                 invoke = lambda role, prompt, schema, data, deadline, cancel: qa.call(
-                    claude, prompt, schema, data, deadline, cancel, output_mode=manifest['output_mode'])
+                    claude, prompt, schema, data, deadline, cancel, output_mode=manifest['output_mode'],
+                    model=manifest['role_models'][role])
             for flow in manifest['flows']:
                 data = deepcopy(flow['input'])
                 for step in range(flow['max_smaller'] + 1):
@@ -784,7 +795,7 @@ def run(directory, *, claude='claude', invoke=None, cancelled=None, clock=monoto
                             if settlement or clock() >= deadline:
                                 row['error'] = settlement or 'timed_out'
                                 break
-                            if result.get('actual_models') != [manifest['model']] or result.get('provider_messages') != 1:
+                            if result.get('actual_models') != [manifest['role_models'][role]] or result.get('provider_messages') != 1:
                                 row['error'] = 'model_or_call_count'
                                 break
                             if result.get('provider_retries', 0) or result.get('additional_provider_requests', 0):
@@ -868,6 +879,8 @@ def main():
     frozen.add_argument('--monthly-spent-micro-usd', type=int, required=True)
     frozen.add_argument('--flow', help='freeze only this launch flow id')
     frozen.add_argument('--max-smaller', type=int, help='smaller steps allowed in --flow')
+    frozen.add_argument('--generate-model', choices=GENERATE_MODELS, default=qa.MODEL,
+                        help='model for the generate role only; check stays fixed')
     running = commands.add_parser('run')
     running.add_argument('directory', type=Path)
     running.add_argument('--claude', default='claude')
@@ -884,7 +897,7 @@ def main():
             freeze(args.directory, owner=args.owner, ends_at=args.ends_at, delete_method=args.delete_method,
                    role_reservation_micro_usd=args.role_reservation_micro_usd,
                    monthly_spent_micro_usd=args.monthly_spent_micro_usd,
-                   flow_id=args.flow, max_smaller=args.max_smaller)
+                   flow_id=args.flow, max_smaller=args.max_smaller, generate_model=args.generate_model)
             print(json.dumps({'frozen': True, 'model_calls': 0}))
             return 0
         if args.command == 'run':
