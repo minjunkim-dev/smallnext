@@ -7,7 +7,6 @@ final class AIConsentTests: XCTestCase {
     func testBundleDeclaresBetaReleaseRequirements() throws {
         let info = try XCTUnwrap(Bundle.main.infoDictionary)
         XCTAssertEqual(info["ITSAppUsesNonExemptEncryption"] as? Bool, false)
-        XCTAssertNotNil(info["SmallnextPrivacyPolicyURL"] as? String)
         let icons = try XCTUnwrap(info["CFBundleIcons"] as? [String: Any])
         let primary = try XCTUnwrap(icons["CFBundlePrimaryIcon"] as? [String: Any])
         XCTAssertEqual(primary["CFBundleIconName"] as? String, "AppIcon")

@@ -112,7 +112,7 @@ FirebaseCore와 FirebaseCrashlytics는 Crashlytics에만 유지합니다. Analyt
 `user_server_ai`가 ON이면 앱은 첫 화면 전에 목표·자료가 Anthropic으로 전송된다는 동의를 받습니다(App Review 5.1.2(i)).
 동의가 없으면 공급자가 요청마다 전송을 막습니다. 목표 목록에서 동의를 철회하면 동의 화면으로 돌아갑니다.
 목표 목록과 동의 화면은 `SMALLNEXT_PRIVACY_POLICY_URL`의 처리방침을 엽니다.
-`apps/ios/Resources`의 AppIcon은 사람이 확정하기 전의 임시 자산입니다. `PrivacyInfo.xcprivacy`와 앱 개인정보 라벨은 처리방침과 함께 사람이 확인합니다.
+`apps/ios/Resources`의 AppIcon은 직접 그린 임시 자산입니다. 최종 아이콘은 사람이 확정합니다. `PrivacyInfo.xcprivacy`와 앱 개인정보 라벨은 처리방침과 함께 사람이 확인합니다.
 `apps/ios/Config/Local.xcconfig.example`을 운영 준비에는 `Local.Release.xcconfig`로 복사합니다.
 개발용 설정은 같은 폴더의 `Local.Debug.xcconfig`로 분리합니다. 운영 설정을 개발 파일에 복사하지 마십시오.
 실제 파일은 Git에서 제외합니다. 저장소에는 값 없는 예시 파일만 유지합니다.
@@ -124,7 +124,7 @@ FirebaseCore와 FirebaseCrashlytics는 Crashlytics에만 유지합니다. Analyt
 | `SMALLNEXT_API_BASE_URL` | 경로·쿼리·사용자 정보가 없는 HTTPS 서버 원점 |
 | `SMALLNEXT_SUPABASE_URL` | 경로·쿼리·사용자 정보가 없는 HTTPS 프로젝트 원점 |
 | `SMALLNEXT_SUPABASE_PUBLISHABLE_KEY` | `sb_publishable_` 공개 key; secret key는 사용하지 않음 |
-| `SMALLNEXT_PRIVACY_POLICY_URL` | 사용자 정보가 없는 HTTPS 개인정보 처리방침 페이지; 비우면 앱이 링크를 숨김 |
+| `SMALLNEXT_PRIVACY_POLICY_URL` | 사용자 정보가 없는 HTTPS 개인정보 처리방침 페이지; 없으면 서버 AI를 `사용 불가`로 둠 |
 
 선택적인 `SMALLNEXT_FIREBASE_*` 설정은 Crashlytics에만 사용합니다. 인증 설정과 분리합니다.
 

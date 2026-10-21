@@ -24,7 +24,8 @@ final class UserServerAITests: XCTestCase {
         let defaults = try XCTUnwrap(UserDefaults(suiteName: UUID().uuidString))
         let valid = ["SmallnextAPIBaseURL": "https://api.example.invalid",
                      "SmallnextSupabaseURL": "https://project.example.invalid",
-                     "SmallnextSupabasePublishableKey": "sb_publishable_synthetic"]
+                     "SmallnextSupabasePublishableKey": "sb_publishable_synthetic",
+                     "SmallnextPrivacyPolicyURL": "https://example.invalid/privacy"]
         var cases = [[String: String]]()
         for key in valid.keys {
             for value in [nil, "", "$(UNRESOLVED)", " "] as [String?] {
@@ -40,6 +41,9 @@ final class UserServerAITests: XCTestCase {
                 cases.append(info)
             }
         }
+        var plainPolicy = valid
+        plainPolicy["SmallnextPrivacyPolicyURL"] = "http://example.invalid/privacy"
+        cases.append(plainPolicy)
         var secret = valid
         secret["SmallnextSupabasePublishableKey"] = "sb_secret_invalid"
         cases.append(secret)

@@ -8,7 +8,7 @@ SMALLNEXT_SUPABASE_PUBLISHABLE_KEY =
 // URL is an HTTPS origin only. The app adds /auth/captcha/.
 SMALLNEXT_AUTH_CAPTCHA_URL =
 SMALLNEXT_TURNSTILE_SITE_KEY =
-// Full HTTPS page URL. The app hides the link when empty.
+// Full HTTPS page URL. Server AI stays unavailable without it.
 SMALLNEXT_PRIVACY_POLICY_URL =
 // Optional: Crashlytics only. Auth uses Supabase.
 SMALLNEXT_FIREBASE_APP_ID =

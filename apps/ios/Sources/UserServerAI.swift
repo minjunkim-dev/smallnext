@@ -27,7 +27,9 @@ enum UserServerAI {
               let key = value("SmallnextSupabasePublishableKey"),
               key.range(of: #"^sb_publishable_[A-Za-z0-9_-]+$"#, options: .regularExpression) != nil,
               HTTPActionSuggestionProvider.endpoint(url, schemes: ["https"]),
-              HTTPActionSuggestionProvider.endpoint(projectURL, schemes: ["https"])
+              HTTPActionSuggestionProvider.endpoint(projectURL, schemes: ["https"]),
+              // The consent screen must be able to open the privacy policy before anything is sent.
+              AIConsent.privacyPolicyURL(info: bundle.infoDictionary ?? [:]) != nil
         else { return UnavailableSuggestionProvider() }
         // Validate both endpoints before initializing an Auth client or reading its Keychain.
         let captcha: TurnstileConfiguration?
