@@ -33,7 +33,7 @@ struct AIConsentView: View {
                 Text("AI 제안 전송 동의").font(.title2.bold()).accessibilityAddTraits(.isHeader)
                 Text("작은 행동을 제안하려면 입력한 목표, 완료 조건, 자료 링크·발췌, 행동 기록과 답을 Smallnext 서버를 거쳐 Anthropic(Claude)으로 보냅니다.")
                 Text("요청에는 익명 계정이 함께 쓰입니다. 이름이나 연락처는 묻지 않습니다.")
-                Text("모든 행동 제안에 AI를 쓰므로 동의해야 시작할 수 있습니다. 동의 전에는 아무것도 보내지 않습니다. 목표 목록에서 언제든 동의를 철회할 수 있습니다.")
+                Text("모든 행동 제안에 AI를 쓰므로 동의해야 시작할 수 있습니다. 동의 전에는 AI로 아무것도 보내지 않습니다. 목표 목록에서 언제든 동의를 철회할 수 있습니다.")
                 if let url = AIConsent.privacyPolicyURL() {
                     Link(destination: url) {
                         Text("개인정보 처리방침").frame(minHeight: 44).contentShape(Rectangle())

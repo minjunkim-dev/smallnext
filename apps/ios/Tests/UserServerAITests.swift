@@ -9,7 +9,7 @@ import Security
 final class UserServerAITests: XCTestCase {
     func testAppBundleIncludesServerConfigurationKeys() {
         for key in ["SmallnextAPIBaseURL", "SmallnextSupabaseURL", "SmallnextSupabasePublishableKey",
-                    "SmallnextAuthCaptchaURL", "SmallnextTurnstileSiteKey"] {
+                    "SmallnextAuthCaptchaURL", "SmallnextTurnstileSiteKey", "SmallnextPrivacyPolicyURL"] {
             XCTAssertNotNil(Bundle.main.object(forInfoDictionaryKey: key) as? String, key)
         }
     }
