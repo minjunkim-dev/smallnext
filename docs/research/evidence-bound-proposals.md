@@ -146,3 +146,32 @@ reason의 주장은 계속 대조 대상이다. 다른 근거로 입증된 실�
 검증은 공식 fixture의 generate·check·check-unpreserved 변경과 check-question·공유 계약·schema·12사례/status 보존을 구분한다. 새 인터페이스·문자열 의미 검사·자동 모델 재시도는 제안하지 않는다. 전달 검증은 실제 AI 품질 개선을 증명하지 않는다.
 보관 식별자는 #220 승인판정표 SHA `b30cdf33edb4d3e90b5bdacfa2d700e10c8be8c50dbe5d189c5204fe1b5e7780`, 출처기록 SHA `b82d2a02ac89163cbbce5a918a97227069dfbdb83757a5b44067c47a14e1cd0b`이다. 담당자 minjunkim-dev와 삭제 상한 `2026-11-20T15:10:10.145476+09:00`을 유지한다.
 이 연구는 공개 승인 요약과 공식 소스만 대조했다. private 원문을 읽지 않았다. 검사·모델·OAuth·유료 API를 실행하지 않았다. 실제 수행·품질 개선·화면·서버·실기기·출시는 검증하지 않았다.
+
+## #224 후속: minimum의 동일 작업 재표시와 실제 도움
+
+2026-10-21, [#224](https://github.com/minjunkim-dev/smallnext/issues/224). 비교 기준 소스는 `f19f95b70365ba37f1a2a8e120aed60a6e352fc1`이다. 앞의 148행과 기존 판정을 보존한다.
+[#223의 직접 승인](https://github.com/minjunkim-dev/smallnext/issues/223#issuecomment-6310744883)은 000·001·002 충족과 011의 기준 4 거부 유지이다. 수행 시간은 추정이다. 자동 `accept` 11건·`reject` 1건과 011의 `minimum` 상태도 보존한다.
+공개 승인 요약에서 011은 직전과 같은 필수 작업·고정 표시·단어 하나·3분을 유지했다. 이미 단어 하나인 작업에 문장을 쓰지 않는다는 제약을 더한 것을 새 도움으로 인정하지 못했다. 모든 minimum에 추가 축소를 강제한 판정은 아니다. 이전 #220의 action과 이번 minimum은 다른 결과이다. 같은 중단 위치를 같은 원인의 증거로 쓰지 않는다.
+이 연구는 공개 승인 요약과 현재 공식 소스를 따로 확인했다. private 원문을 읽거나 복사하지 않았다. 기존 직접 승인·자동 판정·연구를 구분한다. 새 사람 판정이나 실제 수행 관측으로 세지 않는다.
+
+### 사실과 가설
+
+[공유 계약 15행](../../services/api/src/suggestion/contract.md#L15)은 minimum에도 유용한 결과와 공급한 막힘의 도움을 요구한다. 동일 작업·군더더기·다루지 않은 막힘을 라벨로 정당화할 수 없다. [18행](../../services/api/src/suggestion/contract.md#L18)은 직전 필수 작업과 실제 감소·도움을 비교한다. [기준 4](../../services/api/src/suggestion/contract.md#L26)는 action의 축소와 minimum의 중단·도움 규칙을 구분한다.
+기준 소스의 [generate 3행](https://github.com/minjunkim-dev/smallnext/blob/f19f95b70365ba37f1a2a8e120aed60a6e352fc1/services/api/src/suggestion/generate.md#L3)은 유용한 추가 축소가 없으면 minimum 또는 need_info를 선택하도록 한다. 같은 문단은 직전 제안이 이미 처리한 막힘과 남은 필수 작업의 비교도 요구한다. [7행](https://github.com/minjunkim-dev/smallnext/blob/f19f95b70365ba37f1a2a8e120aed60a6e352fc1/services/api/src/suggestion/generate.md#L7)은 두 행동 상태 모두의 유용한 결과를 요구한다. 공유 계약이나 유용함 규칙이 없었던 것은 아니다.
+**가설:** minimum 선택 안내 바로 뒤에 이미 제공한 도움과 새 도움의 차이를 명시하면 기계적인 상태 재표시 위험을 다룰 수 있다. 이것이 모델 내부의 실제 원인이었다고 확정하지 않는다. 이번 일반 검사는 거부를 포착했다. 검사 완화나 기준 변경의 근거는 없다.
+
+### 권장 문구와 반례
+
+생성 지침의 기존 `If no useful material reduction remains, choose minimum or need_info...` 문장 뒤에 다음 세 문장을 보완하도록 권장한다.
+
+> Minimum need not reduce work further, but must leave a useful result and provide supported help for the current blocker. Help already provided by the latest proposal or a constraint its required work already satisfies is not new help. Relabeling the same required work as minimum does not supply that help.
+
+minimum을 항상 더 작은 작업으로 바꾸지 않는다. 추가 축소 없이도 현재 막힘에 실제 도움을 주는 유용한 minimum은 허용한다. 과거 막힘을 이미 도왔다는 사실로 현재 작업의 미확인 막힘까지 해결했다고 가정하지 않는다.
+유용한 글자·항목·선택 부담 감소와 같은 위치·조작의 유용한 결과는 유지한다. 제공한 자료의 일부 확인·필요한 찾기/읽기·이미 제공한 기록 문맥·제목/표시 자체가 필요한 목표 결과도 유지한다. 최신 작업의 첫 막힘이 미확인이면 [기존 need_info 중단 규칙](../../services/api/src/suggestion/contract.md#L12)을 적용한다. 완료·미완료·남은 범위·보류·사실 보존은 바꾸지 않는다.
+
+### 도달 범위와 검증 한계
+
+[Rust instructions](../../services/api/src/suggestion.rs#L189)는 생성 MD와 공유 계약을 합친다. [compact instructions](../../services/api/src/suggestion/compact.rs#L291)는 생성 역할에 기존 전달 규칙을 덧붙인다. 이번 구현 범위는 generate.md와 공식 fixture의 generate 전달값 및 이 노트이다. check·check-unpreserved·check-question·공유 계약·schema·12사례/status·참조·실행기·PROTOCOLS·상한은 유지한다.
+공식 전달 경계의 red와 fixture 재생성을 재사용한다. 이 전달 검증은 실제 minimum의 품질 개선을 증명하지 않는다. 새 제품 규칙·문자열 의미 검사·모의 통과 사례·자동 재시도·추상화는 제안하지 않는다. 실제 모델 평가는 별도 실행 범위 기록 뒤에 판단한다.
+보관 식별자는 #223 승인판정표 SHA `a4753f01e0a829349a1358780b4d40f55d1a18b69f1d5d981912510c02772697`, 출처기록 SHA `be2ea81acfa1ab8b08cd63fbd8673a7621a8e3aee7a1eec8f84ffe95b477130f`이다. 담당자 minjunkim-dev와 삭제 상한 `2026-11-20T16:29:53.192046+09:00`을 유지한다.
+이 연구는 모델·CLI·테스트·원격 변경을 실행하지 않았다. 파일 변경은 기존 노트 뒤의 이 절뿐이다. 실제 수행·품질 개선·화면·서버·실기기·출시는 검증하지 않았다.
