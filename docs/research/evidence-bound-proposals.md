@@ -219,7 +219,7 @@ minimum을 항상 더 작은 작업으로 바꾸지 않는다. 추가 축소 없
 
 ### 선택 문구와 반례
 
-기존 미확인 사실 안내의 "Do not assume memory or unstated knowledge supplies it." 뒤에 다음 문장을 더한다.
+기존 미확인 사실 안내의 "Do not assume memory or unstated knowledge supplies it." 뒤에 다음 두 문장을 더한다.
 
 > Knowing that a source exists does not establish that it contains the needed fact. A bounded check of that source can still establish it when the work also specifies a useful result to leave if the source lacks it.
 
