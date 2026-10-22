@@ -24,9 +24,9 @@ import uuid
 import oauth_quality as qa
 
 
-# #251: subscription runs have no µUSD limit; the paid budget applies only to the API key path.
+# #251: subscription runs have no µUSD limit; the 3/10 USD budget is for the server API key only.
 LIMITS = {'requests': 81, 'calls': 162, 'seconds': 5400}
-COST_BASIS = 'subscription CLI estimate; recorded only, not a run limit or billing'
+COST_BASIS = 'transport estimate if provided (subscription CLI provides none); not a run limit or billing'
 # Two 4 MiB role streams plus record metadata and JSON encoding overhead.
 REPORT_JSON_LIMIT = 16 * 1024 * 1024
 MARKER_JSON_LIMIT = 4096

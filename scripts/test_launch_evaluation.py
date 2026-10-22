@@ -1147,21 +1147,20 @@ print('cancelled')
             self.assertEqual(result['unreadable_records'], [path.name])
             self.assertEqual(result['requests']['recorded'], 32)
 
-    def test_completed_run_passes_with_estimates_above_the_paid_budget(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root, _ = self.freeze(directory)
+    def test_invalid_cost_estimates_count_as_unknown_without_stopping(self):
+        for cost in (True, -1, 1.5, '100'):
+            with self.subTest(cost=cost), tempfile.TemporaryDirectory() as directory:
+                root, _ = self.freeze(directory)
 
-            def invoke(*args):
-                result = self.response(*args)
-                result['cost_estimate_micro_usd'] = 10_000_000
-                return result
+                def invoke(*args):
+                    result = self.response(*args)
+                    result['cost_estimate_micro_usd'] = cost
+                    return result
 
-            summary = launch.run(root, invoke=invoke)
-            self.assertEqual(summary['stop_reason'], 'completed')
-            self.assertTrue(summary['automatic_passed'])
-            self.assertEqual(summary['costs']['estimated_micro_usd'], 66 * 10_000_000)
-            self.assertEqual(summary['costs']['unknown_cost_roles'], 0)
-            self.assertTrue(launch.report(root)['automatic_passed'])
+                summary = launch.run(root, invoke=invoke)
+                self.assertTrue(summary['automatic_passed'])
+                self.assertEqual(summary['costs']['estimated_micro_usd'], 0)
+                self.assertEqual(summary['costs']['unknown_cost_roles'], 66)
 
     def test_completed_report_rejects_sequential_time_above_90_minutes(self):
         with tempfile.TemporaryDirectory() as directory:
