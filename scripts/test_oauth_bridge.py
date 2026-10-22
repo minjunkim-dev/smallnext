@@ -68,7 +68,7 @@ class OAuthBridgeTests(unittest.TestCase):
     def test_domain_guard_reports_only_field_names_without_repairing_output(self):
         schema = Path(bridge.__file__).parent.parent / "services/api/src/suggestion/generate.json"
         self.schema.write_text(schema.read_text())
-        candidate = {"status": "need_info", "action": " ", "completion_condition": "Answered",
+        candidate = {"status": "need_info", "facts": [], "reduction": "N/A", "action": " ", "completion_condition": "Answered",
                      "reason": "PRIVATE", "estimated_minutes": 1}
         self.fake.write_text("#!/usr/bin/env python3\nimport json\n"
             "print(json.dumps({'type':'stream_event','event':{'type':'message_start'}}))\n"

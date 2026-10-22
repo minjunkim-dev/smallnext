@@ -45,7 +45,7 @@ async fn external_provider(
         .is_some();
     let mut value = if generating {
         json!({"status": match mode.as_str() { "minimum" | "no_action" | "goal_summary" | "need_info" => mode.as_str(), _ => "action" },"action":"펜 하나 옮기기","completion_condition":"펜이 펜꽂이에 있다",
-            "estimated_minutes":1,"reason":"한 물건만 옮긴다"})
+            "estimated_minutes":1,"reason":"한 물건만 옮긴다","facts":[],"reduction":"해당 없음"})
     } else {
         json!({"verdict":if mode=="reject" || mode=="uncertain" { mode.as_str() } else { "accept" },"criteria":[1,2,3,4,5],"evidence":"원본과 일치"})
     };
@@ -483,6 +483,9 @@ async fn decisions_preserve_original_state_and_specialize_only_smaller_questions
         )
         .await;
         assert_eq!(body["disposition"], "accepted");
+        assert!(
+            body["proposal"].get("facts").is_none() && body["proposal"].get("reduction").is_none()
+        );
         assert_eq!(
             body["proposal"]["remaining_work"],
             json!(["남은 작업", "보류 작업"])
@@ -515,7 +518,7 @@ async fn decisions_preserve_original_state_and_specialize_only_smaller_questions
         let checked: serde_json::Value =
             serde_json::from_str(calls[1]["messages"][0]["content"].as_str().unwrap()).unwrap();
         assert_eq!(checked["original_request"], input);
-        assert_eq!(checked["candidate"], body["proposal"]);
+        assert_eq!(checked["candidate"], grounded(&body["proposal"]));
     }
     fixture.close().await;
 }
@@ -852,7 +855,7 @@ async fn allowed_user_receives_only_independently_checked_proposal_and_usage() {
         let schema = &request["output_config"]["format"]["schema"];
         assert_eq!(
             schema["properties"].as_object().unwrap().len(),
-            if index == 0 { 5 } else { 3 }
+            if index == 0 { 7 } else { 3 }
         );
         assert_eq!(schema["additionalProperties"], false);
         assert!(
@@ -927,7 +930,7 @@ async fn request_status_contract_and_schema_match_through_real_database_and_http
             let original: serde_json::Value =
                 serde_json::from_str(sent[0]["messages"][0]["content"].as_str().unwrap()).unwrap();
             assert_eq!(checked["original_request"], original);
-            assert_eq!(checked["candidate"], body["proposal"]);
+            assert_eq!(checked["candidate"], grounded(&body["proposal"]));
         }
     }
     fixture.close().await;
@@ -1214,4 +1217,12 @@ async fn enabled_route_rejects_missing_or_malformed_bearer_before_database() {
             .unwrap();
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
     }
+}
+
+/// The checker sees the app proposal plus the mock's grounding; the app never does.
+fn grounded(proposal: &serde_json::Value) -> serde_json::Value {
+    let mut candidate = proposal.clone();
+    candidate["facts"] = json!([]);
+    candidate["reduction"] = json!("해당 없음");
+    candidate
 }

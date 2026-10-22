@@ -259,6 +259,11 @@ class Budget:
                 'basis': COST_BASIS, 'actual_billing': None}
 
 
+def previous(candidate):
+    # #259: the app keeps only the 9 proposal fields, so a later request never carries grounding.
+    return {k: deepcopy(v) for k, v in candidate.items() if k not in ('facts', 'reduction')}
+
+
 def transition(data, candidate, verdict, expected, max_smaller, step):
     matched = verdict in expected['verdicts'] and candidate['status'] in expected['statuses']
     if not matched:
@@ -270,7 +275,7 @@ def transition(data, candidate, verdict, expected, max_smaller, step):
     if step == max_smaller:
         return True, 'planned_limit', None
     next_input = deepcopy(data)
-    next_input['previous_proposals'].append(deepcopy(candidate))
+    next_input['previous_proposals'].append(previous(candidate))
     next_input['request_kind'] = 'smaller'
     next_input['user_request'] = '현재 행동을 실질적으로 줄인다. 반복 막힘이면 첫 막힘 한 가지를 확인한다.'
     return True, None, next_input

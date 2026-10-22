@@ -18,6 +18,15 @@ fn proposal() -> Proposal {
     }
 }
 
+/// Model output: the app proposal plus the model-only grounding fields.
+fn generated() -> Value {
+    let mut value = json!(proposal());
+    value["facts"] =
+        json!([{"fact":"파란 펜이 책상 왼쪽에 있다","source":"present","if_absent":"해당 없음"}]);
+    value["reduction"] = json!("해당 없음");
+    value
+}
+
 #[test]
 fn request_status_contract() {
     for kind in [
@@ -199,24 +208,39 @@ fn accept() -> Value {
 
 #[tokio::test]
 async fn accepted_candidate_is_checked_against_the_original_request() {
-    let model = Scripted::new(vec![Ok(json!(proposal())), Ok(accept())]);
+    let model = Scripted::new(vec![Ok(generated()), Ok(accept())]);
     let evaluation = evaluate(&model, &input()).await;
-    assert_eq!(evaluation.result, Ok(proposal()));
+    assert_eq!(
+        evaluation.result,
+        Ok(proposal()),
+        "grounding never reaches the app"
+    );
     assert_eq!(evaluation.bills, [Role::Generate, Role::Check]);
     let calls = model.calls.lock().unwrap();
     assert_eq!(calls[0].1, validate_input(&input()).unwrap());
     assert_eq!(calls[1].1["original_request"], calls[0].1);
-    assert_eq!(calls[1].1["candidate"], json!(proposal()));
+    assert_eq!(
+        calls[1].1["candidate"],
+        generated(),
+        "the checker compares grounding"
+    );
 }
 
 #[tokio::test]
 async fn invalid_or_failed_generation_never_starts_the_checker() {
-    let mut completed = proposal();
-    completed.goal_completed = true;
+    let mut completed = generated();
+    completed["goal_completed"] = json!(true);
+    let mut unsourced = generated();
+    unsourced["facts"][0]["source"] = json!("memory");
+    let mut extra = generated();
+    extra["facts"][0]["note"] = json!("추가");
     for (reply, expected) in [
         (Err(Disposition::BudgetLimit), Disposition::BudgetLimit),
         (Ok(json!({"status":"action"})), Disposition::InvalidProposal),
-        (Ok(json!(completed)), Disposition::InvalidProposal),
+        (Ok(completed), Disposition::InvalidProposal),
+        (Ok(json!(proposal())), Disposition::InvalidProposal),
+        (Ok(unsourced), Disposition::InvalidProposal),
+        (Ok(extra), Disposition::InvalidProposal),
     ] {
         let model = Scripted::new(vec![reply]);
         let evaluation = evaluate(&model, &input()).await;
@@ -243,7 +267,7 @@ async fn checker_verdict_or_failure_decides_without_retry() {
             Disposition::ConnectionLost,
         ),
     ] {
-        let model = Scripted::new(vec![Ok(json!(proposal())), reply]);
+        let model = Scripted::new(vec![Ok(generated()), reply]);
         let evaluation = evaluate(&model, &input()).await;
         assert_eq!(evaluation.result, Err(expected));
         assert_eq!(evaluation.bills, [Role::Generate, Role::Check]);

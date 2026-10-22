@@ -30,7 +30,7 @@ else:
     status = 'goal_summary' if kind == 'goal_preparation' else 'action'
     if kind == 'smaller' and len(payload['previous_proposals']) > 1:
         status = 'need_info'
-    value = dict(status=status, action='펜 하나 옮기기' if kind == 'smaller' else '펜 다섯 개 정리하기',
+    value = dict(status=status, facts=[], reduction='해당 없음', action='펜 하나 옮기기' if kind == 'smaller' else '펜 다섯 개 정리하기',
                  completion_condition='펜이 펜꽂이에 있다', estimated_minutes=min(payload['available_minutes'], 1 if kind == 'smaller' else 5),
                  reason='합성 모의 결과', remaining_work=payload['remaining_work'],
                  goal_completed=False, current_action_completed=False,
