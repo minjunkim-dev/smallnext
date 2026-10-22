@@ -191,22 +191,22 @@ class LaunchEvaluationTests(unittest.TestCase):
             self.assertEqual(summary['costs']['actual_billing'], None)
             self.assertFalse(summary['paid_budget_verified'])
 
-    def test_money_and_unknown_usage_stop_before_next_role_or_request(self):
+    def test_cost_estimates_never_stop_and_unknown_usage_stops_before_next_role(self):
         with tempfile.TemporaryDirectory() as directory:
             root, _ = self.freeze(directory)
 
             def invoke(role, *args):
                 result = self.response(role, *args)
-                result['cost_estimate_micro_usd'] = 20_000
+                result['cost_estimate_micro_usd'] = 5_000_000
                 if role == 'generate' and not args[2].get('unknown'):
                     result['output']['status'] = 'action'
                 return result
 
             summary = launch.run(root, invoke=invoke)
-            self.assertEqual(summary['stop_reason'], 'initial_budget_limit')
-            self.assertEqual(summary['roles']['started'], 150)
-            self.assertEqual(summary['costs']['charged_micro_usd'], 3_000_000)
-            self.assertTrue(summary['unexecuted_flows'])
+            self.assertEqual(summary['stop_reason'], 'completed')
+            self.assertEqual(summary['roles']['started'], 162)
+            self.assertEqual(summary['costs']['estimated_micro_usd'], 5_000_000 * summary['roles']['started'])
+            self.assertIsNone(summary['costs']['actual_billing'])
         with tempfile.TemporaryDirectory() as directory:
             root, _ = self.freeze(directory)
 
@@ -219,15 +219,15 @@ class LaunchEvaluationTests(unittest.TestCase):
             summary = launch.run(root, invoke=unknown)
             self.assertEqual(summary['stop_reason'], 'usage_unknown')
             self.assertEqual(summary['roles']['started'], 1)
-            self.assertEqual(summary['costs']['charged_micro_usd'], 20_000)
-            self.assertEqual(summary['costs']['conservative_roles'], 1)
+            self.assertEqual(summary['costs']['estimated_micro_usd'], 0)
+            self.assertEqual(summary['costs']['unknown_cost_roles'], 1)
             self.assertEqual(summary['incomplete_flows'], ['fixed-ready-1'])
             self.assertEqual(len(summary['unexecuted_flows']), 32)
             self.assertNotIn('fixed-ready-1', summary['unexecuted_flows'])
 
-    def test_generation_failure_does_not_check_and_model_or_settlement_failure_stops(self):
+    def test_generation_failure_does_not_check_and_model_failure_stops(self):
         for fault, reason in [('generate', 'provider_failed'), ('model', 'model_or_call_count'),
-                              ('cost', 'cost_overrun'), ('check', 'invalid_check')]:
+                              ('check', 'invalid_check')]:
             with self.subTest(fault=fault), tempfile.TemporaryDirectory() as directory:
                 root, _ = self.freeze(directory)
                 roles = []
@@ -240,8 +240,6 @@ class LaunchEvaluationTests(unittest.TestCase):
                         result['error'] = 'provider_failed'
                     if fault == 'model':
                         result['actual_models'] = ['unexpected_model']
-                    if fault == 'cost':
-                        result['cost_estimate_micro_usd'] = 20_001
                     if fault == 'check' and role == 'check':
                         result['output']['criteria'] = [1, 2, 3, 4]
                     return result
@@ -500,16 +498,7 @@ class LaunchEvaluationTests(unittest.TestCase):
             with patch.object(os, 'open', opening), self.assertRaises(ValueError):
                 launch.report(root, observations=[observation])
 
-    def test_monthly_budget_and_elapsed_deadline_stop_before_more_calls(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory).resolve()/'launch'
-            launch.freeze(root, owner='minjunkim-dev',
-                ends_at=(datetime.now(timezone.utc)+timedelta(days=1)).isoformat(), delete_method='delete directory',
-                monthly_spent_micro_usd=9_960_001)
-            roles = []
-            summary = launch.run(root, invoke=lambda *args: roles.append(args))
-            self.assertEqual(summary['stop_reason'], 'monthly_budget_limit')
-            self.assertEqual(roles, [])
+    def test_elapsed_deadline_stops_before_more_calls(self):
         with tempfile.TemporaryDirectory() as directory:
             root, _ = self.freeze(directory)
             now = [0]
@@ -581,7 +570,7 @@ class LaunchEvaluationTests(unittest.TestCase):
             self.assertTrue(launch.run(root, invoke=invoke, lock_path=lock)['automatic_passed'])
             self.assertFalse((second/'run-started.json').exists())
 
-    def test_interruption_during_role_preserves_started_request_and_conservative_cost(self):
+    def test_interruption_during_role_preserves_started_request_and_unknown_cost(self):
         with tempfile.TemporaryDirectory() as directory:
             root, _ = self.freeze(directory)
 
@@ -592,7 +581,7 @@ class LaunchEvaluationTests(unittest.TestCase):
             self.assertEqual(summary['requests']['started'], 1)
             self.assertEqual(summary['roles']['started'], 1)
             self.assertEqual(summary['roles']['failed'], 1)
-            self.assertEqual(summary['costs']['conservative_roles'], 1)
+            self.assertEqual(summary['costs']['unknown_cost_roles'], 1)
             self.assertNotIn('DO-NOT-SAVE', json.dumps(summary))
 
     def test_report_rejects_state_callback_as_display_evidence(self):
@@ -605,45 +594,39 @@ class LaunchEvaluationTests(unittest.TestCase):
                     observed_upper_seconds=.1, sample_interval_seconds=0, method='state callback')])
 
     def test_cli_reuses_subscription_transport_without_extra_model_calls_or_raw_summary(self):
-        for generate_model in launch.GENERATE_MODELS:
-            with self.subTest(generate_model=generate_model), tempfile.TemporaryDirectory() as directory:
-                root = Path(directory).resolve() / 'launch'
-                launch.freeze(root, owner='minjunkim-dev', delete_method='delete this private directory',
-                              ends_at=(datetime.now(timezone.utc) + timedelta(days=1)).isoformat(),
-                              generate_model=generate_model)
-                fake = Path(directory)/'claude'
-                fake.write_text('#!' + sys.executable + '\n' + f'GENERATE={generate_model!r}\n' + '''import json,sys
+        with tempfile.TemporaryDirectory() as directory:
+            root, _ = self.freeze(directory)
+            fake = Path(directory)/'claude'
+            fake.write_text('#!' + sys.executable + '\n' + '''import json,sys
 if sys.argv[1:] == ['auth','status']:
  print(json.dumps({'loggedIn':True,'authMethod':'claude.ai','apiProvider':'firstParty'}))
  sys.exit()
-data=json.load(sys.stdin)
-model='claude-haiku-5-5' if 'candidate' in data else GENERATE
-assert sys.argv[sys.argv.index('--model')+1] == model
+assert sys.argv[sys.argv.index('--model')+1] == 'claude-haiku-5-5'
 assert sys.argv[sys.argv.index('--effort')+1] == 'xhigh'
 assert sys.argv[sys.argv.index('--tools')+1] == ''
 assert '--json-schema' not in sys.argv
+data=json.load(sys.stdin)
 if 'candidate' in data:
  out={'verdict':'accept','criteria':[1,2,3,4,5],'evidence':'private quote; fits'}
 else:
  out={'status':'need_info','action':'private synthetic question','completion_condition':'answer unknown',
       'estimated_minutes':1,'reason':'private synthetic reason'}
 print(json.dumps({'type':'stream_event','event':{'type':'message_start'}}))
-print(json.dumps({'type':'result','subtype':'success','is_error':False,'modelUsage':{model:{}},
+print(json.dumps({'type':'result','subtype':'success','is_error':False,'modelUsage':{'claude-haiku-5-5':{}},
                   'usage':{'input_tokens':100,'output_tokens':30},'result':json.dumps(out)}))
 ''')
-                fake.chmod(0o700)
-                command = [sys.executable, str(qa.REPO/'scripts/launch_evaluation.py'), 'run', str(root), '--claude', str(fake)]
-                result = subprocess.run(command, capture_output=True, timeout=30)
-                self.assertEqual(result.returncode, 0, result.stderr)
-                summary = json.loads(result.stdout)
-                self.assertEqual(summary['roles']['model_messages'], 66)
-                self.assertEqual(summary['role_usage']['generate']['input_tokens']['known_total'], 3300)
-                self.assertEqual(summary['role_usage']['generate']['thinking_tokens']['unknown_calls'], 33)
-                self.assertNotIn('private synthetic', result.stdout.decode())
-                self.assertEqual(summary['costs']['conservative_roles'], 66)
-                self.assertEqual(summary['role_models'], {'generate': generate_model, 'check': qa.MODEL})
-                again = subprocess.run(command, capture_output=True, timeout=5)
-                self.assertNotEqual(again.returncode, 0)
+            fake.chmod(0o700)
+            command = [sys.executable, str(qa.REPO/'scripts/launch_evaluation.py'), 'run', str(root), '--claude', str(fake)]
+            result = subprocess.run(command, capture_output=True, timeout=30)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            summary = json.loads(result.stdout)
+            self.assertEqual(summary['roles']['model_messages'], 66)
+            self.assertEqual(summary['role_usage']['generate']['input_tokens']['known_total'], 3300)
+            self.assertEqual(summary['role_usage']['generate']['thinking_tokens']['unknown_calls'], 33)
+            self.assertNotIn('private synthetic', result.stdout.decode())
+            self.assertEqual(summary['costs']['unknown_cost_roles'], 66)
+            again = subprocess.run(command, capture_output=True, timeout=5)
+            self.assertNotEqual(again.returncode, 0)
 
     def test_partial_report_preserves_missing_records_and_refuses_active_controller(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -663,7 +646,7 @@ print(json.dumps({'type':'result','subtype':'success','is_error':False,'modelUsa
             self.assertEqual(summary['requests']['unrecorded'], 1)
             self.assertEqual(summary['roles']['unrecorded'], 2)
             self.assertEqual(summary['stop_reason'], 'interrupted')
-            self.assertEqual(summary['costs']['conservative_roles'], 66)
+            self.assertEqual(summary['costs']['unknown_cost_roles'], 66)
 
     def test_partial_report_isolates_valid_json_with_invalid_record_structure(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -914,7 +897,7 @@ print('cancelled')
             shutil.copytree(root, replacement)
             next((root/'results').glob('*.json')).unlink()
             end = json.loads((replacement/'run-ended.json').read_bytes())
-            end['budget']['charged_micro_usd'] = 999999
+            end['budget']['estimated_micro_usd'] = 999999
             (replacement/'run-ended.json').write_bytes(qa.encoded(end))
             real_json, replaced = launch.private_json, []
 
@@ -930,7 +913,7 @@ print('cancelled')
                 summary = launch.report(root)
             self.assertTrue(replaced)
             self.assertEqual(summary['requests']['recorded'], 32)
-            self.assertEqual(summary['costs']['charged_micro_usd'], original['costs']['charged_micro_usd'])
+            self.assertEqual(summary['costs']['estimated_micro_usd'], original['costs']['estimated_micro_usd'])
             self.assertFalse(summary['automatic_passed'])
 
     def test_cli_rejects_wrong_top_level_json_types_with_safe_error(self):
@@ -1062,7 +1045,7 @@ print('cancelled')
                         elif target == 'end':
                             (root/'run-ended.json').rename(root/'end.original')
                             end = json.loads((replacement/'run-ended.json').read_bytes())
-                            end['budget']['charged_micro_usd'] = 999999
+                            end['budget']['estimated_micro_usd'] = 999999
                             (replacement/'run-ended.json').write_bytes(qa.encoded(end))
                             (replacement/'run-ended.json').rename(root/'run-ended.json')
                         else:
@@ -1080,7 +1063,7 @@ print('cancelled')
                 self.assertFalse(result['automatic_passed'])
 
     def test_report_rejects_inplace_rewrite_and_completed_cost_ledger_mismatch(self):
-        for corruption in ('inplace', 'charged', 'conservative'):
+        for corruption in ('inplace', 'estimated', 'unknown'):
             with self.subTest(corruption=corruption), tempfile.TemporaryDirectory() as directory:
                 root, _ = self.freeze(directory)
                 launch.run(root, invoke=self.response)
@@ -1105,8 +1088,8 @@ print('cancelled')
                 else:
                     path = root/'run-ended.json'
                     end = json.loads(path.read_bytes())
-                    end['budget']['charged_micro_usd' if corruption == 'charged' else 'conservative_roles'] = (
-                        0 if corruption == 'charged' else 1)
+                    end['budget']['estimated_micro_usd' if corruption == 'estimated' else 'unknown_cost_roles'] = (
+                        0 if corruption == 'estimated' else 1)
                     path.write_bytes(qa.encoded(end))
                     with self.assertRaises(ValueError):
                         launch.report(root)
@@ -1164,31 +1147,20 @@ print('cancelled')
             self.assertEqual(result['unreadable_records'], [path.name])
             self.assertEqual(result['requests']['recorded'], 32)
 
-    def test_completed_budget_respects_initial_and_monthly_limits(self):
-        for charged, spent, allowed in [(9_999_999, 0, False), (3_000_000, 7_000_001, False),
-                                        (3_000_000, 7_000_000, True)]:
-            with self.subTest(charged=charged, spent=spent), tempfile.TemporaryDirectory() as directory:
-                root = Path(directory).resolve()/'launch'
-                launch.freeze(root, owner='minjunkim-dev',
-                    ends_at=(datetime.now(timezone.utc)+timedelta(days=1)).isoformat(),
-                    delete_method='delete directory', monthly_spent_micro_usd=spent,
-                    role_reservation_micro_usd=45_455)
-                role_count = [0]
+    def test_invalid_cost_estimates_count_as_unknown_without_stopping(self):
+        for cost in (True, -1, 1.5, '100'):
+            with self.subTest(cost=cost), tempfile.TemporaryDirectory() as directory:
+                root, _ = self.freeze(directory)
+
                 def invoke(*args):
                     result = self.response(*args)
-                    role_count[0] += 1
-                    if allowed:
-                        result['cost_estimate_micro_usd'] = 45_425 if role_count[0] == 1 else 45_455
+                    result['cost_estimate_micro_usd'] = cost
                     return result
-                launch.run(root, invoke=invoke)
-                end = json.loads((root/'run-ended.json').read_bytes())
-                end['budget']['charged_micro_usd'] = charged
-                (root/'run-ended.json').write_bytes(qa.encoded(end))
-                if allowed:
-                    self.assertTrue(launch.report(root)['automatic_passed'])
-                else:
-                    with self.assertRaises(ValueError):
-                        launch.report(root)
+
+                summary = launch.run(root, invoke=invoke)
+                self.assertTrue(summary['automatic_passed'])
+                self.assertEqual(summary['costs']['estimated_micro_usd'], 0)
+                self.assertEqual(summary['costs']['unknown_cost_roles'], 66)
 
     def test_completed_report_rejects_sequential_time_above_90_minutes(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -1272,9 +1244,9 @@ print('maximum report passed')
     def test_report_rejects_corrupt_end_budget(self):
         changes = [lambda end: end.update(budget=[]),
                    lambda end: end.pop('budget'),
-                   lambda end: end['budget'].update(charged_micro_usd='0'),
-                   lambda end: end['budget'].update(conservative_roles=-1),
-                   lambda end: end['budget'].pop('monthly_spent_micro_usd'),
+                   lambda end: end['budget'].update(estimated_micro_usd='0'),
+                   lambda end: end['budget'].update(unknown_cost_roles=-1),
+                   lambda end: end['budget'].pop('unknown_cost_roles'),
                    lambda end: end['budget'].update(basis=None),
                    lambda end: end['budget'].update(actual_billing=0)]
         for change in changes:
@@ -1366,51 +1338,10 @@ print('maximum report passed')
                 self.assertFalse(summary['automatic_passed'])
                 path = root/'run-ended.json'
                 end = json.loads(path.read_bytes())
-                end['budget']['charged_micro_usd'] = 0
+                end['budget']['estimated_micro_usd'] = 0
                 path.write_bytes(qa.encoded(end))
                 with self.assertRaises(ValueError):
                     launch.report(root)
-
-    def test_generate_role_model_is_frozen_separately_and_verified(self):
-        ends_at = (datetime.now(timezone.utc) + timedelta(days=1)).isoformat()
-        with tempfile.TemporaryDirectory() as directory:
-            with self.assertRaises(ValueError):
-                launch.freeze(Path(directory).resolve() / 'other', owner='minjunkim-dev', ends_at=ends_at,
-                              delete_method='delete directory', generate_model='claude-unknown')
-        for tampered in ({'generate': 'claude-unknown', 'check': qa.MODEL},
-                         {'generate': qa.MODEL, 'check': 'claude-sonnet-5-5'}, None):
-            with self.subTest(tampered=tampered), tempfile.TemporaryDirectory() as directory:
-                root, manifest = self.freeze(directory)
-                if tampered is None:
-                    del manifest['role_models']
-                else:
-                    manifest['role_models'] = tampered
-                (root/'manifest.json').write_bytes(qa.encoded(manifest))
-                (root/'integrity.json').write_bytes(qa.encoded({'manifest_sha256': qa.digest((root/'manifest.json').read_bytes())}))
-                with self.assertRaises(ValueError):
-                    launch.load(root)
-        for generate_actual in ('claude-sonnet-5-5', qa.MODEL):
-            with self.subTest(generate_actual=generate_actual), tempfile.TemporaryDirectory() as directory:
-                root = Path(directory).resolve() / 'launch'
-                launch.freeze(root, owner='minjunkim-dev', ends_at=ends_at, delete_method='delete directory',
-                              generate_model='claude-sonnet-5-5')
-                manifest = launch.load(root)
-                self.assertEqual(manifest['role_models'], {'generate': 'claude-sonnet-5-5', 'check': qa.MODEL})
-
-                def invoke(role, *args):
-                    result = self.response(role, *args)
-                    if role == 'generate':
-                        result['actual_models'] = [generate_actual]
-                    return result
-
-                summary = launch.run(root, invoke=invoke)
-                if generate_actual == qa.MODEL:
-                    self.assertEqual(summary['stop_reason'], 'model_or_call_count')
-                    self.assertEqual(summary['requests']['started'], 1)
-                    continue
-                self.assertTrue(summary['automatic_passed'])
-                self.assertEqual(summary['role_models'], manifest['role_models'])
-                self.assertEqual(launch.report(root)['completed_flows'], 33)
 
     def test_cancelled_request_timing_is_not_reported_as_normal_or_generic_failure(self):
         with tempfile.TemporaryDirectory() as directory:

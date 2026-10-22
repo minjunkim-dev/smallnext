@@ -154,8 +154,7 @@ def load(directory, *, read_bytes=Path.read_bytes):
 
 class Tracker:
     """Retain timings and counts, never provider text or error messages."""
-    def __init__(self, schema=None, model=MODEL):
-        self.model = model
+    def __init__(self, schema=None):
         self.messages = 0
         self.retries = 0
         self.max_tokens = 0
@@ -275,7 +274,7 @@ class Tracker:
                 "max_tokens": self.max_tokens, "first_response_seconds": self.first_response,
                 "last_thinking_seconds": self.last_thinking, "delta_characters": self.characters,
                 "trace": self.trace, "block_seconds": self.block_seconds,
-                "actual_models": sorted({name if name == self.model else "unexpected_model" for name in models}),
+                "actual_models": sorted({name if name == MODEL else "unexpected_model" for name in models}),
                 "api_seconds": numeric(result.get("duration_api_ms"), 1000),
                 "usage": {key: numeric(usage.get(key)) for key in (
                     "input_tokens", "output_tokens", "cache_read_input_tokens", "cache_creation_input_tokens")}}
@@ -389,11 +388,11 @@ def request(prompt, schema, data):
     return prompt, schema
 
 
-def _call(claude, prompt, schema, data, deadline, cancelled, output_mode="structured", model=MODEL):
+def _call(claude, prompt, schema, data, deadline, cancelled, output_mode="structured"):
     proposal_schema = check_schema = schema
     single_explanation, decision_only = compact_roles(schema, data)
     prompt, schema = request(prompt, schema, data)
-    tracker = Tracker(schema, model)
+    tracker = Tracker(schema)
     started = monotonic()
     child = None
     if output_mode == "text-json":
@@ -408,7 +407,7 @@ def _call(claude, prompt, schema, data, deadline, cancelled, output_mode="struct
         record["proposal_schema_sha256"] = digest(encoded(proposal_schema))
     if single_explanation:
         record["check_schema_sha256"] = digest(encoded(check_schema))
-    command = [claude, "-p", "--model", model, "--effort", EFFORT, "--tools", "",
+    command = [claude, "-p", "--model", MODEL, "--effort", EFFORT, "--tools", "",
                "--max-turns", "1",
                "--disable-slash-commands", "--strict-mcp-config", "--mcp-config", '{"mcpServers":{}}',
                "--setting-sources", "", "--settings",
@@ -458,7 +457,7 @@ def _call(claude, prompt, schema, data, deadline, cancelled, output_mode="struct
         result = tracker.result or {}
         if result.get("subtype") != "success" or result.get("is_error") is not False:
             raise ValueError("provider_failed")
-        if not isinstance(result.get("modelUsage"), dict) or set(result["modelUsage"]) != {model}:
+        if not isinstance(result.get("modelUsage"), dict) or set(result["modelUsage"]) != {MODEL}:
             raise ValueError("wrong_model")
         if tracker.messages != 1:
             raise ValueError("unverified_message_count")
@@ -563,9 +562,9 @@ def result_failure(record):
     return None
 
 
-def call(claude,prompt,schema,data,deadline,cancelled,output_mode='structured',model=MODEL):
+def call(claude,prompt,schema,data,deadline,cancelled,output_mode='structured'):
     is_check,_=compact_roles(schema,data)
-    record=_call(claude,prompt,schema,data,deadline,cancelled,output_mode,model)
+    record=_call(claude,prompt,schema,data,deadline,cancelled,output_mode)
     failure=result_failure(record)
     if failure is not None:
         record['error']=failure
