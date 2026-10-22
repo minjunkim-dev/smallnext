@@ -14,6 +14,7 @@ PROTOCOLS = {
     "1799cb2c4ef7c5cddd58f2a275cdad37750bae8b45d26286f21fcfd69d18afe2": "cancellation-marker-v1",
     "1e2d25eb61b3c52ef34fe1f54f1e1ebc73c9e938108da58f8768bedaa5d6ddff": "cancellation-marker-v1",
     "a52650b83cca7c5213aad7009853e0e8c4db74ae66e592f11793b814c8586927": "cancellation-marker-v1",
+    "18c9836e66f9aeac92c562feaa8a1ef52e7db7d56e69340031f1c260a36e2fc2": "cancellation-marker-v1",
     "efd3c86de40152cc86f619622c03ea16b7ce3bd6766c70f3159d30d8f7e91037": "volatile-cancellation-v1",
 }
 

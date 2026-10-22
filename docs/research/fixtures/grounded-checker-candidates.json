@@ -1,0 +1,541 @@
+{
+  "version": 1,
+  "basis": "#260 grounding for preserved checker candidates; expected verdicts unchanged",
+  "cases": {
+    "shelf-goal-valid": {
+      "facts": [
+        {
+          "fact": "책 18권이 상자에 있고 책장은 비어 있다.",
+          "source": "present",
+          "if_absent": "해당 없음"
+        },
+        {
+          "fact": "책 종류는 소설·기술·여행이다.",
+          "source": "present",
+          "if_absent": "해당 없음"
+        },
+        {
+          "fact": "책장 칸 세 개를 사용할 수 있다.",
+          "source": "present",
+          "if_absent": "해당 없음"
+        }
+      ],
+      "reduction": "해당 없음"
+    },
+    "shelf-goal-invalid": {
+      "facts": [
+        {
+          "fact": "책 18권이 상자에 있다.",
+          "source": "present",
+          "if_absent": "해당 없음"
+        }
+      ],
+      "reduction": "해당 없음"
+    },
+    "shelf-smaller-valid": {
+      "facts": [
+        {
+          "fact": "책상 위에 책 여섯 권이 있고 책장 아래 칸은 비어 있다.",
+          "source": "present",
+          "if_absent": "해당 없음"
+        },
+        {
+          "fact": "책상과 책장은 앉은 자리에서 손이 닿는다.",
+          "source": "present",
+          "if_absent": "해당 없음"
+        }
+      ],
+      "reduction": "여섯 권을 모두 옮기던 일을 한 권만 옮기는 일로 줄여 다섯 권 옮기기를 뺐다."
+    },
+    "shelf-smaller-invalid": {
+      "facts": [
+        {
+          "fact": "책상 위에 책 여섯 권이 있고 책장 아래 칸은 비어 있다.",
+          "source": "present",
+          "if_absent": "해당 없음"
+        },
+        {
+          "fact": "책상과 책장은 앉은 자리에서 손이 닿는다.",
+          "source": "present",
+          "if_absent": "해당 없음"
+        }
+      ],
+      "reduction": "'마음 편하게'라는 표현과 예상 시간만 바뀌었고 여섯 권을 모두 옮기는 일은 그대로다."
+    },
+    "translation-next-valid": {
+      "facts": [
+        {
+          "fact": "둘째 문장은 'The door is open.'이다.",
+          "source": "present",
+          "if_absent": "해당 없음"
+        },
+        {
+          "fact": "첫 문장은 이미 번역해 문서 첫 줄에 적었다.",
+          "source": "present",
+          "if_absent": "해당 없음"
+        },
+        {
+          "fact": "문서 둘째 줄은 비어 있다.",
+          "source": "present",
+          "if_absent": "해당 없음"
+        }
+      ],
+      "reduction": "해당 없음"
+    },
+    "translation-next-invalid": {
+      "facts": [
+        {
+          "fact": "첫 문장 'The window is closed.'는 이미 '창문이 닫혀 있다.'로 번역해 문서 첫 줄에 적었다.",
+          "source": "present",
+          "if_absent": "해당 없음"
+        }
+      ],
+      "reduction": "해당 없음"
+    },
+    "past-evidence-valid": {
+      "facts": [
+        {
+          "fact": "연구모임의 실제 개최 날짜",
+          "source": "absent",
+          "if_absent": "해당 없음"
+        },
+        {
+          "fact": "개최 날짜를 확인할 자료 출처",
+          "source": "absent",
+          "if_absent": "해당 없음"
+        }
+      ],
+      "reduction": "해당 없음"
+    },
+    "past-evidence-invalid": {
+      "facts": [
+        {
+          "fact": "알려진 행사 제목은 '연구모임'이다.",
+          "source": "present",
+          "if_absent": "해당 없음"
+        },
+        {
+          "fact": "연구모임의 실제 개최 날짜",
+          "source": "absent",
+          "if_absent": "해당 없음"
+        }
+      ],
+      "reduction": "해당 없음"
+    },
+    "replacement-empty-valid": {
+      "facts": [
+        {
+          "fact": "준비된 행동은 빨간 펜 반납과 파란 펜 반납 두 가지뿐이다.",
+          "source": "present",
+          "if_absent": "해당 없음"
+        },
+        {
+          "fact": "빨간 펜과 파란 펜을 펜꽂이에 넣는 행동은 둘 다 보류(재제안 금지)다.",
+          "source": "present",
+          "if_absent": "해당 없음"
+        },
+        {
+          "fact": "다른 준비된 대안은 없다.",
+          "source": "present",
+          "if_absent": "해당 없음"
+        }
+      ],
+      "reduction": "해당 없음"
+    },
+    "replacement-empty-invalid": {
+      "facts": [
+        {
+          "fact": "빨간 펜을 펜꽂이에 넣는 행동은 보류(재제안 금지)다.",
+          "source": "present",
+          "if_absent": "해당 없음"
+        }
+      ],
+      "reduction": "해당 없음"
+    },
+    "card-one-word-valid": {
+      "facts": [
+        {
+          "fact": "수신인 이름은 '민준'이다.",
+          "source": "present",
+          "if_absent": "해당 없음"
+        },
+        {
+          "fact": "카드의 수신인 칸이 비어 있다.",
+          "source": "present",
+          "if_absent": "해당 없음"
+        }
+      ],
+      "reduction": "해당 없음"
+    },
+    "card-one-word-invalid": {
+      "facts": [
+        {
+          "fact": "수신인 이름은 '민준'이다.",
+          "source": "present",
+          "if_absent": "해당 없음"
+        },
+        {
+          "fact": "'수연'도 수신인이라는 사실",
+          "source": "absent",
+          "if_absent": "해당 없음"
+        }
+      ],
+      "reduction": "해당 없음"
+    },
+    "report-useful-title": {
+      "facts": [
+        {
+          "fact": "완료 조건은 목차 항목 3개와 핵심 성과 3줄을 작성해 저장한 상태다.",
+          "source": "present",
+          "if_absent": "해당 없음"
+        },
+        {
+          "fact": "빈 보고서 문서가 열려 있다.",
+          "source": "present",
+          "if_absent": "해당 없음"
+        }
+      ],
+      "reduction": "첫 줄에 어떤 목차 항목을 쓸지 고르는 일을 없애고 그대로 쓸 수 있는 한 단어 '개요'로 정했다."
+    },
+    "code-one-assertion": {
+      "facts": [
+        {
+          "fact": "테스트 파일이 열려 있다.",
+          "source": "present",
+          "if_absent": "해당 없음"
+        },
+        {
+          "fact": "버튼 제목은 저장, 취소, 삭제다.",
+          "source": "present",
+          "if_absent": "해당 없음"
+        },
+        {
+          "fact": "assertion 문법을 알고 있다.",
+          "source": "present",
+          "if_absent": "해당 없음"
+        }
+      ],
+      "reduction": "assertion 세 개 중 취소·삭제 버튼 검증 두 개 작성을 뺐다."
+    },
+    "report-next-heading": {
+      "facts": [
+        {
+          "fact": "완료 조건은 목차 항목 3개와 핵심 성과 3줄을 작성해 저장한 상태다.",
+          "source": "present",
+          "if_absent": "해당 없음"
+        },
+        {
+          "fact": "첫 목차 항목은 이미 입력했다.",
+          "source": "present",
+          "if_absent": "해당 없음"
+        }
+      ],
+      "reduction": "해당 없음"
+    },
+    "same-selected-word": {
+      "facts": [
+        {
+          "fact": "완료 조건은 목차 항목 3개와 핵심 성과 3줄을 작성해 저장한 상태다.",
+          "source": "present",
+          "if_absent": "해당 없음"
+        },
+        {
+          "fact": "빈 보고서 문서가 열려 있다.",
+          "source": "present",
+          "if_absent": "해당 없음"
+        }
+      ],
+      "reduction": "이전 제안과 같은 '개요' 한 단어를 그대로 쓰고 예상 시간만 0.5분으로 줄였다."
+    },
+    "word-limit-overrun": {
+      "facts": [
+        {
+          "fact": "첫 칸에는 한 단어만 쓸 수 있다.",
+          "source": "present",
+          "if_absent": "해당 없음"
+        },
+        {
+          "fact": "빈 첫 칸이 열려 있다.",
+          "source": "present",
+          "if_absent": "해당 없음"
+        }
+      ],
+      "reduction": "대사 한 문장을 두 단어 '오늘 출발'로 줄였다."
+    },
+    "invented-past-role": {
+      "facts": [
+        {
+          "fact": "과거 프로젝트에 참여했다.",
+          "source": "present",
+          "if_absent": "해당 없음"
+        },
+        {
+          "fact": "과거 프로젝트에서 맡은 역할",
+          "source": "absent",
+          "if_absent": "해당 없음"
+        },
+        {
+          "fact": "역할의 근거 기록 위치",
+          "source": "absent",
+          "if_absent": "해당 없음"
+        }
+      ],
+      "reduction": "역할 근거 확인 대신 역할 칸에 '리더'를 임시로 쓰는 일로 줄였다."
+    },
+    "repeated-blocker-bypass": {
+      "facts": [
+        {
+          "fact": "파란 펜이 책상 위에 있고 이미 선택했다.",
+          "source": "present",
+          "if_absent": "해당 없음"
+        },
+        {
+          "fact": "파란 펜을 집는 행동을 두 번 제안받았지만 시작하지 못했다.",
+          "source": "present",
+          "if_absent": "해당 없음"
+        },
+        {
+          "fact": "시작하지 못한 이유",
+          "source": "absent",
+          "if_absent": "해당 없음"
+        }
+      ],
+      "reduction": "펜을 집는 동작을 펜에 손가락을 대는 동작으로 줄였다."
+    },
+    "lost-completed-scope": {
+      "facts": [
+        {
+          "fact": "완료 조건은 목차 항목 3개와 핵심 성과 3줄을 작성해 저장한 상태다.",
+          "source": "present",
+          "if_absent": "해당 없음"
+        },
+        {
+          "fact": "첫 목차 항목은 이미 입력했다.",
+          "source": "present",
+          "if_absent": "해당 없음"
+        }
+      ],
+      "reduction": "해당 없음"
+    },
+    "nested-split-without-failure": {
+      "facts": [
+        {
+          "fact": "완료 조건은 목차 항목 3개와 핵심 성과 3줄을 작성해 저장한 상태다.",
+          "source": "present",
+          "if_absent": "해당 없음"
+        },
+        {
+          "fact": "첫 목차 항목은 이미 입력했다.",
+          "source": "present",
+          "if_absent": "해당 없음"
+        },
+        {
+          "fact": "핵심 성과 첫 줄 작성은 보류(재제안 금지)다.",
+          "source": "present",
+          "if_absent": "해당 없음"
+        }
+      ],
+      "reduction": "둘째 줄 목차 항목을 무엇으로 쓸지 고르는 일을 없애고 그대로 쓸 수 있는 한 단어 '성과'로 정했다."
+    },
+    "deferred-alias-valid": {
+      "facts": [
+        {
+          "fact": "준비된 행동은 빨간 펜 반납과 파란 펜 반납 두 가지뿐이다.",
+          "source": "present",
+          "if_absent": "해당 없음"
+        },
+        {
+          "fact": "빨간 펜과 파란 펜을 펜꽂이에 넣는 행동은 둘 다 보류(재제안 금지)다.",
+          "source": "present",
+          "if_absent": "해당 없음"
+        },
+        {
+          "fact": "다른 준비된 대안은 없다.",
+          "source": "present",
+          "if_absent": "해당 없음"
+        }
+      ],
+      "reduction": "해당 없음"
+    },
+    "deferred-alias-invalid": {
+      "facts": [
+        {
+          "fact": "빨간 펜을 펜꽂이에 넣는 행동은 보류(재제안 금지)다.",
+          "source": "present",
+          "if_absent": "해당 없음"
+        }
+      ],
+      "reduction": "해당 없음"
+    },
+    "different-ready-valid": {
+      "facts": [
+        {
+          "fact": "준비된 행동에 초록 펜을 서랍에 두기가 있고 초록 펜은 보류하거나 완료하지 않았다.",
+          "source": "present",
+          "if_absent": "해당 없음"
+        },
+        {
+          "fact": "초록 펜과 열린 서랍이 손에 닿는다.",
+          "source": "present",
+          "if_absent": "해당 없음"
+        }
+      ],
+      "reduction": "해당 없음"
+    },
+    "different-ready-invalid": {
+      "facts": [
+        {
+          "fact": "준비된 행동에 초록 펜을 서랍에 두기가 있고 초록 펜은 보류하거나 완료하지 않았다.",
+          "source": "present",
+          "if_absent": "해당 없음"
+        },
+        {
+          "fact": "초록 펜과 열린 서랍이 손에 닿는다.",
+          "source": "present",
+          "if_absent": "해당 없음"
+        }
+      ],
+      "reduction": "해당 없음"
+    },
+    "useful-minimum-unknown-valid": {
+      "facts": [
+        {
+          "fact": "책 한 권은 더 나눠 옮길 수 없다.",
+          "source": "present",
+          "if_absent": "해당 없음"
+        },
+        {
+          "fact": "이전 제안은 이미 책 한 권 놓기다.",
+          "source": "present",
+          "if_absent": "해당 없음"
+        },
+        {
+          "fact": "시작을 막는 원인",
+          "source": "absent",
+          "if_absent": "해당 없음"
+        }
+      ],
+      "reduction": "해당 없음"
+    },
+    "useful-minimum-unknown-invalid": {
+      "facts": [
+        {
+          "fact": "책 한 권은 더 나눠 옮길 수 없다.",
+          "source": "present",
+          "if_absent": "해당 없음"
+        },
+        {
+          "fact": "이전 제안은 이미 책 한 권 놓기다.",
+          "source": "present",
+          "if_absent": "해당 없음"
+        },
+        {
+          "fact": "시작을 막는 원인",
+          "source": "absent",
+          "if_absent": "해당 없음"
+        }
+      ],
+      "reduction": "이전 제안과 같은 책 한 권 놓기를 minimum으로만 바꿨고 줄인 일이나 새 도움은 없다."
+    },
+    "useful-minimum-known-valid": {
+      "facts": [
+        {
+          "fact": "책 한 권이 무거워 한 손으로 들기 어렵다.",
+          "source": "present",
+          "if_absent": "해당 없음"
+        },
+        {
+          "fact": "책 한 권을 두 손으로 들어 아래 칸에 놓을 수 있고 두 손이 비어 있다.",
+          "source": "present",
+          "if_absent": "해당 없음"
+        },
+        {
+          "fact": "책 한 권은 더 나눠 옮길 수 없다.",
+          "source": "present",
+          "if_absent": "해당 없음"
+        }
+      ],
+      "reduction": "한 손으로 들기 어려운 막힘에 두 손으로 드는 방법을 새로 더했다."
+    },
+    "useful-minimum-known-invalid": {
+      "facts": [
+        {
+          "fact": "현재 막힘은 책 한 권이 무거워 한 손으로 들기 어렵다는 것이다.",
+          "source": "present",
+          "if_absent": "해당 없음"
+        },
+        {
+          "fact": "두 손으로 들 수 있다.",
+          "source": "present",
+          "if_absent": "해당 없음"
+        }
+      ],
+      "reduction": "해당 없음"
+    },
+    "real-reduction-valid": {
+      "facts": [
+        {
+          "fact": "책상 위에 책 여섯 권이 있고 책장 아래 칸은 비어 있다.",
+          "source": "present",
+          "if_absent": "해당 없음"
+        },
+        {
+          "fact": "책상과 책장은 앉은 자리에서 손이 닿는다.",
+          "source": "present",
+          "if_absent": "해당 없음"
+        }
+      ],
+      "reduction": "여섯 권을 모두 옮기던 일을 한 권만 옮기는 일로 줄여 다섯 권 옮기기를 뺐다."
+    },
+    "real-reduction-invalid": {
+      "facts": [
+        {
+          "fact": "책상 위에 책 여섯 권이 있고 책장 아래 칸은 비어 있다.",
+          "source": "present",
+          "if_absent": "해당 없음"
+        },
+        {
+          "fact": "책상과 책장은 앉은 자리에서 손이 닿는다.",
+          "source": "present",
+          "if_absent": "해당 없음"
+        }
+      ],
+      "reduction": "해당 없음"
+    },
+    "known-blocker-action-valid": {
+      "facts": [
+        {
+          "fact": "책 한 권이 무거워 한 손으로 들기 어렵다.",
+          "source": "present",
+          "if_absent": "해당 없음"
+        },
+        {
+          "fact": "책 한 권을 두 손으로 들어 아래 칸에 놓을 수 있고 두 손이 비어 있다.",
+          "source": "present",
+          "if_absent": "해당 없음"
+        },
+        {
+          "fact": "책 한 권은 더 나눠 옮길 수 없다.",
+          "source": "present",
+          "if_absent": "해당 없음"
+        }
+      ],
+      "reduction": "한 손으로 들기 어려운 막힘에 두 손으로 드는 방법을 새로 더했다."
+    },
+    "known-blocker-action-invalid": {
+      "facts": [
+        {
+          "fact": "책 한 권이 무거워 한 손으로 들기 어렵다.",
+          "source": "present",
+          "if_absent": "해당 없음"
+        },
+        {
+          "fact": "두 손으로 들 수 있다.",
+          "source": "present",
+          "if_absent": "해당 없음"
+        }
+      ],
+      "reduction": "이전과 같은 책 한 권 놓기를 한 손으로 다시 시도하며 막힘에 대한 새 도움은 없다."
+    }
+  }
+}
