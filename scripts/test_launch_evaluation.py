@@ -270,6 +270,9 @@ class LaunchEvaluationTests(unittest.TestCase):
             self.assertEqual([len(x['previous_proposals']) for x in inputs[:9]], [0, 1, 2, 0, 1, 2, 0, 1, 2])
             self.assertEqual([x['request_kind'] for x in inputs[:3]], ['first_action', 'smaller', 'smaller'])
             self.assertTrue(all(x['completed_ids'] == [] for x in inputs[:72]))
+            self.assertTrue(all({'facts', 'reduction'} <= p.keys() for p in proposals))
+            # Like the app, a later request never carries the checker-only grounding.
+            self.assertFalse(any({'facts', 'reduction'} & p.keys() for x in inputs for p in x['previous_proposals']))
             offset = 0
             for flow in manifest['flows']:
                 expected_input = deepcopy(flow['input'])
