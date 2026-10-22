@@ -34,33 +34,28 @@ API 키를 읽거나 토큰을 추출하지 않는다.
 4. #115의 착수 조건을 확인한 뒤 `run`으로 구독 OAuth 평가를 시작한다. 지금 준비 작업에서는 호출하지 않는다.
 5. `report`로 부분 결과나 화면 관측을 집계한다. 모델을 호출하거나 중단 판을 재개하지 않는다.
 
-동결 명령 예시는 다음과 같다. 비용 숫자는 오프라인 계획 가정이다. 공급자 가격·실제 청구의 확인값이 아니다.
+동결 명령 예시는 다음과 같다. 구독 실행에는 µUSD 상한이 없다. 첫 평가 3 USD·월 10 USD 한도는 운영 API 키 경로에만 적용한다([#251](https://github.com/minjunkim-dev/smallnext/issues/251#issuecomment-6330074544)).
 종료 시각은 실행 전에 미래의 기준 시각으로 지정한다. 기본 실행 경로는 구독 OAuth다.
 
 ```sh
 python3 scripts/launch_evaluation.py freeze work/launch-new \
   --owner minjunkim-dev --ends-at '<timezone-qualified future timestamp>' \
-  --delete-method '이 private 디렉터리를 삭제한다' \
-  --role-reservation-micro-usd 20000 --monthly-spent-micro-usd 0
+  --delete-method '이 private 디렉터리를 삭제한다'
 python3 scripts/launch_evaluation.py run work/launch-new
 python3 scripts/launch_evaluation.py report work/launch-new --observations work/screen-observations.json
 ```
 
 한 흐름만 다시 실행하려면 동결에 `--flow <흐름 ID> --max-smaller <회수>`를 더한다.
 요청 상한은 회수+1개, 역할 호출 상한은 그 두 배다. 예: `--flow fixed-ready-1 --max-smaller 1`은 요청 2개·호출 4개다([#154](https://github.com/minjunkim-dev/smallnext/issues/154)).
-생성 역할만 다른 모델로 비교하려면 동결에 `--generate-model claude-sonnet-5-5`를 더한다([#251](https://github.com/minjunkim-dev/smallnext/issues/251#issuecomment-6321796468)).
-비교 실험일 뿐 제품 모델 채택이 아니다. 채택은 비용·지연 근거로 별도 결정한다.
-검사 역할은 `claude-haiku-5-5`로 고정된다. 역할별 모델은 manifest `role_models`에 동결되고, load·run·report가 허용 목록과 역할별 실제 모델을 확인한다.
-역할 계획 예약은 모델과 관계없이 같은 값이다. 상위 모델의 가격을 반영하지 않으므로 유료 전환 비용의 근거로 쓰지 않는다.
-모델 인수 추가로 `oauth_quality.py` SHA가 `1e2d25eb61b3c52ef34fe1f54f1e1ebc73c9e938108da58f8768bedaa5d6ddff`에서 `a52650b83cca7c5213aad7009853e0e8c4db74ae66e592f11793b814c8586927`로 바뀌었다. 취소·종료·회수·오류 판정 코드가 그대로임을 바이트 비교로 확인한 뒤 재판정 `PROTOCOLS`에 같은 `cancellation-marker-v1`로 등록했다([#252](https://github.com/minjunkim-dev/smallnext/issues/252)).
+생성·검사 역할은 모두 `claude-haiku-5-5`다. #252의 생성 역할 모델 분기는 #251 변경 답에 따라 제거했다. `oauth_quality.py`는 이미 `PROTOCOLS`에 등록된 `1e2d25eb…` 바이트로 되돌렸다.
 예시의 `work/`는 [보관 규칙](../WORKFLOW.md#검증과-문서-관리)의 위치다. worktree에서는 그 절대 경로를 지정한다.
 같은 실행 판의 재실행과 덮어쓰기를 거부한다. 같은 위치의 `launch-model.lock`으로 worktree 사이의 하네스 실행 소유권을 배타적으로 유지한다.
 별도 clone과 수동 모델 호출도 겹치지 않게 운영한다. 이 잠금이 외부 호출까지 잠그지는 않는다.
 소유권 상실·취소·timeout에서 기존 구독 실행기가 자식 프로세스 그룹을 정리한다.
 제안 요청과 역할 호출의 시작 기록을 먼저 저장한다. 잘린 결과와 누락한 결과를 성공으로 처리하지 않는다.
-예상 밖 품질 외의 모든 오류(출력·모델·정산·timeout 등)·취소·소유권 상실과 상한에서는 전체 실행의 다음 호출을 차단한다. 예상 밖 품질이 있으면 모든 흐름을 실행해도 자동 통과가 아니다.
-사용량이 없으면 역할 예약 비용을 유지한다. 미실행 검사 역할은 시작 호출에 넣지 않는다.
-구독 호출에서 비용 추정을 제공하지 않으면 보수적 계획 예약을 보고한다. 실제 청구는 미확인이다.
+예상 밖 품질 외의 모든 오류(출력·모델·사용량 미확인·timeout 등)·취소·소유권 상실과 상한에서는 전체 실행의 다음 호출을 차단한다. 예상 밖 품질이 있으면 모든 흐름을 실행해도 자동 통과가 아니다.
+미실행 검사 역할은 시작 호출에 넣지 않는다.
+CLI 비용 추정치는 합계와 미확인 역할 수로 기록만 한다. 실행을 멈추지 않으며 실제 청구는 미확인이다.
 유료 전송 구현은 없다. `paid-preflight`는 별도 서버 직전 단계와 준비 조건을 오프라인으로 확인할 뿐이다.
 이 결과로 키 생성·유료 호출·배포를 시작하지 않는다.
 
@@ -81,7 +76,7 @@ marker와 receipt는 최대 4 KiB의 바이트로 고정한다. 로컬 하네스
 정규 결과 파일명은 요청 시작 순서로 고정하고 요청 기록에 연결한다. 먼저 정렬되는 복사본도 원본을 대체하지 못한다.
 결과 저장 후 요청 완료 `.receipt`에 결과 전체의 canonical JSON hash를 원자적으로 기록한다. 정규 경로 교체·완료 기록 누락·hash 불일치는 해당 결과만 격리한다.
 같은 계정이 결과와 모든 증거를 일관되게 다시 쓰는 공격은 이 로컬 기록의 인증 범위 밖이다.
-결과를 열 때 바이트 hash를 저장한다. 읽은 바이트가 다르면 격리한다. 완료 비용과 보수적 역할 수는 호출 기록에서 다시 합산한다.
+결과를 열 때 바이트 hash를 저장한다. 읽은 바이트가 다르면 격리한다. 완료 비용 추정치와 비용 미확인 역할 수는 호출 기록에서 다시 합산한다.
 완료 실행의 예산은 초기·월 한도를 넘을 수 없다. 완료 실행의 요청·역할 수도 실행 한도를 넘을 수 없다.
 순차 요청 시간 합계가 90분을 넘으면 자동 통과하지 않는다. 요청 사이 대기를 제외한 하한으로 검사한다.
 번들 경로도 `/` 또는 현재 디렉터리 descriptor부터 각 요소를 연다. 경로의 symlink와 `..`를 거부한다.

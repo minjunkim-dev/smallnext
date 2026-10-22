@@ -24,10 +24,9 @@ import uuid
 import oauth_quality as qa
 
 
-LIMITS = {'requests': 81, 'calls': 162, 'seconds': 5400,
-          'initial_micro_usd': 3_000_000, 'monthly_micro_usd': 10_000_000}
-# #251: only the generate role may be compared with a stronger model; check stays fixed.
-GENERATE_MODELS = (qa.MODEL, 'claude-sonnet-5-5')
+# #251: subscription runs have no µUSD limit; the paid budget applies only to the API key path.
+LIMITS = {'requests': 81, 'calls': 162, 'seconds': 5400}
+COST_BASIS = 'subscription CLI estimate; recorded only, not a run limit or billing'
 # Two 4 MiB role streams plus record metadata and JSON encoding overhead.
 REPORT_JSON_LIMIT = 16 * 1024 * 1024
 MARKER_JSON_LIMIT = 4096
@@ -164,20 +163,14 @@ def private_root(repo=qa.REPO):
     return (Path(common).parent / 'work').resolve()
 
 
-def freeze(directory, *, owner, ends_at, delete_method, role_reservation_micro_usd=20_000,
-           monthly_spent_micro_usd=0, flow_id=None, max_smaller=None, generate_model=qa.MODEL):
+def freeze(directory, *, owner, ends_at, delete_method, flow_id=None, max_smaller=None):
     directory = Path(directory).resolve()
     end = datetime.fromisoformat(ends_at)
     if not owner.strip() or not delete_method.strip() or end.tzinfo is None or end <= datetime.now(timezone.utc):
         raise ValueError('retention owner, future end time and deletion method required')
-    if (type(role_reservation_micro_usd) is not int or role_reservation_micro_usd <= 0
-            or type(monthly_spent_micro_usd) is not int or monthly_spent_micro_usd < 0):
-        raise ValueError('nonnegative integer planning cost required')
     if (flow_id is None) != (max_smaller is None) or max_smaller is not None and (
             type(max_smaller) is not int or max_smaller < 0):
         raise ValueError('a single flow needs a nonnegative smaller count')
-    if generate_model not in GENERATE_MODELS:
-        raise ValueError('unsupported generate model')
     root = private_root()
     if directory == root or not directory.is_relative_to(root):
         raise ValueError(f'raw bundles must be inside the main checkout work directory: {root}')
@@ -201,13 +194,10 @@ def freeze(directory, *, owner, ends_at, delete_method, role_reservation_micro_u
     evidence = {p.relative_to(qa.REPO).as_posix(): qa.digest(p.read_bytes())
                 for p in (qa.REPO / 'docs/research/fixtures').glob('*') if p.is_file()}
     manifest = {'version': 1, 'suite': 'launch', 'model': qa.MODEL, 'effort': qa.EFFORT,
-        'role_models': {'generate': generate_model, 'check': qa.MODEL},
         'sources': sources, 'prompts': regression['prompts'], 'schemas': regression['schemas'],
         'flows': flows, 'limits': limits, 'measurement': MEASUREMENT,
         'pipeline_seconds': 120, 'output_mode': 'text-json', 'parallelism': 1,
-        'cost_policy': {'role_reservation_micro_usd': role_reservation_micro_usd,
-                        'monthly_spent_micro_usd': monthly_spent_micro_usd,
-                        'basis': 'offline planning assumption; not provider pricing or billing'},
+        'cost_basis': COST_BASIS,
         'regression': {'cases': 47, 'manifest_sha256': qa.digest(private_bytes(directory, 'regression/manifest.json'))},
         'preserved_evidence': evidence, 'paid_transport': 'unavailable',
         'retention': {'location': str(directory), 'owner': owner, 'evaluation_ends_at': end.isoformat(),
@@ -227,18 +217,14 @@ def load(directory, *, descriptor=None):
         raise ValueError('launch runner differs from frozen version')
     if qa.digest(private_bytes(source, 'regression/manifest.json')) != manifest['regression']['manifest_sha256']:
         raise ValueError('regression changed')
-    models = manifest.get('role_models')
-    if (type(models) is not dict or set(models) != {'generate', 'check'}
-            or models['generate'] not in GENERATE_MODELS or models['check'] != qa.MODEL):
-        raise ValueError('role models changed')
     return manifest
 
 
 class Budget:
     def __init__(self, manifest, clock):
-        self.limits, self.policy, self.clock = manifest['limits'], manifest['cost_policy'], clock
+        self.limits, self.clock = manifest['limits'], clock
         self.started = None
-        self.requests = self.calls = self.charged = self.conservative = 0
+        self.requests = self.calls = self.estimated = self.unknown = 0
 
     def admit(self):
         if self.started is not None and self.clock() - self.started >= self.limits['seconds']:
@@ -247,11 +233,6 @@ class Budget:
             return 'request_limit'
         if self.calls + 2 > self.limits['calls']:
             return 'call_limit'
-        reserve = self.policy['role_reservation_micro_usd'] * 2
-        if self.charged + reserve > self.limits['initial_micro_usd']:
-            return 'initial_budget_limit'
-        if self.charged + reserve + self.policy['monthly_spent_micro_usd'] > self.limits['monthly_micro_usd']:
-            return 'monthly_budget_limit'
         if self.started is None:
             self.started = self.clock()
         self.requests += 1
@@ -259,29 +240,23 @@ class Budget:
 
     def start_role(self):
         self.calls += 1
-        self.charged += self.policy['role_reservation_micro_usd']
 
     def settle(self, result):
         usage = result.get('usage', {})
         known = all(type(usage.get(key)) in (int, float) and qa.numeric(usage[key]) is not None
                     for key in ('input_tokens', 'output_tokens'))
         cost = result.get('cost_estimate_micro_usd')
-        if not known or cost is None:
-            self.conservative += 1
-            result['cost_state'] = 'conservative_reservation'
-            return None if known else 'usage_unknown'
-        if type(cost) is not int or cost < 0:
-            self.conservative += 1
-            result['cost_state'] = 'conservative_reservation'
-            return 'invalid_settlement'
-        self.charged += cost - self.policy['role_reservation_micro_usd']
-        result['cost_state'] = 'estimated'
-        return 'cost_overrun' if cost > self.policy['role_reservation_micro_usd'] else None
+        if type(cost) is int and cost >= 0:
+            self.estimated += cost
+            result['cost_state'] = 'estimated'
+        else:
+            self.unknown += 1
+            result['cost_state'] = 'unknown'
+        return None if known else 'usage_unknown'
 
     def snapshot(self):
-        return {'charged_micro_usd': self.charged, 'conservative_roles': self.conservative,
-                'monthly_spent_micro_usd': self.policy['monthly_spent_micro_usd'],
-                'basis': self.policy['basis'], 'actual_billing': None}
+        return {'estimated_micro_usd': self.estimated, 'unknown_cost_roles': self.unknown,
+                'basis': COST_BASIS, 'actual_billing': None}
 
 
 def transition(data, candidate, verdict, expected, max_smaller, step):
@@ -536,7 +511,7 @@ def report_bundle(directory, descriptor, observations):
                 candidate, checked = [call['output'] for call in row['calls']]
                 qa.validate(candidate, qa.schema_for(manifest, row))
                 qa.validate(checked, manifest['schemas']['check'])
-                if any(call.get('actual_models') != [manifest['role_models'][call['role']]]
+                if any(call.get('actual_models') != [manifest['model']]
                        or call.get('provider_messages') != 1 or call.get('provider_retries', 0)
                        or call.get('additional_provider_requests', 0)
                        or any(type(call['usage'].get(key)) not in (int, float)
@@ -610,32 +585,28 @@ def report_bundle(directory, descriptor, observations):
         budget = end.get('budget')
         if (type(end.get('reason')) is not str or not end['reason'] or type(budget) is not dict
                 or any(type(budget.get(key)) is not int or budget[key] < 0
-                       for key in ('charged_micro_usd', 'conservative_roles', 'monthly_spent_micro_usd'))
-                or budget['conservative_roles'] > started_roles
-                or budget['monthly_spent_micro_usd'] != manifest['cost_policy']['monthly_spent_micro_usd']
-                or budget.get('basis') != manifest['cost_policy']['basis']
+                       for key in ('estimated_micro_usd', 'unknown_cost_roles'))
+                or budget['unknown_cost_roles'] > started_roles
+                or budget.get('basis') != manifest['cost_basis']
                 or 'actual_billing' not in budget or budget['actual_billing'] is not None):
             raise ValueError('invalid end budget')
         if end['reason'] == 'completed' and (
-                budget['charged_micro_usd'] > manifest['limits']['initial_micro_usd']
-                or budget['charged_micro_usd'] + budget['monthly_spent_micro_usd'] > manifest['limits']['monthly_micro_usd']
-                or started_requests > manifest['limits']['requests'] or started_roles > manifest['limits']['calls']):
+                started_requests > manifest['limits']['requests'] or started_roles > manifest['limits']['calls']):
             raise ValueError('completed execution exceeds limits')
         if (end['reason'] == 'completed' and not unreadable and started_roles == len(calls)
                 and all(row.get('error') in (None, 'unexpected_quality') for row in records)):
-            charged = conservative = 0
+            estimated = unknown = 0
             for call in calls:
                 cost = call.get('cost_estimate_micro_usd')
                 if call.get('cost_state') == 'estimated':
-                    if type(cost) is not int or not 0 <= cost <= manifest['cost_policy']['role_reservation_micro_usd']:
+                    if type(cost) is not int or cost < 0:
                         raise ValueError('invalid completed role cost')
-                    charged += cost
-                elif call.get('cost_state') == 'conservative_reservation':
-                    charged += manifest['cost_policy']['role_reservation_micro_usd']
-                    conservative += 1
+                    estimated += cost
+                elif call.get('cost_state') == 'unknown':
+                    unknown += 1
                 else:
                     raise ValueError('completed role cost state missing')
-            if charged != budget['charged_micro_usd'] or conservative != budget['conservative_roles']:
+            if estimated != budget['estimated_micro_usd'] or unknown != budget['unknown_cost_roles']:
                 raise ValueError('completed cost ledger mismatch')
     errors = Counter(r['error'] for r in records if r.get('error'))
     for row in records:
@@ -680,17 +651,15 @@ def report_bundle(directory, descriptor, observations):
                             and started_roles == len(calls) and started_requests == len(records)
                             and sum(r['seconds'] for r in records) <= manifest['limits']['seconds']
                             and all(r.get('reference_matched') is True for r in records),
-        'costs': end.get('budget', {'actual_billing': None,
-            'charged_micro_usd': started_roles * manifest['cost_policy']['role_reservation_micro_usd'],
-            'conservative_roles': started_roles, 'basis': 'interrupted run conservative reservation'}),
+        'costs': end.get('budget', {'actual_billing': None, 'estimated_micro_usd': None,
+            'unknown_cost_roles': started_roles, 'basis': 'interrupted run; cost not settled'}),
         'role_usage': {role: {key: {'known_total': usage_totals[role, key],
                                   'unknown_calls': sum(c.get('usage', {}).get(key) is None
                                for c in calls if c['role'] == role)}
                          for key in ('input_tokens', 'output_tokens', 'thinking_tokens',
                                      'cache_read_input_tokens', 'cache_creation_input_tokens')}
                        for role in ('generate', 'check')},
-        'paid_budget_verified': False, 'model': manifest['model'], 'requested_effort': manifest['effort'],
-        'role_models': manifest['role_models']}
+        'paid_budget_verified': False, 'model': manifest['model'], 'requested_effort': manifest['effort']}
 
 
 def run(directory, *, claude='claude', invoke=None, cancelled=None, clock=monotonic, lock_path=None,
@@ -744,8 +713,7 @@ def run(directory, *, claude='claude', invoke=None, cancelled=None, clock=monoto
                         and account.get('apiProvider') == 'firstParty'):
                     raise ValueError('subscription OAuth login required')
                 invoke = lambda role, prompt, schema, data, deadline, cancel: qa.call(
-                    claude, prompt, schema, data, deadline, cancel, output_mode=manifest['output_mode'],
-                    model=manifest['role_models'][role])
+                    claude, prompt, schema, data, deadline, cancel, output_mode=manifest['output_mode'])
             for flow in manifest['flows']:
                 data = deepcopy(flow['input'])
                 for step in range(flow['max_smaller'] + 1):
@@ -795,7 +763,7 @@ def run(directory, *, claude='claude', invoke=None, cancelled=None, clock=monoto
                             if settlement or clock() >= deadline:
                                 row['error'] = settlement or 'timed_out'
                                 break
-                            if result.get('actual_models') != [manifest['role_models'][role]] or result.get('provider_messages') != 1:
+                            if result.get('actual_models') != [manifest['model']] or result.get('provider_messages') != 1:
                                 row['error'] = 'model_or_call_count'
                                 break
                             if result.get('provider_retries', 0) or result.get('additional_provider_requests', 0):
@@ -874,13 +842,8 @@ def main():
     frozen.add_argument('--owner', required=True)
     frozen.add_argument('--ends-at', required=True, help='timezone-qualified evaluation cutoff')
     frozen.add_argument('--delete-method', required=True)
-    frozen.add_argument('--role-reservation-micro-usd', type=int, required=True,
-                        help='offline planning assumption; not actual pricing or billing')
-    frozen.add_argument('--monthly-spent-micro-usd', type=int, required=True)
     frozen.add_argument('--flow', help='freeze only this launch flow id')
     frozen.add_argument('--max-smaller', type=int, help='smaller steps allowed in --flow')
-    frozen.add_argument('--generate-model', choices=GENERATE_MODELS, default=qa.MODEL,
-                        help='model for the generate role only; check stays fixed')
     running = commands.add_parser('run')
     running.add_argument('directory', type=Path)
     running.add_argument('--claude', default='claude')
@@ -895,9 +858,7 @@ def main():
     try:
         if args.command == 'freeze':
             freeze(args.directory, owner=args.owner, ends_at=args.ends_at, delete_method=args.delete_method,
-                   role_reservation_micro_usd=args.role_reservation_micro_usd,
-                   monthly_spent_micro_usd=args.monthly_spent_micro_usd,
-                   flow_id=args.flow, max_smaller=args.max_smaller, generate_model=args.generate_model)
+                   flow_id=args.flow, max_smaller=args.max_smaller)
             print(json.dumps({'frozen': True, 'model_calls': 0}))
             return 0
         if args.command == 'run':

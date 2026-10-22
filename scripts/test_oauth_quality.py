@@ -381,25 +381,6 @@ class FrozenEvaluationTests(unittest.TestCase):
                 self.assertEqual(caught.exception.detail['kind'], kind)
                 self.assertNotIn("PRIVATE", json.dumps(tracker.metadata()))
 
-    def test_runner_sends_and_verifies_requested_model(self):
-        with tempfile.TemporaryDirectory() as directory:
-            fake = Path(directory) / "claude"
-            fake.write_text("#!/usr/bin/env python3\nimport json,sys\n"
-                            "print(json.dumps({'type':'stream_event','event':{'type':'message_start'}}))\n"
-                            "print(json.dumps({'type':'result','subtype':'success','is_error':False,"
-                            "'modelUsage':{'claude-sonnet-5-5':{}},"
-                            "'structured_output':{'ok':sys.argv[sys.argv.index('--model')+1]=='claude-sonnet-5-5'}}))\n")
-            fake.chmod(0o700)
-            schema = {"type": "object", "properties": {"ok": {"type": "boolean"}},
-                      "required": ["ok"], "additionalProperties": False}
-            result = qa.call(str(fake), "prompt", schema, {}, qa.monotonic() + 2, threading.Event(),
-                             model="claude-sonnet-5-5")
-            self.assertEqual(result["output"], {"ok": True})
-            self.assertEqual(result["actual_models"], ["claude-sonnet-5-5"])
-            result = qa.call(str(fake), "prompt", schema, {}, qa.monotonic() + 2, threading.Event())
-            self.assertEqual(result["error"], "wrong_model")
-            self.assertEqual(result["actual_models"], ["unexpected_model"])
-
     def test_runner_verifies_effective_model_and_reaps_timeout(self):
         with tempfile.TemporaryDirectory() as directory:
             fake = Path(directory) / "claude"
