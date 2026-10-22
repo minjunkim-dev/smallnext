@@ -92,8 +92,9 @@ def freeze(directory, suite, comparison=None, repetitions=2, case_ids=(),
     for c in references["checker_cases"]:
         checkers.append(dict(deepcopy(c), original_request=deepcopy(known["input"])))
     # #260: preserved candidates gain only the generator grounding; their files and verdicts stay as is.
-    if set(grounding) != {c["id"] for c in checkers}:
-        raise ValueError("grounding must cover exactly the checker cases")
+    if (set(grounding) != {c["id"] for c in checkers}
+            or any(set(fields) != {"facts", "reduction"} for fields in grounding.values())):
+        raise ValueError("grounding must add exactly facts and reduction to each checker case")
     for c in checkers:
         c["candidate"].update(deepcopy(grounding[c["id"]]))
     generators = deepcopy(contracts["generator_cases"])

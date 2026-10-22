@@ -49,8 +49,8 @@ python3 scripts/launch_evaluation.py report work/launch-new --observations work/
 요청 상한은 회수+1개, 역할 호출 상한은 그 두 배다. 예: `--flow fixed-ready-1 --max-smaller 1`은 요청 2개·호출 4개다([#154](https://github.com/minjunkim-dev/smallnext/issues/154)).
 생성 결과에는 검사 전용 `facts`·`reduction` 칸이 있다([#259](https://github.com/minjunkim-dev/smallnext/issues/259)). 다음 smaller 요청의 `previous_proposals`에는 앱처럼 9필드만 넣는다.
 기존 회귀 47건의 fixture 파일은 그대로 둔다. 동결할 때 `grounded-checker-candidates.json`이 checker 후보 33건에 두 칸만 더하고 기대 판정은 바꾸지 않는다([#260](https://github.com/minjunkim-dev/smallnext/issues/260)). 이 파일은 checker 사례 id와 정확히 같아야 한다.
-이 변경으로 `oauth_quality.py` SHA가 `1e2d25eb…`에서 `18c9836e66f9aeac92c562feaa8a1ef52e7db7d56e69340031f1c260a36e2fc2`로 바뀌었다. 취소·종료·회수·오류 판정 코드는 그대로이고 `freeze`의 입력 조립만 바뀌었으므로 재판정 `PROTOCOLS`에 같은 `cancellation-marker-v1`로 등록했다.
-생성·검사 역할은 모두 `claude-haiku-5-5`다. #252의 생성 역할 모델 분기는 #251 변경 답에 따라 제거했다. `oauth_quality.py`는 이미 `PROTOCOLS`에 등록된 `1e2d25eb…` 바이트로 되돌렸다.
+이 변경으로 `oauth_quality.py` SHA가 `1e2d25eb…`에서 `375f9752e5512160c1b1e55cb33ade85ebd41cc8a31ad1b00e1ac92e4af89ea1`로 바뀌었다. 취소·종료·회수·오류 판정 코드는 그대로이고 `freeze`의 입력 조립만 바뀌었으므로 재판정 `PROTOCOLS`에 같은 `cancellation-marker-v1`로 등록했다.
+생성·검사 역할은 모두 `claude-haiku-5-5`다. #252의 생성 역할 모델 분기는 #251 변경 답에 따라 제거했다. #258에서 `oauth_quality.py`를 이미 등록된 `1e2d25eb…` 바이트로 되돌렸고, #260에서 위와 같이 다시 바뀌었다.
 예시의 `work/`는 [보관 규칙](../WORKFLOW.md#검증과-문서-관리)의 위치다. worktree에서는 그 절대 경로를 지정한다.
 같은 실행 판의 재실행과 덮어쓰기를 거부한다. 같은 위치의 `launch-model.lock`으로 worktree 사이의 하네스 실행 소유권을 배타적으로 유지한다.
 별도 clone과 수동 모델 호출도 겹치지 않게 운영한다. 이 잠금이 외부 호출까지 잠그지는 않는다.
