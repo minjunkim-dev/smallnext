@@ -43,6 +43,15 @@ fn proposal() -> Proposal {
     }
 }
 
+/// What the model emits: the proposal plus the model-only grounding fields.
+fn grounded(mut candidate: Value) -> Value {
+    if let Some(object) = candidate.as_object_mut() {
+        object.insert("facts".into(), json!([]));
+        object.insert("reduction".into(), json!("해당 없음"));
+    }
+    candidate
+}
+
 fn events(value: &Value) -> Vec<u8> {
     format!(
         "{}\n{}\n",
@@ -85,7 +94,11 @@ impl Fixture {
         use std::os::unix::fs::PermissionsExt;
         let dir = Workspace::new(Role::Generate, None).unwrap();
         let executable = dir.0.join("fake-codex");
-        std::fs::write(dir.0.join("candidate.json"), candidate.to_string()).unwrap();
+        std::fs::write(
+            dir.0.join("candidate.json"),
+            grounded(candidate).to_string(),
+        )
+        .unwrap();
         std::fs::write(dir.0.join("check.json"), check.to_string()).unwrap();
         let script = r#"#!/usr/bin/env python3
 import json, os, pathlib, sys, time
@@ -258,7 +271,10 @@ async fn accepts_only_after_two_isolated_oauth_calls() {
     assert_eq!(calls[0]["role"], "candidate");
     assert_eq!(calls[1]["role"], "check");
     assert_eq!(calls[1]["payload"]["original_request"], calls[0]["payload"]);
-    assert_eq!(calls[1]["payload"]["candidate"], json!(proposal()));
+    assert_eq!(
+        calls[1]["payload"]["candidate"],
+        grounded(json!(proposal()))
+    );
     for call in calls {
         let args = call["args"].as_array().unwrap();
         for required in [

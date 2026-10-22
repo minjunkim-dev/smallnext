@@ -106,7 +106,8 @@ class LaunchEvaluationTests(unittest.TestCase):
     @staticmethod
     def response(role, prompt, schema, data, deadline, cancelled):
         if role == 'generate':
-            output = {'status': 'need_info', 'action': '필요한 정보 하나를 확인한다.',
+            output = {'status': 'need_info', 'facts': [], 'reduction': '해당 없음',
+                      'action': '필요한 정보 하나를 확인한다.',
                       'completion_condition': '확인할 정보 하나가 표시된다.',
                       'estimated_minutes': 1, 'reason': '확인 전에는 진행하지 않는다.',
                       'remaining_work': data['remaining_work'],
@@ -269,6 +270,9 @@ class LaunchEvaluationTests(unittest.TestCase):
             self.assertEqual([len(x['previous_proposals']) for x in inputs[:9]], [0, 1, 2, 0, 1, 2, 0, 1, 2])
             self.assertEqual([x['request_kind'] for x in inputs[:3]], ['first_action', 'smaller', 'smaller'])
             self.assertTrue(all(x['completed_ids'] == [] for x in inputs[:72]))
+            self.assertTrue(all({'facts', 'reduction'} <= p.keys() for p in proposals))
+            # Like the app, a later request never carries the checker-only grounding.
+            self.assertFalse(any({'facts', 'reduction'} & p.keys() for x in inputs for p in x['previous_proposals']))
             offset = 0
             for flow in manifest['flows']:
                 expected_input = deepcopy(flow['input'])
@@ -280,7 +284,7 @@ class LaunchEvaluationTests(unittest.TestCase):
                     if row.get('termination'):
                         break
                     self.assertNotIn('termination', row)
-                    expected_input['previous_proposals'].append(proposals[offset - 1])
+                    expected_input['previous_proposals'].append(launch.previous(proposals[offset - 1]))
                     expected_input['request_kind'] = 'smaller'
                     expected_input['user_request'] = '현재 행동을 실질적으로 줄인다. 반복 막힘이면 첫 막힘 한 가지를 확인한다.'
             self.assertEqual(launch.load(root), manifest)
@@ -609,7 +613,7 @@ data=json.load(sys.stdin)
 if 'candidate' in data:
  out={'verdict':'accept','criteria':[1,2,3,4,5],'evidence':'private quote; fits'}
 else:
- out={'status':'need_info','action':'private synthetic question','completion_condition':'answer unknown',
+ out={'status':'need_info','facts':[],'reduction':'none','action':'private synthetic question','completion_condition':'answer unknown',
       'estimated_minutes':1,'reason':'private synthetic reason'}
 print(json.dumps({'type':'stream_event','event':{'type':'message_start'}}))
 print(json.dumps({'type':'result','subtype':'success','is_error':False,'modelUsage':{'claude-haiku-5-5':{}},

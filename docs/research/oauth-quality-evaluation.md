@@ -47,6 +47,8 @@ python3 scripts/launch_evaluation.py report work/launch-new --observations work/
 
 한 흐름만 다시 실행하려면 동결에 `--flow <흐름 ID> --max-smaller <회수>`를 더한다.
 요청 상한은 회수+1개, 역할 호출 상한은 그 두 배다. 예: `--flow fixed-ready-1 --max-smaller 1`은 요청 2개·호출 4개다([#154](https://github.com/minjunkim-dev/smallnext/issues/154)).
+생성 결과에는 검사 전용 `facts`·`reduction` 칸이 있다([#259](https://github.com/minjunkim-dev/smallnext/issues/259)). 다음 smaller 요청의 `previous_proposals`에는 앱처럼 9필드만 넣는다.
+기존 회귀 47건의 checker 후보에는 두 칸이 없다. 새 칸을 채운 v2 fixture 전까지 이 사례는 새 검사 기준의 기준선이 아니다.
 생성·검사 역할은 모두 `claude-haiku-5-5`다. #252의 생성 역할 모델 분기는 #251 변경 답에 따라 제거했다. `oauth_quality.py`는 이미 `PROTOCOLS`에 등록된 `1e2d25eb…` 바이트로 되돌렸다.
 예시의 `work/`는 [보관 규칙](../WORKFLOW.md#검증과-문서-관리)의 위치다. worktree에서는 그 절대 경로를 지정한다.
 같은 실행 판의 재실행과 덮어쓰기를 거부한다. 같은 위치의 `launch-model.lock`으로 worktree 사이의 하네스 실행 소유권을 배타적으로 유지한다.

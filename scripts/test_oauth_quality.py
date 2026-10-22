@@ -186,10 +186,22 @@ class FrozenEvaluationTests(unittest.TestCase):
                              qa.monotonic()+2, threading.Event(), output_mode="text-json")
             self.assertEqual(record.get("output"), {"text": source})
 
+    def test_generation_schema_validates_each_grounding_fact(self):
+        schema = json.loads((qa.REPO / "services/api/src/suggestion/generate.json").read_text())
+        fact = {"fact": "원고에 역할이 있다", "source": "unknown", "if_absent": "원고 근거 없음 표시"}
+        output = {"status": "action", "facts": [fact], "reduction": "해당 없음", "action": "a",
+                  "completion_condition": "c", "estimated_minutes": 1, "reason": "r", "remaining_work": [],
+                  "goal_completed": False, "current_action_completed": False, "preserved_completed_ids": []}
+        qa.validate(output, schema)
+        for bad in (dict(fact, source="memory"), dict(fact, note="x"), {"fact": "f", "source": "present"}):
+            with self.subTest(bad=bad), self.assertRaises(qa.OutputError):
+                qa.validate(dict(output, facts=[bad]), schema)
+
     def test_generation_decision_keeps_system_state_out_of_model_output(self):
         schema = json.loads((qa.REPO / "services/api/src/suggestion/generate.json").read_text())
         data = {"remaining_work": ['quoted "work"\n`source`'], "completed_ids": ["done"], "available_minutes": 5}
-        decision = {"status": "need_info", "action": "무엇이 막혔나요?", "completion_condition": "답변 1개",
+        decision = {"status": "need_info", "facts": [], "reduction": "해당 없음",
+                    "action": "무엇이 막혔나요?", "completion_condition": "답변 1개",
                     "reason": "첫 막힘 확인", "estimated_minutes": 1}
         owned = {"remaining_work": data["remaining_work"], "preserved_completed_ids": data["completed_ids"],
                  "goal_completed": False, "current_action_completed": False}
@@ -198,7 +210,7 @@ class FrozenEvaluationTests(unittest.TestCase):
             for output, valid in [(decision, True), (dict(decision, remaining_work=["PRIVATE"]), False)]:
                 fake.write_text("#!/usr/bin/env python3\nimport json,sys\n"
                     "schema=json.loads(sys.argv[-1].split('Output schema: ')[-1])\n"
-                    "assert set(schema['properties'])=={'status','action','completion_condition','reason','estimated_minutes'}\n"
+                    "assert set(schema['properties'])=={'status','facts','reduction','action','completion_condition','reason','estimated_minutes'}\n"
                     "print(json.dumps({'type':'stream_event','event':{'type':'message_start'}}))\n"
                     "print(json.dumps({'type':'result','subtype':'success','is_error':False,"
                     "'modelUsage':{'claude-haiku-5-5':{}},'result':" + repr(json.dumps(output)) + "}))\n")
@@ -648,7 +660,7 @@ class FrozenEvaluationTests(unittest.TestCase):
                 "time.sleep(.6 if 'candidate' not in data else 1.5)\n"
                 "out={'verdict':'accept','criteria':[1,2,3,4,5],'evidence':'quote; fits'}\n"
                 "if 'candidate' not in data:\n"
-                " out={'status':'action','action':'두 손으로 책 한 권을 아래 칸에 놓는다.',"
+                " out={'status':'action','facts':[],'reduction':'해당 없음','action':'두 손으로 책 한 권을 아래 칸에 놓는다.',"
                 "'completion_condition':'책 한 권이 아래 칸에 있다.','estimated_minutes':1,'reason':'막힘 해결'}\n"
                 "print(json.dumps({'type':'stream_event','event':{'type':'message_start'}}))\n"
                 "print(json.dumps({'type':'result','subtype':'success','is_error':False,"

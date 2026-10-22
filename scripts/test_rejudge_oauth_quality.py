@@ -321,7 +321,7 @@ class RejudgmentTests(unittest.TestCase):
             manifest["schedule"] = [{"case": case["id"], "variant": "baseline", "repeat": 0}]
 
         self.row["case"] = case["id"]
-        generated = dict(self.row["calls"][0], role="generate", output=candidate)
+        generated = dict(self.row["calls"][0], role="generate", output=dict(candidate, facts=[], reduction="해당 없음"))
         self.row["calls"].insert(0, generated)
         self.change_manifest(change)
         result = self.command()
