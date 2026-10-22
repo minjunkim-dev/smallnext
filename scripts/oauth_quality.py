@@ -78,6 +78,7 @@ def freeze(directory, suite, comparison=None, repetitions=2, case_ids=(),
     status = source(base + "status-contract-checks.json")
     latency = source(base + "checker-latency-checks.json")
     references = source(base + "oauth-quality-references.json")
+    grounding = source(base + "grounded-checker-candidates.json")["cases"]
     prompt_dir = "services/api/src/suggestion/"
     contract = source(prompt_dir + "contract.md", False)
     prompts = {role: source(prompt_dir + role + ".md", False) + "\n" + contract
@@ -90,6 +91,12 @@ def freeze(directory, suite, comparison=None, repetitions=2, case_ids=(),
     known = next(c for c in status["cases"] if c["id"] == "useful-minimum-known")
     for c in references["checker_cases"]:
         checkers.append(dict(deepcopy(c), original_request=deepcopy(known["input"])))
+    # #260: preserved candidates gain only the generator grounding; their files and verdicts stay as is.
+    if (set(grounding) != {c["id"] for c in checkers}
+            or any(set(fields) != {"facts", "reduction"} for fields in grounding.values())):
+        raise ValueError("grounding must add exactly facts and reduction to each checker case")
+    for c in checkers:
+        c["candidate"].update(deepcopy(grounding[c["id"]]))
     generators = deepcopy(contracts["generator_cases"])
     generators.extend(deepcopy(c) for c in status["cases"] if c["id"] != "deferred-alias"
                       and c["id"] != "real-reduction")

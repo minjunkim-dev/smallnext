@@ -9,6 +9,7 @@ import sys
 import contextlib
 import io
 import os
+import shutil
 import signal
 import unittest
 from unittest.mock import patch
@@ -185,6 +186,35 @@ class FrozenEvaluationTests(unittest.TestCase):
             record = qa.call(str(fake), "preserve source text", schema, {"source": source},
                              qa.monotonic()+2, threading.Event(), output_mode="text-json")
             self.assertEqual(record.get("output"), {"text": source})
+
+    def test_preserved_checker_candidates_gain_only_valid_grounding(self):
+        schema = json.loads((qa.REPO / "services/api/src/suggestion/generate.json").read_text())
+        with tempfile.TemporaryDirectory() as directory:
+            qa.freeze(Path(directory) / "frozen", "quality")
+            manifest = qa.load(Path(directory) / "frozen")
+        checkers = [c for c in manifest["cases"] if "candidate" in c]
+        self.assertEqual(len(checkers), 33)
+        for case in checkers:
+            with self.subTest(case=case["id"]):
+                for key in ("facts", "reduction"):
+                    qa.validate(case["candidate"][key], schema["properties"][key])
+
+    def test_grounding_that_overwrites_or_misses_a_candidate_refuses_freeze(self):
+        name = "docs/research/fixtures/grounded-checker-candidates.json"
+        for change in (lambda cases: cases["shelf-goal-valid"].update(status="minimum"),
+                       lambda cases: cases.pop("shelf-goal-valid")):
+            with self.subTest(change=change), tempfile.TemporaryDirectory() as directory:
+                repo = Path(directory)
+                for part in ("scripts/oauth_quality.py", "docs/research/fixtures", "services/api/src/suggestion"):
+                    source = qa.REPO / part
+                    (repo / part).parent.mkdir(parents=True, exist_ok=True)
+                    (shutil.copytree if source.is_dir() else shutil.copy)(source, repo / part)
+                grounding = json.loads((repo / name).read_text())
+                change(grounding["cases"])
+                (repo / name).write_text(json.dumps(grounding))
+                with patch.object(qa, "REPO", repo), self.assertRaises(ValueError):
+                    qa.freeze(repo / "frozen", "quality")
+                self.assertFalse((repo / "frozen").exists())
 
     def test_generation_schema_validates_each_grounding_fact(self):
         schema = json.loads((qa.REPO / "services/api/src/suggestion/generate.json").read_text())
