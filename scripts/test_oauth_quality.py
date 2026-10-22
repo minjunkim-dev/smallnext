@@ -186,6 +186,18 @@ class FrozenEvaluationTests(unittest.TestCase):
                              qa.monotonic()+2, threading.Event(), output_mode="text-json")
             self.assertEqual(record.get("output"), {"text": source})
 
+    def test_preserved_checker_candidates_gain_only_valid_grounding(self):
+        schema = json.loads((qa.REPO / "services/api/src/suggestion/generate.json").read_text())
+        with tempfile.TemporaryDirectory() as directory:
+            qa.freeze(Path(directory) / "frozen", "quality")
+            manifest = qa.load(Path(directory) / "frozen")
+        checkers = [c for c in manifest["cases"] if "candidate" in c]
+        self.assertEqual(len(checkers), 33)
+        for case in checkers:
+            with self.subTest(case=case["id"]):
+                for key in ("facts", "reduction"):
+                    qa.validate(case["candidate"][key], schema["properties"][key])
+
     def test_generation_schema_validates_each_grounding_fact(self):
         schema = json.loads((qa.REPO / "services/api/src/suggestion/generate.json").read_text())
         fact = {"fact": "원고에 역할이 있다", "source": "unknown", "if_absent": "원고 근거 없음 표시"}
