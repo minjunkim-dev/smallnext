@@ -47,6 +47,7 @@ python3 scripts/launch_evaluation.py report work/launch-new --observations work/
 
 한 흐름만 다시 실행하려면 동결에 `--flow <흐름 ID> --max-smaller <회수>`를 더한다.
 요청 상한은 회수+1개, 역할 호출 상한은 그 두 배다. 예: `--flow fixed-ready-1 --max-smaller 1`은 요청 2개·호출 4개다([#154](https://github.com/minjunkim-dev/smallnext/issues/154)).
+요청당 생성·검사 제한은 기본 120초다. 동결에 `--pipeline-seconds 180`을 더하면 180초로 늘린다. #259의 grounding으로 역할 출력이 길어져 QA 측정에서만 허용한다([#261](https://github.com/minjunkim-dev/smallnext/issues/261)). 서버의 120초 제한은 그대로이므로, 180초 판의 지연은 운영 제한 기준으로 따로 기록한다.
 생성 결과에는 검사 전용 `facts`·`reduction` 칸이 있다([#259](https://github.com/minjunkim-dev/smallnext/issues/259)). 다음 smaller 요청의 `previous_proposals`에는 앱처럼 9필드만 넣는다.
 기존 회귀 47건의 fixture 파일은 그대로 둔다. 동결할 때 `grounded-checker-candidates.json`이 checker 후보 33건에 두 칸만 더하고 기대 판정은 바꾸지 않는다([#260](https://github.com/minjunkim-dev/smallnext/issues/260)). 이 파일은 checker 사례 id와 정확히 같아야 한다.
 이 변경으로 `oauth_quality.py` SHA가 `1e2d25eb…`에서 `375f9752e5512160c1b1e55cb33ade85ebd41cc8a31ad1b00e1ac92e4af89ea1`로 바뀌었다. 취소·종료·회수·오류 판정 코드는 그대로이고 `freeze`의 입력 조립만 바뀌었으므로 재판정 `PROTOCOLS`에 같은 `cancellation-marker-v1`로 등록했다.

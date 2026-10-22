@@ -26,6 +26,8 @@ import oauth_quality as qa
 
 # #251: subscription runs have no µUSD limit; the 3/10 USD budget is for the server API key only.
 LIMITS = {'requests': 81, 'calls': 162, 'seconds': 5400}
+# #261: grounding lengthened role output, so QA may allow 180 s per request; the server stays at 120 s.
+PIPELINE_SECONDS = (120, 180)
 COST_BASIS = 'transport estimate if provided (subscription CLI provides none); not a run limit or billing'
 # Two 4 MiB role streams plus record metadata and JSON encoding overhead.
 REPORT_JSON_LIMIT = 16 * 1024 * 1024
@@ -163,7 +165,7 @@ def private_root(repo=qa.REPO):
     return (Path(common).parent / 'work').resolve()
 
 
-def freeze(directory, *, owner, ends_at, delete_method, flow_id=None, max_smaller=None):
+def freeze(directory, *, owner, ends_at, delete_method, flow_id=None, max_smaller=None, pipeline_seconds=120):
     directory = Path(directory).resolve()
     end = datetime.fromisoformat(ends_at)
     if not owner.strip() or not delete_method.strip() or end.tzinfo is None or end <= datetime.now(timezone.utc):
@@ -171,6 +173,8 @@ def freeze(directory, *, owner, ends_at, delete_method, flow_id=None, max_smalle
     if (flow_id is None) != (max_smaller is None) or max_smaller is not None and (
             type(max_smaller) is not int or max_smaller < 0):
         raise ValueError('a single flow needs a nonnegative smaller count')
+    if pipeline_seconds not in PIPELINE_SECONDS:
+        raise ValueError('unsupported request time limit')
     root = private_root()
     if directory == root or not directory.is_relative_to(root):
         raise ValueError(f'raw bundles must be inside the main checkout work directory: {root}')
@@ -196,7 +200,7 @@ def freeze(directory, *, owner, ends_at, delete_method, flow_id=None, max_smalle
     manifest = {'version': 1, 'suite': 'launch', 'model': qa.MODEL, 'effort': qa.EFFORT,
         'sources': sources, 'prompts': regression['prompts'], 'schemas': regression['schemas'],
         'flows': flows, 'limits': limits, 'measurement': MEASUREMENT,
-        'pipeline_seconds': 120, 'output_mode': 'text-json', 'parallelism': 1,
+        'pipeline_seconds': pipeline_seconds, 'output_mode': 'text-json', 'parallelism': 1,
         'cost_basis': COST_BASIS,
         'regression': {'cases': 47, 'manifest_sha256': qa.digest(private_bytes(directory, 'regression/manifest.json'))},
         'preserved_evidence': evidence, 'paid_transport': 'unavailable',
@@ -849,6 +853,8 @@ def main():
     frozen.add_argument('--delete-method', required=True)
     frozen.add_argument('--flow', help='freeze only this launch flow id')
     frozen.add_argument('--max-smaller', type=int, help='smaller steps allowed in --flow')
+    frozen.add_argument('--pipeline-seconds', type=int, choices=PIPELINE_SECONDS, default=120,
+                        help='per-request generate+check limit')
     running = commands.add_parser('run')
     running.add_argument('directory', type=Path)
     running.add_argument('--claude', default='claude')
@@ -863,7 +869,7 @@ def main():
     try:
         if args.command == 'freeze':
             freeze(args.directory, owner=args.owner, ends_at=args.ends_at, delete_method=args.delete_method,
-                   flow_id=args.flow, max_smaller=args.max_smaller)
+                   flow_id=args.flow, max_smaller=args.max_smaller, pipeline_seconds=args.pipeline_seconds)
             print(json.dumps({'frozen': True, 'model_calls': 0}))
             return 0
         if args.command == 'run':
