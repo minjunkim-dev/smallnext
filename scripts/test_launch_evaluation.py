@@ -518,6 +518,26 @@ class LaunchEvaluationTests(unittest.TestCase):
             self.assertEqual(summary['stop_reason'], 'time_limit')
             self.assertEqual(summary['requests']['started'], 46)
 
+    def test_frozen_request_limit_decides_a_slow_request(self):
+        for seconds, reason in [(120, 'timed_out'), (180, 'completed')]:
+            with self.subTest(seconds=seconds), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory).resolve() / 'launch'
+                launch.freeze(root, owner='minjunkim-dev', delete_method='delete directory',
+                              ends_at=(datetime.now(timezone.utc) + timedelta(days=1)).isoformat(),
+                              flow_id='fixed-ready-1', max_smaller=0, pipeline_seconds=seconds)
+                self.assertEqual(launch.load(root)['pipeline_seconds'], seconds)
+                now = [0]
+
+                def invoke(role, *args):
+                    now[0] += 75  # 150 s per request: over 120, within 180
+                    return self.response(role, *args)
+
+                summary = launch.run(root, invoke=invoke, clock=lambda: now[0])
+                self.assertEqual(summary['stop_reason'], reason)
+        with tempfile.TemporaryDirectory() as directory, self.assertRaises(ValueError):
+            launch.freeze(Path(directory).resolve() / 'launch', owner='minjunkim-dev', delete_method='delete',
+                          ends_at=(datetime.now(timezone.utc) + timedelta(days=1)).isoformat(), pipeline_seconds=600)
+
     def test_paid_calls_are_denied_and_preflight_is_only_an_offline_result(self):
         with tempfile.TemporaryDirectory() as directory:
             root, _ = self.freeze(directory)
