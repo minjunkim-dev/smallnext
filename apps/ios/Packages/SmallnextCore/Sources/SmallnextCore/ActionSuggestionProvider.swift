@@ -7,7 +7,7 @@ public protocol ActionSuggestionProvider: Sendable {
     func suggest(_ request: SuggestionRequest) async throws -> SuggestionCandidate
 }
 
-public enum SuggestionKind: String, Sendable {
+public enum SuggestionKind: String, Sendable, Codable {
     case goalPreparation = "goal_preparation"
     case firstAction = "first_action"
     case nextAction = "next_action"
@@ -73,6 +73,8 @@ public enum SuggestionCandidate: Sendable, Equatable {
     case minimalAction(ProposedAction)
     /// 선행 조건이 준비된 다른 행동이 없다. 대체 요청에서만 쓴다.
     case noAction
+    /// 유용한 행동이나 실제 미답 질문을 제안할 근거가 부족한 정상 안내다.
+    case insufficientInfo(String)
 }
 
 public enum SuggestionFailure: String, Error, Sendable, CaseIterable {
@@ -90,6 +92,9 @@ public enum SuggestionFailure: String, Error, Sendable, CaseIterable {
 enum CandidatePolicy {
     static func accept(_ candidate: SuggestionCandidate, for request: SuggestionRequest) -> SuggestionCandidate? {
         switch candidate {
+        case .insufficientInfo(let text):
+            guard request.kind == .firstAction, let reason = trimmed(text) else { return nil }
+            return .insufficientInfo(reason)
         case .goalSummary(let text):
             guard request.kind == .goalPreparation, let criteria = trimmed(text) else { return nil }
             return .goalSummary(criteria)

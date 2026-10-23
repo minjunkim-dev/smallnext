@@ -34,5 +34,17 @@ class CompactContractParityTests(unittest.TestCase):
                 self.assertEqual(qa.schema_for(self.manifest, original)["properties"]["status"]["enum"], allowed)
 
 
+
+class InsufficientInfoFormatTests(unittest.TestCase):
+    def test_shared_notice_fields_and_request_kind_schema(self):
+        fixture = json.loads((qa.REPO / "contracts/fixtures/insufficient-info.json").read_text())
+        original, candidate = fixture["input"], fixture["generated"]
+        self.assertTrue(qa.proposal_valid(original, candidate))
+        for field, value in [("action", "가짜 행동"), ("completion_condition", " "),
+                             ("estimated_minutes", 1), ("reason", " "), ("reduction", "해당 없음")]:
+            with self.subTest(field=field):
+                self.assertFalse(qa.proposal_valid(original, dict(candidate, **{field: value})))
+
+
 if __name__ == "__main__":
     unittest.main()

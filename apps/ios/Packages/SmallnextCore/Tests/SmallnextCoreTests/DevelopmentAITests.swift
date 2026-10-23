@@ -95,6 +95,76 @@ final class DevelopmentAITests: XCTestCase {
         }
     }
 
+    func testSharedInsufficientInfoIsAValidTransportResponse() async throws {
+        let response = try InsufficientInfoFixture.response()
+        DevelopmentTransport.store.reset()
+        DevelopmentTransport.store.handler = { _ in (200, response) }
+        for kind in [SuggestionKind.firstAction, .nextAction, .smaller, .replacement] {
+            let request = SuggestionRequest(kind: kind, goal: "과거 경력 사실 정리", currentAction: nil, completedTasks: [])
+            let candidate = try await provider().suggest(request)
+            XCTAssertEqual(candidate, .insufficientInfo(try InsufficientInfoFixture.reason()))
+            XCTAssertEqual(CandidatePolicy.accept(candidate, for: request) != nil, kind == .firstAction)
+        }
+        XCTAssertEqual(DevelopmentTransport.store.requests.count, 4)
+    }
+
+    func testInsufficientInfoRejectsMalformedFieldsAndGoalPreparation() async throws {
+        let base = try JSONSerialization.jsonObject(with: InsufficientInfoFixture.response()) as! [String: Any]
+        for (field, value) in [("action", "가짜 행동" as Any), ("completion_condition", " " as Any),
+                               ("estimated_minutes", 1), ("reason", " "), ("goal_completed", true),
+                               ("current_action_completed", true), ("preserved_completed_ids", ["new"]),
+                               ("remaining_work", ["changed"]), ("status", "future_status")] {
+            var response = base
+            var proposal = response["proposal"] as! [String: Any]
+            proposal[field] = value
+            response["proposal"] = proposal
+            let bytes = try JSONSerialization.data(withJSONObject: response)
+            DevelopmentTransport.store.reset()
+            DevelopmentTransport.store.handler = { _ in (200, bytes) }
+            do {
+                _ = try await provider().suggest(SuggestionRequest(kind: .firstAction, goal: "과거 경력 사실 정리", currentAction: nil, completedTasks: []))
+                XCTFail("must reject \(field)")
+            } catch { XCTAssertEqual(error as? SuggestionFailure, .rejected, field) }
+            XCTAssertEqual(DevelopmentTransport.store.requests.count, 1)
+        }
+        let bytes = try InsufficientInfoFixture.response()
+        DevelopmentTransport.store.handler = { _ in (200, bytes) }
+        do {
+            _ = try await provider().suggest(SuggestionRequest(kind: .goalPreparation, goal: "과거 경력 사실 정리", currentAction: nil, completedTasks: []))
+            XCTFail("goal preparation cannot apply this notice")
+        } catch { XCTAssertEqual(error as? SuggestionFailure, .rejected) }
+    }
+
+    func testFingerprintNormalizesOnlyActualInputAndPreservesOrder() throws {
+        var request = SuggestionRequest(kind: .smaller, goal: "  정리\r\n계속  ", currentAction: ProposedAction(task: "한 부분", doneWhen: "결과", estimatedMinutes: 2), completedTasks: ["하나", "둘"], stateKey: "1:2")
+        request.remainingTasks = ["첫째", "둘째"]
+        request.completedActionIDs = ["7", "3"]
+        let original = request
+        let fingerprint = try HTTPActionSuggestionProvider.inputFingerprint(request)
+        XCTAssertEqual(fingerprint.count, 64)
+        request.goal = "정리\n계속"
+        request.stateKey = "different-goal:999"
+        XCTAssertEqual(try HTTPActionSuggestionProvider.inputFingerprint(request), fingerprint)
+        XCTAssertEqual(original.goal, "  정리\r\n계속  ")
+        request.remainingTasks.reverse()
+        XCTAssertNotEqual(try HTTPActionSuggestionProvider.inputFingerprint(request), fingerprint)
+        request = original
+        request.completedActionIDs.reverse()
+        XCTAssertNotEqual(try HTTPActionSuggestionProvider.inputFingerprint(request), fingerprint)
+        request = original
+        request.kind = .firstAction
+        XCTAssertNotEqual(try HTTPActionSuggestionProvider.inputFingerprint(request), fingerprint)
+        request = original
+        request.context.answers = [GoalAnswer(question: "어디", answer: "모름")]
+        XCTAssertNotEqual(try HTTPActionSuggestionProvider.inputFingerprint(request), fingerprint)
+        request = original
+        request.context.materialExcerpt = "사용자가 선택한 원문"
+        XCTAssertNotEqual(try HTTPActionSuggestionProvider.inputFingerprint(request), fingerprint)
+        request = original
+        request.currentAction?.doneWhen = "다른 결과"
+        XCTAssertNotEqual(try HTTPActionSuggestionProvider.inputFingerprint(request), fingerprint)
+    }
+
     func testOversizedBlockerIsNotTransmitted() async throws {
         DevelopmentTransport.store.reset()
         let provider = provider()

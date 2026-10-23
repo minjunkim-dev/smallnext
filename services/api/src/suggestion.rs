@@ -14,6 +14,7 @@ pub enum ProposalStatus {
     Minimum,
     GoalSummary,
     NoAction,
+    InsufficientInfo,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, ToSchema)]
@@ -141,6 +142,9 @@ pub(crate) async fn evaluate<M: Model>(model: &M, input: &AiInput) -> Evaluation
         bills.push(bill);
         let (proposal, grounding) = split(generated?)?;
         validate_proposal(input, &proposal)?;
+        if proposal.status == ProposalStatus::InsufficientInfo && !grounding.reduction.is_empty() {
+            return Err(Disposition::InvalidProposal);
+        }
         let mut candidate = json!(proposal);
         candidate["facts"] = json!(grounding.facts);
         candidate["reduction"] = json!(grounding.reduction);
@@ -182,7 +186,10 @@ fn allowed_statuses(kind: Option<&str>) -> &'static [ProposalStatus] {
     use ProposalStatus::*;
     match kind {
         Some("goal_preparation") => &[GoalSummary, NeedInfo],
-        Some("replacement") => &[Action, NeedInfo, Minimum, NoAction],
+        Some("replacement") => &[Action, NeedInfo, Minimum, NoAction, InsufficientInfo],
+        Some("first_action" | "next_action" | "smaller") => {
+            &[Action, NeedInfo, Minimum, InsufficientInfo]
+        }
         _ => &[Action, NeedInfo, Minimum],
     }
 }
@@ -233,8 +240,14 @@ fn split(mut generated: Value) -> Result<(Proposal, Grounding), Disposition> {
 }
 
 fn validate_proposal(input: &AiInput, proposal: &Proposal) -> Result<(), Disposition> {
-    if proposal.action.trim().is_empty()
-        || proposal.completion_condition.trim().is_empty()
+    let invalid_result = if proposal.status == ProposalStatus::InsufficientInfo {
+        !proposal.action.is_empty()
+            || !proposal.completion_condition.is_empty()
+            || proposal.estimated_minutes != 0.0
+    } else {
+        proposal.action.trim().is_empty() || proposal.completion_condition.trim().is_empty()
+    };
+    if invalid_result
         || proposal.reason.trim().is_empty()
         || !proposal.estimated_minutes.is_finite()
         || proposal.estimated_minutes < 0.0

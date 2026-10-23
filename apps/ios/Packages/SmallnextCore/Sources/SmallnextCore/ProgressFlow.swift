@@ -44,6 +44,31 @@ public struct SuggestionInput: Equatable, Sendable {
     public var text: String?
 }
 
+public struct InformationNotice: Equatable, Sendable, Codable {
+    public let requestID: Int64
+    public let requestKind: SuggestionKind
+    public let goalRevision: Int
+    public let inputFingerprint: String
+    public let reason: String
+    public let receivedAt: Date
+
+    enum CodingKeys: String, CodingKey {
+        case requestID = "request_id", requestKind = "request_kind", goalRevision = "goal_revision"
+        case inputFingerprint = "input_fingerprint", reason, receivedAt = "received_at"
+    }
+}
+
+/// 목표별 로컬 맥락이다. 보충 입력의 편집·전송은 후속 작업에서 연결한다.
+private struct SupplementalContext: Codable {
+    var confirmedText = ""
+    var draftText: String?
+    var lastNotice: InformationNotice?
+
+    enum CodingKeys: String, CodingKey {
+        case confirmedText = "confirmed_text", draftText = "draft_text", lastNotice = "last_notice"
+    }
+}
+
 public struct GoalSummary: Equatable, Identifiable, Sendable {
     public let id: Int64
     public let statement: String
@@ -117,6 +142,7 @@ public enum ProgressScreen: Equatable, Sendable {
     /// 첫 행동을 받기 전이다. 입력한 목표를 유지한다.
     case awaitingFirstAction(goal: String, problem: SuggestionProblem?)
     case currentAction(ActionCard, smaller: SmallerStatus?)
+    case insufficientInfo(InformationNotice, isPrevious: Bool)
     /// 완료 후 다음 행동을 받기 전이다. 완료 기록을 유지한다.
     case awaitingNextAction(problem: SuggestionProblem?)
     /// 현재 행동이 없고 보류한 행동이 있다. 보류한 행동을 생성 순서대로 담아 재개할 수 있게 한다.
@@ -306,6 +332,7 @@ public final class ProgressFlow {
             guard db.changesCount == 1 else { throw ProgressFlowError.goalNotFound }
             try db.execute(sql: "DELETE FROM app_metadata WHERE key = ?", arguments: ["goal_input:\(goalID)"])
             try db.execute(sql: "DELETE FROM app_metadata WHERE key = ?", arguments: ["suggestion_input:\(goalID)"])
+            try db.execute(sql: "DELETE FROM app_metadata WHERE key = ?", arguments: ["supplemental_context:\(goalID)"])
             if try Self.selectedGoalID(db) == goalID {
                 try db.execute(sql: "DELETE FROM app_metadata WHERE key = 'selected_goal_id'")
             }
@@ -685,6 +712,7 @@ public final class ProgressFlow {
                     case .success(.question): result = "question"
                     case .success(.goalSummary): result = "goal_summary"
                     case .success(.noAction): result = "no_action"
+                    case .success(.insufficientInfo): result = "insufficient_info"
                     case .failure(let failure): result = failure.rawValue
                     }
                 }
@@ -728,7 +756,8 @@ public final class ProgressFlow {
             sql: "SELECT r.status, g.revision FROM suggestion_request r JOIN goal g ON g.id = r.goal_id WHERE r.id = ?",
             arguments: [pending.id]
         ), row["status"] == "pending" else { return }
-        guard row["revision"] == pending.revision else {
+        guard row["revision"] == pending.revision, try selectedGoalID(db) == pending.goalID,
+              try Int64.fetchOne(db, sql: "SELECT MAX(id) FROM suggestion_request WHERE goal_id = ?", arguments: [pending.goalID]) == pending.id else {
             return try finishRequest(db, pending.id, status: "interrupted", reason: nil)
         }
 
@@ -745,6 +774,16 @@ public final class ProgressFlow {
         }
         var action: ProposedAction
         switch candidate {
+        case .insufficientInfo(let reason):
+            let notice = InformationNotice(requestID: pending.id, requestKind: pending.request.kind, goalRevision: pending.revision,
+                                           inputFingerprint: try HTTPActionSuggestionProvider.inputFingerprint(pending.request),
+                                           reason: reason, receivedAt: Date())
+            var context = try loadSupplementalContext(db, goalID: pending.goalID)
+            context.lastNotice = notice
+            let text = String(decoding: try JSONEncoder().encode(context), as: UTF8.self)
+            try db.execute(sql: "INSERT INTO app_metadata (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                           arguments: ["supplemental_context:\(pending.goalID)", text])
+            return try finishRequest(db, pending.id, status: "applied", reason: nil)
         case .goalSummary(let criteria):
             try db.execute(sql: "UPDATE goal SET proposed_completion_criteria = ? WHERE id = ? AND NOT is_confirmed", arguments: [criteria, pending.goalID])
             return try finishRequest(db, pending.id, status: "applied", reason: nil)
@@ -842,6 +881,13 @@ public final class ProgressFlow {
             arguments: [goalID, kind.rawValue, revision, Date()]
         )
         let requestID = db.lastInsertedRowID
+        return PendingSuggestion(id: requestID, goalID: goalID, revision: revision,
+                                 request: try makeRequest(db, goal: goal, kind: kind))
+    }
+
+    private nonisolated static func makeRequest(_ db: Database, goal: Row, kind: SuggestionKind) throws -> SuggestionRequest {
+        let goalID: Int64 = goal["id"]
+        let revision: Int = goal["revision"]
         let completed = try String.fetchAll(
             db,
             sql: """
@@ -850,25 +896,26 @@ public final class ProgressFlow {
             """,
             arguments: [goalID]
         )
-        return PendingSuggestion(
-            id: requestID,
-            goalID: goalID,
-            revision: revision,
-            request: SuggestionRequest(
-                kind: kind,
-                goal: goal["statement"],
-                currentAction: try contextAction(db, goalID: goalID, kind: kind),
-                completedTasks: completed,
-                blocker: goal["blocker"],
-                splitSources: kind == .smaller ? try splitSources(db, goalID: goalID) : [],
-                deferredTasks: try deferredCards(db, goalID: goalID).map(\.task),
-                context: try loadGoalContext(db, row: goal, goalID: goalID),
-                completionCriteria: goal["completion_criteria"],
-                stateKey: "\(goalID):\(revision)",
-                remainingTasks: try String.fetchAll(db, sql: "SELECT task FROM action WHERE goal_id = ? AND status IN ('current', 'split', 'deferred') ORDER BY sequence", arguments: [goalID]),
-                completedActionIDs: try Int64.fetchAll(db, sql: "SELECT a.id FROM completion c JOIN action a ON a.id = c.action_id WHERE a.goal_id = ? ORDER BY c.id", arguments: [goalID]).map(String.init)
-            )
+        return SuggestionRequest(
+            kind: kind,
+            goal: goal["statement"],
+            currentAction: try contextAction(db, goalID: goalID, kind: kind),
+            completedTasks: completed,
+            blocker: goal["blocker"],
+            splitSources: kind == .smaller ? try splitSources(db, goalID: goalID) : [],
+            deferredTasks: try deferredCards(db, goalID: goalID).map(\.task),
+            context: try loadGoalContext(db, row: goal, goalID: goalID),
+            completionCriteria: goal["completion_criteria"],
+            stateKey: "\(goalID):\(revision)",
+            remainingTasks: try String.fetchAll(db, sql: "SELECT task FROM action WHERE goal_id = ? AND status IN ('current', 'split', 'deferred') ORDER BY sequence", arguments: [goalID]),
+            completedActionIDs: try Int64.fetchAll(db, sql: "SELECT a.id FROM completion c JOIN action a ON a.id = c.action_id WHERE a.goal_id = ? ORDER BY c.id", arguments: [goalID]).map(String.init)
         )
+    }
+
+    private nonisolated static func loadSupplementalContext(_ db: Database, goalID: Int64) throws -> SupplementalContext {
+        guard let text = try String.fetchOne(db, sql: "SELECT value FROM app_metadata WHERE key = ?",
+                                            arguments: ["supplemental_context:\(goalID)"]) else { return SupplementalContext() }
+        return try JSONDecoder().decode(SupplementalContext.self, from: Data(text.utf8))
     }
 
     private nonisolated static func deferredCards(_ db: Database, goalID: Int64) throws -> [ActionCard] {
@@ -947,12 +994,12 @@ public final class ProgressFlow {
 
     private nonisolated static func loadScreen(_ db: Database) throws -> ProgressScreen {
         guard let goalID = try selectedGoalID(db) else { return .goalInput }
-        guard let goalRow = try Row.fetchOne(db, sql: "SELECT status, is_confirmed, proposed_completion_criteria FROM goal WHERE id = ?", arguments: [goalID]) else { return .goalInput }
+        guard let goalRow = try Row.fetchOne(db, sql: "SELECT * FROM goal WHERE id = ?", arguments: [goalID]) else { return .goalInput }
         let stopped = goalRow["status"] as String == "stopped"
         let latest = try Row.fetchOne(
             db,
             sql: """
-            SELECT kind, goal_revision, status, failure_reason, question FROM suggestion_request
+            SELECT id, kind, goal_revision, status, failure_reason, question FROM suggestion_request
             WHERE goal_id = ? ORDER BY id DESC LIMIT 1
             """,
             arguments: [goalID]
@@ -1019,6 +1066,12 @@ public final class ProgressFlow {
             return .onHold(deferred: deferred, status: status)
         }
         if try hasCompletion(db, goalID: goalID) { return .awaitingNextAction(problem: problem) }
+        if let latest, latest["status"] as String == "applied",
+           let notice = try loadSupplementalContext(db, goalID: goalID).lastNotice,
+           notice.requestKind == .firstAction, notice.requestID == latest["id"] as Int64 {
+            let fingerprint = try HTTPActionSuggestionProvider.inputFingerprint(makeRequest(db, goal: goalRow, kind: notice.requestKind))
+            return .insufficientInfo(notice, isPrevious: notice.goalRevision != goalRow["revision"] as Int || notice.inputFingerprint != fingerprint)
+        }
         let goal = try String.fetchOne(db, sql: "SELECT statement FROM goal WHERE id = ?", arguments: [goalID]) ?? ""
         return .awaitingFirstAction(goal: goal, problem: problem)
     }
@@ -1040,7 +1093,7 @@ extension ProgressScreen {
         case .preparingGoal(_, _, let problem): problem
         case .awaitingFirstAction(_, let problem), .awaitingNextAction(let problem): problem
         case .onHold(_, .problem(let problem)): problem
-        case .goalInput, .currentAction, .onHold, .stoppedGoal: nil
+        case .goalInput, .currentAction, .onHold, .stoppedGoal, .insufficientInfo: nil
         }
     }
 }

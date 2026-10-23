@@ -107,7 +107,9 @@ fn decode(role: Role, text: Option<&str>, kind: Option<&str>) -> Result<Value, D
             )
         })?;
     validate(&value, &schema(role, kind), None).map_err(|fault| report(role, fault))?;
-    let fields: &[&str] = if role == Role::Generate {
+    let fields: &[&str] = if role == Role::Generate && value["status"] == "insufficient_info" {
+        &["reason"]
+    } else if role == Role::Generate {
         &["action", "completion_condition", "reason"]
     } else {
         &["evidence"]
@@ -351,6 +353,7 @@ fn question_prompt(prompt: &str) -> String {
         "- Also stop smaller",
         "- action is",
         "- no_action uses",
+        "- insufficient_info ",
     ];
     if lines.len() != prefixes.len()
         || !lines

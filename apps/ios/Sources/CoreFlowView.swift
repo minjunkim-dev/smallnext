@@ -25,6 +25,7 @@ struct CoreFlowView: View {
     @State private var draftText = ""
     @State private var detailsExpanded = false
     @State private var storageFailed = false
+    @AccessibilityFocusState private var noticeFocused: Bool
     /// 분할 직전 행동의 할 일이다. 값이 있는 동안 나뉘는 움직임을 보여준다.
     @State private var splitGhost: SplitGhost?
     @AppStorage(AIConsent.key) private var aiConsent = false
@@ -122,6 +123,7 @@ struct CoreFlowView: View {
         switch flow.screen {
         case .goalInput: "goalInput"
         case .stoppedGoal: "stoppedGoal"
+        case .insufficientInfo(let notice, _): "insufficientInfo-\(notice.requestID)"
         case .preparingGoal: "preparingGoal"
         case .awaitingFirstAction(_, let problem): "awaitingFirstAction-\(String(describing: problem))"
         case .currentAction(let card, _): "currentAction-\(card.id)"
@@ -196,6 +198,24 @@ struct CoreFlowView: View {
                 commandButton("목표 정리") { try flow.prepareGoal() }
                 .disabled(trimmedGoal.isEmpty)
             }
+        case .insufficientInfo(let notice, let isPrevious):
+            VStack(alignment: .leading, spacing: 16) {
+                Text("지금은 새 행동을 제안하기 어려워요")
+                    .font(.title2.bold())
+                    .accessibilityAddTraits(.isHeader)
+                    .accessibilityFocused($noticeFocused)
+                Text(verbatim: notice.reason)
+                    .fixedSize(horizontal: false, vertical: true)
+                if isPrevious {
+                    Text("이전 입력에 대한 안내예요.")
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Button("돌아가기") { showingGoals = true }
+                    .frame(minHeight: 44)
+                    .accessibilityHint("목표 목록으로 돌아갑니다. 저장한 목표와 안내를 유지합니다.")
+            }
+            .accessibilityElement(children: .contain)
+            .onAppear { noticeFocused = true }
         case .awaitingFirstAction(_, let problem):
             VStack(alignment: .leading, spacing: 16) {
                 suggestionStatus("첫 행동을 준비하고 있어요.", problem: problem)
@@ -765,6 +785,8 @@ struct CoreFlowView: View {
             }
         case .preparingGoal(let question, let criteria, let problem):
             messages.append(problem.map(reason(for:)) ?? question ?? (criteria == nil ? "목표를 정리하고 있어요." : "완료 조건을 확인해 주세요."))
+        case .insufficientInfo:
+            break // 제목으로 접근성 초점을 옮긴 뒤 본문과 돌아가기를 순서대로 읽는다.
         case .goalInput:
             break
         }

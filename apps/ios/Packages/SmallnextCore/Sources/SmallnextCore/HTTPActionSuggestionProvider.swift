@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 
 /// 기존 입력·응답 계약을 개발·사용자용 공급자가 공유한다.
 /// 응답의 wire 계약만 검사한다. 요청 종류와 후보의 호환은 `CandidatePolicy`가 판단한다.
@@ -110,8 +111,15 @@ public struct HTTPActionSuggestionProvider: ActionSuggestionProvider {
               proposal.estimated_minutes.isFinite, proposal.estimated_minutes >= 0,
               proposal.estimated_minutes < Double(Int.max),
               proposal.estimated_minutes <= input.available_minutes,
-              // 서버 계약은 모든 status에서 두 문장을 요구한다.
-              !proposal.action.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              !proposal.reason.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        else { throw SuggestionFailure.rejected }
+        if proposal.status == "insufficient_info" {
+            guard request.kind != .goalPreparation, proposal.action.isEmpty, proposal.completion_condition.isEmpty,
+                  proposal.estimated_minutes == 0, !proposal.goal_completed, !proposal.current_action_completed
+            else { throw SuggestionFailure.rejected }
+            return .insufficientInfo(proposal.reason)
+        }
+        guard !proposal.action.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
               !proposal.completion_condition.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         else { throw SuggestionFailure.rejected }
         let action = ProposedAction(task: proposal.action, doneWhen: proposal.completion_condition,
@@ -131,6 +139,22 @@ public struct HTTPActionSuggestionProvider: ActionSuggestionProvider {
         case "no_action": return .noAction
         default: throw SuggestionFailure.rejected
         }
+    }
+
+    /// 송신할 실제 입력만 정규화한다. 원문·배열 순서는 보존하고 진단/인증/요청 키는 제외한다.
+    static func inputFingerprint(_ request: SuggestionRequest) throws -> String {
+        func normalized(_ value: Any) -> Any {
+            if let text = value as? String {
+                return text.replacingOccurrences(of: "\r\n", with: "\n").replacingOccurrences(of: "\r", with: "\n")
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+            if let values = value as? [Any] { return values.map(normalized) }
+            if let fields = value as? [String: Any] { return fields.mapValues(normalized) }
+            return value
+        }
+        let input = try JSONSerialization.jsonObject(with: JSONEncoder().encode(Input(request)))
+        let bytes = try JSONSerialization.data(withJSONObject: normalized(input), options: [.sortedKeys, .withoutEscapingSlashes])
+        return SHA256.hash(data: bytes).map { String(format: "%02x", $0) }.joined()
     }
 
     private struct Payload: Encodable { let state_key: String; let input: Input }

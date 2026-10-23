@@ -345,3 +345,94 @@ fn compact_contract_matches_shared_fixture() {
         "run UPDATE_CONTRACT_FIXTURES=1 cargo test, then update scripts/oauth_quality.py"
     );
 }
+
+#[tokio::test]
+async fn insufficient_info_is_checked_without_creating_an_action() {
+    let fixture: Value = serde_json::from_str(include_str!(
+        "../../../../contracts/fixtures/insufficient-info.json"
+    ))
+    .unwrap();
+    for kind in ["first_action", "next_action", "smaller", "replacement"] {
+        let mut original = fixture["input"].clone();
+        original["request_kind"] = json!(kind);
+        let data: AiInput = serde_json::from_value(original).unwrap();
+        let model = Scripted::new(vec![Ok(fixture["generated"].clone()), Ok(accept())]);
+        let evaluated = evaluate(&model, &data).await;
+        assert_eq!(
+            evaluated.result.unwrap(),
+            serde_json::from_value(fixture["response"]["proposal"].clone()).unwrap()
+        );
+        assert_eq!(model.roles(), [Role::Generate, Role::Check]);
+    }
+    for case in fixture["checker_cases"].as_array().unwrap() {
+        let data = serde_json::from_value(case["input"].clone()).unwrap();
+        let model = Scripted::new(vec![
+            Ok(fixture["generated"].clone()),
+            Ok(case["check"].clone()),
+        ]);
+        let evaluated = evaluate(&model, &data).await;
+        let disposition = match evaluated.result {
+            Ok(_) => Disposition::Accepted,
+            Err(failure) => failure,
+        };
+        assert_eq!(json!(disposition), case["expected"], "{}", case["id"]);
+        assert_eq!(model.roles(), [Role::Generate, Role::Check]);
+    }
+}
+
+#[tokio::test]
+async fn invalid_insufficient_info_never_starts_checker() {
+    let fixture: Value = serde_json::from_str(include_str!(
+        "../../../../contracts/fixtures/insufficient-info.json"
+    ))
+    .unwrap();
+    let original: AiInput = serde_json::from_value(fixture["input"].clone()).unwrap();
+    for (field, value) in [
+        ("action", json!("가짜 행동")),
+        ("completion_condition", json!(" ")),
+        ("estimated_minutes", json!(1)),
+        ("estimated_minutes", json!(-1)),
+        ("reason", json!(" ")),
+        ("reduction", json!("해당 없음")),
+        ("remaining_work", json!([])),
+        ("preserved_completed_ids", json!(["new"])),
+        ("goal_completed", json!(true)),
+        ("current_action_completed", json!(true)),
+    ] {
+        let mut generated = fixture["generated"].clone();
+        generated[field] = value;
+        let model = Scripted::new(vec![Ok(generated)]);
+        assert_eq!(
+            evaluate(&model, &original).await.result,
+            Err(Disposition::InvalidProposal),
+            "{field}"
+        );
+        assert_eq!(model.roles(), [Role::Generate]);
+    }
+    for kind in [None, Some("goal_preparation"), Some("unsupported")] {
+        let mut data = fixture["input"].clone();
+        data["request_kind"] = json!(kind);
+        let data = serde_json::from_value(data).unwrap();
+        let model = Scripted::new(vec![Ok(fixture["generated"].clone())]);
+        let expected = if kind == Some("unsupported") {
+            Disposition::InvalidInput
+        } else {
+            Disposition::InvalidProposal
+        };
+        assert_eq!(evaluate(&model, &data).await.result, Err(expected));
+        assert_eq!(
+            model.roles().len(),
+            usize::from(kind != Some("unsupported"))
+        );
+    }
+    let mut data = original;
+    data.remaining_work = vec!["둘째".into(), "첫째".into()];
+    data.completed_ids = vec!["2".into(), "1".into()];
+    let mut generated = fixture["generated"].clone();
+    generated["remaining_work"] = json!(data.remaining_work);
+    generated["preserved_completed_ids"] = json!(data.completed_ids);
+    let model = Scripted::new(vec![Ok(generated), Ok(accept())]);
+    let proposal = evaluate(&model, &data).await.result.unwrap();
+    assert_eq!(proposal.remaining_work, data.remaining_work);
+    assert_eq!(proposal.preserved_completed_ids, data.completed_ids);
+}

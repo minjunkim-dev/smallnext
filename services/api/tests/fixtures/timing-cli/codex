@@ -35,6 +35,9 @@ else:
                  reason='합성 모의 결과', remaining_work=payload['remaining_work'],
                  goal_completed=False, current_action_completed=False,
                  preserved_completed_ids=payload['completed_ids'])
+    if kind == 'first_action' and payload['goal'].startswith('정보 부족 안내 검증'):
+        value.update(status='insufficient_info', action='', completion_condition='', estimated_minutes=0,
+                     reduction='', reason='현재 제공된 정보로는 **당시 역할**을 확인할 수 없어요.')
     if status == 'need_info':
         value['action'] = '펜꽂이가 어디 있나요?'
 print(json.dumps({'type': 'item.completed', 'item': {'type': 'agent_message', 'text': json.dumps(value, ensure_ascii=False)}}))

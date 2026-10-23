@@ -16,9 +16,10 @@ CLI = ROOT / 'services/api/tests/fixtures/timing-cli/codex'
 
 
 class TimingCLITests(unittest.TestCase):
-    def invoke(self, kind, *, check=False, delayed=False):
+    def invoke(self, kind, *, check=False, delayed=False, notice=False):
         payload = json.loads((ROOT / 'services/api/examples/development-ai-input.json').read_bytes())
         payload['request_kind'] = kind
+        if notice: payload['goal'] = '정보 부족 안내 검증'
         if check:
             payload = {'original_request': payload, 'candidate': {}}
         with tempfile.TemporaryDirectory() as directory:
@@ -59,3 +60,13 @@ class TimingCLITests(unittest.TestCase):
         for kind, delayed in [('first_action', False), ('goal_preparation', True)]:
             waits, _ = self.invoke(kind, delayed=delayed)
             self.assertEqual([call.args[0] for call in waits], [.15])
+
+    def test_first_notice_has_no_fabricated_action_or_completion(self):
+        _, value = self.invoke('first_action', notice=True)
+        self.assertEqual(value['status'], 'insufficient_info')
+        self.assertEqual(value['action'], '')
+        self.assertEqual(value['completion_condition'], '')
+        self.assertEqual(value['estimated_minutes'], 0)
+        self.assertEqual(value['reduction'], '')
+        self.assertFalse(value['goal_completed'])
+        self.assertFalse(value['current_action_completed'])
