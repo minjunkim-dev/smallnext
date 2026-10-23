@@ -209,6 +209,50 @@ final class ScreenTimingTests: XCTestCase {
                 budget: 60, expectedAction: "펜 다섯 개 정리하기")
     }
 
+    func testFirstInsufficientInfoRestoresAndReturnsToGoalList() throws {
+        continueAfterFailure = false
+        let url = try XCTUnwrap(ProcessInfo.processInfo.environment["SMALLNEXT_TIMING_TEST_URL"])
+        let app = XCUIApplication()
+        app.launchArguments = ["-ios_core_flow", "YES", "-user_server_ai", "NO", "-development_ai_url", url, "-suggestion_timing", "NO"]
+        app.launch()
+        newGoal(app)
+        let goal = "정보 부족 안내 검증 \(UUID().uuidString)"
+        app.textFields["목표 한 문장"].tap()
+        app.textFields["목표 한 문장"].typeText(goal)
+        app.buttons["목표 정리"].tap()
+        XCTAssertTrue(app.buttons["확인하고 시작"].waitForExistence(timeout: 10))
+        app.buttons["확인하고 시작"].tap()
+        let title = "지금은 새 행동을 제안하기 어려워요"
+        let reason = "현재 제공된 정보로는 **당시 역할**을 확인할 수 없어요."
+        XCTAssertTrue(app.staticTexts[title].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts[reason].exists)
+        XCTAssertTrue(app.buttons["돌아가기"].isHittable)
+        XCTAssertFalse(app.buttons["완료"].exists)
+        XCTAssertFalse(app.buttons["다시 시도"].exists)
+        XCTAssertFalse(app.buttons["새 정보 추가"].exists)
+        XCTAssertNotNil(attach(app, name: "first-insufficient-info"))
+        let tree = XCTAttachment(string: app.debugDescription)
+        tree.name = "first-insufficient-info-accessibility-tree"
+        tree.lifetime = .keepAlways
+        add(tree)
+        XCTAssertLessThan(app.staticTexts[title].frame.maxY, app.staticTexts[reason].frame.minY)
+        XCTAssertLessThan(app.staticTexts[reason].frame.maxY, app.buttons["돌아가기"].frame.minY)
+        app.buttons["돌아가기"].tap()
+        let entry = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", goal + ",")).firstMatch
+        XCTAssertTrue(entry.waitForExistence(timeout: 10))
+        XCTAssertTrue(entry.label.contains("완료한 행동 0개"))
+        entry.tap()
+        XCTAssertTrue(app.staticTexts[title].waitForExistence(timeout: 10))
+        app.terminate()
+        app.launchArguments += ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]
+        app.launch()
+        XCTAssertTrue(app.staticTexts[title].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts[reason].exists)
+        XCTAssertNotNil(attach(app, name: "first-insufficient-info-large-text-restored"))
+        app.buttons["돌아가기"].tap()
+        XCTAssertTrue(entry.waitForExistence(timeout: 10))
+    }
+
     func testObservationRejectsMissingScreenshotAndLateCapture() {
         XCTAssertEqual(termination(elapsed: 59, budget: 60, screenshotHash: nil), "missing")
         XCTAssertEqual(termination(elapsed: 60.1, budget: 60, screenshotHash: "hash"), "time_exceeded")

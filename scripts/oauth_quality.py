@@ -539,8 +539,8 @@ def question_prompt(prompt):
         return prompt
     lines=paragraphs[4].splitlines()
     prefixes=('Status selection:', '- goal_preparation', '- first_action,', '- need_info ',
-              '- For smaller,', '- Also stop smaller', '- action is', '- no_action uses')
-    if len(lines)!=8 or any(not line.startswith(prefix) for line,prefix in zip(lines,prefixes)):
+              '- For smaller,', '- Also stop smaller', '- action is', '- no_action uses', '- insufficient_info ')
+    if len(lines)!=len(prefixes) or any(not line.startswith(prefix) for line,prefix in zip(lines,prefixes)):
         return prompt
     paragraphs[4]='\n'.join([lines[0],*lines[2:6]])
     return ('Independently check all five mandatory criteria for this need_info question on a smaller request. '
@@ -598,14 +598,21 @@ def schema_for(manifest, original):
     schema = deepcopy(manifest["schemas"]["generate"])
     schema["properties"]["status"]["enum"] = (
         ["goal_summary", "need_info"] if original.get("request_kind") == "goal_preparation" else
-        ["action", "need_info", "minimum", "no_action"] if original.get("request_kind") == "replacement" else
+        ["action", "need_info", "minimum", "no_action", "insufficient_info"] if original.get("request_kind") == "replacement" else
+        ["action", "need_info", "minimum", "insufficient_info"] if original.get("request_kind") in {"first_action", "next_action", "smaller"} else
         ["action", "need_info", "minimum"])
     return schema
 
 
 def proposal_invalid_fields(original, proposal):
     failures = {key: not proposal[key].strip() for key in ("action", "completion_condition", "reason")}
-    failures.update(estimated_minutes=not 0 <= proposal["estimated_minutes"] <= original["available_minutes"],
+    if proposal["status"] == "insufficient_info":
+        failures.update(status=original.get("request_kind") not in {"first_action", "next_action", "smaller", "replacement"},
+                        action=proposal["action"] != "",
+                        completion_condition=proposal["completion_condition"] != "",
+                        estimated_minutes=proposal["estimated_minutes"] != 0,
+                        reduction=proposal["reduction"] != "")
+    failures.update(estimated_minutes=failures.get("estimated_minutes", False) or not 0 <= proposal["estimated_minutes"] <= original["available_minutes"],
                     remaining_work=proposal["remaining_work"] != original["remaining_work"],
                     preserved_completed_ids=proposal["preserved_completed_ids"] != original["completed_ids"],
                     goal_completed=proposal["goal_completed"] is not False,

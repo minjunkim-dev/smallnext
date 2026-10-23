@@ -1,0 +1,243 @@
+{
+  "input": {
+    "goal": "과거 경력 사실 정리",
+    "current_blocker": "당시 역할을 모르고 기억도 나지 않으며 확인할 자료도 없어요.",
+    "user_request": "지금 시작할 첫 행동 하나를 제안한다.",
+    "available": [
+      "확정 완료 조건: 과거 경력 사실 정리",
+      "현재 상태: 확인 가능한 자료와 추가로 답할 내용이 없어요."
+    ],
+    "unknown": [],
+    "available_minutes": 15.0,
+    "knowledge": "사용자가 제공한 정보 외에는 모름",
+    "energy": "모름",
+    "remaining_work": [
+      "과거 경력 사실 정리"
+    ],
+    "completed_ids": [],
+    "previous_proposals": [],
+    "request_kind": "first_action"
+  },
+  "generated": {
+    "status": "insufficient_info",
+    "action": "",
+    "completion_condition": "",
+    "estimated_minutes": 0.0,
+    "reason": "현재 제공된 정보로는 당시 역할을 확인할 수 없고, 유용한 중간 단계나 새로 물을 내용도 제시하기 어려워요.",
+    "remaining_work": [
+      "과거 경력 사실 정리"
+    ],
+    "preserved_completed_ids": [],
+    "goal_completed": false,
+    "current_action_completed": false,
+    "facts": [],
+    "reduction": ""
+  },
+  "response": {
+    "disposition": "accepted",
+    "proposal": {
+      "status": "insufficient_info",
+      "action": "",
+      "completion_condition": "",
+      "estimated_minutes": 0.0,
+      "reason": "현재 제공된 정보로는 당시 역할을 확인할 수 없고, 유용한 중간 단계나 새로 물을 내용도 제시하기 어려워요.",
+      "remaining_work": [
+        "과거 경력 사실 정리"
+      ],
+      "preserved_completed_ids": [],
+      "goal_completed": false,
+      "current_action_completed": false
+    }
+  },
+  "checker_cases": [
+    {
+      "id": "no-source-or-answer",
+      "input": {
+        "goal": "과거 경력 사실 정리",
+        "current_blocker": "당시 역할을 모르고 기억도 나지 않으며 확인할 자료도 없어요.",
+        "user_request": "지금 시작할 첫 행동 하나를 제안한다.",
+        "available": [
+          "확정 완료 조건: 과거 경력 사실 정리",
+          "현재 상태: 확인 가능한 자료와 추가로 답할 내용이 없어요."
+        ],
+        "unknown": [],
+        "available_minutes": 15.0,
+        "knowledge": "사용자가 제공한 정보 외에는 모름",
+        "energy": "모름",
+        "remaining_work": [
+          "과거 경력 사실 정리"
+        ],
+        "completed_ids": [],
+        "previous_proposals": [],
+        "request_kind": "first_action"
+      },
+      "check": {
+        "verdict": "accept",
+        "criteria": [
+          1,
+          2,
+          3,
+          4,
+          5
+        ],
+        "evidence": "당시 역할을 모르고 기억도 나지 않으며 확인할 자료도 없어요.",
+        "reason": "제공 정보에서 유용한 행동과 실제 미답 질문의 가능성을 확인한다."
+      },
+      "expected": "accepted"
+    },
+    {
+      "id": "useful-source-check",
+      "input": {
+        "goal": "과거 경력 사실 정리",
+        "current_blocker": "당시 역할을 모르고 기억도 나지 않으며 확인할 자료도 없어요.",
+        "user_request": "지금 시작할 첫 행동 하나를 제안한다.",
+        "available": [
+          "당시 업무 메일 한 개를 직접 골랐고 확인할 수 있어요. 역할이 적혀 있지 않으면 이 메일에 미기재라고 남길 수 있어요."
+        ],
+        "unknown": [],
+        "available_minutes": 15.0,
+        "knowledge": "사용자가 제공한 정보 외에는 모름",
+        "energy": "모름",
+        "remaining_work": [
+          "과거 경력 사실 정리"
+        ],
+        "completed_ids": [],
+        "previous_proposals": [],
+        "request_kind": "first_action"
+      },
+      "check": {
+        "verdict": "reject",
+        "criteria": [
+          4
+        ],
+        "evidence": "당시 업무 메일 한 개를 직접 골랐고 확인할 수 있어요.",
+        "reason": "제공 정보에서 유용한 행동과 실제 미답 질문의 가능성을 확인한다."
+      },
+      "expected": "rejected"
+    },
+    {
+      "id": "real-unanswered-question",
+      "input": {
+        "goal": "과거 경력 사실 정리",
+        "current_blocker": "당시 역할을 모르고 기억도 나지 않으며 확인할 자료도 없어요.",
+        "user_request": "지금 시작할 첫 행동 하나를 제안한다.",
+        "available": [
+          "확인할 자료가 있는지는 아직 묻지 않았어요."
+        ],
+        "unknown": [],
+        "available_minutes": 15.0,
+        "knowledge": "사용자가 제공한 정보 외에는 모름",
+        "energy": "모름",
+        "remaining_work": [
+          "과거 경력 사실 정리"
+        ],
+        "completed_ids": [],
+        "previous_proposals": [],
+        "request_kind": "first_action"
+      },
+      "check": {
+        "verdict": "reject",
+        "criteria": [
+          4
+        ],
+        "evidence": "확인할 자료가 있는지는 아직 묻지 않았어요.",
+        "reason": "제공 정보에서 유용한 행동과 실제 미답 질문의 가능성을 확인한다."
+      },
+      "expected": "rejected"
+    },
+    {
+      "id": "conflicting-sources",
+      "input": {
+        "goal": "과거 경력 사실 정리",
+        "current_blocker": "당시 역할을 모르고 기억도 나지 않으며 확인할 자료도 없어요.",
+        "user_request": "지금 시작할 첫 행동 하나를 제안한다.",
+        "available": [
+          "직접 고른 기록에는 참여자, 다른 기록에는 책임자로 적혀 있고 어느 쪽이 맞는지 모릅니다. 추가 자료도 없습니다."
+        ],
+        "unknown": [],
+        "available_minutes": 15.0,
+        "knowledge": "사용자가 제공한 정보 외에는 모름",
+        "energy": "모름",
+        "remaining_work": [
+          "과거 경력 사실 정리"
+        ],
+        "completed_ids": [],
+        "previous_proposals": [],
+        "request_kind": "first_action"
+      },
+      "check": {
+        "verdict": "uncertain",
+        "criteria": [
+          4
+        ],
+        "evidence": "어느 쪽이 맞는지 모릅니다.",
+        "reason": "제공 정보에서 유용한 행동과 실제 미답 질문의 가능성을 확인한다."
+      },
+      "expected": "uncertain"
+    },
+    {
+      "id": "source-omission-is-not-absence",
+      "input": {
+        "goal": "과거 경력 사실 정리",
+        "current_blocker": "당시 역할을 모르고 기억도 나지 않으며 확인할 자료도 없어요.",
+        "user_request": "지금 시작할 첫 행동 하나를 제안한다.",
+        "available": [
+          "선택한 회의록에서 역할이 미기재임을 확인했습니다. 실제 역할은 모르고 다른 자료나 기억은 없습니다."
+        ],
+        "unknown": [],
+        "available_minutes": 15.0,
+        "knowledge": "사용자가 제공한 정보 외에는 모름",
+        "energy": "모름",
+        "remaining_work": [
+          "과거 경력 사실 정리"
+        ],
+        "completed_ids": [],
+        "previous_proposals": [],
+        "request_kind": "first_action"
+      },
+      "check": {
+        "verdict": "accept",
+        "criteria": [
+          1,
+          2,
+          3,
+          4,
+          5
+        ],
+        "evidence": "실제 역할은 모르고 다른 자료나 기억은 없습니다.",
+        "reason": "제공 정보에서 유용한 행동과 실제 미답 질문의 가능성을 확인한다."
+      },
+      "expected": "accepted"
+    },
+    {
+      "id": "specific-user-statement",
+      "input": {
+        "goal": "과거 경력 사실 정리",
+        "current_blocker": "당시 역할을 모르고 기억도 나지 않으며 확인할 자료도 없어요.",
+        "user_request": "지금 시작할 첫 행동 하나를 제안한다.",
+        "available": [
+          "제가 그 프로젝트에서 참여자 세 명의 일정을 조율했어요. 외부 증빙은 없지만 이 구체적인 경험을 정리하고 싶어요."
+        ],
+        "unknown": [],
+        "available_minutes": 15.0,
+        "knowledge": "사용자가 제공한 정보 외에는 모름",
+        "energy": "모름",
+        "remaining_work": [
+          "과거 경력 사실 정리"
+        ],
+        "completed_ids": [],
+        "previous_proposals": [],
+        "request_kind": "first_action"
+      },
+      "check": {
+        "verdict": "reject",
+        "criteria": [
+          4
+        ],
+        "evidence": "참여자 세 명의 일정을 조율했어요.",
+        "reason": "제공 정보에서 유용한 행동과 실제 미답 질문의 가능성을 확인한다."
+      },
+      "expected": "rejected"
+    }
+  ]
+}

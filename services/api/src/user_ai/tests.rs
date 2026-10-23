@@ -52,7 +52,40 @@ async fn external_provider(
     if (mode == "invalid" || mode == "invalid_missing_usage") && generating {
         value["goal_completed"] = json!(true);
     }
-    let fault = mode.strip_prefix(if generating { "generate_" } else { "check_" });
+    if mode.starts_with("notice") {
+        let fixture: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../../contracts/fixtures/insufficient-info.json"
+        ))
+        .unwrap();
+        if generating {
+            value = fixture["generated"].clone();
+            for key in [
+                "remaining_work",
+                "preserved_completed_ids",
+                "goal_completed",
+                "current_action_completed",
+            ] {
+                value.as_object_mut().unwrap().remove(key);
+            }
+            match mode.as_str() {
+                "notice_action" => value["action"] = json!("가짜 행동"),
+                "notice_minutes" => value["estimated_minutes"] = json!(1),
+                "notice_reduction" => value["reduction"] = json!("축소"),
+                _ => {}
+            }
+        } else if let Some(id) = mode.strip_prefix("notice-case-") {
+            let case = fixture["checker_cases"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|case| case["id"] == id)
+                .unwrap();
+            value = case["check"].clone();
+            value.as_object_mut().unwrap().remove("reason");
+        }
+    }
+    let fault_mode = mode.strip_prefix("notice_").unwrap_or(&mode);
+    let fault = fault_mode.strip_prefix(if generating { "generate_" } else { "check_" });
     let field = if generating { "action" } else { "evidence" };
     match fault {
         Some("type") => value[field] = json!(["private-output"]),
@@ -1225,4 +1258,78 @@ fn grounded(proposal: &serde_json::Value) -> serde_json::Value {
     candidate["facts"] = json!([]);
     candidate["reduction"] = json!("해당 없음");
     candidate
+}
+
+#[tokio::test]
+#[ignore = "requires TEST_DATABASE_URL; HTTP against real isolated PostgreSQL"]
+async fn insufficient_info_crosses_http_with_independent_checks_and_no_failure_conversion() {
+    let fixture = Fixture::new().await;
+    let shared: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../../contracts/fixtures/insufficient-info.json"
+    ))
+    .unwrap();
+    for kind in ["first_action", "next_action", "smaller", "replacement"] {
+        *fixture.remote.mode.lock().unwrap() = "notice".into();
+        fixture.remote.calls.lock().unwrap().clear();
+        let mut input = shared["input"].clone();
+        input["request_kind"] = json!(kind);
+        let response = result(fixture.request_input("allowed", kind, input.clone()).await).await;
+        assert_eq!(response["disposition"], "accepted");
+        let proposal: crate::suggestion::Proposal =
+            serde_json::from_value(response["proposal"].clone()).unwrap();
+        assert_eq!(
+            proposal,
+            serde_json::from_value(shared["response"]["proposal"].clone()).unwrap()
+        );
+        assert!(
+            response["proposal"].get("facts").is_none()
+                && response["proposal"].get("reduction").is_none()
+        );
+        let calls = fixture.remote.calls.lock().unwrap();
+        assert_eq!(calls.len(), 2);
+        let checked: serde_json::Value =
+            serde_json::from_str(calls[1]["messages"][0]["content"].as_str().unwrap()).unwrap();
+        assert_eq!(checked["original_request"], input);
+        assert_eq!(checked["candidate"]["reduction"], "");
+    }
+    for case in shared["checker_cases"].as_array().unwrap() {
+        *fixture.remote.mode.lock().unwrap() =
+            format!("notice-case-{}", case["id"].as_str().unwrap());
+        fixture.remote.calls.lock().unwrap().clear();
+        let response = result(
+            fixture
+                .request_input(
+                    "allowed",
+                    case["id"].as_str().unwrap(),
+                    case["input"].clone(),
+                )
+                .await,
+        )
+        .await;
+        assert_eq!(response["disposition"], case["expected"], "{}", case["id"]);
+        assert_eq!(
+            response["proposal"].is_null(),
+            case["expected"] != "accepted"
+        );
+        assert_eq!(fixture.remote.calls.lock().unwrap().len(), 2);
+    }
+    for (mode, expected, calls) in [
+        ("notice_action", "invalid_proposal", 1),
+        ("notice_minutes", "invalid_proposal", 1),
+        ("notice_reduction", "invalid_proposal", 1),
+        ("notice_check_type", "failed", 2),
+    ] {
+        *fixture.remote.mode.lock().unwrap() = mode.into();
+        fixture.remote.calls.lock().unwrap().clear();
+        let response = result(
+            fixture
+                .request_input("allowed", mode, shared["input"].clone())
+                .await,
+        )
+        .await;
+        assert_eq!(response["disposition"], expected);
+        assert!(response["proposal"].is_null());
+        assert_eq!(fixture.remote.calls.lock().unwrap().len(), calls);
+    }
+    fixture.close().await;
 }

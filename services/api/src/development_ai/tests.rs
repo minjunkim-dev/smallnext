@@ -47,7 +47,7 @@ fn proposal() -> Proposal {
 fn grounded(mut candidate: Value) -> Value {
     if let Some(object) = candidate.as_object_mut() {
         object.insert("facts".into(), json!([]));
-        object.insert("reduction".into(), json!("해당 없음"));
+        object.entry("reduction").or_insert(json!("해당 없음"));
     }
     candidate
 }
@@ -666,4 +666,28 @@ async fn cancellation_timeout_and_stale_response_preserve_state() {
     assert_eq!(other.revision, state.revision);
     assert!(!other.finish(result));
     assert!(other.current().is_none());
+}
+
+#[tokio::test]
+#[cfg(unix)]
+async fn insufficient_info_uses_the_shared_contract_without_a_real_subscription_call() {
+    let shared: Value = serde_json::from_str(include_str!(
+        "../../../../contracts/fixtures/insufficient-info.json"
+    ))
+    .unwrap();
+    let fixture = Fixture::new(
+        shared["generated"].clone(),
+        json!({"verdict":"accept","criteria":[1,2,3,4,5],"evidence":"합성 입력과 후보", "reason":"다섯 기준 충족"}),
+        false,
+    );
+    let mut state = ActionState::new(None);
+    let ticket = state.begin().unwrap();
+    let original = serde_json::from_value(shared["input"].clone()).unwrap();
+    let result = fixture.ai.evaluate(&original, ticket).await;
+    assert_eq!(result.disposition, Disposition::Accepted);
+    assert_eq!(fixture.calls().len(), 2);
+    assert_eq!(
+        result.proposal.unwrap().status,
+        ProposalStatus::InsufficientInfo
+    );
 }

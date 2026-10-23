@@ -657,6 +657,120 @@ final class ProgressFlowTests: XCTestCase {
         XCTAssertEqual(flow.screen, .awaitingNextAction(problem: .unsuitable))
     }
 
+    func testFirstInsufficientInfoEndsNormallyAndRestoresWithoutCallingProvider() async throws {
+        let reason = try InsufficientInfoFixture.reason()
+        let provider = ScriptedProvider([.insufficientInfo(reason)])
+        let flow = try makeFlow(provider)
+        try await startGoal(flow, "과거 경력 사실 정리")
+        await flow.waitForSuggestion()
+        XCTAssertNil(flow.screen.suggestionProblem)
+        XCTAssertFalse(flow.screen.isWaitingForSuggestion)
+        let screen = flow.screen
+        let goalID = try XCTUnwrap(flow.goalDetails?.id)
+        try flow.retrySuggestion()
+        XCTAssertEqual(flow.screen, screen)
+        try flow.startNewGoal()
+        try flow.selectGoal(goalID)
+        XCTAssertEqual(flow.screen, screen)
+        let reopened = try makeFlow(provider)
+        XCTAssertEqual(reopened.screen, screen)
+        XCTAssertEqual(reopened.goalDetails?.statement, "과거 경력 사실 정리")
+        XCTAssertEqual(reopened.goals.first?.completedActionCount, 0)
+        let requests = await provider.requests
+        XCTAssertEqual(requests.map(\.kind), [.firstAction])
+    }
+
+    func testSharedHTTPNoticeAndMetadataStayIsolatedAndDeleteAtomically() async throws {
+        let response = try InsufficientInfoFixture.response()
+        DevelopmentTransport.store.reset()
+        DevelopmentTransport.store.handler = { _ in (200, response) }
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [DevelopmentTransport.self]
+        let provider = HTTPActionSuggestionProvider.development(baseURL: URL(string: "http://127.0.0.1:8080")!, token: nil, session: URLSession(configuration: config))
+        let flow = try makeFlow(provider)
+        try await startGoal(flow, "과거 경력 사실 정리")
+        await flow.waitForSuggestion()
+        guard case .insufficientInfo(let notice, false) = flow.screen else { return XCTFail("\(flow.screen)") }
+        let originalScreen = flow.screen
+        let originalID = try XCTUnwrap(flow.goalDetails?.id)
+        XCTAssertEqual(notice.reason, try InsufficientInfoFixture.reason())
+        XCTAssertEqual(notice.requestKind, .firstAction)
+        XCTAssertEqual(notice.goalRevision, 1)
+        XCTAssertEqual(notice.inputFingerprint.count, 64)
+        XCTAssertLessThan(abs(notice.receivedAt.timeIntervalSinceNow), 10)
+        try await startGoal(flow, "과거 경력 사실 정리")
+        await flow.waitForSuggestion()
+        let otherID = try XCTUnwrap(flow.goalDetails?.id)
+        let otherScreen = flow.screen
+        try flow.selectGoal(originalID)
+        XCTAssertEqual(flow.screen, originalScreen)
+        try flow.editGoalStatement("달라진 문구")
+        guard case .insufficientInfo(let previous, true) = flow.screen else { return XCTFail("\(flow.screen)") }
+        XCTAssertEqual(previous, notice)
+        XCTAssertEqual(try makeFlow(provider).screen, flow.screen)
+        try flow.editGoalStatement("과거 경력 사실 정리")
+        XCTAssertEqual(flow.screen, originalScreen)
+        let database = try AppDatabase(path: path)
+        try await database.writer.write { db in
+            try db.execute(sql: "CREATE TRIGGER reject_notice_delete BEFORE DELETE ON app_metadata WHEN OLD.key = 'supplemental_context:\(originalID)' BEGIN SELECT RAISE(ABORT, 'test failure'); END")
+        }
+        XCTAssertThrowsError(try flow.deleteGoal(originalID, confirmed: true))
+        XCTAssertEqual(flow.goals.count, 2)
+        XCTAssertEqual(flow.screen, originalScreen)
+        XCTAssertEqual(try makeFlow(provider).screen, originalScreen)
+        try await database.writer.write { try $0.execute(sql: "DROP TRIGGER reject_notice_delete") }
+        try flow.deleteGoal(originalID, confirmed: true)
+        XCTAssertEqual(flow.screen, .goalInput)
+        XCTAssertEqual(try count("SELECT COUNT(*) FROM app_metadata WHERE key = 'supplemental_context:\(originalID)'"), 0)
+        try flow.selectGoal(otherID)
+        XCTAssertEqual(flow.screen, otherScreen)
+        let reopened = try makeFlow(provider)
+        XCTAssertEqual(reopened.screen, otherScreen)
+        XCTAssertEqual(reopened.goals.map(\.id), [otherID])
+        XCTAssertEqual(DevelopmentTransport.store.requests.count, 2)
+        XCTAssertEqual(try count("SELECT COUNT(*) FROM action"), 0)
+        XCTAssertEqual(try count("SELECT COUNT(*) FROM completion"), 0)
+        XCTAssertEqual(try count("SELECT COUNT(*) FROM suggestion_request WHERE kind = 'first_action' AND status = 'applied'"), 1)
+    }
+
+    func testLateInsufficientInfoCannotReplaceCancelledSwitchedChangedOrInterruptedState() async throws {
+        for event in ["cancel", "switch", "revision", "reopen", "stop", "delete"] {
+            let held = HeldProvider(.insufficientInfo(try InsufficientInfoFixture.reason()))
+            let flow = try makeFlow(held)
+            try await startGoal(flow, "늦은 안내 \(event)")
+            switch event {
+            case "cancel": try flow.cancelSuggestion()
+            case "switch": try flow.startNewGoal()
+            case "revision":
+                try await AppDatabase(path: path).writer.write { try $0.execute(sql: "UPDATE goal SET revision = revision + 1") }
+            case "reopen": _ = try makeFlow(UnavailableSuggestionProvider())
+            case "stop": try flow.stopGoal()
+            default: try flow.deleteGoal(XCTUnwrap(flow.goalDetails?.id), confirmed: true)
+            }
+            await held.release()
+            await flow.waitForSuggestion()
+            if case .insufficientInfo = flow.screen { XCTFail("late notice applied after \(event)") }
+            if case .insufficientInfo = try makeFlow(UnavailableSuggestionProvider()).screen { XCTFail("late notice restored after \(event)") }
+            let calls = await held.requests
+            XCTAssertEqual(calls, 1)
+        }
+        XCTAssertEqual(try count("SELECT COUNT(*) FROM app_metadata WHERE key LIKE 'supplemental_context:%'"), 0)
+    }
+
+    func testUnsavedInsufficientInfoRemainsFailureUntilSuccessfullySaved() async throws {
+        let provider = LockingProvider(path: path, candidate: .insufficientInfo(try InsufficientInfoFixture.reason()))
+        let flow = try makeFlow(provider)
+        try await startGoal(flow, "과거 경력 사실 정리")
+        await flow.waitForSuggestion()
+        XCTAssertEqual(flow.screen, .awaitingFirstAction(goal: "과거 경력 사실 정리", problem: .failure(.failed)))
+        await provider.releaseLock()
+        XCTAssertEqual(try count("SELECT COUNT(*) FROM app_metadata WHERE key LIKE 'supplemental_context:%'"), 0)
+        try flow.retrySuggestion()
+        await flow.waitForSuggestion()
+        guard case .insufficientInfo = flow.screen else { return XCTFail("\(flow.screen)") }
+        XCTAssertEqual(try makeFlow(UnavailableSuggestionProvider()).screen, flow.screen)
+    }
+
     func testFirstActionFailureKeepsGoalWithoutAutomaticRetry() async throws {
         let failures = SuggestionFailure.allCases
         let provider = ScriptedProvider(failures.map { .failure($0) })
