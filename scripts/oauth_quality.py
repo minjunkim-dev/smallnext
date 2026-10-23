@@ -607,7 +607,8 @@ def schema_for(manifest, original):
 def proposal_invalid_fields(original, proposal):
     failures = {key: not proposal[key].strip() for key in ("action", "completion_condition", "reason")}
     if proposal["status"] == "insufficient_info":
-        failures.update(action=proposal["action"] != "",
+        failures.update(status=original.get("request_kind") not in {"first_action", "next_action", "smaller", "replacement"},
+                        action=proposal["action"] != "",
                         completion_condition=proposal["completion_condition"] != "",
                         estimated_minutes=proposal["estimated_minutes"] != 0,
                         reduction=proposal["reduction"] != "")

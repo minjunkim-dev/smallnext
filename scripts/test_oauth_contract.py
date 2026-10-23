@@ -40,6 +40,9 @@ class InsufficientInfoFormatTests(unittest.TestCase):
         fixture = json.loads((qa.REPO / "contracts/fixtures/insufficient-info.json").read_text())
         original, candidate = fixture["input"], fixture["generated"]
         self.assertTrue(qa.proposal_valid(original, candidate))
+        for kind in [None, "goal_preparation", "unsupported"]:
+            with self.subTest(kind=kind):
+                self.assertFalse(qa.proposal_valid(dict(original, request_kind=kind), candidate))
         for field, value in [("action", "가짜 행동"), ("completion_condition", " "),
                              ("estimated_minutes", 1), ("reason", " "), ("reduction", "해당 없음")]:
             with self.subTest(field=field):
