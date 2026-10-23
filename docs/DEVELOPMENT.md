@@ -1,6 +1,6 @@
 # 개발 환경과 실행
 
-환경 재현성 기준: 2026-10-05 KST.
+환경 재현성 기준: 2026-10-23 KST.
 
 ## 구성
 
@@ -22,7 +22,7 @@ Supabase DB·인증의 로컬 연결은 확인했습니다. 실제 앱·서버 �
 
 ## 필요한 도구
 
-- iOS: Xcode 27.0 (27A266a), simulator SDK 27.0, iOS runtime 27.0.
+- iOS: Xcode 27.1 (27A9275), simulator SDK 27.1, iOS runtime 27.0.
 - Android: Temurin JDK (설치 선택값 17.0.20+1, 실제 runtime 17.0.20.1+1), Android SDK 37, Build Tools 36.0.0, 에뮬레이터.
 - API: rustup, Rust 1.99.0, Docker Compose v2, Python 3, make.
 
