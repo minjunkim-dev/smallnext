@@ -204,7 +204,7 @@ node --test apps/ios/scripts/test-turnstile-page.cjs
 `IOS_SIMULATOR`를 생략하면 해당 runtime의 기기를 자동 선택합니다.
 다른 runtime의 부팅한 기기는 대신 사용하지 않습니다.
 시뮬레이터 빌드는 Keychain 권한을 적용하기 위해 ad-hoc 서명을 사용합니다. 개발자 계정과 서명 private key는 사용하지 않습니다.
-고정 Xcode가 `/Applications/Xcode_27.0.app`에 있으면 검사에서 자동 선택합니다.
+고정 Xcode가 `/Applications/Xcode_27.1.app`에 있으면 검사에서 자동 선택합니다.
 다른 경로이면 `DEVELOPER_DIR`을 해당 Xcode의 `Contents/Developer` 경로로 지정합니다.
 전역 `xcode-select` 설정은 변경하지 않습니다.
 CI는 [GitHub의 `xcode-27` 실행 환경](https://github.blog/changelog/2026-07-16-xcode-27-runner-image-now-in-public-preview/)을 사용합니다. 이 실행 환경은 현재 public preview입니다.
