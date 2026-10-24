@@ -238,7 +238,7 @@ final class ScreenTimingTests: XCTestCase {
         XCTAssertLessThan(app.staticTexts[title].frame.maxY, app.staticTexts[reason].frame.minY)
         XCTAssertLessThan(app.staticTexts[reason].frame.maxY, app.buttons["돌아가기"].frame.minY)
         app.buttons["돌아가기"].tap()
-        let entry = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", goal + ",")).firstMatch
+        let entry = goalEntry(app, goal: goal)
         XCTAssertTrue(entry.waitForExistence(timeout: 10))
         XCTAssertTrue(entry.label.contains("완료한 행동 0개"))
         entry.tap()
@@ -275,8 +275,9 @@ final class ScreenTimingTests: XCTestCase {
         XCTAssertNotNil(attach(app, name: "first-insufficient-info-large-text-restored"))
         app.swipeUp()
         app.buttons["돌아가기"].tap()
-        XCTAssertTrue(entry.waitForExistence(timeout: 10))
-        entry.tap()
+        let restoredEntry = goalEntry(app, goal: goal)
+        XCTAssertTrue(restoredEntry.waitForExistence(timeout: 10))
+        restoredEntry.tap()
         XCTAssertTrue(editor.waitForExistence(timeout: 10))
         XCTAssertEqual(editor.value as? String, "제가 첫 문단을 작성했어요. 수정 중")
     }
@@ -331,7 +332,7 @@ final class ScreenTimingTests: XCTestCase {
                 XCTAssertTrue(app.buttons["완료"].exists)
                 app.buttons["목표 목록"].tap()
             }
-            let entry = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", goal + ",")).firstMatch
+            let entry = goalEntry(app, goal: goal)
             XCTAssertTrue(entry.waitForExistence(timeout: 10))
             XCTAssertTrue(entry.label.contains("완료한 행동 \(kind == "next_action" ? 1 : 0)개"))
             app.terminate()
@@ -363,9 +364,17 @@ final class ScreenTimingTests: XCTestCase {
     }
     private func selectLocalGoal(_ app: XCUIApplication, goal: String) {
         app.buttons["목표 목록"].tap()
-        let entry = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", goal + ",")).firstMatch
+        let entry = goalEntry(app, goal: goal)
         XCTAssertTrue(entry.waitForExistence(timeout: 10))
         entry.tap()
+    }
+    private func goalEntry(_ app: XCUIApplication, goal: String) -> XCUIElement {
+        let entry = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", goal + ",")).firstMatch
+        for _ in 0..<20 {
+            if entry.exists && entry.isHittable { break }
+            app.swipeUp()
+        }
+        return entry
     }
     private func newGoal(_ app: XCUIApplication) {
         if !app.textFields["목표 한 문장"].exists {
