@@ -142,22 +142,30 @@ public struct HTTPActionSuggestionProvider: ActionSuggestionProvider {
     /// 답을 확정하기 전에도 실제 송신할 본문과 같은 상한을 검사한다.
     static func requestBody(_ request: SuggestionRequest) throws -> Data {
         guard (request.blocker?.utf8.count ?? 0) <= 2048 else { throw SuggestionFailure.rejected }
-        let bytes = try JSONEncoder().encode(Payload(state_key: request.stateKey, input: Input(request)))
+        let input = Input(request)
+        guard try JSONEncoder().encode(input).count <= 32 * 1024 else { throw SuggestionFailure.rejected }
+        let bytes = try JSONEncoder().encode(Payload(state_key: request.stateKey, input: input))
         guard bytes.count <= 32 * 1024 else { throw SuggestionFailure.rejected }
         return bytes
     }
 
     /// 송신할 실제 입력만 정규화한다. 원문·배열 순서는 보존하고 진단/인증/요청 키는 제외한다.
     static func inputFingerprint(_ request: SuggestionRequest) throws -> String {
+        func normalizedText(_ text: String) -> String {
+            text.replacingOccurrences(of: "\r\n", with: "\n").replacingOccurrences(of: "\r", with: "\n")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+        }
         func normalized(_ value: Any) -> Any {
             if let text = value as? String {
-                return text.replacingOccurrences(of: "\r\n", with: "\n").replacingOccurrences(of: "\r", with: "\n")
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                return normalizedText(text)
             }
             if let values = value as? [Any] { return values.map(normalized) }
             if let fields = value as? [String: Any] { return fields.mapValues(normalized) }
             return value
         }
+        var request = request
+        // 설명 접두사를 붙이기 전에 보충 본문의 바깥 공백을 정규화한다. 송신 원문은 바꾸지 않는다.
+        request.supplementalText = normalizedText(request.supplementalText)
         let input = try JSONSerialization.jsonObject(with: JSONEncoder().encode(Input(request)))
         let bytes = try JSONSerialization.data(withJSONObject: normalized(input), options: [.sortedKeys, .withoutEscapingSlashes])
         return SHA256.hash(data: bytes).map { String(format: "%02x", $0) }.joined()
@@ -194,6 +202,9 @@ public struct HTTPActionSuggestionProvider: ActionSuggestionProvider {
             if let text = request.context.currentState { facts.append("현재 상태: \(text)") }
             if let text = request.context.deadline { facts.append("기한: \(text)") }
             if let text = request.context.materialExcerpt { facts.append("사용자가 선택한 자료 발췌: \(text)") }
+            if !request.supplementalText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                facts.append("사용자가 확인해 저장한 보충 내용(외부 검증 미확인): \(request.supplementalText)")
+            }
             facts += request.context.materialLinks.map { "자료 링크(본문을 읽지 않음): \($0.absoluteString)" }
             facts += request.context.answers.map { "이미 답한 질문: \($0.question) / 답: \($0.answer)" }
             facts += request.actionAnswers.map { "행동 요청에서 이미 답한 질문: \($0.question) / 답: \($0.answer)" }

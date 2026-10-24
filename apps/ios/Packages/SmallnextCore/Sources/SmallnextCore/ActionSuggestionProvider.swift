@@ -37,6 +37,8 @@ public struct SuggestionRequest: Sendable, Equatable {
     var completedActionIDs: [String] = []
     /// 행동 요청에 연결해 확인한 질문과 답이다. 목표 준비와 막힘 원인과 구분한다.
     var actionAnswers: [GoalAnswer] = []
+    /// 명시적으로 재요청할 때 전송하는 확인 저장값이다. 편집 초안과 구분한다.
+    var supplementalText = ""
 }
 
 struct GoalAnswer: Equatable, Sendable {

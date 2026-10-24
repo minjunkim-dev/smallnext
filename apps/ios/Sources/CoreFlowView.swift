@@ -234,6 +234,15 @@ struct CoreFlowView: View {
                     .frame(minHeight: 44)
                     .accessibilityHint("이 목표에 추가할 내용을 작성합니다. 저장만으로 AI에 보내지 않습니다.")
                 }
+                if flow.canRequestFirstActionWithNewInformation {
+                    commandButton("새 정보로 다시 제안") {
+                        try flow.retrySuggestion()
+                        supplementalFeedback = nil
+                    }
+                    .accessibilityHint("확인해 저장한 추가 내용으로 첫 행동을 한 번 요청합니다. 작성 중인 초안은 보내지 않습니다.")
+                    Text("확인해 저장한 내용만 보내요. 편집 중인 초안은 보내지 않아요.")
+                        .fixedSize(horizontal: false, vertical: true)
+                }
                 if let supplementalFeedback {
                     Text(supplementalFeedback)
                         .fixedSize(horizontal: false, vertical: true)
@@ -778,6 +787,10 @@ struct CoreFlowView: View {
             return true
         } catch ProgressFlowError.answerExceedsRequestLimit {
             goalInputProblem = "답을 보내기에는 내용이 너무 길어요. 답을 줄여 주세요. 작성 중인 내용은 유지했어요."
+        } catch ProgressFlowError.supplementalRequestTooLarge {
+            let message = "보낼 전체 내용이 너무 길어요. 새 정보 추가에서 내용을 줄여 주세요. 저장한 내용과 작성 중인 초안은 유지했어요."
+            goalInputProblem = message
+            AccessibilityNotification.Announcement(message).post()
         } catch ProgressFlowError.invalidGoalContext {
             goalInputProblem = "자료 링크는 http:// 또는 https://로 입력해 주세요. 시간은 1 이상의 정수로 입력해 주세요."
         } catch where editingSupplemental {
