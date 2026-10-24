@@ -359,6 +359,52 @@ class SupplementalEvaluationTests(unittest.TestCase):
             with self.assertRaises(FileExistsError):
                 self.freeze(directory)
 
+    def test_call_marker_delay_or_cancellation_never_becomes_an_actual_start(self):
+        for fault in ('request_deadline', 'whole_deadline', 'cancelled', 'ownership_lost'):
+            with self.subTest(fault=fault), tempfile.TemporaryDirectory() as directory:
+                root = self.freeze(directory)
+                now, roles, cancel = [0], [], threading.Event()
+                save, lock = qa.save, Path(directory) / 'model.lock'
+
+                def interrupted_marker(path, value):
+                    save(path, value)
+                    if path.parent.name == 'calls' and path.suffix == '.json':
+                        if fault == 'request_deadline':
+                            now[0] = 120
+                        elif fault == 'whole_deadline':
+                            now[0] = 5400
+                        elif fault == 'cancelled':
+                            cancel.set()
+                        else:
+                            lock.unlink()
+
+                def invoke(role, *args):
+                    roles.append(role)
+                    return self.response(role, *args)
+
+                with patch.object(qa, 'save', interrupted_marker):
+                    summary = launch.run(root, invoke=invoke, clock=lambda: now[0],
+                                         cancelled=cancel, lock_path=lock)
+                self.assertEqual(roles, [])
+                self.assertEqual(summary['roles']['started'], 0)
+                self.assertEqual(summary['role_counts']['check']['started'], 0)
+                self.assertEqual(summary['units'][0]['roles'][0]['state'], 'not_executed')
+                expected = {'request_deadline': 'timed_out', 'whole_deadline': 'time_limit'}.get(fault, fault)
+                self.assertEqual(summary['stop_reason'], expected)
+
+    def test_downgraded_mixed_plan_cannot_enable_live_transport(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.freeze(directory)
+            manifest = launch.load(root)
+            manifest['version'] = 1
+            manifest.pop('plan_kind')
+            raw = qa.encoded(manifest)
+            (root/'manifest.json').write_bytes(raw)
+            (root/'integrity.json').write_bytes(qa.encoded({'manifest_sha256': qa.digest(raw)}))
+            with self.assertRaises(ValueError):
+                launch.load(root)
+            self.assertFalse((root/'run-started.json').exists())
+
 
 if __name__ == '__main__':
     unittest.main()

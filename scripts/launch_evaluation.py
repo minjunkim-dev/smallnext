@@ -231,7 +231,8 @@ def load(directory, *, descriptor=None):
         raise ValueError('wrong launch manifest')
     if manifest.get('version') == 2 or 'plan_kind' in manifest:
         validate_supplemental(manifest)
-    elif manifest.get('version') != 1:
+    elif (manifest.get('version') != 1 or 'contract' in manifest or 'check_seconds' in manifest
+          or any(any(key in flow for key in ('kind', 'candidate', 'repeat')) for flow in manifest['flows'])):
         raise ValueError('unsupported launch version')
     if qa.digest(Path(__file__).read_bytes()) != manifest['sources']['scripts/launch_evaluation.py']['sha256']:
         raise ValueError('launch runner differs from frozen version')
@@ -573,6 +574,9 @@ def report_bundle(directory, descriptor, observations):
             for index, call in enumerate(row['calls']):
                 if type(call) is not dict or call.get('role') not in ('generate', 'check'):
                     raise ValueError('invalid role record')
+                if ('started' in call and type(call['started']) is not bool
+                        or call.get('started') is False and ('output' in call or not call.get('error'))):
+                    raise ValueError('invalid role start state')
                 if type(call.get('provider_messages', 0)) is not int or call.get('provider_messages', 0) < 0:
                     raise ValueError('invalid role message count')
                 usage = call.get('usage', {})
@@ -600,7 +604,7 @@ def report_bundle(directory, descriptor, observations):
                     if (any(receipt.get(key) != value for key, value in binding.items())
                             or receipt.get('record_sha256') != qa.digest(qa.encoded(call))):
                         raise ValueError('role receipt mismatch')
-                elif not call.get('error'):
+                elif not call.get('error') or call.get('started') is False:
                     raise ValueError('completed role receipt missing')
             if 'verdict' in row:
                 if tuple(call['role'] for call in row['calls']) != roles:
@@ -666,7 +670,7 @@ def report_bundle(directory, descriptor, observations):
         except (OSError, KeyError, TypeError, ValueError):
             raise ValueError('private screen evidence missing or mismatched') from None
         screens[ident] = seconds
-    calls = [c for r in records for c in r['calls']]
+    calls = [c for r in records for c in r['calls'] if c.get('started', True)]
     normal = [r for r in records if r.get('verdict') == 'accept' and r.get('reference_matched') and not r.get('error')]
     timings = {}
     for kind in ('first_action', 'smaller', 'other'):
@@ -678,7 +682,8 @@ def report_bundle(directory, descriptor, observations):
     request_names = private_names(descriptor, 'requests')
     started = {flow for flow in flows if f"{claim['run_id']}-{flow}-0.json" in request_names}
     started_requests = len(request_names)
-    started_roles = len(private_names(descriptor, 'calls'))
+    started_roles = len(private_names(descriptor, 'calls')) - sum(
+        c.get('started') is False for r in records for c in r['calls'])
     if private_exists(descriptor, 'run-ended.json'):
         budget = end.get('budget')
         if (type(end.get('reason')) is not str or not end['reason'] or type(budget) is not dict
@@ -787,7 +792,7 @@ def supplemental_report(manifest, records, end, run_id, request_names, call_name
         roles = []
         for role in roles_for(flow):
             call = calls.get(role)
-            role_started = f'{ident}-{role}.json' in call_names
+            role_started = f'{ident}-{role}.json' in call_names and (call or {}).get('started', True)
             failure = call.get('error') if call else None
             if call and role == next(reversed(calls)) and error != 'unexpected_quality':
                 failure = failure or error
@@ -796,7 +801,7 @@ def supplemental_report(manifest, records, end, run_id, request_names, call_name
             state = ('not_executed' if not role_started else
                      'cancelled' if failure in ('cancelled', 'ownership_lost', 'timed_out') else
                      'failed' if failure else 'completed')
-            roles.append(dict(role=role, state=state, reason=failure if role_started else reason or 'not_started'))
+            roles.append(dict(role=role, state=state, reason=failure if role_started else failure or reason or 'not_started'))
             states[role, state] += 1
         state = ('not_executed' if not started else 'failed' if not row else 'cancelled' if error in
                  ('cancelled', 'ownership_lost', 'timed_out') else 'failed' if error else 'completed')
@@ -808,7 +813,7 @@ def supplemental_report(manifest, records, end, run_id, request_names, call_name
     return {'plan_kind': manifest['plan_kind'], 'contract': manifest['contract'],
             'planned': validate_supplemental(manifest), 'units': units, 'role_counts': counts,
             'elapsed_seconds': end.get('budget', {}).get('elapsed_seconds'),
-            'provider_observations': {key: sum(c.get(key, 0) for r in records for c in r['calls'])
+            'provider_observations': {key: sum(c.get(key, 0) for r in records for c in r['calls'] if c.get('started', True))
                 for key in ('provider_messages', 'provider_retries', 'additional_provider_requests')}}
 
 
@@ -908,16 +913,22 @@ def run(directory, *, claude='claude', invoke=None, cancelled=None, clock=monoto
                                 break
                             schema = qa.schema_for(manifest, data) if role == 'generate' else manifest['schemas']['check']
                             sent = deepcopy(data) if role == 'generate' else {'original_request': deepcopy(data), 'candidate': candidate}
-                            limit = budget.start_role(role)
-                            if limit:
-                                row['error'] = limit
-                                break
                             binding = dict(request_id=ident, role=role, run_id=claim['run_id'],
                                 manifest_sha256=claim['manifest_sha256'], input_sha256=qa.digest(qa.encoded(sent)))
                             qa.save(directory/'calls'/f'{ident}-{role}.json',
                                     binding)
-                            row['calls'].append({**binding, 'requested_effort': manifest['effort'],
+                            row['calls'].append({**binding, 'requested_effort': manifest['effort'], 'started': False,
                                                  'error': 'runner_failed'})
+                            # Recording may block: recheck after fsync, immediately before invoking.
+                            blocked = ('ownership_lost' if not owned() or lost.is_set() else
+                                       'timed_out' if expired.is_set() or clock() >= deadline else
+                                       'cancelled' if cancelled.is_set() else budget.start_role(role))
+                            if blocked:
+                                row['error'] = row['calls'][-1]['error'] = blocked
+                                qa.save(directory/'calls'/f'{ident}-{role}.receipt',
+                                    {**binding, 'record_sha256': qa.digest(qa.encoded(row['calls'][-1]))})
+                                break
+                            row['calls'][-1]['started'] = True
                             result = invoke(role, manifest['prompts'][role], schema, sent, deadline, cancelled)
                             row['calls'][-1].pop('error')
                             row['calls'][-1].update(result)
