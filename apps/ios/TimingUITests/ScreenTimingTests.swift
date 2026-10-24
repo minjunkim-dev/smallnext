@@ -422,6 +422,66 @@ final class ScreenTimingTests: XCTestCase {
         }
     }
 
+    func testSupplementalFocusAndDeletionKeepSameNamedGoal() throws {
+        continueAfterFailure = false
+        let url = try XCTUnwrap(ProcessInfo.processInfo.environment["SMALLNEXT_TIMING_TEST_URL"])
+        let app = XCUIApplication()
+        app.launchArguments = ["-ios_core_flow", "YES", "-user_server_ai", "NO", "-development_ai_url", url, "-suggestion_timing", "NO"]
+        app.launch()
+        let goal = "정보 부족 안내 검증 삭제 \(UUID().uuidString)"
+        let editor = app.textFields["추가로 알려줄 내용"]
+        for text in ["남길 목표의 보충 내용", "삭제할 목표의 보충 내용"] {
+            newGoal(app)
+            app.textFields["목표 한 문장"].tap()
+            app.textFields["목표 한 문장"].typeText(goal)
+            app.buttons["목표 정리"].tap()
+            XCTAssertTrue(app.buttons["확인하고 시작"].waitForExistence(timeout: 10))
+            app.buttons["확인하고 시작"].tap()
+            XCTAssertTrue(app.buttons["새 정보 추가"].waitForExistence(timeout: 10))
+            app.buttons["새 정보 추가"].tap()
+            XCTAssertTrue(editor.waitForExistence(timeout: 5))
+            // 자동 초점으로 입력할 수 있어야 한다. 탭으로 초점 누락을 가리지 않는다.
+            editor.typeText(text)
+            if !app.buttons["확인하고 저장"].isHittable { app.swipeUp() }
+            app.buttons["확인하고 저장"].tap()
+            XCTAssertTrue(app.staticTexts["보충 내용을 저장했어요."].waitForExistence(timeout: 5))
+        }
+        app.buttons["새 정보 추가"].tap()
+        editor.typeText(" 편집 중")
+        app.terminate()
+        app.launch()
+        XCTAssertTrue(editor.waitForExistence(timeout: 10))
+        XCTAssertEqual(editor.value as? String, "삭제할 목표의 보충 내용 편집 중")
+        app.buttons["목표 보기"].tap()
+        app.buttons["목표 삭제"].tap()
+        let confirmation = app.alerts["목표를 삭제할까요?"]
+        XCTAssertTrue(confirmation.waitForExistence(timeout: 5))
+        confirmation.buttons["취소"].tap()
+        app.buttons["닫기"].tap()
+        XCTAssertEqual(editor.value as? String, "삭제할 목표의 보충 내용 편집 중")
+        XCTAssertNotNil(attach(app, name: "supplemental-delete-cancelled"))
+        app.buttons["목표 보기"].tap()
+        app.buttons["목표 삭제"].tap()
+        confirmation.buttons["삭제"].tap()
+        app.buttons["목표 목록"].tap()
+        let entries = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", goal + ","))
+        XCTAssertTrue(entries.firstMatch.waitForExistence(timeout: 5))
+        XCTAssertEqual(entries.count, 1)
+        entries.firstMatch.tap()
+        XCTAssertTrue(app.buttons["새 정보 추가"].waitForExistence(timeout: 5))
+        app.buttons["새 정보 추가"].tap()
+        XCTAssertEqual(editor.value as? String, "남길 목표의 보충 내용")
+        app.terminate()
+        app.launch()
+        XCTAssertTrue(editor.waitForExistence(timeout: 10))
+        XCTAssertEqual(editor.value as? String, "남길 목표의 보충 내용")
+        XCTAssertNotNil(attach(app, name: "supplemental-same-name-retained"))
+        let tree = XCTAttachment(string: app.debugDescription)
+        tree.name = "supplemental-same-name-retained-accessibility-tree"
+        tree.lifetime = .keepAlways
+        add(tree)
+    }
+
     func testObservationRejectsMissingScreenshotAndLateCapture() {
         XCTAssertEqual(termination(elapsed: 59, budget: 60, screenshotHash: nil), "missing")
         XCTAssertEqual(termination(elapsed: 60.1, budget: 60, screenshotHash: "hash"), "time_exceeded")
