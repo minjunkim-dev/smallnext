@@ -50,7 +50,7 @@ else:
                      reason='현재 제공된 정보로는 당시 역할을 확인할 수 없어요.')
     if value['status'] == 'insufficient_info' and any(fact.startswith('사용자가 확인해 저장한 보충 내용(외부 검증 미확인):') for fact in payload['available']):
         value.update(status='action', action='확인한 첫 문단을 메모에 옮기기',
-                         completion_condition='사용자 진술로 표시한 첫 문단이 메모에 있다', estimated_minutes=3,
-                         reason='사용자가 제공한 구체적인 진술을 정리한다')
+                     completion_condition='사용자 진술로 표시한 첫 문단이 메모에 있다', estimated_minutes=3,
+                     reason='사용자가 제공한 구체적인 진술을 정리한다')
 print(json.dumps({'type': 'item.completed', 'item': {'type': 'agent_message', 'text': json.dumps(value, ensure_ascii=False)}}))
 print(json.dumps({'type': 'turn.completed'}))

@@ -52,12 +52,18 @@ async fn external_provider(
     if (mode == "invalid" || mode == "invalid_missing_usage") && generating {
         value["goal_completed"] = json!(true);
     }
-    if mode == "need_info" && generating {
+    if (mode == "need_info" || mode == "supplemental_question") && generating {
         let fixture: serde_json::Value = serde_json::from_str(include_str!(
             "../../../../contracts/fixtures/insufficient-info.json"
         ))
         .unwrap();
-        value["action"] = fixture["question"].clone();
+        value["status"] = json!("need_info");
+        value["action"] = fixture[if mode == "supplemental_question" {
+            "supplemental_question"
+        } else {
+            "question"
+        }]
+        .clone();
     }
     if mode.starts_with("notice") {
         let fixture: serde_json::Value = serde_json::from_str(include_str!(
@@ -1443,6 +1449,7 @@ async fn confirmed_supplemental_actions_preserve_input_and_independent_decisions
         .unwrap()
         .push(shared["supplemental_first_action"]["available_fact"].clone());
     for kind in ["first_action", "smaller", "next_action", "replacement"] {
+        let mut input = input.clone();
         input["request_kind"] = json!(kind);
         input["completed_ids"] = if kind == "next_action" {
             json!(["completed-1"])
@@ -1465,7 +1472,7 @@ async fn confirmed_supplemental_actions_preserve_input_and_independent_decisions
             ("uncertain", "uncertain", 2),
             ("generate_type", "invalid_proposal", 1),
             ("check_type", "failed", 2),
-            ("need_info", "accepted", 2),
+            ("supplemental_question", "accepted", 2),
             (
                 "no_action",
                 if kind == "replacement" {
@@ -1487,6 +1494,13 @@ async fn confirmed_supplemental_actions_preserve_input_and_independent_decisions
                 expected["remaining_work"] = input["remaining_work"].clone();
                 expected["preserved_completed_ids"] = input["completed_ids"].clone();
                 assert_eq!(response["proposal"], expected);
+            }
+            if mode == "supplemental_question" {
+                assert_eq!(response["proposal"]["status"], "need_info");
+                assert_eq!(
+                    response["proposal"]["action"],
+                    shared["supplemental_question"]
+                );
             }
             if mode == "notice" {
                 let mut expected = shared["response"]["proposal"].clone();

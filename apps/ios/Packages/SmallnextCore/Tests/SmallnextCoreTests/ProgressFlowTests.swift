@@ -1093,7 +1093,7 @@ final class ProgressFlowTests: XCTestCase {
                                 proposal["estimated_minutes"] = self.first.estimatedMinutes
                             }
                         case "need_info":
-                            proposal["action"] = answered ? "選んだ資料はいつの記録ですか？" : question
+                            proposal["action"] = answered ? shared["supplemental_question"] as! String : question
                             proposal["completion_condition"] = "알고 있는 답을 전한다"
                             proposal["estimated_minutes"] = 0
                         case "no_action": break
@@ -1167,6 +1167,32 @@ final class ProgressFlowTests: XCTestCase {
                     XCTAssertEqual(reopened.goals.last?.completedActionCount, kind == .nextAction ? 1 : 0)
                 }
             }
+        }
+    }
+
+    func testStaleNoticeCannotRequestAnotherSelectedGoalsNewInformation() async throws {
+        for kind in [SuggestionKind.firstAction, .smaller, .nextAction, .replacement] {
+            let provider = ScriptedProvider((kind == .firstAction ? [] : [.action(first)]) + [.insufficientInfo("목표 A 안내"), .insufficientInfo("목표 B 안내"), .action(second)])
+            let stale = try await beginActionRequest(kind, provider: provider)
+            let originalID = try XCTUnwrap(stale.goalDetails?.id)
+            try stale.confirmSupplementalContext("목표 A 확인값", for: originalID)
+            let selected = try await beginActionRequest(.firstAction, provider: provider)
+            let selectedID = try XCTUnwrap(selected.goalDetails?.id)
+            XCTAssertNotEqual(originalID, selectedID)
+            try selected.confirmSupplementalContext("목표 B 확인값", for: selectedID)
+            let expected = selected.screen
+            XCTAssertFalse(stale.canRequestWithNewInformation)
+            try stale.retrySuggestion()
+            await stale.waitForSuggestion()
+            let requests = await provider.requests
+            XCTAssertEqual(requests.count, kind == .firstAction ? 2 : 3)
+            let reopened = try makeFlow(provider)
+            XCTAssertEqual(reopened.screen, expected)
+            XCTAssertEqual(reopened.goalDetails?.id, selectedID)
+            XCTAssertEqual(reopened.supplementalContext?.confirmedText, "목표 B 확인값")
+            try reopened.selectGoal(originalID)
+            XCTAssertEqual(reopened.supplementalContext?.confirmedText, "목표 A 확인값")
+            XCTAssertEqual(reopened.goals.first { $0.id == originalID }?.completedActionCount, kind == .nextAction ? 1 : 0)
         }
     }
 

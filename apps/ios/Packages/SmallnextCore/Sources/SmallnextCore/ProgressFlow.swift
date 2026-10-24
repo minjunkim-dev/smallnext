@@ -194,8 +194,9 @@ public final class ProgressFlow {
     /// nil은 이 목표에 저장 레코드가 없다는 뜻이다. 빈 초안과 구분한다.
     public private(set) var supplementalContext: SupplementalContext?
     public var canRequestWithNewInformation: Bool {
-        guard case .insufficientInfo = screen, supplementalContext?.confirmedText.isEmpty == false else { return false }
-        return (try? database.writer.read(Self.canRepropose)) == true
+        guard case .insufficientInfo(let notice, _) = screen, let goalID = goalDetails?.id,
+              supplementalContext?.confirmedText.isEmpty == false else { return false }
+        return (try? database.writer.read { try Self.canRepropose($0, goalID: goalID, noticeID: notice.requestID) }) == true
     }
     var timingEnabled = SuggestionTiming.enabled
     public private(set) var timingSample: SuggestionTiming?
@@ -670,10 +671,10 @@ public final class ProgressFlow {
 
     /// 실패·중단·취소한 제안과 대체 후보가 없는 보류 중 화면만 다시 요청한다. 기다리는 중이면 무시한다.
     public func retrySuggestion() throws {
-        if case .insufficientInfo = screen {
+        if case .insufficientInfo(let notice, _) = screen {
+            guard let goalID = goalDetails?.id else { return }
             try perform { db in
-                guard try Self.canRepropose(db), let goalID = try Self.selectedGoalID(db),
-                      let notice = try Self.loadSupplementalContext(db, goalID: goalID)?.lastNotice else { return nil }
+                guard try Self.canRepropose(db, goalID: goalID, noticeID: notice.requestID) else { return nil }
                 let pending = try Self.insertRequest(db, goalID: goalID, kind: notice.requestKind)
                 do { _ = try HTTPActionSuggestionProvider.requestBody(pending.request) }
                 catch { throw ProgressFlowError.supplementalRequestTooLarge }
@@ -709,12 +710,12 @@ public final class ProgressFlow {
         }
     }
 
-    private nonisolated static func canRepropose(_ db: Database) throws -> Bool {
-        guard let goalID = try selectedGoalID(db),
+    private nonisolated static func canRepropose(_ db: Database, goalID: Int64, noticeID: Int64) throws -> Bool {
+        guard try selectedGoalID(db) == goalID,
               let goal = try Row.fetchOne(db, sql: "SELECT * FROM goal WHERE id = ? AND is_confirmed AND status = 'active'", arguments: [goalID]),
               let context = try loadSupplementalContext(db, goalID: goalID),
               !context.confirmedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-              let notice = context.lastNotice,
+              let notice = context.lastNotice, notice.requestID == noticeID,
               let latest = try Row.fetchOne(db, sql: "SELECT id, kind, status FROM suggestion_request WHERE goal_id = ? ORDER BY id DESC LIMIT 1", arguments: [goalID]),
               latest["id"] as Int64 == notice.requestID, latest["kind"] as String == notice.requestKind.rawValue,
               latest["status"] as String == "applied",

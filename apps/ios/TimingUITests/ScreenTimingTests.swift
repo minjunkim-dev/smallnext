@@ -398,7 +398,6 @@ final class ScreenTimingTests: XCTestCase {
             app.launch()
             let retry = app.buttons["새 정보로 다시 제안"]
             XCTAssertTrue(retry.waitForExistence(timeout: 10))
-            XCTAssertTrue(retry.label.contains("새 정보로 다시 제안"))
             if !retry.isHittable { app.swipeUp() }
             XCTAssertNotNil(attach(app, name: "\(kind)-supplemental-restored"))
             retry.tap()
