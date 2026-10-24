@@ -103,7 +103,7 @@ final class DevelopmentAITests: XCTestCase {
             let request = SuggestionRequest(kind: kind, goal: "과거 경력 사실 정리", currentAction: nil, completedTasks: [])
             let candidate = try await provider().suggest(request)
             XCTAssertEqual(candidate, .insufficientInfo(try InsufficientInfoFixture.reason()))
-            XCTAssertEqual(CandidatePolicy.accept(candidate, for: request) != nil, kind == .firstAction)
+            XCTAssertNotNil(CandidatePolicy.accept(candidate, for: request))
         }
         XCTAssertEqual(DevelopmentTransport.store.requests.count, 4)
     }

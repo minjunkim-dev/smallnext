@@ -253,6 +253,62 @@ final class ScreenTimingTests: XCTestCase {
         XCTAssertTrue(entry.waitForExistence(timeout: 10))
     }
 
+    func testActionQuestionsRestoreAndReturnToTheirOriginalProgress() throws {
+        continueAfterFailure = false
+        let url = try XCTUnwrap(ProcessInfo.processInfo.environment["SMALLNEXT_TIMING_TEST_URL"])
+        let question = "직접 확인할 수 있는 기록이 있나요?"
+        let title = "지금은 새 행동을 제안하기 어려워요"
+        for kind in ["first_action", "smaller", "next_action", "replacement"] {
+            let app = XCUIApplication()
+            app.launchArguments = ["-ios_core_flow", "YES", "-user_server_ai", "NO", "-development_ai_url", url, "-suggestion_timing", "NO"]
+            app.launch()
+            newGoal(app)
+            let goal = "후속 질문 검증 \(kind) \(UUID().uuidString)"
+            app.textFields["목표 한 문장"].tap()
+            app.textFields["목표 한 문장"].typeText(goal)
+            app.buttons["목표 정리"].tap()
+            XCTAssertTrue(app.buttons["확인하고 시작"].waitForExistence(timeout: 10))
+            app.buttons["확인하고 시작"].tap()
+            if kind != "first_action" {
+                XCTAssertTrue(app.staticTexts["펜 다섯 개 정리하기"].waitForExistence(timeout: 10))
+                if kind == "replacement" {
+                    app.buttons["더 보기"].tap()
+                    app.buttons["나중에"].tap()
+                } else { app.buttons[kind == "smaller" ? "더 작게" : "완료"].tap() }
+            }
+            let field = app.textFields[question]
+            XCTAssertTrue(field.waitForExistence(timeout: 10))
+            if !field.isHittable { app.swipeUp() }
+            field.tap()
+            field.typeText("모르고 확인할 자료도 없어요.")
+            app.terminate()
+            app.launch()
+            XCTAssertTrue(field.waitForExistence(timeout: 10))
+            XCTAssertEqual(field.value as? String, "모르고 확인할 자료도 없어요.")
+            XCTAssertNotNil(attach(app, name: "\(kind)-question-restored"))
+            if !app.buttons["답하기"].isHittable { app.swipeUp() }
+            app.buttons["답하기"].tap()
+            XCTAssertTrue(app.staticTexts[title].waitForExistence(timeout: 10))
+            XCTAssertFalse(app.buttons["다시 시도"].exists)
+            XCTAssertFalse(app.buttons["완료"].exists)
+            XCTAssertNotNil(attach(app, name: "\(kind)-information-notice"))
+            let tree = XCTAttachment(string: app.debugDescription)
+            tree.name = "\(kind)-question-notice-accessibility-tree"
+            tree.lifetime = .keepAlways
+            add(tree)
+            app.buttons["돌아가기"].tap()
+            if kind == "smaller" {
+                XCTAssertTrue(app.staticTexts["펜 다섯 개 정리하기"].waitForExistence(timeout: 10))
+                XCTAssertTrue(app.buttons["완료"].exists)
+                app.buttons["목표 목록"].tap()
+            }
+            let entry = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", goal + ",")).firstMatch
+            XCTAssertTrue(entry.waitForExistence(timeout: 10))
+            XCTAssertTrue(entry.label.contains("완료한 행동 \(kind == "next_action" ? 1 : 0)개"))
+            app.terminate()
+        }
+    }
+
     func testObservationRejectsMissingScreenshotAndLateCapture() {
         XCTAssertEqual(termination(elapsed: 59, budget: 60, screenshotHash: nil), "missing")
         XCTAssertEqual(termination(elapsed: 60.1, budget: 60, screenshotHash: "hash"), "time_exceeded")

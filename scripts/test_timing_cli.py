@@ -16,10 +16,12 @@ CLI = ROOT / 'services/api/tests/fixtures/timing-cli/codex'
 
 
 class TimingCLITests(unittest.TestCase):
-    def invoke(self, kind, *, check=False, delayed=False, notice=False):
+    def invoke(self, kind, *, check=False, delayed=False, notice=False, followup=False, answered=False):
         payload = json.loads((ROOT / 'services/api/examples/development-ai-input.json').read_bytes())
         payload['request_kind'] = kind
         if notice: payload['goal'] = '정보 부족 안내 검증'
+        if followup: payload['goal'] = f'후속 질문 검증 {kind}'
+        if answered: payload['available'].append('행동 요청에서 이미 답한 질문: 기록이 있나요? / 답: 모르고 자료도 없어요.')
         if check:
             payload = {'original_request': payload, 'candidate': {}}
         with tempfile.TemporaryDirectory() as directory:
@@ -70,3 +72,13 @@ class TimingCLITests(unittest.TestCase):
         self.assertEqual(value['reduction'], '')
         self.assertFalse(value['goal_completed'])
         self.assertFalse(value['current_action_completed'])
+
+    def test_each_action_question_stops_with_notice_after_an_unknown_answer(self):
+        for kind in ['first_action', 'smaller', 'next_action', 'replacement']:
+            _, value = self.invoke(kind, followup=True)
+            self.assertEqual(value['status'], 'need_info')
+            self.assertEqual(value['action'], '직접 확인할 수 있는 기록이 있나요?')
+            _, value = self.invoke(kind, followup=True, answered=True)
+            self.assertEqual(value['status'], 'insufficient_info')
+            self.assertEqual(value['action'], '')
+            self.assertEqual(value['completion_condition'], '')

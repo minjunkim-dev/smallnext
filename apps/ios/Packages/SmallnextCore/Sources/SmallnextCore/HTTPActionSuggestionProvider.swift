@@ -190,6 +190,7 @@ public struct HTTPActionSuggestionProvider: ActionSuggestionProvider {
             if let text = request.context.materialExcerpt { facts.append("사용자가 선택한 자료 발췌: \(text)") }
             facts += request.context.materialLinks.map { "자료 링크(본문을 읽지 않음): \($0.absoluteString)" }
             facts += request.context.answers.map { "이미 답한 질문: \($0.question) / 답: \($0.answer)" }
+            facts += request.actionAnswers.map { "행동 요청에서 이미 답한 질문: \($0.question) / 답: \($0.answer)" }
             facts += request.completedTasks.map { "이미 완료한 행동: \($0)" }
             facts += request.deferredTasks.map { "보류한 행동(재제안 금지): \($0)" }
             available = facts

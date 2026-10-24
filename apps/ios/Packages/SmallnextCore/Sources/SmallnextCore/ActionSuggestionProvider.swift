@@ -35,6 +35,8 @@ public struct SuggestionRequest: Sendable, Equatable {
     /// 완료한 행동과 구분하는 미완료 분할 원본·현재·보류 행동이다.
     var remainingTasks: [String] = []
     var completedActionIDs: [String] = []
+    /// 행동 요청에 연결해 확인한 질문과 답이다. 목표 준비와 막힘 원인과 구분한다.
+    var actionAnswers: [GoalAnswer] = []
 }
 
 struct GoalAnswer: Equatable, Sendable {
@@ -93,7 +95,7 @@ enum CandidatePolicy {
     static func accept(_ candidate: SuggestionCandidate, for request: SuggestionRequest) -> SuggestionCandidate? {
         switch candidate {
         case .insufficientInfo(let text):
-            guard request.kind == .firstAction, let reason = trimmed(text) else { return nil }
+            guard request.kind != .goalPreparation, let reason = trimmed(text) else { return nil }
             return .insufficientInfo(reason)
         case .goalSummary(let text):
             guard request.kind == .goalPreparation, let criteria = trimmed(text) else { return nil }
@@ -102,8 +104,7 @@ enum CandidatePolicy {
             // 대체 후보 없음은 대체 요청에서만 받는다.
             return request.kind == .replacement ? .noAction : nil
         case .question(let text):
-            // 목표 준비와 더 작게에서만 확인 질문 하나를 받는다.
-            guard request.kind == .goalPreparation || request.kind == .smaller, let question = trimmed(text) else { return nil }
+            guard let question = trimmed(text) else { return nil }
             return .question(question)
         case .action(let proposed):
             return action(proposed, for: request).map(SuggestionCandidate.action)
