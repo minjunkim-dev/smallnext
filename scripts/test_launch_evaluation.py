@@ -16,6 +16,7 @@ from unittest.mock import patch
 
 import launch_evaluation as launch
 import oauth_quality as qa
+from test_oauth_output_limit import fake_command, permit_fake_cli
 
 
 class TransitionTests(unittest.TestCase):
@@ -74,6 +75,7 @@ def isolate_private_root(test):
 class LaunchEvaluationTests(unittest.TestCase):
     def setUp(self):
         isolate_private_root(self)
+        permit_fake_cli(self)
 
     def freeze(self, directory):
         root = Path(directory).resolve() / "launch"
@@ -640,7 +642,7 @@ print(json.dumps({'type':'result','subtype':'success','is_error':False,'modelUsa
                   'usage':{'input_tokens':100,'output_tokens':30},'result':json.dumps(out)}))
 ''')
             fake.chmod(0o700)
-            command = [sys.executable, str(qa.REPO/'scripts/launch_evaluation.py'), 'run', str(root), '--claude', str(fake)]
+            command = fake_command(qa.REPO/'scripts/launch_evaluation.py', 'run', root, '--claude', fake)
             result = subprocess.run(command, capture_output=True, timeout=30)
             self.assertEqual(result.returncode, 0, result.stderr)
             summary = json.loads(result.stdout)

@@ -21,6 +21,9 @@ from concurrent.futures import ThreadPoolExecutor
 REPO = Path(__file__).resolve().parents[1]
 MODEL = "claude-haiku-5-5"
 EFFORT = "xhigh"
+OUTPUT_TOKENS = 8192
+OUTPUT_SUPPORT = REPO / "docs/research/claude-output-limit-support.json"
+OUTPUT_SUPPORT_SHA256 = "3194e2c3c0c557ffad0619494540210fd3c4a6bebb74da7876970382855e2f8b"
 
 
 def encoded(value):
@@ -175,6 +178,7 @@ class Tracker:
         self.blocks = {}
         self.block_seconds = {}
         self.structured_json = {}
+        self.output_tokens = None
 
     def consume(self, event, seconds):
         if not isinstance(event, dict):
@@ -234,6 +238,14 @@ class Tracker:
             if detail.get("delta", {}).get("stop_reason") == "max_tokens":
                 self.max_tokens += 1
                 raise ValueError("max_tokens")
+            if detail.get("type") == "message_delta" and "usage" in detail:
+                usage = detail["usage"]
+                if not isinstance(usage, dict):
+                    raise ValueError("unverified_output_usage")
+                if "output_tokens" in usage:
+                    tokens = usage["output_tokens"]
+                    self.output_tokens = tokens if type(tokens) is int and tokens >= 0 else None
+                    output_count(tokens)
         if event.get("type") in {"assistant", "user"}:
             for block in event.get("message", {}).get("content", []):
                 if not isinstance(block, dict):
@@ -277,6 +289,7 @@ class Tracker:
         usage = result.get("usage") if isinstance(result.get("usage"), dict) else {}
         models = result.get("modelUsage") if isinstance(result.get("modelUsage"), dict) else {}
         return {"provider_messages": self.messages, "provider_retries": self.retries,
+                "output_token_limit": OUTPUT_TOKENS, "stream_output_tokens": self.output_tokens,
                 "additional_provider_requests": max(0, self.messages - 1) + self.retries,
                 "max_tokens": self.max_tokens, "first_response_seconds": self.first_response,
                 "last_thinking_seconds": self.last_thinking, "delta_characters": self.characters,
@@ -289,6 +302,35 @@ class Tracker:
 
 def numeric(value, divisor=1):
     return value / divisor if type(value) in (int, float) and math.isfinite(value) and value >= 0 else None
+
+
+def output_count(value):
+    if type(value) is not int or value < 0:
+        raise ValueError("unverified_output_usage")
+    if value > OUTPUT_TOKENS:
+        raise ValueError("output_tokens_exceeded")
+    return value
+
+
+def output_readiness(output_mode):
+    """The reviewed evidence is incomplete; changing a status flag cannot authorize calls."""
+    status = {"ready": False, "output_tokens": OUTPUT_TOKENS,
+              "provider_application": "unobserved", "reasons": []}
+    try:
+        raw = OUTPUT_SUPPORT.read_bytes()
+    except OSError:
+        status["reasons"] = ["support_missing"]
+        return status
+    status["evidence_sha256"] = digest(raw)
+    if status["evidence_sha256"] != OUTPUT_SUPPORT_SHA256:
+        status["reasons"] = ["support_changed"]
+        return status
+    evidence = json.loads(raw)
+    if output_mode not in evidence["output_modes"] or OUTPUT_TOKENS != evidence["output_tokens"]:
+        status["reasons"] = ["support_mismatch"]
+        return status
+    status["reasons"] = evidence["unverified"]
+    return status
 
 
 class OutputError(ValueError):
@@ -345,6 +387,7 @@ def environment():
         "PATH", "HOME", "TMPDIR", "SSL_CERT_FILE", "SSL_CERT_DIR", "HTTP_PROXY",
         "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY") if key in os.environ}
     env["USER"] = env["LOGNAME"] = pwd.getpwuid(os.getuid()).pw_name
+    env["CLAUDE_CODE_MAX_OUTPUT_TOKENS"] = str(OUTPUT_TOKENS)
     return env
 
 
@@ -429,6 +472,9 @@ def _call(claude, prompt, schema, data, deadline, cancelled, output_mode="struct
             raise ValueError("cancelled")
         if monotonic() >= deadline:
             raise ValueError("timed_out")
+        record["output_limit_support"] = output_readiness(output_mode)
+        if not record["output_limit_support"]["ready"]:
+            raise ValueError("output_limit_unverified")
         with tempfile.TemporaryDirectory(prefix="smallnext-oauth-") as workspace:
             child = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                      stderr=subprocess.DEVNULL, start_new_session=True,
@@ -486,12 +532,23 @@ def _call(claude, prompt, schema, data, deadline, cancelled, output_mode="struct
                           preserved_completed_ids=deepcopy(data["completed_ids"]),
                           goal_completed=False, current_action_completed=False)
             validate(output, proposal_schema)
+        usage = result.get("usage")
+        tokens = output_count(usage.get("output_tokens") if isinstance(usage, dict) else None)
+        model_usage = result["modelUsage"][MODEL]
+        if not isinstance(model_usage, dict):
+            raise ValueError("unverified_output_usage")
+        if "outputTokens" in model_usage and output_count(model_usage["outputTokens"]) != tokens:
+            raise ValueError("output_usage_mismatch")
+        if tracker.output_tokens is not None and tracker.output_tokens != tokens:
+            raise ValueError("output_usage_mismatch")
         record["output"] = output
     except ValueError as error:
         # Provider exception text can contain secrets; only our own codes leave this process.
         allowed = {"cancelled", "timed_out", "output_limit", "provider_failed", "wrong_model",
                    "unverified_message_count", "unsupported_schema", "invalid_output", "provider_retry",
-                   "additional_provider_request", "max_tokens", "duplicate_result"}
+                   "additional_provider_request", "max_tokens", "duplicate_result",
+                   "unverified_output_usage", "output_tokens_exceeded", "output_usage_mismatch",
+                   "output_limit_unverified"}
         record["error"] = str(error) if str(error) in allowed else "invalid_stream"
         if isinstance(error, OutputError):
             record["output_error"] = error.detail
@@ -507,22 +564,40 @@ def _call(claude, prompt, schema, data, deadline, cancelled, output_mode="struct
                 except (ProcessLookupError, PermissionError):
                     # macOS can return EPERM for a group containing only an unreaped zombie.
                     pass
+                except OSError:
+                    record["cleanup_error"] = "signal_failed"
                 if sig == signal.SIGTERM:
                     # Keep the group leader unreaped until both signals to prevent PID reuse.
                     threading.Event().wait(.05)
-            child.wait()
+            try:
+                child.wait(timeout=1)
+                record["process_reaped"] = True
+            except (subprocess.TimeoutExpired, OSError):
+                record["cleanup_error"] = "reap_failed"
             if child.returncode != 0 and "error" not in record:
                 record.pop("output", None)
                 record["error"] = "provider_failed"
-            child.stdout.close()
-            record["process_reaped"] = True
-            try:
-                os.killpg(child.pid, 0)
-                record["process_group_alive"] = True
-            except ProcessLookupError:
-                record["process_group_alive"] = False
-            except PermissionError:
-                record["process_group_alive"] = True
+            for stream in (child.stdin, child.stdout):
+                try:
+                    stream.close()
+                except OSError:
+                    record["cleanup_error"] = "pipe_close_failed"
+            cleanup_deadline = monotonic() + 1
+            while True:
+                try:
+                    os.killpg(child.pid, 0)
+                    record["process_group_alive"] = True
+                except ProcessLookupError:
+                    record["process_group_alive"] = False
+                except PermissionError:
+                    record["process_group_alive"] = True
+                except OSError:
+                    record["process_group_alive"] = True
+                    record["cleanup_error"] = "group_status_failed"
+                if not record["process_group_alive"] or monotonic() >= cleanup_deadline:
+                    break
+                # Killed descendants can remain zombies briefly while their new parent reaps them.
+                threading.Event().wait(.01)
         record.update(tracker.metadata())
         record["seconds"] = round(monotonic() - started, 3)
     return record
@@ -556,7 +631,7 @@ def question_prompt(prompt):
             'For accept, return exactly criteria [1,2,3,4,5]; for reject or uncertain, return at least one relevant failing or unsupported criterion. Use nonblank exact quotes and a concise Korean justification.\n\n'+'\n\n'.join(paragraphs))
 
 def result_failure(record):
-    if record.get("process_group_alive") or ("cli_pid" in record and (
+    if record.get("cleanup_error") or record.get("process_group_alive") or ("cli_pid" in record and (
             record.get("process_reaped") is not True or record.get("process_group_alive") is not False)):
         return "process_cleanup"
     if "error" in record:
@@ -574,6 +649,8 @@ def call(claude,prompt,schema,data,deadline,cancelled,output_mode='structured'):
     record=_call(claude,prompt,schema,data,deadline,cancelled,output_mode)
     failure=result_failure(record)
     if failure is not None:
+        if 'error' in record and record['error'] != failure:
+            record['primary_error'] = record['error']
         record['error']=failure
         record.pop('output',None)
     output=record.get('output')
@@ -828,6 +905,8 @@ def recover_summary(directory):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
+    readiness = sub.add_parser("readiness", help="read-only output cap evidence; never invokes Claude")
+    readiness.add_argument("--output-mode", choices=("structured", "text-json"), default="text-json")
     frozen = sub.add_parser("freeze")
     frozen.add_argument("directory", type=Path)
     frozen.add_argument("--suite", choices=("quality", "latency"), required=True)
@@ -845,6 +924,10 @@ def main():
     recovery = sub.add_parser("summarize", help="recover an interrupted summary without any provider calls")
     recovery.add_argument("directory", type=Path)
     args = parser.parse_args()
+    if args.command == "readiness":
+        status = output_readiness(args.output_mode)
+        print(json.dumps(status))
+        raise SystemExit(0 if status["ready"] else 1)
     if args.command == "freeze":
         freeze(args.directory, args.suite, args.comparison_role, args.repetitions, args.case,
                args.output_mode, args.comparison_output, sequential=args.sequential)
