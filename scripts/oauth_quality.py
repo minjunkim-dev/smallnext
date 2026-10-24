@@ -23,7 +23,7 @@ MODEL = "claude-haiku-5-5"
 EFFORT = "xhigh"
 OUTPUT_TOKENS = 8192
 OUTPUT_SUPPORT = REPO / "docs/research/claude-output-limit-support.json"
-OUTPUT_SUPPORT_SHA256 = "3194e2c3c0c557ffad0619494540210fd3c4a6bebb74da7876970382855e2f8b"
+OUTPUT_SUPPORT_SHA256 = "d9a8ff811d8878e9d70ade4b3ff04039d7d3c60584359d004dc97f5351032e24"
 
 
 def encoded(value):
@@ -391,6 +391,9 @@ def environment():
         "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY") if key in os.environ}
     env["USER"] = env["LOGNAME"] = pwd.getpwuid(os.getuid()).pw_name
     env["CLAUDE_CODE_MAX_OUTPUT_TOKENS"] = str(OUTPUT_TOKENS)
+    env["CLAUDE_CODE_MAX_RETRIES"] = "0"
+    env["MAX_STRUCTURED_OUTPUT_RETRIES"] = "1"
+    env["CLAUDE_CODE_DISABLE_NONSTREAMING_FALLBACK"] = "1"
     return env
 
 

@@ -1,5 +1,5 @@
 {
-  "checked_on": "2026-10-24",
+  "checked_on": "2026-10-25",
   "cli_version": "2.1.310 (Claude Code)",
   "cli_sha256": "ffb64331bc0ee1b69efb7c2c428bd3ab516bc31b75bf60886b356c97c1c25ffd",
   "cli_bytes": 274068224,
@@ -7,21 +7,27 @@
   "effort": "xhigh",
   "authentication": "Claude Code subscription OAuth; forcedLoginMethod=claudeai",
   "transport": "-p --output-format stream-json --verbose --include-partial-messages --max-turns 1",
-  "output_modes": ["structured", "text-json"],
+  "output_modes": [
+    "structured",
+    "text-json"
+  ],
   "setting": "CLAUDE_CODE_MAX_OUTPUT_TOKENS",
   "output_tokens": 8192,
   "scope": "each provider response, generation and checker separately; thinking and visible output share the limit",
   "sources": [
     "https://code.claude.com/docs/en/env-vars",
     "https://code.claude.com/docs/en/cli-reference",
-    "https://platform.claude.com/docs/en/build-with-claude/thinking"
+    "https://platform.claude.com/docs/en/build-with-claude/thinking",
+    "https://code.claude.com/docs/en/model-config",
+    "https://code.claude.com/docs/en/settings#settings-precedence",
+    "https://github.com/anthropics/claude-code/blob/main/CHANGELOG.md#210"
   ],
   "findings": [
-    "공식 환경변수 문서는 대부분 요청의 최대 출력 토큰 설정으로 설명한다. 선택 모델의 cap보다 크면 CLI가 낮춘다.",
-    "공식 API 문서는 사고 토큰도 출력 토큰이며 max_tokens를 응답 본문과 공유한다고 설명한다. 구독 경로의 동일 집계는 미확인이다.",
-    "--max-turns는 agentic turn 제한이며 모든 내부 공급자 재요청을 1회로 보장한다는 근거가 아니다.",
-    "공식 문서상 API 오류 재시도 기본값은 10이며 구조화 출력 검증은 기본 5번 시도한다. 이 작업은 별도 설정을 추측해 추가하지 않는다.",
-    "읽기 전용 확인은 설치 실행 파일의 --version, 파일 크기와 SHA-256뿐이다. 계정/키/세션 원문과 실제 모델 호출은 사용하지 않았다."
+    "공식 문서는 대부분 요청의 출력 상한으로 설명한다. 설치본의 상한 해석과 주 요청 max_tokens 연결을 정적으로 확인했지만 해당 구독 공급자 경로의 실제 적용은 미확인이다.",
+    "공식 API는 사고와 응답이 max_tokens를 공유한다고 설명한다. 설치본은 output_tokens를 전체 출력에, thinking_tokens를 별도 세부 집계에 누적한다. 구독 응답의 동일 집계와 완전성은 관측하지 않았다.",
+    "실패 API 재시도0회, 구조화 출력 총1회 시도와 비스트리밍 fallback 차단의 공식 변수 및 설치본 읽기 지점을 확인했다. 가짜 CLI 전달 검사는 실제 CLI 내부 실행의 검증이 아니다.",
+    "별도 스트림 truncation/사고만 생성된 응답의 재시도 분기가 있다. --max-turns와 위 설정만으로 내부 재시도/이어쓰기 전체를 통제했다고 보고하지 않는다.",
+    "전역/사용자 설정·설치본을 변경하지 않고 파일 SHA와 제한한 바이트 범위만 정적으로 읽었다. 계정/키/세션/과거 평가 원문과 실제 모델 호출은 사용하지 않았다."
   ],
   "unverified": [
     "subscription_model_output_cap_unverified",
@@ -29,5 +35,66 @@
     "internal_retry_and_continuation_contract_unverified"
   ],
   "provider_observation": "none; no model request was made",
-  "readiness": "incomplete"
+  "readiness": "incomplete",
+  "configured_environment": {
+    "CLAUDE_CODE_MAX_OUTPUT_TOKENS": "8192",
+    "CLAUDE_CODE_MAX_RETRIES": "0",
+    "MAX_STRUCTURED_OUTPUT_RETRIES": "1",
+    "CLAUDE_CODE_DISABLE_NONSTREAMING_FALLBACK": "1"
+  },
+  "analysis_note": "docs/research/claude-output-limit-evidence.md",
+  "cli_static_evidence": {
+    "method": "read-only embedded JavaScript inspection; executable not invoked",
+    "offset_basis": "zero-based byte offsets in cli_sha256; fragments are not complete control-flow proofs",
+    "fragments": [
+      {
+        "label": "output_limit_resolution",
+        "offset": 219159093,
+        "length": 596,
+        "sha256": "ef6a9578d3969e93308517aefd24d2560dbe454bef01993e77a173cc602f1684"
+      },
+      {
+        "label": "main_request_cap",
+        "offset": 227968205,
+        "length": 850,
+        "sha256": "cd41089c2afba08a8f6b2f0a86c609c7cdcb0f693d1fb0531870af6843fab086"
+      },
+      {
+        "label": "wire_max_tokens",
+        "offset": 227973900,
+        "length": 300,
+        "sha256": "2013296d1b1149e9515e96ca4f00a3e4927a6e3f0c8087ec4c68dcf52a6078a1"
+      },
+      {
+        "label": "reported_usage_accounting",
+        "offset": 226096046,
+        "length": 600,
+        "sha256": "13558b5941a6d263a789ca969be6b7b648c6fd914106d4e56e664b1350f2d110"
+      },
+      {
+        "label": "api_retry_limit",
+        "offset": 227902455,
+        "length": 350,
+        "sha256": "6724e4cfa6da8a12c17c99070bfa2a30599d3ddaef2d097b8814775f46086983"
+      },
+      {
+        "label": "structured_output_attempts",
+        "offset": 254125560,
+        "length": 1000,
+        "sha256": "bfd14d35578f4cffc2eb3bd420eda3079b99c951f0a9dc2dfca5fba18fd99df7"
+      },
+      {
+        "label": "nonstreaming_fallback_switch",
+        "offset": 228040330,
+        "length": 480,
+        "sha256": "6ceb22bdd9a77255437a58146222e0ec39ab6c087a88aec4665324cf8cddda16"
+      },
+      {
+        "label": "separate_stream_recovery",
+        "offset": 227904400,
+        "length": 900,
+        "sha256": "1cc13e754b65101c22b74d36d72bf60307c734f7b50457dfdb8ed4431148174d"
+      }
+    ]
+  }
 }
