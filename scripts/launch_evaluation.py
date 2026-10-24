@@ -23,6 +23,7 @@ import uuid
 
 import oauth_quality as qa
 import supplemental_evaluation as supplemental
+import supplemental_review
 
 
 # #251: subscription runs have no µUSD limit; the 3/10 USD budget is for the server API key only.
@@ -503,7 +504,7 @@ def private_exists(directory, path):
         return False
 
 
-def report(directory, *, observations=()):
+def report(directory, *, observations=(), review=None):
     try:
         with ExitStack() as opened:
             descriptor = opened.enter_context(private_directory(directory))
@@ -544,12 +545,12 @@ def report(directory, *, observations=()):
                         snapshot[name] = opened.enter_context(private_source(descriptor, name))
                 except (OSError, KeyError, TypeError, ValueError):
                     raise ValueError('private screen evidence unavailable') from None
-            return report_bundle(Path(directory), snapshot, observations)
+            return report_bundle(Path(directory), snapshot, observations, review)
     except OSError:
         raise ValueError('private report bundle unavailable') from None
 
 
-def report_bundle(directory, descriptor, observations):
+def report_bundle(directory, descriptor, observations, review=None):
     directory = Path(directory)
     manifest = load(directory, descriptor=descriptor)
     claim = private_json(descriptor, 'run-started.json')
@@ -801,6 +802,12 @@ def report_bundle(directory, descriptor, observations):
             and all(unit['state'] == 'completed' for unit in summary['units'])
             and qa.numeric(summary['elapsed_seconds']) is not None
             and summary['elapsed_seconds'] < manifest['limits']['seconds'])
+    if manifest.get('plan_kind') == 'supplemental-fixed':
+        record_hashes = {row['request_id']: qa.digest(private_bytes(descriptor, 'results/' + row['result_file']))
+                         for row in records}
+        summary.update(supplemental_review.report(manifest, records, end, summary, review, record_hashes))
+    elif review is not None:
+        raise ValueError('output review requires a fixed supplemental plan')
     return summary
 
 
@@ -982,6 +989,12 @@ def run(directory, *, claude='claude', invoke=None, cancelled=None, clock=monoto
                             if settlement or clock() >= deadline:
                                 row['error'] = settlement or 'timed_out'
                                 break
+                            if manifest.get('plan_kind') == 'supplemental-fixed':
+                                tokens = result['usage']['output_tokens']
+                                if tokens > qa.OUTPUT_TOKENS or tokens % 1:
+                                    row['error'] = ('output_tokens_exceeded' if tokens > qa.OUTPUT_TOKENS
+                                                    else 'unverified_output_usage')
+                                    break
                             if result.get('actual_models') != [manifest['model']] or result.get('provider_messages') != 1:
                                 row['error'] = 'model_or_call_count'
                                 break
@@ -1073,6 +1086,7 @@ def main():
     reporting = commands.add_parser('report')
     reporting.add_argument('directory', type=Path)
     reporting.add_argument('--observations', type=Path)
+    reporting.add_argument('--review', type=Path, help='고정 계획의 비공개 출력별 판정 JSON')
     reporting.add_argument('--output', default='report.json')
     preflight = commands.add_parser('paid-preflight')
     preflight.add_argument('--stage', choices=('preparation', 'before_separate_server'), required=True)
@@ -1091,7 +1105,8 @@ def main():
             if Path(args.output).name != args.output or args.output in {'manifest.json', 'integrity.json'}:
                 raise ValueError('report filename required')
             observations = private_json(args.observations.parent, args.observations.name, expected_type=list) if args.observations else []
-            summary = report(args.directory, observations=observations)
+            review = private_json(args.review.parent, args.review.name) if args.review else None
+            summary = report(args.directory, observations=observations, review=review)
             qa.save(args.directory/args.output, summary)
         else:
             summary = paid_preflight(args.stage, private_json(args.conditions.parent, args.conditions.name))
