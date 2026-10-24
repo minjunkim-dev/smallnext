@@ -657,6 +657,46 @@ final class ProgressFlowTests: XCTestCase {
         XCTAssertEqual(flow.screen, .awaitingNextAction(problem: .unsuitable))
     }
 
+    func testSupplementalDraftAndConfirmationRestoreSeparatelyWithoutCallingProvider() async throws {
+        let provider = ScriptedProvider([.insufficientInfo(try InsufficientInfoFixture.reason())])
+        let flow = try makeFlow(provider)
+        try await prepareGoal(flow, "과거 경력 사실 정리")
+        let goalID = try XCTUnwrap(flow.goalDetails?.id)
+        XCTAssertNil(flow.supplementalContext)
+        try flow.confirmGoal(completionCriteria: "경력 사실을 정리했다")
+        await flow.waitForSuggestion()
+        let notice = try XCTUnwrap(flow.supplementalContext?.lastNotice)
+        XCTAssertNil(flow.supplementalContext?.draftText)
+        try flow.updateSupplementalDraft("", for: goalID)
+        XCTAssertEqual(flow.supplementalContext?.draftText, "")
+        let text = "당시 제가 작성한 것은 첫 문단이에요.\n자료는 직접 골랐어요."
+        try flow.updateSupplementalDraft(text, for: goalID)
+        let reopened = try makeFlow(provider)
+        XCTAssertEqual(reopened.supplementalContext?.draftText, text)
+        XCTAssertEqual(reopened.supplementalContext?.confirmedText, "")
+        XCTAssertFalse(try XCTUnwrap(reopened.supplementalContext).hasChangesSinceNotice)
+        XCTAssertEqual(try count("SELECT revision FROM goal WHERE id = \(goalID)"), notice.goalRevision)
+        try reopened.confirmSupplementalContext(text, for: goalID)
+        XCTAssertEqual(reopened.supplementalContext?.confirmedText, text)
+        XCTAssertNil(reopened.supplementalContext?.draftText)
+        XCTAssertEqual(reopened.supplementalContext?.lastNotice, notice)
+        XCTAssertTrue(try XCTUnwrap(reopened.supplementalContext).hasChangesSinceNotice)
+        XCTAssertEqual(try count("SELECT revision FROM goal WHERE id = \(goalID)"), notice.goalRevision + 1)
+        try reopened.confirmSupplementalContext(text, for: goalID)
+        XCTAssertEqual(try count("SELECT revision FROM goal WHERE id = \(goalID)"), notice.goalRevision + 1)
+        try reopened.updateSupplementalDraft("편집 중", for: goalID)
+        try reopened.startNewGoal()
+        XCTAssertNil(reopened.supplementalContext)
+        try reopened.selectGoal(goalID)
+        let restored = try makeFlow(provider)
+        XCTAssertEqual(restored.supplementalContext?.confirmedText, text)
+        XCTAssertEqual(restored.supplementalContext?.draftText, "편집 중")
+        XCTAssertEqual(restored.supplementalContext?.lastNotice, notice)
+        XCTAssertEqual(restored.goalDetails?.statement, "과거 경력 사실 정리")
+        let calls = await provider.requests
+        XCTAssertEqual(calls.map(\.kind), [.firstAction])
+    }
+
     func testFirstInsufficientInfoEndsNormallyAndRestoresWithoutCallingProvider() async throws {
         let reason = try InsufficientInfoFixture.reason()
         let provider = ScriptedProvider([.insufficientInfo(reason)])
@@ -878,6 +918,26 @@ final class ProgressFlowTests: XCTestCase {
         }
     }
 
+    func testConfirmedSupplementalChangeInvalidatesUnansweredQuestionsWithoutCallingAgain() async throws {
+        for kind in [SuggestionKind.firstAction, .smaller, .nextAction, .replacement] {
+            let provider = ScriptedProvider((kind == .firstAction ? [] : [.action(first)]) + [.question("기록이 있나요?")])
+            let flow = try await beginActionRequest(kind, provider: provider)
+            let input = try XCTUnwrap(flow.suggestionInput)
+            try flow.updateSuggestionInput("작성 중인 답", for: input.requestID)
+            try flow.confirmSupplementalContext("새로 확인한 사용자 진술", for: XCTUnwrap(flow.goalDetails?.id))
+            XCTAssertNil(flow.suggestionInput)
+            if kind == .smaller {
+                guard case .currentAction(_, nil) = flow.screen else { return XCTFail("\(flow.screen)") }
+            } else {
+                XCTAssertEqual(flow.screen.suggestionProblem, .interrupted, "\(kind): \(flow.screen)")
+            }
+            XCTAssertEqual(try makeFlow(provider).screen, flow.screen)
+            XCTAssertEqual(flow.supplementalContext?.confirmedText, "새로 확인한 사용자 진술")
+            let calls = await provider.requests
+            XCTAssertEqual(calls.count, kind == .firstAction ? 1 : 2)
+        }
+    }
+
     func testPendingQuestionAnswerNeverReplaysOrAppliesAfterLeavingItsState() async throws {
         for kind in [SuggestionKind.firstAction, .smaller, .nextAction, .replacement] {
             for event in ["cancel", "switch", "edit", "reopen", "stop"] {
@@ -904,6 +964,142 @@ final class ProgressFlowTests: XCTestCase {
                 XCTAssertEqual(calls, 1, "\(kind)/\(event)")
             }
         }
+    }
+
+    func testSupplementalByteLimitAndStorageFailuresKeepSavedValuesAndPreventNavigation() async throws {
+        let provider = ScriptedProvider([.insufficientInfo(try InsufficientInfoFixture.reason())])
+        let flow = try makeFlow(provider)
+        try await startGoal(flow, "크기와 저장 실패")
+        await flow.waitForSuggestion()
+        let goalID = try XCTUnwrap(flow.goalDetails?.id)
+        let boundary = String(repeating: "😀", count: 8192)
+        try flow.confirmSupplementalContext(boundary, for: goalID)
+        try flow.updateSupplementalDraft("이전 초안", for: goalID)
+        let saved = flow.supplementalContext
+        let screen = flow.screen
+        let revision = try count("SELECT revision FROM goal WHERE id = \(goalID)")
+        let oversized = boundary + "가"
+        XCTAssertThrowsError(try flow.updateSupplementalDraft(oversized, for: goalID))
+        XCTAssertThrowsError(try flow.confirmSupplementalContext(oversized, for: goalID))
+        XCTAssertThrowsError(try flow.run(saving: Drafts(supplementalText: oversized)) { try flow.startNewGoal() })
+        XCTAssertEqual(flow.goalDetails?.id, goalID)
+        XCTAssertEqual(flow.supplementalContext, saved)
+        XCTAssertEqual(flow.screen, screen)
+        let database = try AppDatabase(path: path)
+        try await database.writer.write { db in
+            try db.execute(sql: "CREATE TRIGGER reject_supplemental_save BEFORE UPDATE ON app_metadata WHEN OLD.key = 'supplemental_context:\(goalID)' BEGIN SELECT RAISE(ABORT, 'test failure'); END")
+        }
+        XCTAssertThrowsError(try flow.confirmSupplementalContext("수정한 확인값", for: goalID))
+        XCTAssertThrowsError(try flow.run(saving: Drafts(supplementalText: "현재 편집 내용")) { try flow.startNewGoal() })
+        XCTAssertEqual(flow.supplementalContext, saved)
+        XCTAssertEqual(try makeFlow(provider).supplementalContext, saved)
+        XCTAssertEqual(try count("SELECT revision FROM goal WHERE id = \(goalID)"), revision)
+        try await database.writer.write { try $0.execute(sql: "DROP TRIGGER reject_supplemental_save") }
+        var lock: OpaquePointer?
+        XCTAssertEqual(sqlite3_open(path, &lock), SQLITE_OK)
+        defer { sqlite3_exec(lock, "ROLLBACK", nil, nil, nil); sqlite3_close(lock) }
+        XCTAssertEqual(sqlite3_exec(lock, "BEGIN IMMEDIATE", nil, nil, nil), SQLITE_OK)
+        XCTAssertThrowsError(try flow.updateSupplementalDraft("잠금 중 편집", for: goalID))
+        XCTAssertThrowsError(try flow.confirmSupplementalContext("잠금 중 확인", for: goalID))
+        XCTAssertEqual(flow.supplementalContext, saved)
+        XCTAssertEqual(sqlite3_exec(lock, "ROLLBACK", nil, nil, nil), SQLITE_OK)
+        try flow.updateSupplementalDraft(boundary, for: goalID)
+        XCTAssertEqual(try makeFlow(provider).supplementalContext?.draftText, boundary)
+        let calls = await provider.requests
+        XCTAssertEqual(calls.count, 1)
+    }
+
+    func testOnlyChangedConfirmationInvalidatesPendingResponseAndDeletionCannotReviveInput() async throws {
+        for event in ["draft", "same", "changed", "delete"] {
+            let held = HeldProvider(.action(first))
+            let flow = try makeFlow(held)
+            try await startGoal(flow, "진행 중 보충 입력 \(event)")
+            let goalID = try XCTUnwrap(flow.goalDetails?.id)
+            try flow.updateSupplementalDraft("편집 중", for: goalID)
+            switch event {
+            case "same": try flow.confirmSupplementalContext("", for: goalID)
+            case "changed": try flow.confirmSupplementalContext("확인한 새 내용", for: goalID)
+            case "delete": try flow.deleteGoal(goalID, confirmed: true)
+            default: break
+            }
+            await held.release()
+            await flow.waitForSuggestion()
+            let reopened = try makeFlow(UnavailableSuggestionProvider())
+            if ["draft", "same"].contains(event) {
+                guard case .currentAction(let card, _) = reopened.screen else { return XCTFail("\(reopened.screen)") }
+                XCTAssertEqual(card.task, first.task)
+                XCTAssertEqual(reopened.supplementalContext?.draftText, event == "draft" ? "편집 중" : nil)
+            } else if event == "changed" {
+                XCTAssertEqual(reopened.screen, .awaitingFirstAction(goal: "진행 중 보충 입력 changed", problem: .interrupted))
+                XCTAssertEqual(reopened.supplementalContext?.confirmedText, "확인한 새 내용")
+            } else {
+                XCTAssertEqual(reopened.screen, .goalInput)
+                XCTAssertFalse(reopened.goals.contains { $0.id == goalID })
+                XCTAssertEqual(try count("SELECT COUNT(*) FROM app_metadata WHERE key = 'supplemental_context:\(goalID)'"), 0)
+                XCTAssertThrowsError(try flow.updateSupplementalDraft("늦은 초안", for: goalID))
+            }
+            let calls = await held.requests
+            XCTAssertEqual(calls, 1)
+        }
+    }
+
+    func testSupplementalInputPreservesOriginalContextProgressAndSameNamedGoalOnDeletion() async throws {
+        let provider = ScriptedProvider([.action(first), .action(second), .noAction, .insufficientInfo(try InsufficientInfoFixture.reason())])
+        let flow = try makeFlow(provider)
+        try flow.updateGoalInput(GoalInput(statement: "같은 목표", currentState: "기존 상태", blocker: "기존 막힘",
+                                          materialLinks: "https://example.com/original", materialExcerpt: "직접 고른 자료"))
+        try flow.prepareGoal()
+        await flow.waitForSuggestion()
+        let originalID = try XCTUnwrap(flow.goalDetails?.id)
+        try flow.confirmGoal(completionCriteria: "완료 기준")
+        await flow.waitForSuggestion()
+        guard case .currentAction(let card, _) = flow.screen else { return XCTFail() }
+        try flow.recordResult("원래 행동 결과", for: card.id)
+        try flow.complete()
+        await flow.waitForSuggestion()
+        try flow.deferAction()
+        await flow.waitForSuggestion()
+        let progress = flow.screen
+        let details = flow.goalDetails
+        try flow.updateSupplementalDraft("첫 목표 초안", for: originalID)
+        try flow.confirmSupplementalContext("첫 목표 확인값", for: originalID)
+        try flow.updateSupplementalDraft("수정 중", for: originalID)
+        XCTAssertEqual(flow.screen, progress)
+        XCTAssertEqual(flow.goalDetails, details)
+        try await startGoal(flow, "같은 목표")
+        await flow.waitForSuggestion()
+        let otherID = try XCTUnwrap(flow.goalDetails?.id)
+        XCTAssertNotEqual(originalID, otherID)
+        XCTAssertEqual(flow.supplementalContext?.confirmedText, "")
+        try flow.confirmSupplementalContext("다른 목표 확인값", for: otherID)
+        try flow.updateSupplementalDraft("다른 목표 초안", for: otherID)
+        let otherContext = flow.supplementalContext
+        try flow.startNewGoal()
+        let newInput = GoalInput(statement: "새 목표 초안", materialLinks: "https://example.com/original")
+        try flow.updateGoalInput(newInput)
+        let external = directory.appendingPathComponent("original.txt")
+        try Data("외부 원본".utf8).write(to: external)
+        try flow.selectGoal(originalID)
+        XCTAssertThrowsError(try flow.updateSupplementalDraft("다른 목표의 늦은 입력", for: otherID))
+        XCTAssertEqual(flow.supplementalContext?.draftText, "수정 중")
+        XCTAssertEqual(flow.goals.first?.completedActionCount, 1)
+        let database = try AppDatabase(path: path)
+        try await database.writer.write { db in
+            try db.execute(sql: "CREATE TRIGGER reject_context_delete BEFORE DELETE ON app_metadata WHEN OLD.key = 'supplemental_context:\(originalID)' BEGIN SELECT RAISE(ABORT, 'test failure'); END")
+        }
+        XCTAssertThrowsError(try flow.deleteGoal(originalID, confirmed: true))
+        XCTAssertEqual(try makeFlow(provider).supplementalContext, flow.supplementalContext)
+        XCTAssertEqual(flow.screen, progress)
+        try await database.writer.write { try $0.execute(sql: "DROP TRIGGER reject_context_delete") }
+        try flow.deleteGoal(originalID, confirmed: true)
+        XCTAssertEqual(flow.goalInput, newInput)
+        try flow.selectGoal(otherID)
+        let reopened = try makeFlow(provider)
+        XCTAssertEqual(reopened.supplementalContext, otherContext)
+        XCTAssertEqual(reopened.goals.map(\.id), [otherID])
+        XCTAssertEqual(try String(contentsOf: external, encoding: .utf8), "외부 원본")
+        let calls = await provider.requests
+        XCTAssertEqual(calls.count, 4)
     }
 
     func testSharedHTTPNoticeAndMetadataStayIsolatedAndDeleteAtomically() async throws {
