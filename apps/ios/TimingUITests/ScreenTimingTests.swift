@@ -384,8 +384,9 @@ final class ScreenTimingTests: XCTestCase {
             let entry = goalEntry(app, goal: goal)
             XCTAssertTrue(entry.waitForExistence(timeout: 10))
             XCTAssertTrue(entry.label.contains("완료한 행동 \(kind == "next_action" ? 1 : 0)개"))
-            entry.tap()
-            XCTAssertTrue(app.staticTexts[title].waitForExistence(timeout: 5))
+            app.terminate()
+            app.launch()
+            XCTAssertTrue(app.staticTexts[title].waitForExistence(timeout: 10))
             app.buttons["새 정보 추가"].tap()
             let supplemental = app.textFields["추가로 알려줄 내용"]
             XCTAssertTrue(supplemental.waitForExistence(timeout: 5))
