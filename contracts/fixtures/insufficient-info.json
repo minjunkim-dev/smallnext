@@ -50,6 +50,7 @@
     }
   },
   "question": "직접 확인할 수 있는 기록이 있나요?",
+  "supplemental_question": "選んだ資料はいつの記録ですか？",
   "answer": "모르고 확인할 자료도 없어요.",
   "checker_cases": [
     {

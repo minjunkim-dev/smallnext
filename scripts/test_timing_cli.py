@@ -86,9 +86,10 @@ class TimingCLITests(unittest.TestCase):
             self.assertEqual(value['action'], '')
             self.assertEqual(value['completion_condition'], '')
 
-    def test_confirmed_supplemental_first_action_uses_the_shared_example(self):
+    def test_confirmed_supplemental_actions_use_the_shared_example(self):
         shared = json.loads((ROOT / 'contracts/fixtures/insufficient-info.json').read_bytes())
         expected = shared['supplemental_first_action']['response']['proposal']
-        _, value = self.invoke('first_action', notice=True, confirmed=True)
-        for key in ['status', 'action', 'completion_condition', 'estimated_minutes', 'reason']:
-            self.assertEqual(value[key], expected[key])
+        for kind in ['first_action', 'smaller', 'next_action', 'replacement']:
+            _, value = self.invoke(kind, followup=True, answered=True, confirmed=True)
+            for key in ['status', 'action', 'completion_condition', 'estimated_minutes', 'reason']:
+                self.assertEqual(value[key], expected[key])

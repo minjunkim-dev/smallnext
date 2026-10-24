@@ -53,10 +53,12 @@ public struct InformationNotice: Equatable, Sendable, Codable {
     public let inputFingerprint: String
     public let reason: String
     public let receivedAt: Date
+    let currentActionID: Int64?
 
     enum CodingKeys: String, CodingKey {
         case requestID = "request_id", requestKind = "request_kind", goalRevision = "goal_revision"
         case inputFingerprint = "input_fingerprint", reason, receivedAt = "received_at"
+        case currentActionID = "current_action_id"
     }
 }
 
@@ -191,9 +193,10 @@ public final class ProgressFlow {
     public private(set) var suggestionInput: SuggestionInput?
     /// nil은 이 목표에 저장 레코드가 없다는 뜻이다. 빈 초안과 구분한다.
     public private(set) var supplementalContext: SupplementalContext?
-    public var canRequestFirstActionWithNewInformation: Bool {
-        guard case .insufficientInfo = screen, supplementalContext?.confirmedText.isEmpty == false else { return false }
-        return (try? database.writer.read(Self.canReproposeFirstAction)) == true
+    public var canRequestWithNewInformation: Bool {
+        guard case .insufficientInfo(let notice, _) = screen, let goalID = goalDetails?.id,
+              supplementalContext?.confirmedText.isEmpty == false else { return false }
+        return (try? database.writer.read { try Self.canRepropose($0, goalID: goalID, noticeID: notice.requestID) }) == true
     }
     var timingEnabled = SuggestionTiming.enabled
     public private(set) var timingSample: SuggestionTiming?
@@ -668,10 +671,11 @@ public final class ProgressFlow {
 
     /// 실패·중단·취소한 제안과 대체 후보가 없는 보류 중 화면만 다시 요청한다. 기다리는 중이면 무시한다.
     public func retrySuggestion() throws {
-        if case .insufficientInfo = screen {
+        if case .insufficientInfo(let notice, _) = screen {
+            guard let goalID = goalDetails?.id else { return }
             try perform { db in
-                guard try Self.canReproposeFirstAction(db), let goalID = try Self.selectedGoalID(db) else { return nil }
-                let pending = try Self.insertRequest(db, goalID: goalID, kind: .firstAction)
+                guard try Self.canRepropose(db, goalID: goalID, noticeID: notice.requestID) else { return nil }
+                let pending = try Self.insertRequest(db, goalID: goalID, kind: notice.requestKind)
                 do { _ = try HTTPActionSuggestionProvider.requestBody(pending.request) }
                 catch { throw ProgressFlowError.supplementalRequestTooLarge }
                 return pending
@@ -698,7 +702,7 @@ public final class ProgressFlow {
             case .smaller, .replacement: .replacement
             }
             let pending = try Self.insertRequest(db, goalID: goalID, kind: kind)
-            if kind == .firstAction, !pending.request.supplementalText.isEmpty {
+            if !pending.request.supplementalText.isEmpty {
                 do { _ = try HTTPActionSuggestionProvider.requestBody(pending.request) }
                 catch { throw ProgressFlowError.supplementalRequestTooLarge }
             }
@@ -706,17 +710,33 @@ public final class ProgressFlow {
         }
     }
 
-    private nonisolated static func canReproposeFirstAction(_ db: Database) throws -> Bool {
-        guard let goalID = try selectedGoalID(db),
+    private nonisolated static func canRepropose(_ db: Database, goalID: Int64, noticeID: Int64) throws -> Bool {
+        guard try selectedGoalID(db) == goalID,
               let goal = try Row.fetchOne(db, sql: "SELECT * FROM goal WHERE id = ? AND is_confirmed AND status = 'active'", arguments: [goalID]),
-              try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM action WHERE goal_id = ?", arguments: [goalID]) == 0,
               let context = try loadSupplementalContext(db, goalID: goalID),
               !context.confirmedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-              let notice = context.lastNotice, notice.requestKind == .firstAction,
+              let notice = context.lastNotice, notice.requestID == noticeID,
               let latest = try Row.fetchOne(db, sql: "SELECT id, kind, status FROM suggestion_request WHERE goal_id = ? ORDER BY id DESC LIMIT 1", arguments: [goalID]),
-              latest["id"] as Int64 == notice.requestID, latest["kind"] as String == SuggestionKind.firstAction.rawValue,
-              latest["status"] as String == "applied" else { return false }
-        return try HTTPActionSuggestionProvider.inputFingerprint(makeRequest(db, goal: goal, kind: .firstAction)) != notice.inputFingerprint
+              latest["id"] as Int64 == notice.requestID, latest["kind"] as String == notice.requestKind.rawValue,
+              latest["status"] as String == "applied",
+              try validActionContext(db, goalID: goalID, kind: notice.requestKind) else { return false }
+        if notice.requestKind == .smaller {
+            guard let originalID = notice.currentActionID,
+                  try Int64.fetchOne(db, sql: "SELECT id FROM action WHERE goal_id = ? AND status = 'current'", arguments: [goalID]) == originalID else { return false }
+        }
+        return try HTTPActionSuggestionProvider.inputFingerprint(makeRequest(db, goal: goal, kind: notice.requestKind)) != notice.inputFingerprint
+    }
+
+    private nonisolated static func validActionContext(_ db: Database, goalID: Int64, kind: SuggestionKind) throws -> Bool {
+        let hasCurrent = try Bool.fetchOne(db, sql: "SELECT EXISTS (SELECT 1 FROM action WHERE goal_id = ? AND status = 'current')", arguments: [goalID]) == true
+        switch kind {
+        case .goalPreparation: return false
+        case .firstAction:
+            return try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM action WHERE goal_id = ?", arguments: [goalID]) == 0
+        case .smaller: return hasCurrent
+        case .nextAction: return try !hasCurrent && hasCompletion(db, goalID: goalID)
+        case .replacement: return try !hasCurrent && !deferredCards(db, goalID: goalID).isEmpty
+        }
     }
 
     /// 기다리는 제안을 취소한다. 저장한 뒤 공급자 작업을 취소한다. 늦게 온 결과는 적용하지 않는다.
@@ -786,7 +806,7 @@ public final class ProgressFlow {
         suggestionTask = Task {
             let outcome: Result<SuggestionCandidate, SuggestionFailure>
             do {
-                if pending.request.kind == .firstAction, !pending.request.supplementalText.isEmpty {
+                if !pending.request.supplementalText.isEmpty {
                     try Task.checkCancellation()
                     guard try canStartReproposal(pending) else { return }
                 }
@@ -805,8 +825,8 @@ public final class ProgressFlow {
                 WHERE r.id = ? AND r.status = 'pending' AND r.kind = ? AND g.status = 'active' AND g.is_confirmed
                   AND r.goal_revision = g.revision AND g.revision = ?
                   AND r.id = (SELECT MAX(id) FROM suggestion_request WHERE goal_id = g.id)
-                  AND NOT EXISTS (SELECT 1 FROM action WHERE goal_id = g.id)
                 """, arguments: [pending.id, pending.request.kind.rawValue, pending.revision]) == 1
+                && Self.validActionContext(db, goalID: pending.goalID, kind: pending.request.kind)
         }
     }
 
@@ -901,7 +921,8 @@ public final class ProgressFlow {
         case .insufficientInfo(let reason):
             let notice = InformationNotice(requestID: pending.id, requestKind: pending.request.kind, goalRevision: pending.revision,
                                            inputFingerprint: try HTTPActionSuggestionProvider.inputFingerprint(pending.request),
-                                           reason: reason, receivedAt: Date())
+                                           reason: reason, receivedAt: Date(),
+                                           currentActionID: try Int64.fetchOne(db, sql: "SELECT id FROM action WHERE goal_id = ? AND status = 'current'", arguments: [pending.goalID]))
             var context = try loadSupplementalContext(db, goalID: pending.goalID) ?? SupplementalContext()
             context.lastNotice = notice
             try saveSupplementalContext(db, context, goalID: pending.goalID)
@@ -1033,7 +1054,7 @@ public final class ProgressFlow {
             completedActionIDs: try Int64.fetchAll(db, sql: "SELECT a.id FROM completion c JOIN action a ON a.id = c.action_id WHERE a.goal_id = ? ORDER BY c.id", arguments: [goalID]).map(String.init),
             actionAnswers: try Row.fetchAll(db, sql: "SELECT question, answer FROM suggestion_request WHERE goal_id = ? AND kind != ? AND answer IS NOT NULL ORDER BY id",
                                            arguments: [goalID, SuggestionKind.goalPreparation.rawValue]).map { GoalAnswer(question: $0["question"], answer: $0["answer"]) },
-            supplementalText: kind == .firstAction ? try loadSupplementalContext(db, goalID: goalID)?.confirmedText ?? "" : ""
+            supplementalText: kind != .goalPreparation ? try loadSupplementalContext(db, goalID: goalID)?.confirmedText ?? "" : ""
         )
     }
 

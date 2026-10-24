@@ -52,12 +52,18 @@ async fn external_provider(
     if (mode == "invalid" || mode == "invalid_missing_usage") && generating {
         value["goal_completed"] = json!(true);
     }
-    if mode == "need_info" && generating {
+    if (mode == "need_info" || mode == "supplemental_question") && generating {
         let fixture: serde_json::Value = serde_json::from_str(include_str!(
             "../../../../contracts/fixtures/insufficient-info.json"
         ))
         .unwrap();
-        value["action"] = fixture["question"].clone();
+        value["status"] = json!("need_info");
+        value["action"] = fixture[if mode == "supplemental_question" {
+            "supplemental_question"
+        } else {
+            "question"
+        }]
+        .clone();
     }
     if mode.starts_with("notice") {
         let fixture: serde_json::Value = serde_json::from_str(include_str!(
@@ -1431,7 +1437,7 @@ async fn insufficient_info_crosses_http_with_independent_checks_and_no_failure_c
 
 #[tokio::test]
 #[ignore = "requires TEST_DATABASE_URL; supplemental input through real HTTP and independent fake roles"]
-async fn confirmed_supplemental_first_action_preserves_input_and_independent_decisions() {
+async fn confirmed_supplemental_actions_preserve_input_and_independent_decisions() {
     let fixture = Fixture::new().await;
     let shared: serde_json::Value = serde_json::from_str(include_str!(
         "../../../../contracts/fixtures/insufficient-info.json"
@@ -1442,35 +1448,77 @@ async fn confirmed_supplemental_first_action_preserves_input_and_independent_dec
         .as_array_mut()
         .unwrap()
         .push(shared["supplemental_first_action"]["available_fact"].clone());
-    for (mode, expected, count) in [
-        ("confirmed-first", "accepted", 2),
-        ("notice", "accepted", 2),
-        ("reject", "rejected", 2),
-        ("uncertain", "uncertain", 2),
-        ("generate_type", "invalid_proposal", 1),
-    ] {
-        *fixture.remote.mode.lock().unwrap() = mode.into();
-        fixture.remote.calls.lock().unwrap().clear();
-        let response = result(fixture.request_input("allowed", mode, input.clone()).await).await;
-        assert_eq!(response["disposition"], expected, "{mode}");
-        if mode == "confirmed-first" {
-            assert_eq!(
-                response["proposal"],
-                shared["supplemental_first_action"]["response"]["proposal"]
-            );
-        }
-        if mode == "notice" {
-            assert_eq!(response["proposal"], shared["response"]["proposal"]);
-        }
-        let calls = fixture.remote.calls.lock().unwrap();
-        assert_eq!(calls.len(), count, "{mode}");
-        let generated: serde_json::Value =
-            serde_json::from_str(calls[0]["messages"][0]["content"].as_str().unwrap()).unwrap();
-        assert_eq!(generated, input);
-        if count == 2 {
-            let checked: serde_json::Value =
-                serde_json::from_str(calls[1]["messages"][0]["content"].as_str().unwrap()).unwrap();
-            assert_eq!(checked["original_request"], input);
+    for kind in ["first_action", "smaller", "next_action", "replacement"] {
+        let mut input = input.clone();
+        input["request_kind"] = json!(kind);
+        input["completed_ids"] = if kind == "next_action" {
+            json!(["completed-1"])
+        } else {
+            json!([])
+        };
+        input["remaining_work"] = json!(["과거 경력 사실 정리", "아직 남은 범위"]);
+        input["available"]
+            .as_array_mut()
+            .unwrap()
+            .push(json!(format!(
+                "행동 요청에서 이미 답한 질문: {} / 답: {}",
+                shared["question"].as_str().unwrap(),
+                shared["answer"].as_str().unwrap()
+            )));
+        for (mode, expected, count) in [
+            ("confirmed-first", "accepted", 2),
+            ("notice", "accepted", 2),
+            ("reject", "rejected", 2),
+            ("uncertain", "uncertain", 2),
+            ("generate_type", "invalid_proposal", 1),
+            ("check_type", "failed", 2),
+            ("supplemental_question", "accepted", 2),
+            (
+                "no_action",
+                if kind == "replacement" {
+                    "accepted"
+                } else {
+                    "invalid_proposal"
+                },
+                if kind == "replacement" { 2 } else { 1 },
+            ),
+        ] {
+            *fixture.remote.mode.lock().unwrap() = mode.into();
+            fixture.remote.calls.lock().unwrap().clear();
+            let response =
+                result(fixture.request_input("allowed", mode, input.clone()).await).await;
+            assert_eq!(response["disposition"], expected, "{mode}");
+            if mode == "confirmed-first" {
+                let mut expected =
+                    shared["supplemental_first_action"]["response"]["proposal"].clone();
+                expected["remaining_work"] = input["remaining_work"].clone();
+                expected["preserved_completed_ids"] = input["completed_ids"].clone();
+                assert_eq!(response["proposal"], expected);
+            }
+            if mode == "supplemental_question" {
+                assert_eq!(response["proposal"]["status"], "need_info");
+                assert_eq!(
+                    response["proposal"]["action"],
+                    shared["supplemental_question"]
+                );
+            }
+            if mode == "notice" {
+                let mut expected = shared["response"]["proposal"].clone();
+                expected["remaining_work"] = input["remaining_work"].clone();
+                expected["preserved_completed_ids"] = input["completed_ids"].clone();
+                assert_eq!(response["proposal"], expected);
+            }
+            let calls = fixture.remote.calls.lock().unwrap();
+            assert_eq!(calls.len(), count, "{mode}");
+            let generated: serde_json::Value =
+                serde_json::from_str(calls[0]["messages"][0]["content"].as_str().unwrap()).unwrap();
+            assert_eq!(generated, input);
+            if count == 2 {
+                let checked: serde_json::Value =
+                    serde_json::from_str(calls[1]["messages"][0]["content"].as_str().unwrap())
+                        .unwrap();
+                assert_eq!(checked["original_request"], input);
+            }
         }
     }
     fixture.remote.calls.lock().unwrap().clear();

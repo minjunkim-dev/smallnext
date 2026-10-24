@@ -748,138 +748,138 @@ final class ProgressFlowTests: XCTestCase {
         XCTAssertEqual(reopened.goals.last?.completedActionCount, 0)
     }
 
-    func testFirstReproposalIgnoresWhitespaceDraftsAndRevertedInformation() async throws {
-        let provider = ScriptedProvider([.insufficientInfo("最初の案内"), .insufficientInfo("새 정보를 확인한 안내")])
-        let flow = try makeFlow(provider)
-        try await startGoal(flow, "경력 사실 정리")
-        await flow.waitForSuggestion()
-        let goalID = try XCTUnwrap(flow.goalDetails?.id)
-        for blank in ["", " \r\n\t"] {
-            try flow.confirmSupplementalContext(blank, for: goalID)
-            XCTAssertFalse(flow.canRequestFirstActionWithNewInformation)
-            try flow.retrySuggestion()
-        }
-        let text = "제가 첫 문단을 썼어요.\r\n資料を選びました。"
-        try flow.confirmSupplementalContext(text, for: goalID)
-        XCTAssertTrue(flow.canRequestFirstActionWithNewInformation)
-        try flow.retrySuggestion()
-        await flow.waitForSuggestion()
-        let notice = try XCTUnwrap(flow.supplementalContext?.lastNotice)
-        XCTAssertEqual(notice.reason, "새 정보를 확인한 안내")
-        XCTAssertFalse(flow.canRequestFirstActionWithNewInformation)
-        for unchanged in [text, "  제가 첫 문단을 썼어요.\n資料を選びました。  ", "중간에 다른 내용", text] {
-            try flow.confirmSupplementalContext(unchanged, for: goalID)
-        }
-        try flow.updateSupplementalDraft("보내면 안 되는 새 초안", for: goalID)
-        XCTAssertFalse(flow.canRequestFirstActionWithNewInformation)
-        try flow.confirmSupplementalContext("  제가 첫 문단을 썼어요.\n資料を選びました。  ", for: goalID)
-        XCTAssertFalse(flow.canRequestFirstActionWithNewInformation)
-        try flow.retrySuggestion()
-        await flow.waitForSuggestion()
-        let requests = await provider.requests
-        XCTAssertEqual(requests.count, 2)
-        XCTAssertEqual(flow.supplementalContext?.lastNotice, notice)
-        XCTAssertEqual(flow.supplementalContext?.confirmedText, "  제가 첫 문단을 썼어요.\n資料を選びました。  ")
-        XCTAssertFalse(try makeFlow(provider).canRequestFirstActionWithNewInformation)
-    }
-
-    func testFirstReproposalRechecksPendingBeforeCallingProvider() async throws {
-        for change in ["cancel", "switch", "edit", "confirm", "reopen", "stop"] {
-            let provider = ScriptedProvider([.insufficientInfo("이전 안내"), .action(first)])
-            let flow = try makeFlow(provider)
-            try await startGoal(flow, "경력 사실 정리")
-            await flow.waitForSuggestion()
+    func testAllReproposalsIgnoresWhitespaceDraftsAndRevertedInformation() async throws {
+        for kind in [SuggestionKind.firstAction, .smaller, .nextAction, .replacement] {
+            let provider = ScriptedProvider((kind == .firstAction ? [] : [.action(first)]) + [.insufficientInfo("最初の案内"), .insufficientInfo("새 정보를 확인한 안내")])
+            let flow = try await beginActionRequest(kind, provider: provider)
             let goalID = try XCTUnwrap(flow.goalDetails?.id)
-            try flow.confirmSupplementalContext("제가 첫 문단을 썼어요.", for: goalID)
-            try flow.retrySuggestion()
-            switch change {
-            case "cancel": try flow.cancelSuggestion()
-            case "switch": try flow.startNewGoal()
-            case "edit": try flow.editGoalStatement("바뀐 목표 문구")
-            case "confirm": try flow.confirmSupplementalContext("두 번째 확인 내용", for: goalID)
-            case "reopen": _ = try makeFlow(provider)
-            default: try flow.stopGoal()
+            for blank in ["", " \r\n\t"] {
+                try flow.confirmSupplementalContext(blank, for: goalID)
+                XCTAssertFalse(flow.canRequestWithNewInformation)
+                try flow.retrySuggestion()
             }
+            let text = "제가 첫 문단을 썼어요.\r\n資料を選びました。"
+            try flow.confirmSupplementalContext(text, for: goalID)
+            XCTAssertTrue(flow.canRequestWithNewInformation)
+            try flow.retrySuggestion()
+            await flow.waitForSuggestion()
+            let notice = try XCTUnwrap(flow.supplementalContext?.lastNotice)
+            XCTAssertEqual(notice.reason, "새 정보를 확인한 안내")
+            XCTAssertFalse(flow.canRequestWithNewInformation)
+            for unchanged in [text, "  제가 첫 문단을 썼어요.\n資料を選びました。  ", "중간에 다른 내용", text] {
+                try flow.confirmSupplementalContext(unchanged, for: goalID)
+            }
+            try flow.updateSupplementalDraft("보내면 안 되는 새 초안", for: goalID)
+            XCTAssertFalse(flow.canRequestWithNewInformation)
+            try flow.confirmSupplementalContext("  제가 첫 문단을 썼어요.\n資料を選びました。  ", for: goalID)
+            XCTAssertFalse(flow.canRequestWithNewInformation)
+            try flow.retrySuggestion()
             await flow.waitForSuggestion()
             let requests = await provider.requests
-            XCTAssertEqual(requests.count, 1, change)
-            let restored = try makeFlow(provider)
-            if restored.goalDetails?.id != goalID { try restored.selectGoal(goalID) }
-            XCTAssertEqual(restored.supplementalContext?.confirmedText, change == "confirm" ? "두 번째 확인 내용" : "제가 첫 문단을 썼어요.")
-            XCTAssertFalse(restored.canRequestFirstActionWithNewInformation)
-            XCTAssertEqual(restored.supplementalContext?.lastNotice?.reason, "이전 안내")
+            XCTAssertEqual(requests.count, kind == .firstAction ? 2 : 3)
+            XCTAssertEqual(flow.supplementalContext?.lastNotice, notice)
+            XCTAssertEqual(flow.supplementalContext?.confirmedText, "  제가 첫 문단을 썼어요.\n資料を選びました。  ")
+            XCTAssertFalse(try makeFlow(provider).canRequestWithNewInformation)
         }
     }
 
-    func testFirstReproposalLateResultsNeverOverrideChangedOrInterruptedProgress() async throws {
-        for change in ["cancel", "switch", "edit", "confirm", "reopen", "stop", "draft"] {
-            let initial = try makeFlow(ScriptedProvider([.insufficientInfo("이전 안내")]))
-            try await startGoal(initial, "경력 사실 정리")
-            await initial.waitForSuggestion()
-            let goalID = try XCTUnwrap(initial.goalDetails?.id)
-            try initial.confirmSupplementalContext("제가 첫 문단을 썼어요.", for: goalID)
-            let provider = HeldProvider(.action(first))
-            let flow = try makeFlow(provider)
-            try flow.updateSupplementalDraft("남겨둘 초안", for: goalID)
-            try flow.retrySuggestion()
-            for _ in 0..<10_000 where await provider.requests == 0 { await Task.yield() }
-            let started = await provider.requests
-            XCTAssertEqual(started, 1)
-            try flow.retrySuggestion()
-            switch change {
-            case "cancel": try flow.cancelSuggestion()
-            case "switch": try flow.startNewGoal()
-            case "edit": try flow.editGoalStatement("바뀐 목표 문구")
-            case "confirm": try flow.confirmSupplementalContext("두 번째 확인 내용", for: goalID)
-            case "reopen": _ = try makeFlow(provider)
-            case "stop": try flow.stopGoal()
-            default: try flow.updateSupplementalDraft("요청 중 바꾼 초안", for: goalID)
+    func testAllReproposalsRechecksPendingBeforeCallingProvider() async throws {
+        for kind in [SuggestionKind.firstAction, .smaller, .nextAction, .replacement] {
+            for change in ["cancel", "switch", "edit", "confirm", "reopen", "stop"] {
+                let provider = ScriptedProvider((kind == .firstAction ? [] : [.action(first)]) + [.insufficientInfo("이전 안내"), .action(second)])
+                let flow = try await beginActionRequest(kind, provider: provider)
+                let goalID = try XCTUnwrap(flow.goalDetails?.id)
+                try flow.confirmSupplementalContext("제가 첫 문단을 썼어요.", for: goalID)
+                try flow.retrySuggestion()
+                switch change {
+                case "cancel": try flow.cancelSuggestion()
+                case "switch": try flow.startNewGoal()
+                case "edit": try flow.editGoalStatement("바뀐 목표 문구")
+                case "confirm": try flow.confirmSupplementalContext("두 번째 확인 내용", for: goalID)
+                case "reopen": _ = try makeFlow(provider)
+                default: try flow.stopGoal()
+                }
+                await flow.waitForSuggestion()
+                let requests = await provider.requests
+                XCTAssertEqual(requests.count, kind == .firstAction ? 1 : 2, "\(kind)/\(change)")
+                let restored = try makeFlow(provider)
+                if restored.goalDetails?.id != goalID { try restored.selectGoal(goalID) }
+                XCTAssertEqual(restored.supplementalContext?.confirmedText, change == "confirm" ? "두 번째 확인 내용" : "제가 첫 문단을 썼어요.")
+                XCTAssertFalse(restored.canRequestWithNewInformation)
+                XCTAssertEqual(restored.supplementalContext?.lastNotice?.reason, "이전 안내")
             }
-            await provider.release()
-            await flow.waitForSuggestion()
-            let restored = try makeFlow(provider)
-            if restored.goalDetails?.id != goalID { try restored.selectGoal(goalID) }
-            if change == "draft" {
-                guard case .currentAction(let card, nil) = restored.screen else { return XCTFail("\(restored.screen)") }
-                XCTAssertEqual(card.task, first.task)
-            } else if case .currentAction = restored.screen { XCTFail("늦은 행동이 적용됨: \(change)") }
-            XCTAssertEqual(restored.supplementalContext?.confirmedText, change == "confirm" ? "두 번째 확인 내용" : "제가 첫 문단을 썼어요.")
-            XCTAssertEqual(restored.supplementalContext?.draftText, change == "confirm" ? nil : change == "draft" ? "요청 중 바꾼 초안" : "남겨둘 초안")
-            XCTAssertEqual(restored.supplementalContext?.lastNotice?.reason, "이전 안내")
-            XCTAssertEqual(restored.goals.last?.completedActionCount, 0)
-            let calls = await provider.requests
-            XCTAssertEqual(calls, 1)
         }
     }
 
-    func testFirstReproposalOversizedInputPreservesConfirmedTextDraftAndNotice() async throws {
-        let provider = ScriptedProvider([.insufficientInfo("이전 안내"), .action(first)])
-        let flow = try makeFlow(provider)
-        try await startGoal(flow, "경력 사실 정리")
-        await flow.waitForSuggestion()
-        let goalID = try XCTUnwrap(flow.goalDetails?.id)
-        let notice = flow.supplementalContext?.lastNotice
-        let oversized = String(repeating: "가", count: 10_922)
-        try flow.confirmSupplementalContext(oversized, for: goalID)
-        try flow.updateSupplementalDraft("수정 중인 초안", for: goalID)
-        let before = flow.screen
-        XCTAssertThrowsError(try flow.retrySuggestion()) { error in
-            guard case ProgressFlowError.supplementalRequestTooLarge = error else { return XCTFail("\(error)") }
+    func testAllReproposalsLateResultsNeverOverrideChangedOrInterruptedProgress() async throws {
+        for kind in [SuggestionKind.firstAction, .smaller, .nextAction, .replacement] {
+            for change in ["cancel", "switch", "edit", "confirm", "reopen", "stop", "draft"] {
+                let initial = try await beginActionRequest(kind, provider: ScriptedProvider((kind == .firstAction ? [] : [.action(first)]) + [.insufficientInfo("이전 안내")]))
+                let goalID = try XCTUnwrap(initial.goalDetails?.id)
+                try initial.confirmSupplementalContext("제가 첫 문단을 썼어요.", for: goalID)
+                let provider = HeldProvider(.action(second))
+                let flow = try makeFlow(provider)
+                try flow.updateSupplementalDraft("남겨둘 초안", for: goalID)
+                try flow.retrySuggestion()
+                for _ in 0..<10_000 where await provider.requests == 0 { await Task.yield() }
+                let started = await provider.requests
+                XCTAssertEqual(started, 1)
+                try flow.retrySuggestion()
+                switch change {
+                case "cancel": try flow.cancelSuggestion()
+                case "switch": try flow.startNewGoal()
+                case "edit": try flow.editGoalStatement("바뀐 목표 문구")
+                case "confirm": try flow.confirmSupplementalContext("두 번째 확인 내용", for: goalID)
+                case "reopen": _ = try makeFlow(provider)
+                case "stop": try flow.stopGoal()
+                default: try flow.updateSupplementalDraft("요청 중 바꾼 초안", for: goalID)
+                }
+                await provider.release()
+                await flow.waitForSuggestion()
+                let restored = try makeFlow(provider)
+                if restored.goalDetails?.id != goalID { try restored.selectGoal(goalID) }
+                if change == "draft" {
+                    guard case .currentAction(let card, nil) = restored.screen else { return XCTFail("\(restored.screen)") }
+                    XCTAssertEqual(card.task, second.task)
+                } else if case .currentAction(let card, _) = restored.screen { XCTAssertNotEqual(card.task, second.task, "\(kind)/\(change)") }
+                XCTAssertEqual(restored.supplementalContext?.confirmedText, change == "confirm" ? "두 번째 확인 내용" : "제가 첫 문단을 썼어요.")
+                XCTAssertEqual(restored.supplementalContext?.draftText, change == "confirm" ? nil : change == "draft" ? "요청 중 바꾼 초안" : "남겨둘 초안")
+                XCTAssertEqual(restored.supplementalContext?.lastNotice?.reason, "이전 안내")
+                XCTAssertEqual(restored.goals.last?.completedActionCount, kind == .nextAction ? 1 : 0)
+                let calls = await provider.requests
+                XCTAssertEqual(calls, 1)
+            }
         }
-        XCTAssertEqual(flow.screen, before)
-        let reopened = try makeFlow(provider)
-        XCTAssertEqual(reopened.screen, before)
-        XCTAssertEqual(reopened.supplementalContext?.confirmedText, oversized)
-        XCTAssertEqual(reopened.supplementalContext?.draftText, "수정 중인 초안")
-        XCTAssertEqual(reopened.supplementalContext?.lastNotice, notice)
-        let unchanged = await provider.requests
-        XCTAssertEqual(unchanged.count, 1)
-        try reopened.confirmSupplementalContext("제가 첫 문단을 썼어요.", for: goalID)
-        try reopened.retrySuggestion()
-        await reopened.waitForSuggestion()
-        guard case .currentAction = reopened.screen else { return XCTFail("\(reopened.screen)") }
-        let sent = await provider.requests
-        XCTAssertEqual(sent.count, 2)
+    }
+
+    func testAllReproposalsOversizedInputPreservesConfirmedTextDraftAndNotice() async throws {
+        for kind in [SuggestionKind.firstAction, .smaller, .nextAction, .replacement] {
+            let provider = ScriptedProvider((kind == .firstAction ? [] : [.action(first)]) + [.insufficientInfo("이전 안내"), .action(second)])
+            let flow = try await beginActionRequest(kind, provider: provider)
+            let goalID = try XCTUnwrap(flow.goalDetails?.id)
+            let notice = flow.supplementalContext?.lastNotice
+            let oversized = String(repeating: "가", count: 10_922)
+            try flow.confirmSupplementalContext(oversized, for: goalID)
+            try flow.updateSupplementalDraft("수정 중인 초안", for: goalID)
+            let before = flow.screen
+            XCTAssertThrowsError(try flow.retrySuggestion()) { error in
+                guard case ProgressFlowError.supplementalRequestTooLarge = error else { return XCTFail("\(error)") }
+            }
+            XCTAssertEqual(flow.screen, before)
+            let reopened = try makeFlow(provider)
+            XCTAssertEqual(reopened.screen, before)
+            XCTAssertEqual(reopened.supplementalContext?.confirmedText, oversized)
+            XCTAssertEqual(reopened.supplementalContext?.draftText, "수정 중인 초안")
+            XCTAssertEqual(reopened.supplementalContext?.lastNotice, notice)
+            let unchanged = await provider.requests
+            XCTAssertEqual(unchanged.count, kind == .firstAction ? 1 : 2)
+            try reopened.confirmSupplementalContext("제가 첫 문단을 썼어요.", for: goalID)
+            try reopened.retrySuggestion()
+            await reopened.waitForSuggestion()
+            guard case .currentAction = reopened.screen else { return XCTFail("\(reopened.screen)") }
+            let sent = await provider.requests
+            XCTAssertEqual(sent.count, kind == .firstAction ? 2 : 3)
+        }
     }
 
     func testFirstReproposalFailureKeepsNoticeAndRequiresSeparateManualRetry() async throws {
@@ -898,7 +898,7 @@ final class ProgressFlowTests: XCTestCase {
         let reopened = try makeFlow(provider)
         XCTAssertEqual(reopened.screen, flow.screen)
         XCTAssertEqual(reopened.supplementalContext?.draftText, "남겨둘 편집 초안")
-        XCTAssertFalse(reopened.canRequestFirstActionWithNewInformation)
+        XCTAssertFalse(reopened.canRequestWithNewInformation)
         let failed = await provider.requests
         XCTAssertEqual(failed.count, 2)
         try reopened.retrySuggestion()
@@ -907,7 +907,7 @@ final class ProgressFlowTests: XCTestCase {
         guard case .insufficientInfo(let latest, false) = reopened.screen else { return XCTFail("\(reopened.screen)") }
         XCTAssertEqual(latest.reason, "새 안내")
         XCTAssertNotEqual(latest.requestID, notice?.requestID)
-        XCTAssertFalse(reopened.canRequestFirstActionWithNewInformation)
+        XCTAssertFalse(reopened.canRequestWithNewInformation)
         try reopened.retrySuggestion()
         let requests = await provider.requests
         XCTAssertEqual(requests.count, 3)
@@ -973,26 +973,42 @@ final class ProgressFlowTests: XCTestCase {
         }
     }
 
-    func testSupplementalFirstReproposalCannotStartForFollowupOrStoppedGoal() async throws {
-        for kind in [SuggestionKind.smaller, .nextAction, .replacement] {
-            let provider = ScriptedProvider([.action(first), .insufficientInfo("이전 안내")])
+    func testSupplementalReproposalResumesOriginalKindWithoutRepeatingProgress() async throws {
+        for kind in [SuggestionKind.firstAction, .smaller, .nextAction, .replacement] {
+            let provider = ScriptedProvider((kind == .firstAction ? [] : [.action(first)]) + [.insufficientInfo("이전 안내"), .action(second)])
             let flow = try await beginActionRequest(kind, provider: provider)
             let goalID = try XCTUnwrap(flow.goalDetails?.id)
+            let notice = try XCTUnwrap(flow.supplementalContext?.lastNotice)
             try flow.confirmSupplementalContext("제가 첫 문단을 썼어요.", for: goalID)
-            let screen = flow.screen
-            XCTAssertFalse(flow.canRequestFirstActionWithNewInformation)
-            try flow.retrySuggestion()
-            XCTAssertEqual(flow.screen, screen)
+            let reopened = try makeFlow(provider)
+            XCTAssertTrue(reopened.canRequestWithNewInformation, "\(kind)")
+            let saved = await provider.requests
+            XCTAssertEqual(saved.count, kind == .firstAction ? 1 : 2)
+            try reopened.retrySuggestion()
+            try reopened.retrySuggestion()
+            await reopened.waitForSuggestion()
             let requests = await provider.requests
-            XCTAssertEqual(requests.count, 2)
+            XCTAssertEqual(requests.map(\.kind), (kind == .firstAction ? [] : [.firstAction]) + [kind, kind])
+            XCTAssertEqual(requests.last?.supplementalText, "제가 첫 문단을 썼어요.")
+            XCTAssertEqual(requests.last?.completedActionIDs, requests.dropLast().last?.completedActionIDs)
+            XCTAssertEqual(requests.last?.deferredTasks, kind == .replacement ? [first.task] : [])
+            guard case .currentAction(let card, nil) = reopened.screen else { return XCTFail("\(kind): \(reopened.screen)") }
+            XCTAssertEqual(card.task, second.task)
+            XCTAssertEqual(card.origin?.task, kind == .smaller ? first.task : nil)
+            XCTAssertEqual(reopened.supplementalContext?.lastNotice, notice)
+            XCTAssertEqual(try makeFlow(provider).screen, reopened.screen)
+            XCTAssertEqual(reopened.goals.last?.completedActionCount, kind == .nextAction ? 1 : 0)
         }
+    }
+
+    func testSupplementalReproposalCannotStartForStoppedGoal() async throws {
         let provider = ScriptedProvider([.insufficientInfo("이전 안내")])
         let flow = try makeFlow(provider)
         try await startGoal(flow, "새 경력 사실 정리")
         await flow.waitForSuggestion()
         try flow.confirmSupplementalContext("제가 첫 문단을 썼어요.", for: XCTUnwrap(flow.goalDetails?.id))
         try flow.stopGoal()
-        XCTAssertFalse(flow.canRequestFirstActionWithNewInformation)
+        XCTAssertFalse(flow.canRequestWithNewInformation)
         try flow.retrySuggestion()
         let requests = await provider.requests
         XCTAssertEqual(requests.count, 1)
@@ -1015,7 +1031,7 @@ final class ProgressFlowTests: XCTestCase {
         XCTAssertEqual(reopened.screen, before)
         XCTAssertEqual(reopened.supplementalContext?.confirmedText, "제가 첫 문단을 썼어요.")
         XCTAssertEqual(reopened.supplementalContext?.draftText, "남겨둘 초안")
-        XCTAssertTrue(reopened.canRequestFirstActionWithNewInformation)
+        XCTAssertTrue(reopened.canRequestWithNewInformation)
         let requests = await provider.requests
         XCTAssertEqual(requests.count, 1)
         try await database.writer.write { try $0.execute(sql: "DROP TRIGGER reject_reproposal") }
@@ -1034,11 +1050,167 @@ final class ProgressFlowTests: XCTestCase {
         try active.retrySuggestion()
         await active.waitForSuggestion()
         let expected = active.screen
-        XCTAssertFalse(stale.canRequestFirstActionWithNewInformation)
+        XCTAssertFalse(stale.canRequestWithNewInformation)
         try stale.retrySuggestion()
         XCTAssertEqual(stale.screen, expected)
         let requests = await provider.requests
         XCTAssertEqual(requests.count, 2)
+    }
+
+    func testHTTPNewInformationPreservesOriginalQuestionsBlockerAndProgressOnBothAdapters() async throws {
+        let shared = try InsufficientInfoFixture.json()
+        let scenario = shared["supplemental_first_action"] as! [String: Any]
+        let confirmed = scenario["confirmed_text"] as! String
+        let question = shared["question"] as! String
+        let answer = shared["answer"] as! String
+        for server in [false, true] {
+            for kind in [SuggestionKind.firstAction, .smaller, .nextAction, .replacement] {
+                for mode in ["action", "insufficient_info", "need_info", "no_action", "connection", "format", "rejected", "uncertain"] where mode != "no_action" || kind == .replacement {
+                    DevelopmentTransport.store.reset()
+                    DevelopmentTransport.store.handler = { http in
+                        let payload = try JSONSerialization.jsonObject(with: http.httpBody!) as! [String: Any]
+                        let input = payload["input"] as! [String: Any]
+                        let available = input["available"] as! [String]
+                        let target = input["request_kind"] as! String == kind.rawValue
+                        let answered = available.contains("행동 요청에서 이미 답한 질문: \(question) / 답: \(answer)")
+                        let supplemented = available.contains(scenario["available_fact"] as! String)
+                        if supplemented && target {
+                            if mode == "connection" { throw URLError(.networkConnectionLost) }
+                            if mode == "format" { return (200, Data("{}".utf8)) }
+                            if mode == "rejected" || mode == "uncertain" {
+                                return (200, try JSONSerialization.data(withJSONObject: ["disposition": mode]))
+                            }
+                        }
+                        var response = (supplemented ? scenario["response"] : shared["response"]) as! [String: Any]
+                        var proposal = response["proposal"] as! [String: Any]
+                        let status = !target ? "action" : !answered ? "need_info" : supplemented ? mode : "insufficient_info"
+                        proposal["status"] = status
+                        switch status {
+                        case "action":
+                            if !target {
+                                proposal["action"] = self.first.task
+                                proposal["completion_condition"] = self.first.doneWhen
+                                proposal["estimated_minutes"] = self.first.estimatedMinutes
+                            }
+                        case "need_info":
+                            proposal["action"] = answered ? shared["supplemental_question"] as! String : question
+                            proposal["completion_condition"] = "알고 있는 답을 전한다"
+                            proposal["estimated_minutes"] = 0
+                        case "no_action": break
+                        default:
+                            proposal["action"] = ""
+                            proposal["completion_condition"] = ""
+                            proposal["estimated_minutes"] = 0
+                        }
+                        proposal["remaining_work"] = input["remaining_work"]
+                        proposal["preserved_completed_ids"] = input["completed_ids"]
+                        response["proposal"] = proposal
+                        return (200, try JSONSerialization.data(withJSONObject: response))
+                    }
+                    let config = URLSessionConfiguration.ephemeral
+                    config.protocolClasses = [DevelopmentTransport.self]
+                    let session = URLSession(configuration: config)
+                    let provider = server
+                        ? HTTPActionSuggestionProvider.server(baseURL: URL(string: "https://api.example.invalid")!, token: { "test-identity" }, session: session)
+                        : HTTPActionSuggestionProvider.development(baseURL: URL(string: "http://127.0.0.1:8080")!, token: nil, session: session)
+                    let flow = try await beginActionRequest(kind, provider: provider)
+                    try flow.answerQuestion(answer)
+                    await flow.waitForSuggestion()
+                    let goalID = try XCTUnwrap(flow.goalDetails?.id)
+                    let notice = try XCTUnwrap(flow.supplementalContext?.lastNotice)
+                    let before = DevelopmentTransport.store.requests.count
+                    try flow.confirmSupplementalContext(confirmed, for: goalID)
+                    try flow.updateSupplementalDraft("전송하지 않는 초안", for: goalID)
+                    let reopened = try makeFlow(provider)
+                    XCTAssertEqual(DevelopmentTransport.store.requests.count, before)
+                    try reopened.retrySuggestion()
+                    try reopened.retrySuggestion()
+                    await reopened.waitForSuggestion()
+                    XCTAssertEqual(DevelopmentTransport.store.requests.count, before + 1, "\(server)/\(kind)/\(mode)")
+                    let requests = DevelopmentTransport.store.requests
+                    let oldPayload = try JSONSerialization.jsonObject(with: requests[before - 1].httpBody!) as! [String: Any]
+                    let oldInput = oldPayload["input"] as! [String: Any]
+                    let payload = try JSONSerialization.jsonObject(with: requests.last!.httpBody!) as! [String: Any]
+                    let input = payload["input"] as! [String: Any]
+                    XCTAssertEqual(input["request_kind"] as? String, kind.rawValue)
+                    XCTAssertEqual(input["current_blocker"] as? String, kind == .smaller ? answer : "")
+                    let available = input["available"] as! [String]
+                    XCTAssertTrue(available.contains(scenario["available_fact"] as! String))
+                    XCTAssertEqual(available.filter { $0 != scenario["available_fact"] as! String }, oldInput["available"] as! [String])
+                    XCTAssertEqual(input["remaining_work"] as? [String], oldInput["remaining_work"] as? [String])
+                    XCTAssertEqual(input["completed_ids"] as? [String], oldInput["completed_ids"] as? [String])
+                    XCTAssertEqual(try JSONSerialization.data(withJSONObject: input["previous_proposals"]!, options: .sortedKeys),
+                                   try JSONSerialization.data(withJSONObject: oldInput["previous_proposals"]!, options: .sortedKeys))
+                    XCTAssertEqual(reopened.supplementalContext?.confirmedText, confirmed)
+                    XCTAssertEqual(reopened.supplementalContext?.draftText, "전송하지 않는 초안")
+                    switch mode {
+                    case "action":
+                        guard case .currentAction(let card, nil) = reopened.screen else { return XCTFail("\(kind): \(reopened.screen)") }
+                        XCTAssertEqual(card.task, ((scenario["response"] as! [String: Any])["proposal"] as! [String: Any])["action"] as? String)
+                    case "insufficient_info":
+                        guard case .insufficientInfo(let latest, false) = reopened.screen else { return XCTFail("\(reopened.screen)") }
+                        XCTAssertNotEqual(latest.requestID, notice.requestID)
+                        XCTAssertFalse(reopened.canRequestWithNewInformation)
+                    case "need_info":
+                        XCTAssertNotNil(reopened.suggestionInput)
+                    case "no_action":
+                        guard case .onHold(let deferred, .noAction) = reopened.screen else { return XCTFail("\(reopened.screen)") }
+                        XCTAssertEqual(deferred.map(\.task), [first.task])
+                    default:
+                        let problem: SuggestionProblem
+                        if case .currentAction(_, .problem(let value)) = reopened.screen { problem = value }
+                        else { problem = try XCTUnwrap(reopened.screen.suggestionProblem) }
+                        XCTAssertEqual(problem, .failure(mode == "connection" ? .connectionLost : mode == "rejected" ? .rejected : mode == "uncertain" ? .undecidable : .failed))
+                        XCTAssertEqual(reopened.supplementalContext?.lastNotice, notice)
+                    }
+                    XCTAssertEqual(try makeFlow(provider).screen, reopened.screen)
+                    XCTAssertEqual(reopened.goals.last?.completedActionCount, kind == .nextAction ? 1 : 0)
+                }
+            }
+        }
+    }
+
+    func testStaleNoticeCannotRequestAnotherSelectedGoalsNewInformation() async throws {
+        for kind in [SuggestionKind.firstAction, .smaller, .nextAction, .replacement] {
+            let provider = ScriptedProvider((kind == .firstAction ? [] : [.action(first)]) + [.insufficientInfo("목표 A 안내"), .insufficientInfo("목표 B 안내"), .action(second)])
+            let stale = try await beginActionRequest(kind, provider: provider)
+            let originalID = try XCTUnwrap(stale.goalDetails?.id)
+            try stale.confirmSupplementalContext("목표 A 확인값", for: originalID)
+            let selected = try await beginActionRequest(.firstAction, provider: provider)
+            let selectedID = try XCTUnwrap(selected.goalDetails?.id)
+            XCTAssertNotEqual(originalID, selectedID)
+            try selected.confirmSupplementalContext("목표 B 확인값", for: selectedID)
+            let expected = selected.screen
+            XCTAssertFalse(stale.canRequestWithNewInformation)
+            try stale.retrySuggestion()
+            await stale.waitForSuggestion()
+            let requests = await provider.requests
+            XCTAssertEqual(requests.count, kind == .firstAction ? 2 : 3)
+            let reopened = try makeFlow(provider)
+            XCTAssertEqual(reopened.screen, expected)
+            XCTAssertEqual(reopened.goalDetails?.id, selectedID)
+            XCTAssertEqual(reopened.supplementalContext?.confirmedText, "목표 B 확인값")
+            try reopened.selectGoal(originalID)
+            XCTAssertEqual(reopened.supplementalContext?.confirmedText, "목표 A 확인값")
+            XCTAssertEqual(reopened.goals.first { $0.id == originalID }?.completedActionCount, kind == .nextAction ? 1 : 0)
+        }
+    }
+
+    func testSmallerNoticeCannotRetryAfterUndoChangesItsCurrentAction() async throws {
+        let provider = ScriptedProvider([.action(first), .action(second), .insufficientInfo("이전 안내")])
+        let flow = try await beginActionRequest(.smaller, provider: provider)
+        try flow.makeSmaller()
+        await flow.waitForSuggestion()
+        try flow.confirmSupplementalContext("새로 확인한 사실", for: XCTUnwrap(flow.goalDetails?.id))
+        let stale = try makeFlow(provider)
+        try flow.dismissInformationNotice()
+        try flow.undoSplit()
+        XCTAssertFalse(stale.canRequestWithNewInformation)
+        try stale.retrySuggestion()
+        let requests = await provider.requests
+        XCTAssertEqual(requests.count, 3)
+        XCTAssertEqual(stale.supplementalContext?.confirmedText, "새로 확인한 사실")
+        XCTAssertEqual(stale.goals.last?.completedActionCount, 0)
     }
 
     private func beginActionRequest(_ kind: SuggestionKind, provider: any ActionSuggestionProvider) async throws -> ProgressFlow {

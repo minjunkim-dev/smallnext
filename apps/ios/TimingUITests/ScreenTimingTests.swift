@@ -331,7 +331,7 @@ final class ScreenTimingTests: XCTestCase {
         XCTAssertTrue(app.staticTexts[task].waitForExistence(timeout: 10))
     }
 
-    func testActionQuestionsRestoreAndReturnToTheirOriginalProgress() throws {
+    func testActionQuestionsRestoreAndRetryOriginalKindWithNewInformation() throws {
         continueAfterFailure = false
         let url = try XCTUnwrap(ProcessInfo.processInfo.environment["SMALLNEXT_TIMING_TEST_URL"])
         let question = "직접 확인할 수 있는 기록이 있나요?"
@@ -384,6 +384,40 @@ final class ScreenTimingTests: XCTestCase {
             let entry = goalEntry(app, goal: goal)
             XCTAssertTrue(entry.waitForExistence(timeout: 10))
             XCTAssertTrue(entry.label.contains("완료한 행동 \(kind == "next_action" ? 1 : 0)개"))
+            app.terminate()
+            app.launch()
+            XCTAssertTrue(app.staticTexts[title].waitForExistence(timeout: 10))
+            app.buttons["새 정보 추가"].tap()
+            let supplemental = app.textFields["추가로 알려줄 내용"]
+            XCTAssertTrue(supplemental.waitForExistence(timeout: 5))
+            supplemental.tap()
+            supplemental.typeText("제가 첫 문단을 작성했어요.")
+            if !app.buttons["확인하고 저장"].isHittable { app.swipeUp() }
+            app.buttons["확인하고 저장"].tap()
+            XCTAssertTrue(app.staticTexts["이 안내 이후 새 정보를 저장했어요. 아직 다시 제안받지 않았어요."].waitForExistence(timeout: 5))
+            app.terminate()
+            app.launch()
+            let retry = app.buttons["새 정보로 다시 제안"]
+            XCTAssertTrue(retry.waitForExistence(timeout: 10))
+            if !retry.isHittable { app.swipeUp() }
+            XCTAssertNotNil(attach(app, name: "\(kind)-supplemental-restored"))
+            retry.tap()
+            let action = "확인한 첫 문단을 메모에 옮기기"
+            XCTAssertTrue(app.staticTexts[action].waitForExistence(timeout: 10))
+            XCTAssertTrue(app.buttons["완료"].exists)
+            XCTAssertFalse(retry.exists)
+            XCTAssertNotNil(attach(app, name: "\(kind)-supplemental-action"))
+            let retryTree = XCTAttachment(string: app.debugDescription)
+            retryTree.name = "\(kind)-supplemental-accessibility-tree"
+            retryTree.lifetime = .keepAlways
+            add(retryTree)
+            app.terminate()
+            app.launch()
+            XCTAssertTrue(app.staticTexts[action].waitForExistence(timeout: 10))
+            app.buttons["목표 목록"].tap()
+            let completed = goalEntry(app, goal: goal)
+            XCTAssertTrue(completed.waitForExistence(timeout: 10))
+            XCTAssertTrue(completed.label.contains("완료한 행동 \(kind == "next_action" ? 1 : 0)개"))
             app.terminate()
         }
     }
