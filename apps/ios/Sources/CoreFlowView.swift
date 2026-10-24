@@ -691,6 +691,8 @@ struct CoreFlowView: View {
                 }
             }
             return true
+        } catch ProgressFlowError.answerExceedsRequestLimit {
+            goalInputProblem = "답을 보내기에는 내용이 너무 길어요. 답을 줄여 주세요. 작성 중인 내용은 유지했어요."
         } catch ProgressFlowError.invalidGoalContext {
             goalInputProblem = "자료 링크는 http:// 또는 https://로 입력해 주세요. 시간은 1 이상의 정수로 입력해 주세요."
         } catch {

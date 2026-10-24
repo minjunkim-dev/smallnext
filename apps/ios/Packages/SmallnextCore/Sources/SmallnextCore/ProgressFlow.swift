@@ -157,6 +157,7 @@ public enum ProgressFlowError: Error {
     case emptyGoal
     case goalNotFound
     case emptyAnswer
+    case answerExceedsRequestLimit
     case splitSourceNotFound
     case deferredActionNotFound
     case actionNotCurrent
@@ -270,6 +271,7 @@ public final class ProgressFlow {
                            arguments: [String(goalID)])
             return nil
         }
+        dismissedNoticeID = nil
         suggestionTask?.cancel()
     }
 
@@ -293,6 +295,7 @@ public final class ProgressFlow {
             try db.execute(sql: "DELETE FROM app_metadata WHERE key = 'selected_goal_id'")
             return nil
         }
+        dismissedNoticeID = nil
         suggestionTask?.cancel()
     }
 
@@ -548,7 +551,10 @@ public final class ProgressFlow {
             }
             try db.execute(sql: "UPDATE suggestion_request SET answer = ? WHERE id = ?", arguments: [answer, input.requestID])
             try Self.bumpRevision(db, goalID: goalID)
-            return try Self.insertRequest(db, goalID: goalID, kind: kind)
+            let pending = try Self.insertRequest(db, goalID: goalID, kind: kind)
+            do { _ = try HTTPActionSuggestionProvider.requestBody(pending.request) }
+            catch SuggestionFailure.rejected { throw ProgressFlowError.answerExceedsRequestLimit }
+            return pending
         }
     }
 

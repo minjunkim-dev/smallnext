@@ -285,6 +285,7 @@ final class ScreenTimingTests: XCTestCase {
             app.launch()
             XCTAssertTrue(field.waitForExistence(timeout: 10))
             XCTAssertEqual(field.value as? String, "모르고 확인할 자료도 없어요.")
+            if !field.isHittable { app.swipeUp() }
             XCTAssertNotNil(attach(app, name: "\(kind)-question-restored"))
             if !app.buttons["답하기"].isHittable { app.swipeUp() }
             app.buttons["답하기"].tap()

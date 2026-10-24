@@ -41,10 +41,8 @@ public struct HTTPActionSuggestionProvider: ActionSuggestionProvider {
 
     public func suggest(_ request: SuggestionRequest) async throws -> SuggestionCandidate {
         try Task.checkCancellation()
-        guard (request.blocker?.utf8.count ?? 0) <= 2048 else { throw SuggestionFailure.rejected }
         let input = Input(request)
-        let bytes = try JSONEncoder().encode(Payload(state_key: request.stateKey, input: input))
-        guard bytes.count <= 32 * 1024 else { throw SuggestionFailure.rejected }
+        let bytes = try Self.requestBody(request)
         var http = URLRequest(url: baseURL.appendingPathComponent(path))
         http.httpMethod = "POST"
         http.httpBody = bytes
@@ -139,6 +137,14 @@ public struct HTTPActionSuggestionProvider: ActionSuggestionProvider {
         case "no_action": return .noAction
         default: throw SuggestionFailure.rejected
         }
+    }
+
+    /// 답을 확정하기 전에도 실제 송신할 본문과 같은 상한을 검사한다.
+    static func requestBody(_ request: SuggestionRequest) throws -> Data {
+        guard (request.blocker?.utf8.count ?? 0) <= 2048 else { throw SuggestionFailure.rejected }
+        let bytes = try JSONEncoder().encode(Payload(state_key: request.stateKey, input: Input(request)))
+        guard bytes.count <= 32 * 1024 else { throw SuggestionFailure.rejected }
+        return bytes
     }
 
     /// 송신할 실제 입력만 정규화한다. 원문·배열 순서는 보존하고 진단/인증/요청 키는 제외한다.

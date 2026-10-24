@@ -774,6 +774,11 @@ final class ProgressFlowTests: XCTestCase {
         XCTAssertEqual(restored.results.map(\.body), ["자료 미기재를 확인함"])
         XCTAssertEqual(restored.draft, "바꾼 초안")
         XCTAssertEqual(try makeFlow(provider).screen, notice)
+        let goalID = try XCTUnwrap(flow.goalDetails?.id)
+        try flow.startNewGoal()
+        try flow.selectGoal(goalID)
+        XCTAssertEqual(flow.screen, notice)
+        try flow.dismissInformationNotice()
         try flow.complete()
         await flow.waitForSuggestion()
         XCTAssertEqual(flow.goals.last?.completedActionCount, 1)
@@ -831,6 +836,30 @@ final class ProgressFlowTests: XCTestCase {
                 XCTAssertEqual((input["completed_ids"] as! [String]).count, kind == .nextAction ? 1 : 0)
                 XCTAssertEqual(input["remaining_work"] as? [String], ["과거 경력 사실 정리"] + (kind == .nextAction || kind == .firstAction ? [] : [first.task]))
             }
+        }
+    }
+
+    func testOversizedActionAnswerKeepsQuestionDraftAndAllowsCorrection() async throws {
+        for kind in [SuggestionKind.firstAction, .smaller, .nextAction, .replacement] {
+            let provider = ScriptedProvider((kind == .firstAction ? [] : [.action(first)]) + [.question("기록이 있나요?"), .action(second)])
+            let flow = try await beginActionRequest(kind, provider: provider)
+            let original = flow.screen
+            let input = try XCTUnwrap(flow.suggestionInput)
+            let text = String(repeating: "가", count: kind == .smaller ? 700 : 11_000)
+            try flow.updateSuggestionInput(text, for: input.requestID)
+            XCTAssertThrowsError(try flow.answerQuestion(text))
+            XCTAssertEqual(flow.screen, original)
+            let reopened = try makeFlow(provider)
+            XCTAssertEqual(reopened.screen, original)
+            XCTAssertEqual(reopened.suggestionInput?.text, text)
+            let before = await provider.requests
+            XCTAssertEqual(before.count, kind == .firstAction ? 1 : 2)
+            try reopened.answerQuestion("기억나지 않고 자료도 없어요")
+            await reopened.waitForSuggestion()
+            guard case .currentAction(let action, nil) = reopened.screen else { return XCTFail("\(kind): \(reopened.screen)") }
+            XCTAssertEqual(action.task, second.task)
+            let after = await provider.requests
+            XCTAssertEqual(after.last?.actionAnswers.map(\.answer), ["기억나지 않고 자료도 없어요"])
         }
     }
 
