@@ -16,12 +16,15 @@ CLI = ROOT / 'services/api/tests/fixtures/timing-cli/codex'
 
 
 class TimingCLITests(unittest.TestCase):
-    def invoke(self, kind, *, check=False, delayed=False, notice=False, followup=False, answered=False):
+    def invoke(self, kind, *, check=False, delayed=False, notice=False, followup=False, answered=False, confirmed=False):
         payload = json.loads((ROOT / 'services/api/examples/development-ai-input.json').read_bytes())
         payload['request_kind'] = kind
         if notice: payload['goal'] = '정보 부족 안내 검증'
         if followup: payload['goal'] = f'후속 질문 검증 {kind}'
         if answered: payload['available'].append('행동 요청에서 이미 답한 질문: 기록이 있나요? / 답: 모르고 자료도 없어요.')
+        if confirmed:
+            shared = json.loads((ROOT / 'contracts/fixtures/insufficient-info.json').read_bytes())
+            payload['available'].append(shared['supplemental_first_action']['available_fact'])
         if check:
             payload = {'original_request': payload, 'candidate': {}}
         with tempfile.TemporaryDirectory() as directory:
@@ -82,3 +85,10 @@ class TimingCLITests(unittest.TestCase):
             self.assertEqual(value['status'], 'insufficient_info')
             self.assertEqual(value['action'], '')
             self.assertEqual(value['completion_condition'], '')
+
+    def test_confirmed_supplemental_first_action_uses_the_shared_example(self):
+        shared = json.loads((ROOT / 'contracts/fixtures/insufficient-info.json').read_bytes())
+        expected = shared['supplemental_first_action']['response']['proposal']
+        _, value = self.invoke('first_action', notice=True, confirmed=True)
+        for key in ['status', 'action', 'completion_condition', 'estimated_minutes', 'reason']:
+            self.assertEqual(value[key], expected[key])

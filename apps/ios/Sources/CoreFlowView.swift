@@ -234,12 +234,14 @@ struct CoreFlowView: View {
                     .frame(minHeight: 44)
                     .accessibilityHint("이 목표에 추가할 내용을 작성합니다. 저장만으로 AI에 보내지 않습니다.")
                 }
-                if !editingSupplemental, flow.canRequestFirstActionWithNewInformation {
+                if flow.canRequestFirstActionWithNewInformation {
                     commandButton("새 정보로 다시 제안") {
                         try flow.retrySuggestion()
                         supplementalFeedback = nil
                     }
                     .accessibilityHint("확인해 저장한 추가 내용으로 첫 행동을 한 번 요청합니다. 작성 중인 초안은 보내지 않습니다.")
+                    Text("확인해 저장한 내용만 보내요. 편집 중인 초안은 보내지 않아요.")
+                        .fixedSize(horizontal: false, vertical: true)
                 }
                 if let supplementalFeedback {
                     Text(supplementalFeedback)

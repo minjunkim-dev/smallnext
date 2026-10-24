@@ -91,6 +91,23 @@ async fn external_provider(
             value.as_object_mut().unwrap().remove("reason");
         }
     }
+    if mode == "confirmed-first" && generating {
+        let fixture: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../../contracts/fixtures/insufficient-info.json"
+        ))
+        .unwrap();
+        value = fixture["supplemental_first_action"]["response"]["proposal"].clone();
+        for key in [
+            "remaining_work",
+            "preserved_completed_ids",
+            "goal_completed",
+            "current_action_completed",
+        ] {
+            value.as_object_mut().unwrap().remove(key);
+        }
+        value["facts"] = json!([]);
+        value["reduction"] = json!("");
+    }
     let fault_mode = mode.strip_prefix("notice_").unwrap_or(&mode);
     let fault = fault_mode.strip_prefix(if generating { "generate_" } else { "check_" });
     let field = if generating { "action" } else { "evidence" };
@@ -1409,5 +1426,75 @@ async fn insufficient_info_crosses_http_with_independent_checks_and_no_failure_c
         assert!(response["proposal"].is_null());
         assert_eq!(fixture.remote.calls.lock().unwrap().len(), calls);
     }
+    fixture.close().await;
+}
+
+#[tokio::test]
+#[ignore = "requires TEST_DATABASE_URL; supplemental input through real HTTP and independent fake roles"]
+async fn confirmed_supplemental_first_action_preserves_input_and_independent_decisions() {
+    let fixture = Fixture::new().await;
+    let shared: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../../contracts/fixtures/insufficient-info.json"
+    ))
+    .unwrap();
+    let mut input = shared["input"].clone();
+    input["available"]
+        .as_array_mut()
+        .unwrap()
+        .push(shared["supplemental_first_action"]["available_fact"].clone());
+    for (mode, expected, count) in [
+        ("confirmed-first", "accepted", 2),
+        ("notice", "accepted", 2),
+        ("reject", "rejected", 2),
+        ("uncertain", "uncertain", 2),
+        ("generate_type", "invalid_proposal", 1),
+    ] {
+        *fixture.remote.mode.lock().unwrap() = mode.into();
+        fixture.remote.calls.lock().unwrap().clear();
+        let response = result(fixture.request_input("allowed", mode, input.clone()).await).await;
+        assert_eq!(response["disposition"], expected, "{mode}");
+        if mode == "confirmed-first" {
+            assert_eq!(
+                response["proposal"],
+                shared["supplemental_first_action"]["response"]["proposal"]
+            );
+        }
+        if mode == "notice" {
+            assert_eq!(response["proposal"], shared["response"]["proposal"]);
+        }
+        let calls = fixture.remote.calls.lock().unwrap();
+        assert_eq!(calls.len(), count, "{mode}");
+        let generated: serde_json::Value =
+            serde_json::from_str(calls[0]["messages"][0]["content"].as_str().unwrap()).unwrap();
+        assert_eq!(generated, input);
+        if count == 2 {
+            let checked: serde_json::Value =
+                serde_json::from_str(calls[1]["messages"][0]["content"].as_str().unwrap()).unwrap();
+            assert_eq!(checked["original_request"], input);
+        }
+    }
+    fixture.remote.calls.lock().unwrap().clear();
+    let mut oversized = input.clone();
+    oversized["current_blocker"] = json!("가".repeat(683));
+    assert_eq!(
+        fixture
+            .request_input("allowed", "blocker-limit", oversized)
+            .await
+            .status(),
+        StatusCode::BAD_REQUEST
+    );
+    let mut oversized = input;
+    oversized["available"]
+        .as_array_mut()
+        .unwrap()
+        .push(json!("가".repeat(10_923)));
+    assert_eq!(
+        fixture
+            .request_input("allowed", "body-limit", oversized)
+            .await
+            .status(),
+        StatusCode::PAYLOAD_TOO_LARGE
+    );
+    assert!(fixture.remote.calls.lock().unwrap().is_empty());
     fixture.close().await;
 }

@@ -241,5 +241,26 @@
       },
       "expected": "rejected"
     }
-  ]
+  ],
+  "supplemental_first_action": {
+    "confirmed_text": "제가 첫 문단을 작성했어요.\r\n資料は手元の抜粋です。 https://example.invalid/selected",
+    "draft_text": "아직 확인하지 않은 다른 초안",
+    "available_fact": "사용자가 확인해 저장한 보충 내용(외부 검증 미확인): 제가 첫 문단을 작성했어요.\r\n資料は手元の抜粋です。 https://example.invalid/selected",
+    "response": {
+      "disposition": "accepted",
+      "proposal": {
+        "status": "action",
+        "action": "확인한 첫 문단을 메모에 옮기기",
+        "completion_condition": "사용자 진술로 표시한 첫 문단이 메모에 있다",
+        "estimated_minutes": 3.0,
+        "reason": "사용자가 제공한 구체적인 진술을 정리한다",
+        "remaining_work": [
+          "과거 경력 사실 정리"
+        ],
+        "preserved_completed_ids": [],
+        "goal_completed": false,
+        "current_action_completed": false
+      }
+    }
+  }
 }

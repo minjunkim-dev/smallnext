@@ -174,6 +174,35 @@ final class DevelopmentAITests: XCTestCase {
         XCTAssertTrue(DevelopmentTransport.store.requests.isEmpty)
     }
 
+    func testConfirmedSupplementalRespectsWholeHTTPBodyAndBlockerByteLimits() async throws {
+        let provider = provider()
+        DevelopmentTransport.store.reset()
+        DevelopmentTransport.store.handler = { http in (200, try Self.accepted(http)) }
+        var request = SuggestionRequest(kind: .firstAction, goal: "정리", currentAction: nil, completedTasks: [],
+                                        remainingTasks: ["남은 원문"], completedActionIDs: ["7", "3"], supplementalText: "x")
+        _ = try await provider.suggest(request)
+        let baseline = try XCTUnwrap(DevelopmentTransport.store.requests.last?.httpBody).count
+        request.supplementalText = String(repeating: "x", count: 32 * 1024 - baseline + 1)
+        _ = try await provider.suggest(request)
+        XCTAssertEqual(DevelopmentTransport.store.requests.last?.httpBody?.count, 32 * 1024)
+        request.supplementalText += "x"
+        do { _ = try await provider.suggest(request); XCTFail("본문 상한 초과") }
+        catch { XCTAssertEqual(error as? SuggestionFailure, .rejected) }
+        XCTAssertEqual(DevelopmentTransport.store.requests.count, 2)
+        request.supplementalText = "새 정보"
+        request.blocker = String(repeating: "x", count: 2048)
+        _ = try await provider.suggest(request)
+        let payload = try JSONSerialization.jsonObject(with: XCTUnwrap(DevelopmentTransport.store.requests.last?.httpBody)) as! [String: Any]
+        let input = payload["input"] as! [String: Any]
+        XCTAssertEqual(input["current_blocker"] as? String, request.blocker)
+        XCTAssertEqual(input["remaining_work"] as? [String], ["정리", "남은 원문"])
+        XCTAssertEqual(input["completed_ids"] as? [String], ["7", "3"])
+        request.blocker! += "x"
+        do { _ = try await provider.suggest(request); XCTFail("막힘 상한 초과") }
+        catch { XCTAssertEqual(error as? SuggestionFailure, .rejected) }
+        XCTAssertEqual(DevelopmentTransport.store.requests.count, 3)
+    }
+
     func testTimingLinksTransportWithServerAndKeepsMissingTimeUnknown() async throws {
         let provider = provider()
         let request = SuggestionRequest(kind: .firstAction, goal: "정리", currentAction: nil, completedTasks: [], stateKey: "1:0")
