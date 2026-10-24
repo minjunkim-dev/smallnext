@@ -57,6 +57,7 @@ class OutputLimitTests(unittest.TestCase):
                 ([start, {'type': 'stream_event', 'event': {'type': 'message_delta',
                   'usage': {'output_tokens': 'PRIVATE'}}}], 'unverified_output_usage'),
                 ([start, dict(success, usage={'output_tokens': 8193})], 'output_tokens_exceeded'),
+                ([start, dict(success, usage={'output_tokens': 10**400})], 'output_tokens_exceeded'),
                 ([start, {'type': 'stream_event', 'event': {'type': 'message_delta',
                   'usage': {'output_tokens': 8193}}}], 'output_tokens_exceeded'),
                 ([start, {'type': 'stream_event', 'event': {'type': 'message_delta',
@@ -99,6 +100,38 @@ class OutputLimitTests(unittest.TestCase):
         self.assertEqual(record['primary_error'], 'max_tokens')
         self.assertEqual(record['cleanup_error'], 'signal_failed')
         self.assertNotIn('PRIVATE', json.dumps(record))
+
+    def test_cancel_and_timeout_reap_child_that_never_reads_large_stdin(self):
+        for reason in ('cancelled', 'timed_out'):
+            with self.subTest(reason=reason), tempfile.TemporaryDirectory() as directory:
+                marker = Path(directory)/'pid'
+                fake = Path(directory)/'claude'
+                fake.write_text('#!' + sys.executable + '\nimport os,time\nfrom pathlib import Path\n' +
+                                f'Path({str(marker)!r}).write_text(str(os.getpid()))\ntime.sleep(30)\n')
+                fake.chmod(0o700)
+                cancel = threading.Event()
+                results = []
+                deadline = qa.monotonic() + (.2 if reason == 'timed_out' else 5)
+                with patch.object(qa, 'output_readiness', return_value={'ready': True}):
+                    worker = threading.Thread(target=lambda: results.append(qa.call(str(fake), '', {},
+                        {'input': 'x'*180000}, deadline, cancel)))
+                    worker.start()
+                    timer = threading.Timer(.2, cancel.set)
+                    if reason == 'cancelled':
+                        timer.start()
+                    worker.join(2)
+                    blocked = worker.is_alive()
+                    if blocked:
+                        # Keep a failing regression from leaving its fake child or writer behind.
+                        if marker.exists():
+                            os.killpg(int(marker.read_text()), qa.signal.SIGKILL)
+                        worker.join(2)
+                    if reason == 'cancelled':
+                        timer.join()
+                self.assertFalse(blocked, 'stdin write prevented cancellation/deadline handling')
+                self.assertEqual(results[0]['error'], reason, results)
+                self.assertTrue(results[0]['process_reaped'])
+                self.assertFalse(results[0]['process_group_alive'])
 
     def test_unverified_missing_or_changed_support_blocks_child_creation(self):
         with tempfile.TemporaryDirectory() as directory:

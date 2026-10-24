@@ -301,7 +301,10 @@ class Tracker:
 
 
 def numeric(value, divisor=1):
-    return value / divisor if type(value) in (int, float) and math.isfinite(value) and value >= 0 else None
+    try:
+        return value / divisor if type(value) in (int, float) and math.isfinite(value) and value >= 0 else None
+    except OverflowError:
+        return None
 
 
 def output_count(value):
@@ -480,11 +483,12 @@ def _call(claude, prompt, schema, data, deadline, cancelled, output_mode="struct
                                      stderr=subprocess.DEVNULL, start_new_session=True,
                                      cwd=workspace, env=environment())
             record["cli_pid"] = child.pid
-            child.stdin.write(encoded(data))
-            child.stdin.close()
+            pending = memoryview(encoded(data))
+            os.set_blocking(child.stdin.fileno(), False)
             buffer = b""
             total_bytes = 0
             with selectors.DefaultSelector() as selector:
+                selector.register(child.stdin, selectors.EVENT_WRITE)
                 selector.register(child.stdout, selectors.EVENT_READ)
                 eof = False
                 while not eof:
@@ -492,7 +496,18 @@ def _call(claude, prompt, schema, data, deadline, cancelled, output_mode="struct
                         raise ValueError("cancelled")
                     if monotonic() >= deadline:
                         raise ValueError("timed_out")
-                    if not selector.select(min(.1, max(0, deadline - monotonic()))):
+                    ready = selector.select(min(.1, max(0, deadline - monotonic())))
+                    for key, _ in ready:
+                        if key.fileobj is child.stdin:
+                            try:
+                                written = os.write(child.stdin.fileno(), pending[:65536])
+                            except BlockingIOError:
+                                continue
+                            pending = pending[written:]
+                            if not pending:
+                                selector.unregister(child.stdin)
+                                child.stdin.close()
+                    if not any(key.fileobj is child.stdout for key, _ in ready):
                         continue
                     raw = os.read(child.stdout.fileno(), 65536)
                     if not raw:
@@ -905,7 +920,7 @@ def recover_summary(directory):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
-    readiness = sub.add_parser("readiness", help="read-only output cap evidence; never invokes Claude")
+    readiness = sub.add_parser("readiness", help="출력 상한 근거 확인; Claude 호출 없음")
     readiness.add_argument("--output-mode", choices=("structured", "text-json"), default="text-json")
     frozen = sub.add_parser("freeze")
     frozen.add_argument("directory", type=Path)
