@@ -101,6 +101,22 @@ class OutputLimitTests(unittest.TestCase):
         self.assertEqual(record['cleanup_error'], 'signal_failed')
         self.assertNotIn('PRIVATE', json.dumps(record))
 
+    def test_thinking_is_part_of_reported_output_not_an_extra_budget(self):
+        usage = {'output_tokens': 8192, 'output_tokens_details': {'thinking_tokens': 4096}}
+        events = [
+            {'type': 'stream_event', 'event': {'type': 'message_start'}},
+            {'type': 'stream_event', 'event': {'type': 'content_block_delta',
+             'delta': {'type': 'thinking_delta', 'thinking': 'PRIVATE'}}},
+            {'type': 'stream_event', 'event': {'type': 'message_delta', 'usage': usage}},
+            {'type': 'result', 'subtype': 'success', 'is_error': False,
+             'modelUsage': {qa.MODEL: {'outputTokens': 8192, 'thinkingTokens': 4096}},
+             'usage': usage, 'result': '{"ok":true}'}]
+        record = self.invoke(events)
+        self.assertEqual(record.get('output'), {'ok': True}, record)
+        self.assertEqual(record['usage']['output_tokens'], 8192)
+        self.assertEqual(record['stream_output_tokens'], 8192)
+        self.assertNotIn('PRIVATE', json.dumps(record))
+
     def test_cancel_and_timeout_reap_child_that_never_reads_large_stdin(self):
         for reason in ('cancelled', 'timed_out'):
             with self.subTest(reason=reason), tempfile.TemporaryDirectory() as directory:
@@ -159,6 +175,10 @@ class OutputLimitTests(unittest.TestCase):
             fake = Path(directory) / "claude"
             fake.write_text('#!' + sys.executable + '\n' + '''import json,os,sys
 assert os.environ['CLAUDE_CODE_MAX_OUTPUT_TOKENS'] == '8192'
+assert os.environ['CLAUDE_CODE_MAX_RETRIES'] == '0'
+assert os.environ['MAX_STRUCTURED_OUTPUT_RETRIES'] == '1'
+assert os.environ['CLAUDE_CODE_DISABLE_NONSTREAMING_FALLBACK'] == '1'
+assert 'CLAUDE_CODE_RETRY_WATCHDOG' not in os.environ
 assert not any(k.startswith(('ANTHROPIC_', 'CLAUDE_CODE_USE_', 'MCP_', 'MAX_THINKING_')) for k in os.environ)
 assert 'CLAUDE_CODE_OAUTH_TOKEN' not in os.environ
 assert sys.argv[sys.argv.index('--model')+1] == 'claude-haiku-5-5'
@@ -177,7 +197,9 @@ print(json.dumps({'type':'result','subtype':'success','is_error':False,
             fake.chmod(0o700)
             for parent in (None, '65536', 'invalid'):
                 env = dict(os.environ, ANTHROPIC_API_KEY='PRIVATE', CLAUDE_CODE_USE_BEDROCK='1',
-                           CLAUDE_CODE_OAUTH_TOKEN='PRIVATE', MAX_THINKING_TOKENS='99999', MCP_SECRET='PRIVATE')
+                           CLAUDE_CODE_OAUTH_TOKEN='PRIVATE', MAX_THINKING_TOKENS='99999', MCP_SECRET='PRIVATE',
+                           CLAUDE_CODE_MAX_RETRIES='99', MAX_STRUCTURED_OUTPUT_RETRIES='99',
+                           CLAUDE_CODE_DISABLE_NONSTREAMING_FALLBACK='0', CLAUDE_CODE_RETRY_WATCHDOG='1')
                 env.pop('CLAUDE_CODE_MAX_OUTPUT_TOKENS', None)
                 if parent is not None:
                     env['CLAUDE_CODE_MAX_OUTPUT_TOKENS'] = parent
