@@ -25,7 +25,13 @@ struct CoreFlowView: View {
     @State private var draftText = ""
     @State private var detailsExpanded = false
     @State private var storageFailed = false
+    @State private var editingSupplemental = false
+    @State private var supplementalText = ""
+    @State private var supplementalFeedback: String?
     @AccessibilityFocusState private var noticeFocused: Bool
+    @AccessibilityFocusState private var supplementalInputFocused: Bool
+    @AccessibilityFocusState private var supplementalFeedbackFocused: Bool
+    @FocusState private var supplementalKeyboardFocused: Bool
     /// 분할 직전 행동의 할 일이다. 값이 있는 동안 나뉘는 움직임을 보여준다.
     @State private var splitGhost: SplitGhost?
     @AppStorage(AIConsent.key) private var aiConsent = false
@@ -91,11 +97,13 @@ struct CoreFlowView: View {
         .sheet(isPresented: $showingGoal) { goalView }
         .sheet(isPresented: $showingGoals) { goalsView }
         .onAppear {
+            restoreSupplementalDraft()
             restoreDraft()
             goalInputDraft = flow.goalInput
             restoreSuggestionDraft()
         }
         .onChange(of: flow.goalDetails?.id) { _, _ in
+            restoreSupplementalDraft()
             goalInputDraft = flow.goalInput
             restoreSuggestionDraft()
             goalContextExpanded = false
@@ -206,16 +214,37 @@ struct CoreFlowView: View {
                     .accessibilityFocused($noticeFocused)
                 Text(verbatim: notice.reason)
                     .fixedSize(horizontal: false, vertical: true)
-                if isPrevious {
+                if flow.supplementalContext?.hasChangesSinceNotice == true {
+                    Text("이 안내 이후 새 정보를 저장했어요. 아직 다시 제안받지 않았어요.")
+                        .fixedSize(horizontal: false, vertical: true)
+                } else if isPrevious {
                     Text("이전 입력에 대한 안내예요.")
                         .fixedSize(horizontal: false, vertical: true)
                 }
-                Button("돌아가기") { showingGoals = true }
+                if editingSupplemental, let goalID = flow.goalDetails?.id {
+                    supplementalEditor(goalID: goalID)
+                } else {
+                    Button("새 정보 추가") {
+                        supplementalText = flow.supplementalContext?.draftText ?? flow.supplementalContext?.confirmedText ?? ""
+                        supplementalFeedback = nil
+                        editingSupplemental = true
+                    }
+                    .frame(minHeight: 44)
+                    .accessibilityHint("이 목표에 추가할 내용을 작성합니다. 저장만으로 AI에 보내지 않습니다.")
+                }
+                if let supplementalFeedback {
+                    Text(supplementalFeedback)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityFocused($supplementalFeedbackFocused)
+                }
+                Button("돌아가기") {
+                    if run({ }) { showingGoals = true }
+                }
                     .frame(minHeight: 44)
                     .accessibilityHint("목표 목록으로 돌아갑니다. 저장한 목표와 안내를 유지합니다.")
             }
             .accessibilityElement(children: .contain)
-            .onAppear { noticeFocused = true }
+            .onAppear { if !editingSupplemental { noticeFocused = true } }
         case .awaitingFirstAction(_, let problem):
             VStack(alignment: .leading, spacing: 16) {
                 suggestionStatus("첫 행동을 준비하고 있어요.", problem: problem)
@@ -234,6 +263,61 @@ struct CoreFlowView: View {
         case .onHold(let deferred, let status):
             onHold(deferred, status: status)
         }
+    }
+
+    private func supplementalEditor(goalID: Int64) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("추가로 알려줄 내용").font(.headline)
+            TextField("추가로 알려줄 내용", text: Binding(get: { supplementalText }, set: { text in
+                guard editingSupplemental, flow.goalDetails?.id == goalID else { return }
+                supplementalText = text
+                supplementalFeedback = nil
+                do {
+                    try flow.updateSupplementalDraft(text, for: goalID)
+                    storageFailed = false
+                } catch { reportSupplementalFailure(error) }
+            }), axis: .vertical)
+            .textFieldStyle(.roundedBorder)
+            .accessibilityLabel("추가로 알려줄 내용")
+            .accessibilityHint("작성 중인 초안은 이 목표에만 저장하며 AI에 보내지 않습니다.")
+            .accessibilityFocused($supplementalInputFocused)
+            .focused($supplementalKeyboardFocused)
+            Text("작성 중인 초안과 확인해 저장한 내용은 구분해 보관해요. 저장만으로 AI에 보내지 않아요.")
+                .fixedSize(horizontal: false, vertical: true)
+            Button("확인하고 저장") {
+                if run({ try flow.confirmSupplementalContext(supplementalText, for: goalID) }) {
+                    editingSupplemental = false
+                    supplementalFeedback = "보충 내용을 저장했어요."
+                    supplementalFeedbackFocused = true
+                    AccessibilityNotification.Announcement("보충 내용을 저장했어요.").post()
+                }
+            }
+            .buttonStyle(.borderedProminent)
+            .frame(minHeight: 44)
+        }
+        .onAppear {
+            supplementalKeyboardFocused = true
+            supplementalInputFocused = true
+        }
+    }
+
+    private func restoreSupplementalDraft() {
+        supplementalText = flow.supplementalContext?.draftText ?? flow.supplementalContext?.confirmedText ?? ""
+        editingSupplemental = flow.supplementalContext?.draftText != nil
+        supplementalFeedback = nil
+    }
+
+    private func reportSupplementalFailure(_ error: Error) {
+        let message: String
+        if case ProgressFlowError.supplementalContextTooLarge = error {
+            message = "추가 내용은 UTF-8 32KiB까지 저장할 수 있어요. 작성한 내용을 줄여 주세요. 현재 편집 내용은 화면에 남아 있어요."
+        } else {
+            message = "저장하지 못했어요. 현재 편집 내용을 유지했어요. 다시 시도해 주세요."
+        }
+        supplementalFeedback = message
+        storageFailed = true
+        supplementalFeedbackFocused = true
+        AccessibilityNotification.Announcement(message).post()
     }
 
     private func goalField(_ title: String, field: WritableKeyPath<GoalInput, String>) -> some View {
@@ -668,7 +752,8 @@ struct CoreFlowView: View {
     private func run(_ command: @MainActor () throws -> Void) -> Bool {
         storageFailed = false
         goalInputProblem = nil
-        let drafts = Drafts(goalInput: goalInputDraft, answer: answerText, completionCriteria: criteriaText, actionNote: draftText)
+        let drafts = Drafts(goalInput: goalInputDraft, answer: answerText, completionCriteria: criteriaText, actionNote: draftText,
+                            supplementalText: editingSupplemental ? supplementalText : nil)
         do {
             try flow.run(saving: drafts) {
                 try withAnimation(.easeInOut(duration: Motion.nextCard)) {
@@ -678,6 +763,8 @@ struct CoreFlowView: View {
             return true
         } catch ProgressFlowError.invalidGoalContext {
             goalInputProblem = "자료 링크는 http:// 또는 https://로 입력해 주세요. 시간은 1 이상의 정수로 입력해 주세요."
+        } catch where editingSupplemental {
+            reportSupplementalFailure(error)
         } catch {
             storageFailed = true
             AccessibilityNotification.Announcement(

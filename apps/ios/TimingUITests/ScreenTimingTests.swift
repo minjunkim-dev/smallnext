@@ -229,7 +229,7 @@ final class ScreenTimingTests: XCTestCase {
         XCTAssertTrue(app.buttons["돌아가기"].isHittable)
         XCTAssertFalse(app.buttons["완료"].exists)
         XCTAssertFalse(app.buttons["다시 시도"].exists)
-        XCTAssertFalse(app.buttons["새 정보 추가"].exists)
+        XCTAssertTrue(app.buttons["새 정보 추가"].isHittable)
         XCTAssertNotNil(attach(app, name: "first-insufficient-info"))
         let tree = XCTAttachment(string: app.debugDescription)
         tree.name = "first-insufficient-info-accessibility-tree"
@@ -243,14 +243,42 @@ final class ScreenTimingTests: XCTestCase {
         XCTAssertTrue(entry.label.contains("완료한 행동 0개"))
         entry.tap()
         XCTAssertTrue(app.staticTexts[title].waitForExistence(timeout: 10))
+        app.buttons["새 정보 추가"].tap()
+        let editor = app.textFields["추가로 알려줄 내용"]
+        XCTAssertTrue(editor.waitForExistence(timeout: 5))
+        editor.typeText("제가 첫 문단을 작성했어요.")
+        app.terminate()
+        app.launch()
+        XCTAssertTrue(editor.waitForExistence(timeout: 10))
+        XCTAssertEqual(editor.value as? String, "제가 첫 문단을 작성했어요.")
+        app.swipeUp()
+        app.buttons["확인하고 저장"].tap()
+        XCTAssertTrue(app.staticTexts["보충 내용을 저장했어요."].waitForExistence(timeout: 5))
+        let previousNotice = "이 안내 이후 새 정보를 저장했어요. 아직 다시 제안받지 않았어요."
+        XCTAssertTrue(app.staticTexts[previousNotice].exists)
+        XCTAssertFalse(app.buttons["새 정보로 다시 제안"].exists)
+        XCTAssertNotNil(attach(app, name: "supplemental-confirmed-with-previous-notice"))
+        let savedTree = XCTAttachment(string: app.debugDescription)
+        savedTree.name = "supplemental-saved-accessibility-tree"
+        savedTree.lifetime = .keepAlways
+        add(savedTree)
         app.terminate()
         app.launchArguments += ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]
         app.launch()
         XCTAssertTrue(app.staticTexts[title].waitForExistence(timeout: 10))
         XCTAssertTrue(app.staticTexts[reason].exists)
+        XCTAssertTrue(app.staticTexts[previousNotice].exists)
+        app.buttons["새 정보 추가"].tap()
+        XCTAssertTrue(editor.waitForExistence(timeout: 5))
+        XCTAssertEqual(editor.value as? String, "제가 첫 문단을 작성했어요.")
+        editor.typeText(" 수정 중")
         XCTAssertNotNil(attach(app, name: "first-insufficient-info-large-text-restored"))
+        app.swipeUp()
         app.buttons["돌아가기"].tap()
         XCTAssertTrue(entry.waitForExistence(timeout: 10))
+        entry.tap()
+        XCTAssertTrue(editor.waitForExistence(timeout: 10))
+        XCTAssertEqual(editor.value as? String, "제가 첫 문단을 작성했어요. 수정 중")
     }
 
     func testObservationRejectsMissingScreenshotAndLateCapture() {
