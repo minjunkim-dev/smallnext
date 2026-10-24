@@ -29,6 +29,7 @@ struct CoreFlowView: View {
     @State private var supplementalText = ""
     @State private var supplementalFeedback: String?
     @AccessibilityFocusState private var noticeFocused: Bool
+    @AccessibilityFocusState private var questionFocused: Bool
     @AccessibilityFocusState private var supplementalInputFocused: Bool
     @AccessibilityFocusState private var supplementalFeedbackFocused: Bool
     @FocusState private var supplementalKeyboardFocused: Bool
@@ -132,6 +133,7 @@ struct CoreFlowView: View {
         case .goalInput: "goalInput"
         case .stoppedGoal: "stoppedGoal"
         case .insufficientInfo(let notice, _): "insufficientInfo-\(notice.requestID)"
+        case .actionQuestion: "actionQuestion-\(flow.suggestionInput?.requestID ?? 0)"
         case .preparingGoal: "preparingGoal"
         case .awaitingFirstAction(_, let problem): "awaitingFirstAction-\(String(describing: problem))"
         case .currentAction(let card, _): "currentAction-\(card.id)"
@@ -237,14 +239,22 @@ struct CoreFlowView: View {
                         .fixedSize(horizontal: false, vertical: true)
                         .accessibilityFocused($supplementalFeedbackFocused)
                 }
-                Button("돌아가기") {
-                    if run({ }) { showingGoals = true }
+                commandButton("돌아가기", prominent: false) {
+                    if notice.requestKind == .smaller {
+                        try flow.dismissInformationNotice()
+                        editingSupplemental = false
+                    } else { showingGoals = true }
                 }
-                    .frame(minHeight: 44)
-                    .accessibilityHint("목표 목록으로 돌아갑니다. 저장한 목표와 안내를 유지합니다.")
+                .accessibilityHint(notice.requestKind == .smaller ? "현재 행동으로 돌아갑니다. 저장한 행동과 안내를 유지합니다." : "목표 목록으로 돌아갑니다. 저장한 목표와 안내를 유지합니다.")
             }
             .accessibilityElement(children: .contain)
             .onAppear { if !editingSupplemental { noticeFocused = true } }
+        case .actionQuestion(let question):
+            VStack(alignment: .leading, spacing: 16) {
+                questionAnswer(question, prompt: "알고 있는 답")
+                commandButton("돌아가기", prominent: false) { showingGoals = true }
+                    .accessibilityHint("목표 목록으로 돌아갑니다. 작성 중인 답은 보존합니다.")
+            }
         case .awaitingFirstAction(_, let problem):
             VStack(alignment: .leading, spacing: 16) {
                 suggestionStatus("첫 행동을 준비하고 있어요.", problem: problem)
@@ -644,22 +654,7 @@ struct CoreFlowView: View {
                 try flow.cancelSuggestion()
             }
         case .question(let question):
-            VStack(alignment: .leading, spacing: 12) {
-                Text(question)
-                    .font(.body.weight(.semibold))
-                    .fixedSize(horizontal: false, vertical: true)
-                TextField("가장 먼저 막히는 지점", text: suggestionBinding($answerText), axis: .vertical)
-                    .font(.body)
-                    .padding(16)
-                    .frame(minHeight: 44)
-                    .background(Color(.secondarySystemGroupedBackground),
-                                in: RoundedRectangle(cornerRadius: 12))
-                    .accessibilityLabel(question)
-                commandButton("답하기") {
-                    try flow.answerQuestion(answerText)
-                }
-                .disabled(answerText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-            }
+            questionAnswer(question, prompt: "가장 먼저 막히는 지점")
         case .problem(let problem):
             Text(reason(for: problem))
                 .font(.body)
@@ -671,6 +666,26 @@ struct CoreFlowView: View {
         commandButton("더 작게", prominent: false) {
             try flow.makeSmaller()
         }
+    }
+
+    private func questionAnswer(_ question: String, prompt: String) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(verbatim: question)
+                .font(.body.weight(.semibold))
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityAddTraits(.isHeader)
+                .accessibilityFocused($questionFocused)
+            TextField(prompt, text: suggestionBinding($answerText), axis: .vertical)
+                .font(.body)
+                .padding(16)
+                .frame(minHeight: 44)
+                .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12))
+                .accessibilityLabel(question)
+            commandButton("답하기") { try flow.answerQuestion(answerText) }
+                .disabled(answerText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        }
+        .accessibilityElement(children: .contain)
+        .onAppear { questionFocused = true }
     }
 
     /// 기다리는 중이면 '취소'를, 문제가 있으면 짧은 이유와 '다시 시도'를 보여준다.
@@ -761,6 +776,8 @@ struct CoreFlowView: View {
                 }
             }
             return true
+        } catch ProgressFlowError.answerExceedsRequestLimit {
+            goalInputProblem = "답을 보내기에는 내용이 너무 길어요. 답을 줄여 주세요. 작성 중인 내용은 유지했어요."
         } catch ProgressFlowError.invalidGoalContext {
             goalInputProblem = "자료 링크는 http:// 또는 https://로 입력해 주세요. 시간은 1 이상의 정수로 입력해 주세요."
         } catch where editingSupplemental {
@@ -874,6 +891,8 @@ struct CoreFlowView: View {
             messages.append(problem.map(reason(for:)) ?? question ?? (criteria == nil ? "목표를 정리하고 있어요." : "완료 조건을 확인해 주세요."))
         case .insufficientInfo:
             break // 제목으로 접근성 초점을 옮긴 뒤 본문과 돌아가기를 순서대로 읽는다.
+        case .actionQuestion:
+            break // 질문으로 초점을 옮긴다.
         case .goalInput:
             break
         }

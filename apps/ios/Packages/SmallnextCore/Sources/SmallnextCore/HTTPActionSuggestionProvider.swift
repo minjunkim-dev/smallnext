@@ -41,10 +41,8 @@ public struct HTTPActionSuggestionProvider: ActionSuggestionProvider {
 
     public func suggest(_ request: SuggestionRequest) async throws -> SuggestionCandidate {
         try Task.checkCancellation()
-        guard (request.blocker?.utf8.count ?? 0) <= 2048 else { throw SuggestionFailure.rejected }
         let input = Input(request)
-        let bytes = try JSONEncoder().encode(Payload(state_key: request.stateKey, input: input))
-        guard bytes.count <= 32 * 1024 else { throw SuggestionFailure.rejected }
+        let bytes = try Self.requestBody(request)
         var http = URLRequest(url: baseURL.appendingPathComponent(path))
         http.httpMethod = "POST"
         http.httpBody = bytes
@@ -141,6 +139,14 @@ public struct HTTPActionSuggestionProvider: ActionSuggestionProvider {
         }
     }
 
+    /// 답을 확정하기 전에도 실제 송신할 본문과 같은 상한을 검사한다.
+    static func requestBody(_ request: SuggestionRequest) throws -> Data {
+        guard (request.blocker?.utf8.count ?? 0) <= 2048 else { throw SuggestionFailure.rejected }
+        let bytes = try JSONEncoder().encode(Payload(state_key: request.stateKey, input: Input(request)))
+        guard bytes.count <= 32 * 1024 else { throw SuggestionFailure.rejected }
+        return bytes
+    }
+
     /// 송신할 실제 입력만 정규화한다. 원문·배열 순서는 보존하고 진단/인증/요청 키는 제외한다.
     static func inputFingerprint(_ request: SuggestionRequest) throws -> String {
         func normalized(_ value: Any) -> Any {
@@ -190,6 +196,7 @@ public struct HTTPActionSuggestionProvider: ActionSuggestionProvider {
             if let text = request.context.materialExcerpt { facts.append("사용자가 선택한 자료 발췌: \(text)") }
             facts += request.context.materialLinks.map { "자료 링크(본문을 읽지 않음): \($0.absoluteString)" }
             facts += request.context.answers.map { "이미 답한 질문: \($0.question) / 답: \($0.answer)" }
+            facts += request.actionAnswers.map { "행동 요청에서 이미 답한 질문: \($0.question) / 답: \($0.answer)" }
             facts += request.completedTasks.map { "이미 완료한 행동: \($0)" }
             facts += request.deferredTasks.map { "보류한 행동(재제안 금지): \($0)" }
             available = facts

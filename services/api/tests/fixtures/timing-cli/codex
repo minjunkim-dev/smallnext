@@ -25,7 +25,8 @@ if delayed:
 if checking:
     value = dict(verdict='accept', criteria=[1, 2, 3, 4, 5], evidence='모의 검사', reason='모의 검증')
 else:
-    if kind == 'next_action':
+    followup = payload['goal'].split()[3] if payload['goal'].startswith('후속 질문 검증 ') else None
+    if kind == 'next_action' and not followup:
         sys.exit(1)
     status = 'goal_summary' if kind == 'goal_preparation' else 'action'
     if kind == 'smaller' and len(payload['previous_proposals']) > 1:
@@ -40,5 +41,12 @@ else:
                      reduction='', reason='현재 제공된 정보로는 **당시 역할**을 확인할 수 없어요.')
     if status == 'need_info':
         value['action'] = '펜꽂이가 어디 있나요?'
+    if kind == followup:
+        answered = any(fact.startswith('행동 요청에서 이미 답한 질문:') for fact in payload['available'])
+        value.update(status='insufficient_info' if answered else 'need_info',
+                     action='' if answered else '직접 확인할 수 있는 기록이 있나요?',
+                     completion_condition='' if answered else '알고 있는 답을 전한다',
+                     estimated_minutes=0, reduction='',
+                     reason='현재 제공된 정보로는 당시 역할을 확인할 수 없어요.')
 print(json.dumps({'type': 'item.completed', 'item': {'type': 'agent_message', 'text': json.dumps(value, ensure_ascii=False)}}))
 print(json.dumps({'type': 'turn.completed'}))

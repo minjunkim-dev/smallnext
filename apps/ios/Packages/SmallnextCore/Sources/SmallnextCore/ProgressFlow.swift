@@ -152,6 +152,8 @@ public enum ProgressScreen: Equatable, Sendable {
     case awaitingFirstAction(goal: String, problem: SuggestionProblem?)
     case currentAction(ActionCard, smaller: SmallerStatus?)
     case insufficientInfo(InformationNotice, isPrevious: Bool)
+    /// 확정 목표의 행동 요청에서 받은 실제 미답 질문이다. 더 작게는 기존 현재 행동에 표시한다.
+    case actionQuestion(String)
     /// 완료 후 다음 행동을 받기 전이다. 완료 기록을 유지한다.
     case awaitingNextAction(problem: SuggestionProblem?)
     /// 현재 행동이 없고 보류한 행동이 있다. 보류한 행동을 생성 순서대로 담아 재개할 수 있게 한다.
@@ -164,6 +166,7 @@ public enum ProgressFlowError: Error {
     case emptyGoal
     case goalNotFound
     case emptyAnswer
+    case answerExceedsRequestLimit
     case splitSourceNotFound
     case deferredActionNotFound
     case actionNotCurrent
@@ -231,6 +234,7 @@ public final class ProgressFlow {
     @ObservationIgnored private var suggestionTask: Task<Void, Never>?
     /// 결과 저장 실패로 DB에 pending이 남은 요청이다. 다음 성공한 명령에서 실패 상태도 저장한다.
     @ObservationIgnored private var unsavedSuggestionID: Int64?
+    @ObservationIgnored private var dismissedNoticeID: Int64?
     @ObservationIgnored private let logger = Logger(subsystem: "dev.smallnext.app", category: "progress")
 
     public init(database: AppDatabase, provider: any ActionSuggestionProvider) throws {
@@ -289,7 +293,7 @@ public final class ProgressFlow {
 
     private nonisolated static func loadSuggestionInput(_ db: Database, screen: ProgressScreen) throws -> SuggestionInput? {
         switch screen {
-        case .preparingGoal(.some, _, nil), .preparingGoal(_, .some, nil), .currentAction(_, .question): break
+        case .preparingGoal(.some, _, nil), .preparingGoal(_, .some, nil), .currentAction(_, .question), .actionQuestion: break
         default: return nil
         }
         guard let goalID = try selectedGoalID(db),
@@ -312,6 +316,7 @@ public final class ProgressFlow {
                            arguments: [String(goalID)])
             return nil
         }
+        dismissedNoticeID = nil
         suggestionTask?.cancel()
     }
 
@@ -335,6 +340,7 @@ public final class ProgressFlow {
             try db.execute(sql: "DELETE FROM app_metadata WHERE key = 'selected_goal_id'")
             return nil
         }
+        dismissedNoticeID = nil
         suggestionTask?.cancel()
     }
 
@@ -352,6 +358,8 @@ public final class ProgressFlow {
                 try db.execute(sql: "UPDATE app_metadata SET value = ? WHERE key = ?",
                                arguments: [String(decoding: try JSONEncoder().encode(input), as: UTF8.self), "goal_input:\(goalID)"])
             }
+            try db.execute(sql: "UPDATE suggestion_request SET status = 'interrupted' WHERE goal_id = ? AND status = 'applied' AND question IS NOT NULL AND answer IS NULL",
+                           arguments: [goalID])
             return nil
         }
         suggestionTask?.cancel()
@@ -566,23 +574,32 @@ public final class ProgressFlow {
         }
     }
 
-    /// 확인 질문의 답을 막힘 원인으로 저장하고, 그 원인을 담아 더 쉬운 행동을 다시 요청한다.
+    /// 실제 질문의 답을 원래 요청에 저장하고 같은 종류를 한 번 요청한다. 더 작게의 답만 막힘으로 확정한다.
     public func answerQuestion(_ text: String) throws {
-        guard case .currentAction(_, .question) = screen else { return }
+        switch screen {
+        case .currentAction(_, .question), .actionQuestion: break
+        default: return
+        }
         let answer = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !answer.isEmpty else { throw ProgressFlowError.emptyAnswer }
+        guard let input = suggestionInput else { throw ProgressFlowError.goalNotReady }
         try perform { db in
-            guard let goalID = try Self.selectedGoalID(db) else { return nil }
-            try db.execute(sql: "UPDATE goal SET blocker = ? WHERE id = ?", arguments: [answer, goalID])
-            try db.execute(
-                sql: """
-                UPDATE suggestion_request SET answer = ?
-                WHERE id = (SELECT MAX(id) FROM suggestion_request WHERE goal_id = ? AND question IS NOT NULL)
-                """,
-                arguments: [answer, goalID]
-            )
+            let currentScreen = try Self.loadScreen(db)
+            guard let goalID = try Self.selectedGoalID(db),
+                  try Self.loadSuggestionInput(db, screen: currentScreen)?.requestID == input.requestID,
+                  let row = try Row.fetchOne(db, sql: "SELECT r.kind FROM suggestion_request r JOIN goal g ON g.id = r.goal_id WHERE r.id = ? AND r.goal_id = ? AND r.goal_revision = g.revision AND r.status = 'applied' AND r.question IS NOT NULL AND r.answer IS NULL AND g.status = 'active'",
+                                            arguments: [input.requestID, goalID]),
+                  let kind = SuggestionKind(rawValue: row["kind"]), kind != .goalPreparation
+            else { throw ProgressFlowError.goalNotReady }
+            if kind == .smaller {
+                try db.execute(sql: "UPDATE goal SET blocker = ? WHERE id = ?", arguments: [answer, goalID])
+            }
+            try db.execute(sql: "UPDATE suggestion_request SET answer = ? WHERE id = ?", arguments: [answer, input.requestID])
             try Self.bumpRevision(db, goalID: goalID)
-            return try Self.insertRequest(db, goalID: goalID, kind: .smaller)
+            let pending = try Self.insertRequest(db, goalID: goalID, kind: kind)
+            do { _ = try HTTPActionSuggestionProvider.requestBody(pending.request) }
+            catch SuggestionFailure.rejected { throw ProgressFlowError.answerExceedsRequestLimit }
+            return pending
         }
     }
 
@@ -680,6 +697,15 @@ public final class ProgressFlow {
         suggestionTask?.cancel()
     }
 
+    /// 안내를 닫고 현재 미완료 행동으로 돌아간다. 안내는 보존하며 재실행하면 다시 복구한다.
+    public func dismissInformationNotice() throws {
+        guard case .insufficientInfo(let notice, _) = screen, notice.requestKind == .smaller else { return }
+        let restored = try database.writer.read { try Self.loadScreen($0, hidingNotice: notice.requestID) }
+        guard case .currentAction = restored else { return }
+        dismissedNoticeID = notice.requestID
+        screen = restored
+    }
+
     /// 진행 중인 제안 요청이 끝날 때까지 기다린다. 테스트에서 쓴다.
     func waitForSuggestion() async {
         await suggestionTask?.value
@@ -696,6 +722,7 @@ public final class ProgressFlow {
 
     private func perform(_ command: @Sendable (Database) throws -> PendingSuggestion?) throws {
         let failedID = unsavedSuggestionID
+        let dismissedNoticeID = dismissedNoticeID
         let (pending, screen, input, details, goals, suggestionInput, supplementalContext) = try database.writer.write { db in
             if let failedID {
                 try db.execute(
@@ -704,7 +731,7 @@ public final class ProgressFlow {
                 )
             }
             let pending = try command(db)
-            let screen = try Self.loadScreen(db)
+            let screen = try Self.loadScreen(db, hidingNotice: dismissedNoticeID)
             return (pending, screen, try Self.loadGoalInput(db), try Self.loadGoalDetails(db), try Self.loadGoals(db), try Self.loadSuggestionInput(db, screen: screen), try Self.loadSelectedSupplementalContext(db))
         }
         unsavedSuggestionID = nil
@@ -736,10 +763,11 @@ public final class ProgressFlow {
 
     private func finish(_ pending: PendingSuggestion, _ outcome: Result<SuggestionCandidate, SuggestionFailure>, timing: SuggestionTiming?) {
         let applyStart = SuggestionTiming.now
+        let dismissedNoticeID = dismissedNoticeID
         do {
             let (screen, input, status, isCurrentRequest, supplementalContext) = try database.writer.write { db in
                 try Self.apply(db, pending, outcome)
-                let screen = try Self.loadScreen(db)
+                let screen = try Self.loadScreen(db, hidingNotice: dismissedNoticeID)
                 let isCurrentRequest = try timing != nil && (Self.selectedGoalID(db) == pending.goalID && Int64.fetchOne(db, sql: "SELECT MAX(id) FROM suggestion_request WHERE goal_id = ?", arguments: [pending.goalID]) == pending.id)
                 let status = timing == nil ? nil : try String.fetchOne(db, sql: "SELECT status FROM suggestion_request WHERE id = ?", arguments: [pending.id])
                 return (screen, try Self.loadSuggestionInput(db, screen: screen), status, isCurrentRequest, try Self.loadSelectedSupplementalContext(db))
@@ -953,7 +981,9 @@ public final class ProgressFlow {
             completionCriteria: goal["completion_criteria"],
             stateKey: "\(goalID):\(revision)",
             remainingTasks: try String.fetchAll(db, sql: "SELECT task FROM action WHERE goal_id = ? AND status IN ('current', 'split', 'deferred') ORDER BY sequence", arguments: [goalID]),
-            completedActionIDs: try Int64.fetchAll(db, sql: "SELECT a.id FROM completion c JOIN action a ON a.id = c.action_id WHERE a.goal_id = ? ORDER BY c.id", arguments: [goalID]).map(String.init)
+            completedActionIDs: try Int64.fetchAll(db, sql: "SELECT a.id FROM completion c JOIN action a ON a.id = c.action_id WHERE a.goal_id = ? ORDER BY c.id", arguments: [goalID]).map(String.init),
+            actionAnswers: try Row.fetchAll(db, sql: "SELECT question, answer FROM suggestion_request WHERE goal_id = ? AND kind != ? AND answer IS NOT NULL ORDER BY id",
+                                           arguments: [goalID, SuggestionKind.goalPreparation.rawValue]).map { GoalAnswer(question: $0["question"], answer: $0["answer"]) }
         )
     }
 
@@ -1048,14 +1078,14 @@ public final class ProgressFlow {
         }
     }
 
-    private nonisolated static func loadScreen(_ db: Database) throws -> ProgressScreen {
+    private nonisolated static func loadScreen(_ db: Database, hidingNotice: Int64? = nil) throws -> ProgressScreen {
         guard let goalID = try selectedGoalID(db) else { return .goalInput }
         guard let goalRow = try Row.fetchOne(db, sql: "SELECT * FROM goal WHERE id = ?", arguments: [goalID]) else { return .goalInput }
         let stopped = goalRow["status"] as String == "stopped"
         let latest = try Row.fetchOne(
             db,
             sql: """
-            SELECT id, kind, goal_revision, status, failure_reason, question FROM suggestion_request
+            SELECT id, kind, goal_revision, status, failure_reason, question, answer FROM suggestion_request
             WHERE goal_id = ? ORDER BY id DESC LIMIT 1
             """,
             arguments: [goalID]
@@ -1064,6 +1094,12 @@ public final class ProgressFlow {
             if stopped { return .stoppedGoal(nil) }
             return .preparingGoal(question: latest?["question"], completionCriteria: goalRow["proposed_completion_criteria"],
                                   problem: latest.map(requestProblem) ?? .interrupted)
+        }
+        if !stopped, let latest, latest["status"] as String == "applied",
+           let notice = try loadSupplementalContext(db, goalID: goalID)?.lastNotice,
+           notice.requestID == latest["id"] as Int64, notice.requestID != hidingNotice {
+            let fingerprint = try HTTPActionSuggestionProvider.inputFingerprint(makeRequest(db, goal: goalRow, kind: notice.requestKind))
+            return .insufficientInfo(notice, isPrevious: notice.goalRevision != goalRow["revision"] as Int || notice.inputFingerprint != fingerprint)
         }
         if let row = try Row.fetchOne(
             db,
@@ -1112,7 +1148,13 @@ public final class ProgressFlow {
             return stopped ? .stoppedGoal(card) : .currentAction(card, smaller: smaller)
         }
         if stopped { return .stoppedGoal(nil) }
-        let problem = latest.map(requestProblem) ?? .interrupted
+        if let latest, latest["status"] as String == "applied", latest["answer"] == nil,
+           latest["goal_revision"] as Int == goalRow["revision"] as Int, let question: String = latest["question"] {
+            return .actionQuestion(question)
+        }
+        let problem: SuggestionProblem? = if let latest, latest["question"] as String? != nil,
+            latest["goal_revision"] as Int != goalRow["revision"] as Int { .interrupted }
+            else { latest.map(requestProblem) ?? .interrupted }
         // 보류한 행동이 있으면 어떤 요청을 기다리거나 실패해도 재개할 수 있게 보류 목록을 보여준다.
         let deferred = try deferredCards(db, goalID: goalID)
         if !deferred.isEmpty {
@@ -1122,12 +1164,6 @@ public final class ProgressFlow {
             return .onHold(deferred: deferred, status: status)
         }
         if try hasCompletion(db, goalID: goalID) { return .awaitingNextAction(problem: problem) }
-        if let latest, latest["status"] as String == "applied",
-           let notice = try loadSupplementalContext(db, goalID: goalID)?.lastNotice,
-           notice.requestKind == .firstAction, notice.requestID == latest["id"] as Int64 {
-            let fingerprint = try HTTPActionSuggestionProvider.inputFingerprint(makeRequest(db, goal: goalRow, kind: notice.requestKind))
-            return .insufficientInfo(notice, isPrevious: notice.goalRevision != goalRow["revision"] as Int || notice.inputFingerprint != fingerprint)
-        }
         let goal = try String.fetchOne(db, sql: "SELECT statement FROM goal WHERE id = ?", arguments: [goalID]) ?? ""
         return .awaitingFirstAction(goal: goal, problem: problem)
     }
@@ -1149,7 +1185,7 @@ extension ProgressScreen {
         case .preparingGoal(_, _, let problem): problem
         case .awaitingFirstAction(_, let problem), .awaitingNextAction(let problem): problem
         case .onHold(_, .problem(let problem)): problem
-        case .goalInput, .currentAction, .onHold, .stoppedGoal, .insufficientInfo: nil
+        case .goalInput, .currentAction, .onHold, .stoppedGoal, .insufficientInfo, .actionQuestion: nil
         }
     }
 }
