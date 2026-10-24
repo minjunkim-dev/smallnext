@@ -241,6 +241,145 @@
         "reason": "제공 정보에서 유용한 행동과 실제 미답 질문의 가능성을 확인한다."
       },
       "expected": "rejected"
+    },
+    {
+      "id": "memory-without-details",
+      "input": {
+        "goal": "과거 경력 사실 정리",
+        "current_blocker": "",
+        "user_request": "지금 시작할 첫 행동 하나를 제안한다.",
+        "available": [
+          "당시 일이 기억난다고만 했고 구체적으로 한 일은 아직 말하지 않았어요."
+        ],
+        "unknown": [],
+        "available_minutes": 15.0,
+        "knowledge": "사용자가 제공한 정보 외에는 모름",
+        "energy": "모름",
+        "remaining_work": [
+          "과거 경력 사실 정리"
+        ],
+        "completed_ids": [],
+        "previous_proposals": [],
+        "request_kind": "first_action"
+      },
+      "generated": {
+        "status": "need_info",
+        "action": "그때 실제로 한 일 한 가지는 무엇인가요?",
+        "completion_condition": "구체적으로 한 일을 답한다",
+        "estimated_minutes": 0,
+        "reason": "합성 출처 경계 후보",
+        "remaining_work": [
+          "과거 경력 사실 정리"
+        ],
+        "preserved_completed_ids": [],
+        "goal_completed": false,
+        "current_action_completed": false,
+        "facts": [],
+        "reduction": ""
+      },
+      "check": {
+        "verdict": "accept",
+        "criteria": [
+          1,
+          2,
+          3,
+          4,
+          5
+        ],
+        "evidence": "당시 일이 기억난다고만 했고 구체적으로 한 일은 아직 말하지 않았어요.",
+        "reason": "질문과 유용한 새 결과 및 필요한 과거 사실의 근거를 구분한다."
+      },
+      "expected": "accepted"
+    },
+    {
+      "id": "known-unknown-rewrite",
+      "input": {
+        "goal": "과거 경력 사실 정리",
+        "current_blocker": "",
+        "user_request": "지금 시작할 첫 행동 하나를 제안한다.",
+        "available": [
+          "당시 역할을 모른다는 사실은 이미 기록했고, 자료나 기억도 없어요. 모름을 다시 적는 것 외의 새 결과는 없습니다."
+        ],
+        "unknown": [],
+        "available_minutes": 15.0,
+        "knowledge": "사용자가 제공한 정보 외에는 모름",
+        "energy": "모름",
+        "remaining_work": [
+          "과거 경력 사실 정리"
+        ],
+        "completed_ids": [],
+        "previous_proposals": [],
+        "request_kind": "first_action"
+      },
+      "generated": {
+        "status": "action",
+        "action": "당시 역할을 모른다고 메모 한 줄을 다시 쓰기",
+        "completion_condition": "모른다는 한 줄이 다시 적혀 있다",
+        "estimated_minutes": 1,
+        "reason": "합성 출처 경계 후보",
+        "remaining_work": [
+          "과거 경력 사실 정리"
+        ],
+        "preserved_completed_ids": [],
+        "goal_completed": false,
+        "current_action_completed": false,
+        "facts": [],
+        "reduction": ""
+      },
+      "check": {
+        "verdict": "reject",
+        "criteria": [
+          4
+        ],
+        "evidence": "당시 역할을 모른다는 사실은 이미 기록했고, 자료나 기억도 없어요. 모름을 다시 적는 것 외의 새 결과는 없습니다.",
+        "reason": "질문과 유용한 새 결과 및 필요한 과거 사실의 근거를 구분한다."
+      },
+      "expected": "rejected"
+    },
+    {
+      "id": "unsupported-fill-in",
+      "input": {
+        "goal": "과거 경력 사실 정리",
+        "current_blocker": "",
+        "user_request": "지금 시작할 첫 행동 하나를 제안한다.",
+        "available": [
+          "당시 실제 역할은 모르며 구체적인 경험이나 자료를 제공하지 않았어요."
+        ],
+        "unknown": [],
+        "available_minutes": 15.0,
+        "knowledge": "사용자가 제공한 정보 외에는 모름",
+        "energy": "모름",
+        "remaining_work": [
+          "과거 경력 사실 정리"
+        ],
+        "completed_ids": [],
+        "previous_proposals": [],
+        "request_kind": "first_action"
+      },
+      "generated": {
+        "status": "action",
+        "action": "빈칸에 당시 책임자로 팀을 이끌었다고 채워 쓰기",
+        "completion_condition": "책임자로 팀을 이끌었다는 문장이 적혀 있다",
+        "estimated_minutes": 3,
+        "reason": "합성 출처 경계 후보",
+        "remaining_work": [
+          "과거 경력 사실 정리"
+        ],
+        "preserved_completed_ids": [],
+        "goal_completed": false,
+        "current_action_completed": false,
+        "facts": [],
+        "reduction": ""
+      },
+      "check": {
+        "verdict": "reject",
+        "criteria": [
+          3
+        ],
+        "evidence": "당시 실제 역할은 모르며 구체적인 경험이나 자료를 제공하지 않았어요.",
+        "reason": "질문과 유용한 새 결과 및 필요한 과거 사실의 근거를 구분한다."
+      },
+      "expected": "rejected"
     }
   ],
   "supplemental_first_action": {
