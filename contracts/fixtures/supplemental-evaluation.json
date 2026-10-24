@@ -1,0 +1,168 @@
+{
+  "id": "supplemental-fixed-v1",
+  "contract": "https://github.com/minjunkim-dev/smallnext/issues/111#issuecomment-6385071594",
+  "order": {
+    "repeats": [
+      1,
+      2,
+      3
+    ],
+    "groups": [
+      "fixed-checks",
+      "supplemental-flows"
+    ],
+    "request_kinds": [
+      "first_action",
+      "next_action",
+      "smaller",
+      "replacement"
+    ],
+    "branches": [
+      "new-facts",
+      "still-unknown"
+    ]
+  },
+  "initial": {
+    "goal": "정해진 경력 문서의 경험 A에 실제로 한 일 한 가지를 사용자 진술로 정리한다.",
+    "available": [
+      "합성 상태: 경험 A 제목만 정해져 있으며 본인 역할·실제 수행 내용은 모른다.",
+      "선택한 기록은 이미 모두 확인했고 역할·수행 내용이 미기재임을 메모했다. 미기재는 실제 역할 부재를 뜻하지 않는다.",
+      "현재 더 답할 구체적 기억·확인할 자료·연락할 사람·자료를 찾을 경로가 없음을 사용자가 확인했다.",
+      "문서 제목·저장 위치·작성 형식은 정해져 있다. 모름 재기록·빈칸 만들기·일반 역할 예시 채우기는 새 결과가 아니다."
+    ],
+    "remaining_work": [
+      "경험 A에서 실제로 한 일 한 가지 정리"
+    ],
+    "current_blocker": "당시 실제로 한 일을 모르고 자료·기억·추가로 답할 내용도 없다.",
+    "unknown": [],
+    "available_minutes": 5,
+    "knowledge": "제공된 사용자 진술 외의 과거 사실은 모른다. 외부 검증은 수행하지 않았다.",
+    "energy": "앉아서 한 가지 표시를 남길 수 있다.",
+    "user_request": "근거를 지키며 첫 행동 하나를 제안한다.",
+    "completed_ids": [],
+    "previous_proposals": [],
+    "request_kind": "first_action"
+  },
+  "starts": {
+    "first_action": {
+      "request_kind": "first_action"
+    },
+    "next_action": {
+      "request_kind": "next_action",
+      "completed_ids": [
+        "synthetic-title-selection"
+      ],
+      "user_request": "합성 완료 기록의 제목 선정을 반복하지 않고 남은 실제 수행 내용의 다음 행동을 제안한다.",
+      "available": [
+        "합성 상태: 경험 A 제목만 정해져 있으며 본인 역할·실제 수행 내용은 모른다.",
+        "선택한 기록은 이미 모두 확인했고 역할·수행 내용이 미기재임을 메모했다. 미기재는 실제 역할 부재를 뜻하지 않는다.",
+        "현재 더 답할 구체적 기억·확인할 자료·연락할 사람·자료를 찾을 경로가 없음을 사용자가 확인했다.",
+        "문서 제목·저장 위치·작성 형식은 정해져 있다. 모름 재기록·빈칸 만들기·일반 역할 예시 채우기는 새 결과가 아니다.",
+        "합성 완료 기록 synthetic-title-selection: 경험 제목 선정만 완료했다. 실제 수행·문서 내용 완료의 증거가 아니다."
+      ]
+    },
+    "smaller": {
+      "request_kind": "smaller",
+      "previous_proposals": [
+        {
+          "status": "action",
+          "action": "경험 A의 실제 수행 내용을 상세 문장으로 정리하기",
+          "completion_condition": "상세 문장이 있다",
+          "estimated_minutes": 5,
+          "reason": "경력 문서에 필요한 내용이다",
+          "remaining_work": [
+            "경험 A에서 실제로 한 일 한 가지 정리"
+          ],
+          "preserved_completed_ids": [],
+          "goal_completed": false,
+          "current_action_completed": false
+        }
+      ],
+      "current_blocker": "실제 수행 내용의 근거가 없고 상세 문장 작성은 부담스럽다. 문구·시간만 바꾸어서는 수행할 수 없다.",
+      "user_request": "현재 상세 문장 행동의 실제 장애나 필요한 범위를 줄이는 더 작은 행동을 제안한다."
+    },
+    "replacement": {
+      "request_kind": "replacement",
+      "user_request": "보류한 기록 재확인을 보존하고 다른 근거 있는 행동을 제안한다.",
+      "available": [
+        "합성 상태: 경험 A 제목만 정해져 있으며 본인 역할·실제 수행 내용은 모른다.",
+        "선택한 기록은 이미 모두 확인했고 역할·수행 내용이 미기재임을 메모했다. 미기재는 실제 역할 부재를 뜻하지 않는다.",
+        "현재 더 답할 구체적 기억·확인할 자료·연락할 사람·자료를 찾을 경로가 없음을 사용자가 확인했다.",
+        "문서 제목·저장 위치·작성 형식은 정해져 있다. 모름 재기록·빈칸 만들기·일반 역할 예시 채우기는 새 결과가 아니다.",
+        "보류한 행동(재제안 금지): 선택한 과거 기록 전체를 다시 확인하기. 보류는 미완료이며 복원하거나 완료로 바꾸지 않는다."
+      ]
+    }
+  },
+  "supplements": {
+    "new-facts": {
+      "text": "제가 경험 A에서 참여자 세 명의 일정을 조율했어요. 문서에 이 한 가지를 사용자 진술로 표시해 남기고 싶어요. 외부 증빙은 없어요.",
+      "storage_calls": 0,
+      "offline_review": "구체적인 실제 수행 진술·대상·남길 결과가 있어 필수 근거가 충분하다. 외부 검증 완료나 책임자·성과 수치로 확대하지 않는다. 상세 문장보다 한 가지 선택 표시가 실제 범위를 줄인다."
+    },
+    "still-unknown": {
+      "text": "확인한 기록에 역할·수행 내용이 미기재라는 점을 다시 확인했어요. 실제 역할이 없었다는 뜻은 아니에요. 더 떠오른 구체적 기억·다른 자료·연락할 사람·찾을 경로도 없어요. 모름은 이미 기록했어요.",
+      "storage_calls": 0,
+      "offline_review": "선택 자료 확인과 미기재 메모가 이미 끝났다. 다른 자료·기억·연락 경로가 없고 제목·위치·형식도 결정되어 실제 필요한 미답 질문을 남기지 않았다. 모름 재기록·자료 재확인·예시 채우기는 유용한 새 결과가 아니다."
+    }
+  },
+  "flows": [
+    {
+      "id": "first-action-new-facts",
+      "request_kind": "first_action",
+      "branch": "new-facts",
+      "meaning": "제공된 일정 조율 경험 하나를 사용자 진술로 표시해 남기는 유용한 첫 행동. 외부 검증·과거 책임자 역할·성과를 만들지 않는다. 원래 입력·완료 기록·남은 범위·보류와 보충 입력을 구분한다. 자료 미기재를 사실 부재로, 사용자 진술을 외부 검증 완료로 바꾸지 않는다."
+    },
+    {
+      "id": "first-action-still-unknown",
+      "request_kind": "first_action",
+      "branch": "still-unknown",
+      "meaning": "새 결과나 실제 미답 질문이 없으므로 정보 부족 안내. 알려진 모름의 재기록을 행동으로 올리지 않는다. 원래 입력·완료 기록·남은 범위·보류와 보충 입력을 구분한다. 자료 미기재를 사실 부재로, 사용자 진술을 외부 검증 완료로 바꾸지 않는다."
+    },
+    {
+      "id": "next-action-new-facts",
+      "request_kind": "next_action",
+      "branch": "new-facts",
+      "meaning": "합성 제목 선정 완료 기록을 보존하고 남은 범위의 일정 조율 경험 한 가지를 정리한다. 합성 기록을 실제 행동 수행 증거나 목표 완료로 바꾸지 않는다. 원래 입력·완료 기록·남은 범위·보류와 보충 입력을 구분한다. 자료 미기재를 사실 부재로, 사용자 진술을 외부 검증 완료로 바꾸지 않는다."
+    },
+    {
+      "id": "next-action-still-unknown",
+      "request_kind": "next_action",
+      "branch": "still-unknown",
+      "meaning": "합성 완료 기록과 남은 범위를 보존한 정보 부족 안내. 완료 기록을 추가하거나 목표를 완료시키지 않는다. 원래 입력·완료 기록·남은 범위·보류와 보충 입력을 구분한다. 자료 미기재를 사실 부재로, 사용자 진술을 외부 검증 완료로 바꾸지 않는다."
+    },
+    {
+      "id": "smaller-new-facts",
+      "request_kind": "smaller",
+      "branch": "new-facts",
+      "meaning": "사용자 진술을 근거로 상세 문장 작성에서 일정 조율 한 가지의 선택 표시로 실제 범위를 줄인다. 문구·예상 시간만 줄이는 것은 불충족이다. 원래 입력·완료 기록·남은 범위·보류와 보충 입력을 구분한다. 자료 미기재를 사실 부재로, 사용자 진술을 외부 검증 완료로 바꾸지 않는다."
+    },
+    {
+      "id": "smaller-still-unknown",
+      "request_kind": "smaller",
+      "branch": "still-unknown",
+      "meaning": "없는 근거를 만들어 축소하지 않고 정보 부족 안내. 기존 현재 행동·진행 상태와 남은 범위를 보존한다. 원래 입력·완료 기록·남은 범위·보류와 보충 입력을 구분한다. 자료 미기재를 사실 부재로, 사용자 진술을 외부 검증 완료로 바꾸지 않는다."
+    },
+    {
+      "id": "replacement-new-facts",
+      "request_kind": "replacement",
+      "branch": "new-facts",
+      "meaning": "기존 기록 재확인의 보류를 보존하고 구체적 일정 조율 진술로 다른 행동을 제안한다. 보류 복원·재제안·완료 전환은 불충족이다. 원래 입력·완료 기록·남은 범위·보류와 보충 입력을 구분한다. 자료 미기재를 사실 부재로, 사용자 진술을 외부 검증 완료로 바꾸지 않는다."
+    },
+    {
+      "id": "replacement-still-unknown",
+      "request_kind": "replacement",
+      "branch": "still-unknown",
+      "meaning": "보류를 보존하고 정보 부족 안내. 근거 없는 대안 창작이나 보류 행동의 자동 복원·재제안은 불충족이다. 원래 입력·완료 기록·남은 범위·보류와 보충 입력을 구분한다. 자료 미기재를 사실 부재로, 사용자 진술을 외부 검증 완료로 바꾸지 않는다."
+    }
+  ],
+  "supplement_prefix": "사용자가 확인해 저장한 보충 내용(외부 검증 미확인): ",
+  "rerequest_instruction": {
+    "first_action": "근거를 지키며 첫 행동 하나를 제안한다. 저장한 보충 입력으로 원래 종류의 제안을 한 번 명시적으로 다시 요청한다.",
+    "next_action": "합성 완료 기록의 제목 선정을 반복하지 않고 남은 실제 수행 내용의 다음 행동을 제안한다. 저장한 보충 입력으로 원래 종류의 제안을 한 번 명시적으로 다시 요청한다.",
+    "smaller": "현재 상세 문장 행동의 실제 장애나 필요한 범위를 줄이는 더 작은 행동을 제안한다. 저장한 보충 입력으로 원래 종류의 제안을 한 번 명시적으로 다시 요청한다.",
+    "replacement": "보류한 기록 재확인을 보존하고 다른 근거 있는 행동을 제안한다. 저장한 보충 입력으로 원래 종류의 제안을 한 번 명시적으로 다시 요청한다."
+  },
+  "initial_meaning": "유용한 행동·실제 필요한 미답 질문의 근거가 소진되었으므로 정보 부족을 안내한다. 후보·안내를 완료 기록으로 바꾸지 않는다.",
+  "initial_review": "네 시작 상태 모두 알려진 모름·자료 확인·기록이 끝났고 접근 가능한 다른 자료나 실제 필요한 미답 질문이 없다. 제목·형식 정하기 같은 준비 행동도 이미 끝났다. 합성 완료는 next_action 진입용이며 실제 수행 증거가 아니다. 새 보충 입력은 모델 답변 전에 고정하며 출력에 맞춰 바꾸지 않는다.",
+  "boundary": "offline synthetic plan review only; no model quality, actual action or release approval"
+}
