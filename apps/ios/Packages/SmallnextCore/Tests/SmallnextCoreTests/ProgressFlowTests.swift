@@ -1595,6 +1595,72 @@ final class ProgressFlowTests: XCTestCase {
         XCTAssertEqual(calls.count, 4)
     }
 
+    func testSharedSourceDecisionsPreserveProgressOnBothAdapters() async throws {
+        let shared = try InsufficientInfoFixture.json()
+        for server in [false, true] {
+            for scenario in shared["checker_cases"] as! [[String: Any]] {
+                let id = scenario["id"] as! String
+                let source = scenario["input"] as! [String: Any]
+                let expected = scenario["expected"] as! String
+                let generated = (scenario["generated"] ?? shared["generated"]) as! [String: Any]
+                DevelopmentTransport.store.reset()
+                DevelopmentTransport.store.handler = { http in
+                    let payload = try JSONSerialization.jsonObject(with: http.httpBody!) as! [String: Any]
+                    let input = payload["input"] as! [String: Any]
+                    var response: [String: Any] = ["disposition": expected]
+                    if expected == "accepted" {
+                        var proposal = generated
+                        proposal.removeValue(forKey: "facts")
+                        proposal.removeValue(forKey: "reduction")
+                        proposal["remaining_work"] = input["remaining_work"]
+                        proposal["preserved_completed_ids"] = input["completed_ids"]
+                        response["proposal"] = proposal
+                    }
+                    return (200, try JSONSerialization.data(withJSONObject: response))
+                }
+                let config = URLSessionConfiguration.ephemeral
+                config.protocolClasses = [DevelopmentTransport.self]
+                let session = URLSession(configuration: config)
+                let provider = server
+                    ? HTTPActionSuggestionProvider.server(baseURL: URL(string: "https://api.example.invalid")!, token: { "test-identity" }, session: session)
+                    : HTTPActionSuggestionProvider.development(baseURL: URL(string: "http://127.0.0.1:8080")!, token: nil, session: session)
+                let flow = try makeFlow(provider)
+                if flow.screen != .goalInput { try flow.startNewGoal() }
+                let goal = source["goal"] as! String
+                try flow.updateGoalInput(GoalInput(statement: goal,
+                    currentState: (source["available"] as! [String]).joined(separator: "\n"),
+                    blocker: source["current_blocker"] as! String))
+                try flow.prepareGoal()
+                await flow.waitForSuggestion()
+                try flow.confirmGoal(completionCriteria: goal)
+                await flow.waitForSuggestion()
+                if expected == "accepted" {
+                    if generated["status"] as? String == "need_info" {
+                        XCTAssertEqual(flow.screen, .actionQuestion(generated["action"] as! String), id)
+                    } else {
+                        guard case .insufficientInfo(let notice, false) = flow.screen else { return XCTFail(id) }
+                        XCTAssertEqual(notice.reason, generated["reason"] as? String, id)
+                    }
+                } else {
+                    XCTAssertEqual(flow.screen, .awaitingFirstAction(goal: goal, problem: .failure(expected == "uncertain" ? .undecidable : .rejected)), id)
+                    XCTAssertNil(flow.supplementalContext?.lastNotice, id)
+                }
+                let http = try XCTUnwrap(DevelopmentTransport.store.requests.last)
+                let payload = try JSONSerialization.jsonObject(with: http.httpBody!) as! [String: Any]
+                let input = payload["input"] as! [String: Any]
+                XCTAssertEqual(input["request_kind"] as? String, source["request_kind"] as? String, id)
+                let available = input["available"] as! [String]
+                for fact in source["available"] as! [String] {
+                    XCTAssertTrue(available.contains { $0.contains(fact) }, id)
+                }
+                XCTAssertEqual(try makeFlow(provider).screen, flow.screen, id)
+                XCTAssertEqual(DevelopmentTransport.store.requests.count, 1, id)
+                XCTAssertEqual(try count("SELECT COUNT(*) FROM action"), 0, id)
+                XCTAssertEqual(try count("SELECT COUNT(*) FROM completion"), 0, id)
+            }
+        }
+    }
+
     func testSharedHTTPNoticeAndMetadataStayIsolatedAndDeleteAtomically() async throws {
         let response = try InsufficientInfoFixture.response()
         DevelopmentTransport.store.reset()

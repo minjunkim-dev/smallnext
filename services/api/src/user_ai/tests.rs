@@ -70,8 +70,19 @@ async fn external_provider(
             "../../../../contracts/fixtures/insufficient-info.json"
         ))
         .unwrap();
+        let case = mode.strip_prefix("notice-case-").map(|id| {
+            fixture["checker_cases"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|case| case["id"] == id)
+                .unwrap()
+        });
         if generating {
-            value = fixture["generated"].clone();
+            value = case
+                .and_then(|case| case.get("generated"))
+                .unwrap_or(&fixture["generated"])
+                .clone();
             for key in [
                 "remaining_work",
                 "preserved_completed_ids",
@@ -86,13 +97,7 @@ async fn external_provider(
                 "notice_reduction" => value["reduction"] = json!("축소"),
                 _ => {}
             }
-        } else if let Some(id) = mode.strip_prefix("notice-case-") {
-            let case = fixture["checker_cases"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .find(|case| case["id"] == id)
-                .unwrap();
+        } else if let Some(case) = case {
             value = case["check"].clone();
             value.as_object_mut().unwrap().remove("reason");
         }
@@ -1412,7 +1417,25 @@ async fn insufficient_info_crosses_http_with_independent_checks_and_no_failure_c
             response["proposal"].is_null(),
             case["expected"] != "accepted"
         );
-        assert_eq!(fixture.remote.calls.lock().unwrap().len(), 2);
+        let calls = fixture.remote.calls.lock().unwrap();
+        assert_eq!(calls.len(), 2);
+        let checked: serde_json::Value =
+            serde_json::from_str(calls[1]["messages"][0]["content"].as_str().unwrap()).unwrap();
+        let expected = case.get("generated").unwrap_or(&shared["generated"]);
+        assert_eq!(checked["original_request"], case["input"]);
+        for field in [
+            "status",
+            "action",
+            "completion_condition",
+            "facts",
+            "reduction",
+        ] {
+            assert_eq!(
+                checked["candidate"][field], expected[field],
+                "{}: {field}",
+                case["id"]
+            );
+        }
     }
     for (mode, expected, calls) in [
         ("notice_action", "invalid_proposal", 1),

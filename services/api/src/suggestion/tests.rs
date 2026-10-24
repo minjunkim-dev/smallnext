@@ -367,12 +367,24 @@ async fn insufficient_info_is_checked_without_creating_an_action() {
     for case in fixture["checker_cases"].as_array().unwrap() {
         let data = serde_json::from_value(case["input"].clone()).unwrap();
         let model = Scripted::new(vec![
-            Ok(fixture["generated"].clone()),
+            Ok(case
+                .get("generated")
+                .unwrap_or(&fixture["generated"])
+                .clone()),
             Ok(case["check"].clone()),
         ]);
         let evaluated = evaluate(&model, &data).await;
         let disposition = match evaluated.result {
-            Ok(_) => Disposition::Accepted,
+            Ok(proposal) => {
+                let mut expected = case
+                    .get("generated")
+                    .unwrap_or(&fixture["generated"])
+                    .clone();
+                expected.as_object_mut().unwrap().remove("facts");
+                expected.as_object_mut().unwrap().remove("reduction");
+                assert_eq!(proposal, serde_json::from_value(expected).unwrap());
+                Disposition::Accepted
+            }
             Err(failure) => failure,
         };
         assert_eq!(json!(disposition), case["expected"], "{}", case["id"]);
