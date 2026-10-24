@@ -236,8 +236,11 @@ def load(directory, *, descriptor=None):
         raise ValueError('wrong launch manifest')
     if manifest.get('version') in (2, 3) or 'plan_kind' in manifest:
         validate_supplemental(manifest)
-    elif (manifest.get('version') != 1 or 'contract' in manifest or 'check_seconds' in manifest
-          or any(any(key in flow for key in ('kind', 'candidate', 'repeat')) for flow in manifest['flows'])):
+    elif (manifest.get('version') != 1
+          or any(key in manifest for key in ('contract', 'check_seconds', 'plan_id', 'plan_sha256', 'output_token_limit'))
+          or any(path in manifest['sources'] for path in supplemental.SOURCE_PATHS)
+          or any(any(key in flow for key in ('kind', 'candidate', 'repeat', 'rerequest',
+                                            'synthetic_start', 'case_id', 'reference')) for flow in manifest['flows'])):
         raise ValueError('unsupported launch version')
     if qa.digest(Path(__file__).read_bytes()) != manifest['sources']['scripts/launch_evaluation.py']['sha256']:
         raise ValueError('launch runner differs from frozen version')
@@ -265,7 +268,8 @@ def validate_supplemental(manifest):
         supplemental.validate(manifest)
         if manifest.get('measurement') != MEASUREMENT or manifest.get('cost_basis') != COST_BASIS:
             raise ValueError('unsupported fixed measurement')
-    elif any(key in manifest for key in ('plan_id', 'plan_sha256')):
+    elif (any(key in manifest for key in ('plan_id', 'plan_sha256'))
+          or any(path in manifest['sources'] for path in supplemental.SOURCE_PATHS)):
         raise ValueError('fixed plan cannot be downgraded')
     flows = manifest.get('flows')
     if type(flows) is not list or not 1 <= len(flows) <= 75:

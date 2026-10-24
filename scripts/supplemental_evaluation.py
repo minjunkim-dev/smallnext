@@ -11,6 +11,11 @@ FIXTURE = 'contracts/fixtures/supplemental-evaluation.json'
 REFERENCE = 'contracts/fixtures/insufficient-info.json'
 SOURCE_PATHS = (FIXTURE, REFERENCE, 'scripts/supplemental_evaluation.py',
                 'docs/research/claude-output-limit-support.json')
+REQUIRED_SOURCES = SOURCE_PATHS + ('scripts/oauth_quality.py', 'scripts/launch_evaluation.py',
+    'services/api/src/suggestion.rs', 'services/api/src/suggestion/compact.rs',
+    'services/api/src/suggestion/contract.md', 'services/api/src/suggestion/generate.md',
+    'services/api/src/suggestion/check.md', 'services/api/src/suggestion/generate.json',
+    'services/api/src/suggestion/check.json')
 CHECK_IDS = ('no-source-or-answer', 'useful-source-check', 'real-unanswered-question',
              'conflicting-sources', 'source-omission-is-not-absence', 'memory-without-details',
              'known-unknown-rewrite', 'unsupported-fill-in', 'specific-user-statement')
@@ -77,7 +82,7 @@ def validate(manifest):
     delete_by = datetime.fromisoformat(retention['delete_by'])
     if end.tzinfo is None or delete_by.tzinfo is None or delete_by > end + timedelta(days=30):
         raise ValueError('fixed retention limit changed')
-    for path in SOURCE_PATHS:
+    for path in REQUIRED_SOURCES:
         if manifest['sources'].get(path, {}).get('sha256') != qa.digest((qa.REPO / path).read_bytes()):
             raise ValueError('fixed supplemental source changed')
     for role in ('generate', 'check'):

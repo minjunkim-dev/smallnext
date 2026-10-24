@@ -7,6 +7,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 import launch_evaluation as launch
 import oauth_quality as qa
@@ -252,6 +253,40 @@ class SupplementalFixedPlanTests(unittest.TestCase):
             self.assertEqual(deadlines, [189, 189, 359, 359])
             self.assertEqual(summary['elapsed_seconds'], 349)
             self.assertTrue(summary['automatic_passed'])
+
+    def test_resealed_legacy_disguise_or_prompt_tampering_is_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root, original = self.freeze(directory)
+            legacy_plan = deepcopy(original)
+            legacy_plan['version'] = 1
+            for key in ('plan_kind', 'contract', 'check_seconds'):
+                legacy_plan.pop(key)
+            for flow in legacy_plan['flows']:
+                for key in ('kind', 'candidate', 'repeat'):
+                    flow.pop(key, None)
+            stripped = deepcopy(legacy_plan)
+            for key in ('plan_id', 'plan_sha256', 'output_token_limit'):
+                stripped.pop(key)
+            tampered = deepcopy(original)
+            path = 'services/api/src/suggestion/check.md'
+            tampered['sources'][path]['utf8'] += '\nChanged checker instruction.\n'
+            tampered['sources'][path]['sha256'] = qa.digest(tampered['sources'][path]['utf8'].encode())
+            # Keep the composite prompt internally consistent too.
+            tampered['prompts']['check'] = tampered['sources'][path]['utf8'] + '\n' + tampered['sources']['services/api/src/suggestion/contract.md']['utf8']
+            missing_runner = deepcopy(original)
+            missing_runner['sources'].pop('scripts/oauth_quality.py')
+            for index, manifest in enumerate((legacy_plan, stripped, tampered, missing_runner)):
+                with self.subTest(variant=index):
+                    if 'plan_sha256' in manifest:
+                        manifest['plan_sha256'] = launch.supplemental.binding(manifest)
+                    raw = qa.encoded(manifest)
+                    (root / 'manifest.json').write_bytes(raw)
+                    (root / 'integrity.json').write_bytes(qa.encoded({'manifest_sha256': qa.digest(raw)}))
+                    with patch.object(launch, 'subscription_account', side_effect=AssertionError('must not call auth')) as auth:
+                        with self.assertRaises(ValueError):
+                            launch.run(root)
+                        auth.assert_not_called()
+                    self.assertFalse((root / 'run-started.json').exists())
 
 
 if __name__ == '__main__':
