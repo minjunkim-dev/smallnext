@@ -10,6 +10,7 @@ PLAN_ID = 'supplemental-fixed-v1'
 FIXTURE = 'contracts/fixtures/supplemental-evaluation.json'
 REFERENCE = 'contracts/fixtures/insufficient-info.json'
 SOURCE_PATHS = (FIXTURE, REFERENCE, 'scripts/supplemental_evaluation.py',
+                'scripts/supplemental_review.py',
                 'docs/research/claude-output-limit-support.json')
 REQUIRED_SOURCES = SOURCE_PATHS + ('scripts/oauth_quality.py', 'scripts/launch_evaluation.py',
     'services/api/src/suggestion.rs', 'services/api/src/suggestion/compact.rs',
@@ -70,6 +71,7 @@ def binding(manifest):
 
 def validate(manifest):
     if (manifest.get('plan_id') != PLAN_ID or manifest.get('flows') != fixed_flows()
+            or manifest.get('model') != qa.MODEL or manifest.get('effort') != qa.EFFORT
             or manifest.get('plan_sha256') != binding(manifest)):
         raise ValueError('fixed supplemental plan changed')
     retention = manifest['retention']

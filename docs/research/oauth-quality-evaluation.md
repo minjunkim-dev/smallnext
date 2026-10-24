@@ -107,6 +107,46 @@ first_action → next_action → smaller → replacement 각각을 새 사실 �
 이 모의 준비로 부모 #285·#111·#47을 닫거나 실제 평가 착수·실제 행동 수행·출시를 승인하지 않는다.
 제품 계약·다섯 기준·기능 기본OFF와 #61·유료 API·실기기·운영 배포 보류를 유지한다.
 
+## 통합 검토·보존 보고 #289
+
+고정 계획의 기존 `report`에 `plan_sha256`, `preparation`, `output_review`, `retention`을 연결한다.
+`preparation`은 해시로 묶은 공식 지원 자료·확인일·대상 CLI와 현재 미확인 사유를 보여 준다.
+전송이 보고한 설정 수신, 관측 사용량과 공급자 적용 확인을 구분한다.
+정상 모의 완주도 `preparation.ready`나 실제 실행 승인을 뜻하지 않는다.
+고정 계획은 모의 전송에서도 응답별8192 초과를 전체 중단 사유로 남긴다.
+
+`output_review.items`는 생성·검사 출력 모두를 출력 ID, 요청/입력/후보/검사 해시,
+기대 의미 해시와 비공개 결과의 JSON pointer에 연결한다. 자동 수용도 검토 대상이다.
+추천은 검토할 지점이며 사람의 판정이 아니다. `output_review.template`을 비공개 판정 파일로 준비하고,
+각 항목의 `decision`과 비어 있지 않은 `reason`을 작성한다. 출력 ID와 출력 해시를 유지해야 한다.
+허용 판정은 `meets_expectation`, `generation_violation`, `checker_misjudgement`, `technical_error`, `uncertain`이다.
+검토 파일은 같은 run/manifest에 묶으며 중복·다른 출력·변경된 출력·사유 누락은 거부한다.
+오류 전에 나온 출력이 보존되지 않았거나 출력 유무가 미확인이면 `unavailable_outputs`와
+`pending_outputs`에 남겨 전수 검토 완료를 막는다. 본문·출력 해시를 만들어 채우지 않으며 재호출하지 않는다.
+
+오프라인 회귀에서는 `basis: synthetic`으로 모의 판정을 명시한다.
+`declared_human`은 검토자가 직접 제공했다고 선언한 자료를 뜻하며 신원 인증 근거가 아니다.
+공개 요약은 판정 사유 원문을 복사하지 않고 해시만 남긴다. 원본 판정 파일도 새 비공개 묶음의 보관 기한을 따른다.
+이미 준비된 합성 묶음의 보고만 다시 읽는 예시는 다음과 같다. 모델이나 기존 중단 판을 실행하지 않는다.
+
+```sh
+python3 scripts/launch_evaluation.py report '<private synthetic bundle>' \
+  --review '<private review.json>' --output review-report.json
+```
+
+전수 판정과 계획 항목의 결과/미실행 사유, 누락 없는 기록이 있어야 검토 작업 종료를 표시한다.
+모의 작업 종료는 `synthetic_work_complete`, 모의 적합은 필요한 조건을 충족한 경우에만 `synthetic_fit`이다.
+문제 발견과 범위별 적합 보류는 함께 남을 수 있다. 불확실은 통과나 확정 위반으로 올리지 않는다.
+기존 `human_review: not_performed`, `quality_passed: null`과 실제 실행 차단은 유지한다.
+CLI 성공 종료는 보고 생성/자동 참조 검사 결과이며 사람 최종 품질 승인이나 준비 완료가 아니다.
+
+삭제 기한은 실제 실행 종료 후 최대30일과 더 이른 동결 기한 중 이른 값이다.
+보고·재검토 시각으로 기한을 다시 계산하지 않으며 연장된 종료 기록도 거부한다.
+담당자·삭제 방법·위치는 비공개 묶음에 유지하고 공개 보고에는 해시만 남긴다.
+#285의 오프라인 통합 근거와 공급자8192 적용 근거의 충족 여부를 구분한다.
+현재 공급자 적용·사고 토큰 집계·내부 재시도 통제 근거가 부족하므로 #285는 준비 완료로 닫지 않는다.
+실제 평가용 freeze/run·모델 호출·전수 사람 판정은 별도 단계로 계속 보류한다.
+
 ## 출시 흐름 준비 #113
 
 `scripts/launch_evaluation.py`는 [#47의 확정 답](https://github.com/minjunkim-dev/smallnext/issues/47#issuecomment-6103771425)에 따른 순차 실행 경로다.

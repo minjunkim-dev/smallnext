@@ -226,6 +226,7 @@ class RejudgmentTests(unittest.TestCase):
         (trusted / "oauth_quality.py").write_bytes(Path(qa.__file__).read_bytes())
         (trusted / "launch_evaluation.py").write_bytes(COMMAND.with_name("launch_evaluation.py").read_bytes())
         (trusted / "supplemental_evaluation.py").write_bytes(COMMAND.with_name("supplemental_evaluation.py").read_bytes())
+        (trusted / "supplemental_review.py").write_bytes(COMMAND.with_name("supplemental_review.py").read_bytes())
         self.assertEqual(self.command(script=copied).returncode, 2)
         self.assertEqual(original, report.read_bytes())
         report.write_bytes(b"corrupt")
