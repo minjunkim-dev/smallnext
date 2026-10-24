@@ -1323,7 +1323,7 @@ async fn insufficient_info_crosses_http_with_independent_checks_and_no_failure_c
             ),
             ("reject", "rejected", 2),
             ("uncertain", "uncertain", 2),
-            ("generate_type", "failed", 1),
+            ("generate_type", "invalid_proposal", 1),
         ] {
             *fixture.remote.mode.lock().unwrap() = mode.into();
             fixture.remote.calls.lock().unwrap().clear();
