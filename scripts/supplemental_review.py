@@ -21,7 +21,7 @@ def report(manifest, records, end, summary, review, record_hashes):
         support = dict(support, ready=False, reasons=[*support.get('reasons', []), 'frozen_support_mismatch'])
     units = {unit['request_id']: unit for unit in summary['units']}
     flows = {flow['id']: flow for flow in manifest['flows']}
-    items = []
+    items, unavailable = [], []
     for row in records:
         unit = units[row['request_id']]
         flow = flows[row['flow']]
@@ -30,7 +30,22 @@ def report(manifest, records, end, summary, review, record_hashes):
         checked = next((call.get('output') for call in row['calls'] if call['role'] == 'check'), None)
         for index, call in enumerate(row['calls']):
             if 'output' not in call:
+                if call.get('started', True):
+                    tokens = qa.numeric(call.get('usage', {}).get('output_tokens'))
+                    characters = call.get('delta_characters', {})
+                    counts_valid = (type(characters) is dict
+                                    and all(type(value) is int and value >= 0 for value in characters.values()))
+                    partial = (tokens is not None and tokens > 0 or call.get('error') == 'max_tokens'
+                               or bool(call.get('max_tokens')) or counts_valid and any(characters.values()))
+                    if partial or tokens is None or not counts_valid:
+                        unavailable.append(dict(output_id=f"{row['request_id']}:{call['role']}",
+                            request_id=row['request_id'], role=call['role'], result_file='results/' + row['result_file'],
+                            metadata_pointer=f'/calls/{index}', record_sha256=record_hashes[row['request_id']],
+                            reason='output_not_retained' if partial else 'output_inventory_unverified'))
                 continue
+            models = call.get('actual_models')
+            observed_models = (sorted({name if name == qa.MODEL else 'unexpected_model' for name in models})
+                               if type(models) is list and all(type(name) is str for name in models) else None)
             items.append(dict(output_id=f"{row['request_id']}:{call['role']}",
                 request_id=row['request_id'], unit_id=unit['unit_id'], case_id=unit['case_id'],
                 request_kind=unit['request_kind'], phase=unit['phase'], repeat=unit['repeat'], role=call['role'],
@@ -44,8 +59,7 @@ def report(manifest, records, end, summary, review, record_hashes):
                 recommendation='inspect_technical_error' if row.get('error') not in (None, 'unexpected_quality') else
                     'inspect_reference_mismatch' if unit['reference_matched'] is False else 'review_required',
                 requested_model=manifest['model'], requested_effort=manifest['effort'], observed_effort=None,
-                observed_models=sorted({name if name == qa.MODEL else 'unexpected_model'
-                                        for name in call.get('actual_models', [])}),
+                observed_models=observed_models,
                 output_tokens=qa.numeric(call.get('usage', {}).get('output_tokens')),
                 configuration_delivery='transport_reported' if call.get('output_token_limit') == qa.OUTPUT_TOKENS
                     else 'unverified',
@@ -78,12 +92,14 @@ def report(manifest, records, end, summary, review, record_hashes):
                 raise ValueError('review finding has wrong role')
             item.update(human_decision=entry['decision'], human_reason_sha256=qa.digest(qa.encoded(entry['reason'])))
     pending = [item['output_id'] for item in items if item['human_decision'] is None]
+    pending.extend(item['output_id'] for item in unavailable)
     problems = [item['output_id'] for item in items if item['human_decision'] in
                 ('generation_violation', 'checker_misjudgement')]
     deferred = [dict(unit_id=unit['unit_id'], reason=unit['reason'] or 'unverified_unit')
                 for unit in summary['units'] if unit['state'] != 'completed']
     deferred.extend(dict(output_id=item['output_id'], reason=item['human_decision'] or 'unreviewed_output')
                     for item in items if item['human_decision'] in (None, 'technical_error', 'uncertain'))
+    deferred.extend(dict(output_id=item['output_id'], reason=item['reason']) for item in unavailable)
     if summary['unreadable_records'] or summary['roles']['unrecorded'] or summary['requests']['unrecorded']:
         deferred.append(dict(reason='incomplete_record_inventory'))
     if not support['ready']:
@@ -99,7 +115,7 @@ def report(manifest, records, end, summary, review, record_hashes):
                                                          decision=None, reason=None)
                                                     for item in items])
     assessment = dict(basis=basis, review_sha256=qa.digest(qa.encoded(review)) if review is not None else None,
-        items=items, template=template, pending_outputs=pending, problem_outputs=problems,
+        items=items, unavailable_outputs=unavailable, template=template, pending_outputs=pending, problem_outputs=problems,
         deferred_scopes=deferred, work_complete=work_complete, problem_found=bool(problems),
         state='synthetic_work_complete' if work_complete and basis == 'synthetic' else
               'declared_review_complete' if work_complete else 'awaiting_human_review',

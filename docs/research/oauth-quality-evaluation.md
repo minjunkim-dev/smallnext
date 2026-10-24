@@ -121,6 +121,8 @@ first_action → next_action → smaller → replacement 각각을 새 사실 �
 각 항목의 `decision`과 비어 있지 않은 `reason`을 작성한다. 출력 ID와 출력 해시를 유지해야 한다.
 허용 판정은 `meets_expectation`, `generation_violation`, `checker_misjudgement`, `technical_error`, `uncertain`이다.
 검토 파일은 같은 run/manifest에 묶으며 중복·다른 출력·변경된 출력·사유 누락은 거부한다.
+오류 전에 나온 출력이 보존되지 않았거나 출력 유무가 미확인이면 `unavailable_outputs`와
+`pending_outputs`에 남겨 전수 검토 완료를 막는다. 본문·출력 해시를 만들어 채우지 않으며 재호출하지 않는다.
 
 오프라인 회귀에서는 `basis: synthetic`으로 모의 판정을 명시한다.
 `declared_human`은 검토자가 직접 제공했다고 선언한 자료를 뜻하며 신원 인증 근거가 아니다.

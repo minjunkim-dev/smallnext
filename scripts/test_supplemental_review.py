@@ -154,7 +154,8 @@ class SupplementalReviewTests(unittest.TestCase):
                 self.assertFalse(summary['output_review']['work_complete'])
                 review = self.decisions(summary)
                 complete = launch.report(root, review=review)['output_review']
-                self.assertTrue(complete['work_complete'])
+                self.assertFalse(complete['work_complete'])
+                self.assertEqual(len(complete['unavailable_outputs']), 1)
                 self.assertEqual(complete['contract_fit'], 'deferred')
                 self.assertFalse(complete['problem_found'])
 
@@ -229,6 +230,7 @@ class SupplementalReviewTests(unittest.TestCase):
 assert os.environ['CLAUDE_CODE_MAX_OUTPUT_TOKENS']=='8192'
 json.load(sys.stdin)
 print(json.dumps({'type':'stream_event','event':{'type':'message_start'}}),flush=True)
+print(json.dumps({'type':'stream_event','event':{'type':'content_block_delta','delta':{'type':'text_delta','text':'PRIVATE partial JSON'}}}),flush=True)
 print(json.dumps({'type':'stream_event','event':{'type':'message_delta','delta':{'stop_reason':'max_tokens'}}}),flush=True)
 ''')
             fake.chmod(0o700)
@@ -246,6 +248,11 @@ print(json.dumps({'type':'stream_event','event':{'type':'message_delta','delta':
             self.assertFalse(row['calls'][0]['process_group_alive'])
             self.assertIsNone(row['calls'][0]['usage']['output_tokens'])
             self.assertFalse(summary['preparation']['ready'])
+            self.assertEqual(len(summary['output_review']['unavailable_outputs']), 1)
+            reviewed = launch.report(root, review=self.decisions(summary))
+            self.assertFalse(reviewed['output_review']['work_complete'])
+            self.assertTrue(reviewed['output_review']['pending_outputs'])
+            self.assertNotIn('PRIVATE', json.dumps(reviewed))
 
     def test_fake_cli_success_keeps_normalized_token_usage_and_review_link(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -332,6 +339,40 @@ print(json.dumps({'type':'stream_event','event':{'type':'message_delta','delta':
             self.assertFalse(report['preparation']['ready'])
             self.assertNotIn('PRIVATE', result.stdout)
             self.assertEqual(json.loads((root/'review-report.json').read_bytes()), report)
+
+    def test_failed_model_metadata_stays_unknown_without_losing_partial_report(self):
+        for observed in (None, 42, 'PRIVATE', [{'PRIVATE':'value'}]):
+            with self.subTest(observed=observed), tempfile.TemporaryDirectory() as directory:
+                root, _ = self.freeze(directory)
+
+                def invoke(*args):
+                    return dict(self.response(*args), actual_models=observed)
+
+                summary = launch.run(root, invoke=invoke, clock=lambda: 0)
+                self.assertEqual(summary['stop_reason'], 'model_or_call_count')
+                self.assertEqual(summary['roles']['started'], 1)
+                self.assertEqual(len(summary['units']), 75)
+                self.assertIsNone(summary['output_review']['items'][0]['observed_models'])
+                self.assertNotIn('PRIVATE', json.dumps(summary))
+
+    def test_confirmed_zero_output_differs_from_unknown_or_missing_review_material(self):
+        for tokens, characters, complete in ((0, {}, True), (None, {}, False), (50, {}, False),
+                                             (0, {'text_delta':3}, False), (0, {'text_delta':'PRIVATE'}, False)):
+            with self.subTest(tokens=tokens, characters=characters), tempfile.TemporaryDirectory() as directory:
+                root, _ = self.freeze(directory)
+
+                def invoke(*args):
+                    result = self.response(*args)
+                    result.pop('output')
+                    result['usage']['output_tokens'] = tokens
+                    result['delta_characters'] = characters
+                    return dict(result, error='provider_failed')
+
+                summary = launch.run(root, invoke=invoke, clock=lambda: 0)
+                assessed = launch.report(root, review=self.decisions(summary))['output_review']
+                self.assertEqual(assessed['work_complete'], complete)
+                self.assertEqual(len(assessed['unavailable_outputs']), 0 if complete else 1)
+                self.assertNotIn('PRIVATE', json.dumps(assessed))
 
 
 if __name__ == '__main__':
