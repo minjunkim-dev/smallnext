@@ -282,6 +282,8 @@ class SupplementalFixedPlanTests(unittest.TestCase):
                     raw = qa.encoded(manifest)
                     (root / 'manifest.json').write_bytes(raw)
                     (root / 'integrity.json').write_bytes(qa.encoded({'manifest_sha256': qa.digest(raw)}))
+                    with self.assertRaises(ValueError):
+                        launch.load(root)
                     with patch.object(launch, 'subscription_account', side_effect=AssertionError('must not call auth')) as auth:
                         with self.assertRaises(ValueError):
                             launch.run(root)
