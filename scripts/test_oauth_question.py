@@ -7,10 +7,12 @@ import unittest
 from unittest.mock import patch
 
 import oauth_quality as qa
+from test_oauth_output_limit import permit_fake_cli
 
 
 class QuestionCheckTests(unittest.TestCase):
     def setUp(self):
+        permit_fake_cli(self)
         self.schema = json.loads((qa.REPO / "services/api/src/suggestion/check.json").read_text())
         self.contract = (qa.REPO / "services/api/src/suggestion/contract.md").read_text()
         self.prompt = (qa.REPO / "services/api/src/suggestion/check.md").read_text()+"\n"+self.contract
@@ -62,7 +64,7 @@ class QuestionCheckTests(unittest.TestCase):
                     fake.write_text("#!/usr/bin/env python3\nimport json,sys\nsys.stdin.buffer.read()\n"
                         "print(json.dumps({'type':'stream_event','event':{'type':'message_start'}}))\n"
                         "print(json.dumps({'type':'result','subtype':'success','is_error':False,"
-                        "'modelUsage':{'claude-haiku-5-5':{}},'structured_output':"+repr(out)+"}))\n")
+                        "'modelUsage':{'claude-haiku-5-5':{}},'usage':{'output_tokens':30},'structured_output':"+repr(out)+"}))\n")
                     fake.chmod(0o700)
                     record = qa.call(str(fake),self.prompt,self.schema,self.data,qa.monotonic()+2,threading.Event())
                     if fields:

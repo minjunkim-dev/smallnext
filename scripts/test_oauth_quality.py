@@ -15,9 +15,13 @@ import unittest
 from unittest.mock import patch
 
 import oauth_quality as qa
+from test_oauth_output_limit import fake_command, permit_fake_cli
 
 
 class FrozenEvaluationTests(unittest.TestCase):
+    def setUp(self):
+        permit_fake_cli(self)
+
     def test_generation_cleanup_failure_never_calls_checker(self):
         failures = [({"process_group_alive": True}, "process_cleanup"),
                     ({"cli_pid": 1, "process_reaped": False}, "process_cleanup"),
@@ -154,7 +158,7 @@ class FrozenEvaluationTests(unittest.TestCase):
                 "assert 'Use exactly these top-level keys: [\"ok\"]' in sys.argv[-1]\n"
                 "print(json.dumps({'type':'stream_event','event':{'type':'message_start'}}))\n"
                 "print(json.dumps({'type':'result','subtype':'success','is_error':False,"
-                "'modelUsage':{'claude-haiku-5-5':{}},'result':json.dumps({'ok':True})}))\n")
+                "'modelUsage':{'claude-haiku-5-5':{}},'usage':{'output_tokens':30},'result':json.dumps({'ok':True})}))\n")
             fake.chmod(0o700)
             schema = {"type": "object", "properties": {"ok": {"type": "boolean"}},
                       "required": ["ok"], "additionalProperties": False}
@@ -180,7 +184,7 @@ class FrozenEvaluationTests(unittest.TestCase):
                 "assert 'Do not wrap the object in backticks or code fences' in sys.argv[-1]\n"
                 "print(json.dumps({'type':'stream_event','event':{'type':'message_start'}}))\n"
                 "print(json.dumps({'type':'result','subtype':'success','is_error':False,"
-                "'modelUsage':{'claude-haiku-5-5':{}},'result':"
+                "'modelUsage':{'claude-haiku-5-5':{}},'usage':{'output_tokens':30},'result':"
                 + repr(json.dumps({"text": source})) + "}))\n")
             fake.chmod(0o700)
             record = qa.call(str(fake), "preserve source text", schema, {"source": source},
@@ -243,7 +247,7 @@ class FrozenEvaluationTests(unittest.TestCase):
                     "assert set(schema['properties'])=={'status','facts','reduction','action','completion_condition','reason','estimated_minutes'}\n"
                     "print(json.dumps({'type':'stream_event','event':{'type':'message_start'}}))\n"
                     "print(json.dumps({'type':'result','subtype':'success','is_error':False,"
-                    "'modelUsage':{'claude-haiku-5-5':{}},'result':" + repr(json.dumps(output)) + "}))\n")
+                    "'modelUsage':{'claude-haiku-5-5':{}},'usage':{'output_tokens':30},'result':" + repr(json.dumps(output)) + "}))\n")
                 fake.chmod(0o700)
                 record = qa.call(str(fake), "generate", schema, data, qa.monotonic()+2,
                                  threading.Event(), output_mode="text-json")
@@ -275,7 +279,7 @@ class FrozenEvaluationTests(unittest.TestCase):
                     + "assert len(proof)==4\n"
                     "print(json.dumps({'type':'stream_event','event':{'type':'message_start'}}))\n"
                     "print(json.dumps({'type':'result','subtype':'success','is_error':False,"
-                    "'modelUsage':{'claude-haiku-5-5':{}},'result':json.dumps("
+                    "'modelUsage':{'claude-haiku-5-5':{}},'usage':{'output_tokens':30},'result':json.dumps("
                     "{'verdict':'accept','criteria':[1,2,3,4,5],'evidence':'quote; fits'})}))\n")
                 fake.chmod(0o700)
                 data = {"original_request": original, "candidate": candidate}
@@ -295,7 +299,7 @@ class FrozenEvaluationTests(unittest.TestCase):
                     "assert set(schema['properties'])=={'verdict','criteria','evidence'}\n"
                     "print(json.dumps({'type':'stream_event','event':{'type':'message_start'}}))\n"
                     "print(json.dumps({'type':'result','subtype':'success','is_error':False,"
-                    "'modelUsage':{'claude-haiku-5-5':{}},'result':" + repr(json.dumps(output)) + "}))\n")
+                    "'modelUsage':{'claude-haiku-5-5':{}},'usage':{'output_tokens':30},'result':" + repr(json.dumps(output)) + "}))\n")
                 fake.chmod(0o700)
                 record = qa.call(str(fake), "check", schema, {}, qa.monotonic()+2,
                                  threading.Event(), output_mode="text-json")
@@ -317,7 +321,7 @@ class FrozenEvaluationTests(unittest.TestCase):
                 fake.write_text("#!/usr/bin/env python3\nimport json\n"
                     "print(json.dumps({'type':'stream_event','event':{'type':'message_start'}}))\n"
                     "print(json.dumps({'type':'result','subtype':'success','is_error':False,"
-                    "'modelUsage':{'claude-haiku-5-5':{}},'result':" + repr(answer) + "}))\n")
+                    "'modelUsage':{'claude-haiku-5-5':{}},'usage':{'output_tokens':30},'result':" + repr(answer) + "}))\n")
                 fake.chmod(0o700)
                 result = qa.call(str(fake), "prompt", schema, {}, qa.monotonic()+2,
                                  threading.Event(), output_mode="text-json")
@@ -344,7 +348,7 @@ class FrozenEvaluationTests(unittest.TestCase):
                     fake.write_text("#!/usr/bin/env python3\nimport json\n"
                         "print(json.dumps({'type':'stream_event','event':{'type':'message_start'}}))\n"
                         "print(json.dumps({'type':'result','subtype':'success','is_error':False,"
-                        "'modelUsage':{'claude-haiku-5-5':{}},'result':" + repr(answer) + "}))\n")
+                        "'modelUsage':{'claude-haiku-5-5':{}},'usage':{'output_tokens':30},'result':" + repr(answer) + "}))\n")
                     fake.chmod(0o700)
                     record = qa.call(str(fake), "prompt", schema, {}, qa.monotonic()+2,
                                      threading.Event(), output_mode="text-json")
@@ -461,14 +465,14 @@ class FrozenEvaluationTests(unittest.TestCase):
                 "print(json.dumps({'type':'stream_event','event':{'type':'content_block_delta',"
                 "'delta':{'type':'thinking_delta','thinking':'DO-NOT-SAVE'}}}))\n"
                 "print(json.dumps({'type':'result','subtype':'success','is_error':False,"
-                "'modelUsage':{'claude-haiku-5-5':{}},'duration_api_ms':2000,"
+                "'modelUsage':{'claude-haiku-5-5':{}},'usage':{'output_tokens':30},'duration_api_ms':2000,"
                 "'errors':['DO-NOT-SAVE'],'result':json.dumps("
                 "{'verdict':'accept','criteria':criteria,'evidence':'one quote; fits'}),"
                 "'structured_output':"
                 "{'verdict':'accept','criteria':criteria,'evidence':'one quote; fits'}}))\n")
             fake.chmod(0o700)
-            command = [sys.executable, str(qa.REPO / "scripts/oauth_quality.py"),
-                       "run", str(frozen), "--claude", str(fake)]
+            command = fake_command(qa.REPO / "scripts/oauth_quality.py",
+                                   "run", frozen, "--claude", fake)
             result = subprocess.run(command, capture_output=True, timeout=10)
             self.assertEqual(result.returncode, 0, result.stderr)
             summary = json.loads((frozen / "summary.json").read_bytes())
@@ -694,7 +698,7 @@ class FrozenEvaluationTests(unittest.TestCase):
                 "'completion_condition':'책 한 권이 아래 칸에 있다.','estimated_minutes':1,'reason':'막힘 해결'}\n"
                 "print(json.dumps({'type':'stream_event','event':{'type':'message_start'}}))\n"
                 "print(json.dumps({'type':'result','subtype':'success','is_error':False,"
-                "'modelUsage':{'claude-haiku-5-5':{}},'result':json.dumps(out),'structured_output':out}))\n")
+                "'modelUsage':{'claude-haiku-5-5':{}},'usage':{'output_tokens':30},'result':json.dumps(out),'structured_output':out}))\n")
             fake.chmod(0o700)
             record = qa.evaluate(frozen, manifest, 0,
                 {"case":"useful-minimum-known", "variant":"baseline", "repeat":0}, str(fake), threading.Event())

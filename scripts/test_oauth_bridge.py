@@ -10,6 +10,7 @@ import unittest
 from unittest.mock import patch
 
 import oauth_bridge as bridge
+from test_oauth_output_limit import fake_command
 
 
 class OAuthBridgeTests(unittest.TestCase):
@@ -29,11 +30,11 @@ class OAuthBridgeTests(unittest.TestCase):
             "assert sys.argv[sys.argv.index('--model')+1]=='claude-haiku-5-5'\n"
             "print(json.dumps({'type':'stream_event','event':{'type':'message_start'}}))\n"
             "print(json.dumps({'type':'result','subtype':'success','is_error':False,"
-            "'modelUsage':{'claude-haiku-5-5':{}},'result':json.dumps({'ok':True}),'structured_output':{'ok':True}}))\n")
+            "'modelUsage':{'claude-haiku-5-5':{}},'usage':{'output_tokens':30},'result':json.dumps({'ok':True}),'structured_output':{'ok':True}}))\n")
         self.fake.chmod(0o700)
-        self.command = [sys.executable, str(Path(bridge.__file__)), "--claude", str(self.fake),
-                        "--records", str(self.root / "records"), "--output-schema", str(self.schema),
-                        "-c", "model_instructions_file=" + json.dumps(str(self.prompt))]
+        self.command = fake_command(bridge.__file__, "--claude", self.fake,
+                        "--records", self.root / "records", "--output-schema", self.schema,
+                        "-c", "model_instructions_file=" + json.dumps(str(self.prompt)))
 
     def invoke(self):
         return subprocess.run(self.command, input="{}", text=True, capture_output=True, timeout=5)
@@ -73,7 +74,7 @@ class OAuthBridgeTests(unittest.TestCase):
         self.fake.write_text("#!/usr/bin/env python3\nimport json\n"
             "print(json.dumps({'type':'stream_event','event':{'type':'message_start'}}))\n"
             "print(json.dumps({'type':'result','subtype':'success','is_error':False,"
-            "'modelUsage':{'claude-haiku-5-5':{}},'structured_output':" + repr(candidate) + "}))\n")
+            "'modelUsage':{'claude-haiku-5-5':{}},'usage':{'output_tokens':30},'structured_output':" + repr(candidate) + "}))\n")
         data = {"available_minutes": 5, "remaining_work": ["required work"], "completed_ids": ["done"]}
         result = subprocess.run(self.command, input=json.dumps(data), text=True, capture_output=True, timeout=5)
         self.assertEqual(result.returncode, 0)

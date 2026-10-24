@@ -1,0 +1,33 @@
+{
+  "checked_on": "2026-10-24",
+  "cli_version": "2.1.310 (Claude Code)",
+  "cli_sha256": "ffb64331bc0ee1b69efb7c2c428bd3ab516bc31b75bf60886b356c97c1c25ffd",
+  "cli_bytes": 274068224,
+  "model": "claude-haiku-5-5",
+  "effort": "xhigh",
+  "authentication": "Claude Code subscription OAuth; forcedLoginMethod=claudeai",
+  "transport": "-p --output-format stream-json --verbose --include-partial-messages --max-turns 1",
+  "output_modes": ["structured", "text-json"],
+  "setting": "CLAUDE_CODE_MAX_OUTPUT_TOKENS",
+  "output_tokens": 8192,
+  "scope": "each provider response, generation and checker separately; thinking and visible output share the limit",
+  "sources": [
+    "https://code.claude.com/docs/en/env-vars",
+    "https://code.claude.com/docs/en/cli-reference",
+    "https://platform.claude.com/docs/en/build-with-claude/thinking"
+  ],
+  "findings": [
+    "공식 환경변수 문서는 대부분 요청의 최대 출력 토큰 설정으로 설명한다. 선택 모델의 cap보다 크면 CLI가 낮춘다.",
+    "공식 API 문서는 사고 토큰도 출력 토큰이며 max_tokens를 응답 본문과 공유한다고 설명한다. 구독 경로의 동일 집계는 미확인이다.",
+    "--max-turns는 agentic turn 제한이며 모든 내부 공급자 재요청을 1회로 보장한다는 근거가 아니다.",
+    "공식 문서상 API 오류 재시도 기본값은 10이며 구조화 출력 검증은 기본 5번 시도한다. 이 작업은 별도 설정을 추측해 추가하지 않는다.",
+    "읽기 전용 확인은 설치 실행 파일의 --version, 파일 크기와 SHA-256뿐이다. 계정/키/세션 원문과 실제 모델 호출은 사용하지 않았다."
+  ],
+  "unverified": [
+    "subscription_model_output_cap_unverified",
+    "subscription_thinking_accounting_unverified",
+    "internal_retry_and_continuation_contract_unverified"
+  ],
+  "provider_observation": "none; no model request was made",
+  "readiness": "incomplete"
+}

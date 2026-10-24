@@ -9,8 +9,9 @@ import launch_evaluation as launch
 import oauth_quality as qa
 
 
-# Reviewed runner bytes: #186/#218/#252/#260/#273 record cancellation; #135 kept it only in memory.
+# Reviewed runner bytes: #186/#218/#252/#260/#273/#288 record cancellation; #135 kept it only in memory.
 PROTOCOLS = {
+    "808ff25eddb8506820027e0a153b45bcf139e04207ef64550be379b360c1598b": "cancellation-marker-v1",
     "b4befc291a69c3cfeb4d2f8bc9b105d31d8e5f4213958a49d3a0a973726b39f8": "cancellation-marker-v1",
     "1799cb2c4ef7c5cddd58f2a275cdad37750bae8b45d26286f21fcfd69d18afe2": "cancellation-marker-v1",
     "1e2d25eb61b3c52ef34fe1f54f1e1ebc73c9e938108da58f8768bedaa5d6ddff": "cancellation-marker-v1",
