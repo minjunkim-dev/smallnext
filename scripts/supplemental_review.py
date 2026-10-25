@@ -9,7 +9,7 @@ DECISIONS = {'meets_expectation', 'generation_violation', 'checker_misjudgement'
              'technical_error', 'uncertain'}
 
 
-def report(manifest, records, end, summary, review, record_hashes):
+def output_report(manifest, records, end, summary, review, record_hashes):
     support = qa.output_readiness(manifest['output_mode'])
     frozen_support = manifest['sources']['docs/research/claude-output-limit-support.json']['sha256']
     metadata = {}
@@ -72,7 +72,8 @@ def report(manifest, records, end, summary, review, record_hashes):
         if (type(review) is not dict or set(review) != {'run_id', 'manifest_sha256', 'basis', 'entries'}
                 or review['run_id'] != summary['run_id']
                 or review['manifest_sha256'] != summary['manifest_sha256']
-                or review['basis'] not in ('synthetic', 'declared_human')
+                or review['basis'] not in (('synthetic', 'declared_agent')
+                    if manifest.get('plan_kind') == 'supplemental-once' else ('synthetic', 'declared_human'))
                 or type(review['entries']) is not list or len(review['entries']) > len(items)):
             raise ValueError('unrelated or invalid output review')
         basis, seen = review['basis'], set()
@@ -144,3 +145,124 @@ def report(manifest, records, end, summary, review, record_hashes):
             delete_method_sha256=qa.digest(qa.encoded(retention['delete_method'])),
             location_sha256=qa.digest(qa.encoded(retention['location'])),
             scope='main_checkout_private_work', extended_by_report=False))
+
+
+def report(manifest, records, end, summary, review, record_hashes, *, comparisons=False):
+    if manifest.get('plan_kind') != 'supplemental-once':
+        if comparisons:
+            raise ValueError('comparisons require the single-repeat plan')
+        return output_report(manifest, records, end, summary, review, record_hashes)
+    if review is not None and (type(review) is not dict or set(review) != {'first_pass', 'human'}):
+        raise ValueError('single-repeat review requires separate agent and human records')
+    first_pass = review.get('first_pass') if review else None
+    human = review.get('human') if review else None
+    result = output_report(manifest, records, end, summary, first_pass, record_hashes)
+    agent = result.pop('output_review')
+    for item in agent['items']:
+        item['agent_decision'] = item.pop('human_decision')
+        item['agent_reason_sha256'] = item.pop('human_reason_sha256')
+    agent['template']['basis'] = 'declared_agent'
+    agent['state'] = ('synthetic_work_complete' if agent['basis'] == 'synthetic' else 'agent_review_complete') \
+        if agent['work_complete'] else 'awaiting_agent_review'
+    agent['contract_fit'] = 'not_a_human_verdict'
+    by_request = {row['request_id']: row for row in records}
+    cards = []
+    for flow in manifest['flows']:
+        phases, anomalies = [], []
+        for unit in (unit for unit in summary['units'] if unit['id'] == flow['id']):
+            row = by_request.get(unit['request_id'], {})
+            calls = {call['role']: call for call in row.get('calls', [])}
+            outputs = [item for item in agent['items'] if item['request_id'] == unit['request_id']]
+            flags = ([unit['reason'] or 'unit_incomplete'] if unit['state'] != 'completed' else [])
+            if unit['reference_matched'] is False:
+                flags.append('reference_mismatch')
+            flags.extend(item['agent_decision'] for item in outputs
+                         if item['agent_decision'] not in (None, 'meets_expectation'))
+            flags.extend(item['reason'] for item in agent['unavailable_outputs']
+                         if item['request_id'] == unit['request_id'])
+            anomalies.extend(flags)
+            phases.append(dict(phase=unit['phase'], request_id=unit['request_id'], state=unit['state'],
+                reason=unit['reason'], input=flow['input'] if unit['step'] == 0 else flow['rerequest']['input'],
+                candidate=flow.get('candidate') if flow['kind'] == 'check' else calls.get('generate', {}).get('output'),
+                checker=calls.get('check', {}).get('output'),
+                evidence=[dict(output_id=item['output_id'], record_sha256=item['record_sha256'],
+                    output_sha256=item['output_sha256'], agent_decision=item['agent_decision'],
+                    agent_reason_sha256=item['agent_reason_sha256']) for item in outputs]))
+        if flow['kind'] == 'generate_check' or anomalies:
+            cards.append(dict(card_id=flow['id'], kind='comparison' if flow['kind'] == 'generate_check' else 'anomaly',
+                              case_id=flow['case_id'], request_kind=flow['input']['request_kind'],
+                              branch=flow.get('branch'), anomalies=sorted(set(anomalies)), phases=phases))
+    if summary['unreadable_records'] or summary['roles']['unrecorded'] or summary['requests']['unrecorded'] \
+            or not result['preparation']['ready']:
+        cards.append(dict(card_id='record-inventory', kind='anomaly', phases=[],
+                          anomalies=['record_inventory_or_preparation_incomplete']))
+    # Bind the human card to private inputs, outputs and the exact first-pass findings.
+    for card in cards:
+        card['card_sha256'] = qa.digest(qa.encoded(dict(run_id=summary['run_id'],
+            manifest_sha256=summary['manifest_sha256'], card=card)))
+    inventory = {card['card_id']: card for card in cards}
+    decisions, basis = {}, 'not_performed'
+    if human is not None:
+        if (type(human) is not dict or set(human) != {'run_id', 'manifest_sha256', 'basis', 'entries'}
+                or human['run_id'] != summary['run_id'] or human['manifest_sha256'] != summary['manifest_sha256']
+                or human['basis'] not in ('synthetic', 'declared_human') or type(human['entries']) is not list
+                or len(human['entries']) > len(cards)):
+            raise ValueError('invalid human comparison review')
+        basis = human['basis']
+        for entry in human['entries']:
+            if (type(entry) is not dict or set(entry) != {'card_id', 'card_sha256', 'decision', 'reason'}
+                    or type(entry['card_id']) is not str or entry['card_id'] not in inventory
+                    or entry['card_id'] in decisions or entry['card_sha256'] != inventory[entry['card_id']]['card_sha256']
+                    or type(entry['decision']) is not str or entry['decision'] not in DECISIONS
+                    or type(entry['reason']) is not str or not entry['reason'].strip()):
+                raise ValueError('duplicate, changed or invalid human comparison')
+            decisions[entry['card_id']] = entry
+    public = [dict(card_id=card['card_id'], card_sha256=card['card_sha256'], kind=card['kind'],
+        output_ids=[item['output_id'] for phase in card['phases'] for item in phase['evidence']],
+        anomalies=card['anomalies'], human_decision=decisions.get(card['card_id'], {}).get('decision'),
+        human_reason_sha256=qa.digest(qa.encoded(decisions[card['card_id']]['reason']))
+                            if card['card_id'] in decisions else None) for card in cards]
+    pending = [card['card_id'] for card in cards if card['card_id'] not in decisions]
+    template = dict(run_id=summary['run_id'], manifest_sha256=summary['manifest_sha256'], basis='declared_human',
+        entries=[dict(card_id=card['card_id'], card_sha256=card['card_sha256'], decision=None, reason=None)
+                 for card in cards])
+    complete = agent['work_complete'] and basis != 'not_performed' and not pending
+    fit = (complete and summary['automatic_passed'] and not agent['deferred_scopes']
+           and not agent['problem_found'] and all(entry['decision'] == 'meets_expectation' for entry in decisions.values()))
+    synthetic = basis == 'synthetic' or agent['basis'] == 'synthetic'
+    result.update(first_pass_review=agent, comparison_review=dict(basis=basis, cards=public,
+        template=template, pending_cards=pending, human_complete=basis != 'not_performed' and not pending,
+        work_complete=complete, contract_fit=('synthetic_fit' if synthetic else 'declared_fit') if fit else 'deferred',
+        scope='eight_flow_comparisons_and_all_anomalies'))
+    if comparisons:
+        result['private_comparisons'] = dict(run_id=summary['run_id'],
+            manifest_sha256=summary['manifest_sha256'], cards=cards)
+    return result
+
+
+def comparison_markdown(bundle):
+    lines = ['# 평가 전후 비교와 이상 사례', '', '모델/에이전트의 판정과 사용자의 직접 판정은 별개입니다.', '',
+             '실행: ' + bundle['run_id'], '계획 해시: ' + bundle['manifest_sha256'], '']
+    labels = {'status': '상태', 'action': '제안', 'reason': '이유', 'completion_condition': '완료 조건',
+              'estimated_minutes': '예상 분', 'facts': '근거', 'reduction': '줄어든 범위'}
+
+    def block(value):
+        text = value if isinstance(value, str) else json.dumps(value, ensure_ascii=False, indent=2)
+        return ['    ' + line for line in (text.splitlines() or ['(없음)'])] + ['']
+
+    for card in bundle['cards']:
+        lines.extend(['## ' + card['card_id'], '', '검토 연결 해시: ' + card['card_sha256'], '',
+                      '이상 사항: ' + (', '.join(card['anomalies']) or '자동 검사/1차 검토에서 표시된 이상 없음'), ''])
+        for phase in card['phases']:
+            title = {'initial': '보충 전', 'explicit_rerequest': '보충 후 재요청', 'fixed_check': '고정 답변 검사'}[phase['phase']]
+            lines.extend(['### ' + title, '', '진행: ' + phase['state'], '', '입력과 보충 자료', ''])
+            lines.extend(block(phase['input']))
+            candidate = phase['candidate']
+            if candidate is None:
+                lines.extend(['답변 없음: ' + (phase['reason'] or '미실행 또는 미확인'), ''])
+            else:
+                for key, label in labels.items():
+                    if key in candidate:
+                        lines.extend([label, '']); lines.extend(block(candidate[key]))
+            lines.extend(['검사 모델 판정', '']); lines.extend(block(phase['checker']))
+    return '\n'.join(lines) + '\n'

@@ -29,6 +29,8 @@ import supplemental_review
 # #251: subscription runs have no µUSD limit; the 3/10 USD budget is for the server API key only.
 LIMITS = {'requests': 81, 'calls': 162, 'seconds': 5400}
 SUPPLEMENTAL_LIMITS = {'requests': 75, 'generate': 48, 'check': 75, 'calls': 123, 'seconds': 5400}
+ONCE_LIMITS = {'requests': 25, 'generate': 16, 'check': 25, 'calls': 41, 'seconds': 5400}
+ONCE_CONTRACT = 'https://github.com/minjunkim-dev/smallnext/issues/304'
 SUPPLEMENTAL_CONTRACT = 'https://github.com/minjunkim-dev/smallnext/issues/111#issuecomment-6385071594'
 # #261: grounding lengthened role output, so QA may allow 180 s per request; the server stays at 120 s.
 PIPELINE_SECONDS = (120, 180)
@@ -180,7 +182,7 @@ def freeze(directory, *, owner, ends_at, delete_method, flow_id=None, max_smalle
         raise ValueError('a single flow needs a nonnegative smaller count')
     if pipeline_seconds not in PIPELINE_SECONDS:
         raise ValueError('unsupported request time limit')
-    if plan_kind not in ('launch', 'supplemental', 'supplemental-fixed') or plan_kind == 'launch' and flows is not None:
+    if plan_kind not in ('launch', 'supplemental', 'supplemental-fixed', 'supplemental-once') or plan_kind == 'launch' and flows is not None:
         raise ValueError('unsupported evaluation plan')
     if plan_kind != 'launch' and (not flows or flow_id is not None or max_smaller is not None):
         raise ValueError('supplemental preparation incomplete; offline synthetic flows required')
@@ -193,7 +195,7 @@ def freeze(directory, *, owner, ends_at, delete_method, flow_id=None, max_smalle
     sources = deepcopy(regression['sources'])
     for name in ['scripts/launch_evaluation.py', 'services/api/src/suggestion.rs',
                  'services/api/src/suggestion/compact.rs'] + (list(supplemental.SOURCE_PATHS)
-                                                           if plan_kind == 'supplemental-fixed' else []):
+                                                           if plan_kind in ('supplemental-fixed', 'supplemental-once') else []):
         raw = (qa.REPO / name).read_bytes()
         sources[name] = {'sha256': qa.digest(raw), 'utf8': raw.decode()}
     flows, limits = (deepcopy(flows), SUPPLEMENTAL_LIMITS) if plan_kind != 'launch' else (launch_flows(regression), LIMITS)
@@ -221,8 +223,12 @@ def freeze(directory, *, owner, ends_at, delete_method, flow_id=None, max_smalle
         manifest.update(version=2, plan_kind=plan_kind, contract=SUPPLEMENTAL_CONTRACT,
                         pipeline_seconds=180, check_seconds=120,
                         boundary='offline preparation only; actual evaluation remains blocked')
-        if plan_kind == 'supplemental-fixed':
-            manifest.update(version=3, plan_id=supplemental.PLAN_ID, output_token_limit=qa.OUTPUT_TOKENS)
+        if plan_kind in ('supplemental-fixed', 'supplemental-once'):
+            manifest.update(version=4 if plan_kind == 'supplemental-once' else 3,
+                            plan_id=supplemental.ONCE_PLAN_ID if plan_kind == 'supplemental-once' else supplemental.PLAN_ID,
+                            output_token_limit=qa.OUTPUT_TOKENS)
+            if plan_kind == 'supplemental-once':
+                manifest.update(limits=ONCE_LIMITS, contract=ONCE_CONTRACT)
             manifest['plan_sha256'] = supplemental.binding(manifest)
         validate_supplemental(manifest)
     qa.save(directory / 'manifest.json', manifest)
@@ -235,7 +241,7 @@ def load(directory, *, descriptor=None):
     manifest = qa.load(directory, read_bytes=lambda path: private_bytes(source, path.relative_to(directory)))
     if manifest.get('suite') != 'launch' or manifest.get('parallelism') != 1:
         raise ValueError('wrong launch manifest')
-    if manifest.get('version') in (2, 3) or 'plan_kind' in manifest:
+    if manifest.get('version') in (2, 3, 4) or 'plan_kind' in manifest:
         validate_supplemental(manifest)
     elif (manifest.get('version') != 1
           or any(key in manifest for key in ('contract', 'check_seconds', 'plan_id', 'plan_sha256', 'output_token_limit'))
@@ -255,11 +261,12 @@ def roles_for(flow):
 
 
 def validate_supplemental(manifest):
-    fixed = manifest.get('plan_kind') == 'supplemental-fixed'
-    if (manifest.get('version') != (3 if fixed else 2)
-            or manifest.get('plan_kind') not in ('supplemental', 'supplemental-fixed')
-            or manifest.get('contract') != SUPPLEMENTAL_CONTRACT
-            or manifest.get('limits') != SUPPLEMENTAL_LIMITS
+    once = manifest.get('plan_kind') == 'supplemental-once'
+    fixed = manifest.get('plan_kind') in ('supplemental-fixed', 'supplemental-once')
+    if (manifest.get('version') != (4 if once else 3 if fixed else 2)
+            or manifest.get('plan_kind') not in ('supplemental', 'supplemental-fixed', 'supplemental-once')
+            or manifest.get('contract') != (ONCE_CONTRACT if once else SUPPLEMENTAL_CONTRACT)
+            or manifest.get('limits') != (ONCE_LIMITS if once else SUPPLEMENTAL_LIMITS)
             or any(type(value) is not int for value in manifest['limits'].values())
             or manifest.get('pipeline_seconds') != 180 or manifest.get('check_seconds') != 120
             or type(manifest.get('pipeline_seconds')) is not int or type(manifest.get('check_seconds')) is not int
@@ -312,7 +319,9 @@ def validate_supplemental(manifest):
             raise ValueError('fixed flow requires its versioned plan')
         for _ in range(supplemental.steps(flow)):
             counts.update(roles_for(flow))
-    if counts['generate'] > 48 or counts['check'] > 75 or counts.total() > 123:
+    limits = ONCE_LIMITS if once else SUPPLEMENTAL_LIMITS
+    if (counts['generate'] > limits['generate'] or counts['check'] > limits['check']
+            or counts.total() > limits['calls']):
         raise ValueError('supplemental role limit')
     return dict(units=sum(supplemental.steps(flow) for flow in flows),
                 generate=counts['generate'], check=counts['check'], roles=counts.total())
@@ -504,7 +513,7 @@ def private_exists(directory, path):
         return False
 
 
-def report(directory, *, observations=(), review=None):
+def report(directory, *, observations=(), review=None, comparisons=False):
     try:
         with ExitStack() as opened:
             descriptor = opened.enter_context(private_directory(directory))
@@ -545,12 +554,12 @@ def report(directory, *, observations=(), review=None):
                         snapshot[name] = opened.enter_context(private_source(descriptor, name))
                 except (OSError, KeyError, TypeError, ValueError):
                     raise ValueError('private screen evidence unavailable') from None
-            return report_bundle(Path(directory), snapshot, observations, review)
+            return report_bundle(Path(directory), snapshot, observations, review, comparisons=comparisons)
     except OSError:
         raise ValueError('private report bundle unavailable') from None
 
 
-def report_bundle(directory, descriptor, observations, review=None):
+def report_bundle(directory, descriptor, observations, review=None, *, comparisons=False):
     directory = Path(directory)
     manifest = load(directory, descriptor=descriptor)
     claim = private_json(descriptor, 'run-started.json')
@@ -720,7 +729,7 @@ def report_bundle(directory, descriptor, observations, review=None):
                 or budget.get('basis') != manifest['cost_basis']
                 or 'actual_billing' not in budget or budget['actual_billing'] is not None):
             raise ValueError('invalid end budget')
-        if manifest.get('plan_kind') in ('supplemental', 'supplemental-fixed') and qa.numeric(budget.get('elapsed_seconds')) is None:
+        if manifest.get('plan_kind') in ('supplemental', 'supplemental-fixed', 'supplemental-once') and qa.numeric(budget.get('elapsed_seconds')) is None:
             raise ValueError('supplemental elapsed time missing or invalid')
         if end['reason'] == 'completed' and (
                 started_requests > manifest['limits']['requests'] or started_roles > manifest['limits']['calls']):
@@ -792,7 +801,7 @@ def report_bundle(directory, descriptor, observations, review=None):
                                      'cache_read_input_tokens', 'cache_creation_input_tokens')}
                        for role in ('generate', 'check')},
         'paid_budget_verified': False, 'model': manifest['model'], 'requested_effort': manifest['effort']}
-    if manifest.get('plan_kind') in ('supplemental', 'supplemental-fixed'):
+    if manifest.get('plan_kind') in ('supplemental', 'supplemental-fixed', 'supplemental-once'):
         summary.update(supplemental_report(manifest, records, end, claim['run_id'], request_names,
                                           private_names(descriptor, 'calls')))
         for state in ('completed', 'failed', 'cancelled', 'not_executed'):
@@ -802,11 +811,12 @@ def report_bundle(directory, descriptor, observations, review=None):
             and all(unit['state'] == 'completed' for unit in summary['units'])
             and qa.numeric(summary['elapsed_seconds']) is not None
             and summary['elapsed_seconds'] < manifest['limits']['seconds'])
-    if manifest.get('plan_kind') == 'supplemental-fixed':
+    if manifest.get('plan_kind') in ('supplemental-fixed', 'supplemental-once'):
         record_hashes = {row['request_id']: qa.digest(private_bytes(descriptor, 'results/' + row['result_file']))
                          for row in records}
-        summary.update(supplemental_review.report(manifest, records, end, summary, review, record_hashes))
-    elif review is not None:
+        summary.update(supplemental_review.report(manifest, records, end, summary, review, record_hashes,
+                                                  comparisons=comparisons))
+    elif review is not None or comparisons:
         raise ValueError('output review requires a fixed supplemental plan')
     return summary
 
@@ -843,7 +853,7 @@ def supplemental_report(manifest, records, end, run_id, request_names, call_name
                      ('cancelled', 'ownership_lost', 'timed_out') else 'failed' if error else 'completed')
             unit = dict(id=flow['id'], kind=flow['kind'], repeat=flow['repeat'],
                         request_kind=flow['input']['request_kind'], state=state, reason=reason, roles=roles)
-            if manifest['plan_kind'] == 'supplemental-fixed':
+            if manifest['plan_kind'] in ('supplemental-fixed', 'supplemental-once'):
                 expected = flow['expected'] if step == 0 else flow['rerequest']['expected']
                 unit.update(unit_id=f"{flow['id']}-{step}", request_id=ident,
                             step=step, phase='fixed_check' if flow['kind'] == 'check' else
@@ -871,7 +881,7 @@ def run(directory, *, claude='claude', invoke=None, cancelled=None, clock=monoto
         raise ValueError('paid transport unavailable; separate-server preconditions required')
     directory = Path(directory)
     manifest = load(directory)
-    if manifest.get('plan_kind') in ('supplemental', 'supplemental-fixed') and invoke is None:
+    if manifest.get('plan_kind') in ('supplemental', 'supplemental-fixed', 'supplemental-once') and invoke is None:
         raise ValueError('supplemental execution not authorized; actual evaluation remains blocked')
     if datetime.now(timezone.utc) >= datetime.fromisoformat(manifest['retention']['evaluation_ends_at']):
         raise ValueError('frozen evaluation end time reached')
@@ -989,7 +999,7 @@ def run(directory, *, claude='claude', invoke=None, cancelled=None, clock=monoto
                             if settlement or clock() >= deadline:
                                 row['error'] = settlement or 'timed_out'
                                 break
-                            if manifest.get('plan_kind') == 'supplemental-fixed':
+                            if manifest.get('plan_kind') in ('supplemental-fixed', 'supplemental-once'):
                                 tokens = result['usage']['output_tokens']
                                 if tokens > qa.OUTPUT_TOKENS or tokens % 1:
                                     row['error'] = ('output_tokens_exceeded' if tokens > qa.OUTPUT_TOKENS
@@ -1067,6 +1077,21 @@ def run(directory, *, claude='claude', invoke=None, cancelled=None, clock=monoto
         return summary
 
 
+
+def save_comparisons(directory, filename, bundle):
+    raw = supplemental_review.comparison_markdown(bundle).encode('utf-8')
+    with private_directory(directory) as descriptor:
+        temporary = 'comparison-' + uuid.uuid4().hex + '.tmp'
+        stream = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600, dir_fd=descriptor)
+        try:
+            with os.fdopen(stream, 'wb') as output:
+                output.write(raw)
+                output.flush()
+                os.fsync(output.fileno())
+            os.link(temporary, filename, src_dir_fd=descriptor, dst_dir_fd=descriptor, follow_symlinks=False)
+        finally:
+            os.unlink(temporary, dir_fd=descriptor)
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest='command', required=True)
@@ -1079,7 +1104,7 @@ def main():
     frozen.add_argument('--max-smaller', type=int, help='smaller steps allowed in --flow')
     frozen.add_argument('--pipeline-seconds', type=int, choices=PIPELINE_SECONDS, default=120,
                         help='per-request generate+check limit')
-    frozen.add_argument('--plan-kind', choices=('launch', 'supplemental', 'supplemental-fixed'), default='launch')
+    frozen.add_argument('--plan-kind', choices=('launch', 'supplemental', 'supplemental-fixed', 'supplemental-once'), default='launch')
     running = commands.add_parser('run')
     running.add_argument('directory', type=Path)
     running.add_argument('--claude', default='claude')
@@ -1088,6 +1113,7 @@ def main():
     reporting.add_argument('--observations', type=Path)
     reporting.add_argument('--review', type=Path, help='고정 계획의 비공개 출력별 판정 JSON')
     reporting.add_argument('--output', default='report.json')
+    reporting.add_argument('--comparisons', help='새1회 계획의 비공개 전후 비교 Markdown 파일명')
     preflight = commands.add_parser('paid-preflight')
     preflight.add_argument('--stage', choices=('preparation', 'before_separate_server'), required=True)
     preflight.add_argument('--conditions', type=Path, required=True)
@@ -1106,7 +1132,13 @@ def main():
                 raise ValueError('report filename required')
             observations = private_json(args.observations.parent, args.observations.name, expected_type=list) if args.observations else []
             review = private_json(args.review.parent, args.review.name) if args.review else None
-            summary = report(args.directory, observations=observations, review=review)
+            if args.comparisons and (Path(args.comparisons).name != args.comparisons
+                    or args.comparisons in {args.output, 'manifest.json', 'integrity.json'}):
+                raise ValueError('private comparison filename required')
+            summary = report(args.directory, observations=observations, review=review,
+                             comparisons=bool(args.comparisons))
+            if args.comparisons:
+                save_comparisons(args.directory, args.comparisons, summary.pop('private_comparisons'))
             qa.save(args.directory/args.output, summary)
         else:
             summary = paid_preflight(args.stage, private_json(args.conditions.parent, args.conditions.name))

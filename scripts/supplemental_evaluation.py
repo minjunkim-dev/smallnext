@@ -7,6 +7,7 @@ import oauth_quality as qa
 
 
 PLAN_ID = 'supplemental-fixed-v1'
+ONCE_PLAN_ID = 'supplemental-once-v1'
 FIXTURE = 'contracts/fixtures/supplemental-evaluation.json'
 REFERENCE = 'contracts/fixtures/insufficient-info.json'
 SOURCE_PATHS = (FIXTURE, REFERENCE, 'scripts/supplemental_evaluation.py',
@@ -22,7 +23,7 @@ CHECK_IDS = ('no-source-or-answer', 'useful-source-check', 'real-unanswered-ques
              'known-unknown-rewrite', 'unsupported-fill-in', 'specific-user-statement')
 
 
-def fixed_flows():
+def fixed_flows(*, once=False):
     fixture = json.loads((qa.REPO / FIXTURE).read_bytes())
     if (fixture['id'] != PLAN_ID or fixture['order'] != dict(repeats=[1, 2, 3],
             groups=['fixed-checks', 'supplemental-flows'],
@@ -33,7 +34,7 @@ def fixed_flows():
     reference = json.loads(raw)
     checks = {case['id']: case for case in reference['checker_cases']}
     flows = []
-    for repeat in range(1, 4):
+    for repeat in range(1, 2 if once else 4):
         for ident in CHECK_IDS:
             case = checks[ident]
             candidate = case.get('generated', reference['generated'])
@@ -70,7 +71,9 @@ def binding(manifest):
 
 
 def validate(manifest):
-    if (manifest.get('plan_id') != PLAN_ID or manifest.get('flows') != fixed_flows()
+    once = manifest.get('plan_kind') == 'supplemental-once'
+    if (manifest.get('plan_id') != (ONCE_PLAN_ID if once else PLAN_ID)
+            or manifest.get('flows') != fixed_flows(once=once)
             or manifest.get('model') != qa.MODEL or manifest.get('effort') != qa.EFFORT
             or manifest.get('plan_sha256') != binding(manifest)):
         raise ValueError('fixed supplemental plan changed')
