@@ -23,7 +23,7 @@ MODEL = "claude-haiku-5-5"
 EFFORT = "xhigh"
 OUTPUT_TOKENS = 8192
 OUTPUT_SUPPORT = REPO / "docs/research/claude-output-limit-support.json"
-OUTPUT_SUPPORT_SHA256 = "7fbe4e423836f9f966c5dc78f2e39407e4ae138f3f37d6e095101d51010742d0"
+OUTPUT_SUPPORT_SHA256 = "987cc76ef9c07f6851d810cf910cf55f2d76c46f58bd655bd956f61e98e5da4e"
 
 
 def encoded(value):
@@ -244,6 +244,9 @@ class Tracker:
                     raise ValueError("unverified_output_usage")
                 if "output_tokens" in usage:
                     tokens = usage["output_tokens"]
+                    if (type(tokens) is int and tokens >= 0 and self.output_tokens is not None
+                            and tokens < self.output_tokens):
+                        raise ValueError("output_usage_mismatch")
                     self.output_tokens = tokens if type(tokens) is int and tokens >= 0 else None
                     output_count(tokens)
         if event.get("type") in {"assistant", "user"}:

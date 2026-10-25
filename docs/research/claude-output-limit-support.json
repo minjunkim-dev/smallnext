@@ -22,12 +22,16 @@
     "https://code.claude.com/docs/en/settings#settings-precedence",
     "https://github.com/anthropics/claude-code/blob/main/CHANGELOG.md#210",
     "https://platform.claude.com/docs/en/build-with-claude/thinking-steering-and-cost",
-    "https://support.claude.com/en/articles/9015913-how-to-get-support"
+    "https://support.claude.com/en/articles/9015913-how-to-get-support",
+    "https://platform.claude.com/docs/en/build-with-claude/streaming",
+    "https://code.claude.com/docs/en/agent-sdk/cost-tracking",
+    "https://code.claude.com/docs/en/headless"
   ],
   "findings": [
     "공식 문서는 대부분 요청의 출력 상한으로 설명한다. 설치본의 상한 해석과 주 요청 max_tokens 연결을 정적으로 확인했지만 해당 구독 공급자 경로의 실제 적용은 미확인이다.",
     "#296에서 환경값 parse/clamp→modelFacts 선택→request override와 min→후순위 extra body→stream 전송 및 공유 builder→nonstreaming min→전송을 정적으로 연결했다. 부모 extra body는 기존 허용 목록에서 제외되어 회귀를 보강했다. 관리 env·전달된 modelFacts·후순위 body 전체·상위 복구의 도달/재구성과 실제 OAuth 적용은 미확인이다.",
     "공식 API는 사고와 응답이 max_tokens를 공유한다고 설명한다. 설치본은 output_tokens를 전체 출력에, thinking_tokens를 별도 세부 집계에 누적한다. 구독 응답의 동일 집계와 완전성은 관측하지 않았다.",
+    "#297에서 메시지 누적 snapshot→turn 합계 및 별도 모델 ledger→result 경로를 정적으로 연결했다. thinking 누락의 기본0은 사고0의 증거가 아니다. 누적 출력 감소가 final 값에 숨겨지던 실행기 결함을 합성으로 재현·차단했다. 오류/취소/복구의 누락과 OAuth 전체 사고 포함·완전성은 여전히 미확인이다.",
     "실패 API 재시도0회, 구조화 출력 총1회 시도와 비스트리밍 fallback 차단의 공식 변수 및 설치본 읽기 지점을 확인했다. 가짜 CLI 전달 검사는 실제 CLI 내부 실행의 검증이 아니다.",
     "스트림 복구의 일반 재시도 가드와 주 요청 전송점을 정적으로 연결했다. 오류 수정 콜백·인증 갱신의 카운터 예외, HTTP404 비스트리밍 전환과 별도 출력 상한 복구가 있어 전체 추가 요청0회는 미확인이다. 비스트리밍 timeout 재전송0을 추가 고정했지만 다른 복구의 전면 차단 근거로 올리지 않는다.",
     "전역/사용자 설정·설치본을 변경하지 않고 파일 SHA와 제한한 바이트 범위만 정적으로 읽었다. 계정/키/세션/과거 평가 원문과 실제 모델 호출은 사용하지 않았다."
@@ -260,6 +264,66 @@
         "offset": 234419850,
         "length": 550,
         "sha256": "966335b807de54de991700236c8b0f6fc6bd2c9242f9242175678f9897c67962"
+      },
+      {
+        "label": "usage_model_accumulator",
+        "offset": 226095918,
+        "length": 1150,
+        "sha256": "107399805e5fb956060fe84d2ab34b7d45dd3a3c4a1529faa48aae12e120a6e2"
+      },
+      {
+        "label": "usage_message_delta_credit",
+        "offset": 228029330,
+        "length": 2350,
+        "sha256": "c6dd4fb37c8f747af3e4f44b44893db66778ce952fce8b312fffb487e8651103"
+      },
+      {
+        "label": "usage_snapshot_merge",
+        "offset": 228058608,
+        "length": 2067,
+        "sha256": "60510b70cb1977042b59c22993fd05294f31fe5f7e208834bda6fd92828edb53"
+      },
+      {
+        "label": "usage_sum",
+        "offset": 228060675,
+        "length": 1020,
+        "sha256": "04cd1741b8c36f97278c88640079238190cd26c9676cb290585a1586133cf6d8"
+      },
+      {
+        "label": "usage_unstreamed_dedup",
+        "offset": 254073208,
+        "length": 225,
+        "sha256": "446de569ee30b9d6585159d0bb1eb77ccf4be5ebefc7167c1a2f672a55f73cd3"
+      },
+      {
+        "label": "usage_assistant_accumulation",
+        "offset": 254115600,
+        "length": 500,
+        "sha256": "3b46758fa009ea4229d1fc3e342d0d7e60d7af93b8b2c19a7325fda15c5fe81e"
+      },
+      {
+        "label": "usage_print_stream",
+        "offset": 254117400,
+        "length": 1000,
+        "sha256": "58c1d5dcc2a3360c7c53f328cdbe50bf5d26acc250ce5c8f530d697437c311d3"
+      },
+      {
+        "label": "usage_result_projection",
+        "offset": 254121300,
+        "length": 750,
+        "sha256": "d8e089e0b3017ab21e14c33f76be2a902f6d6af814765ce76d62aa86ee275c41"
+      },
+      {
+        "label": "usage_error_projection",
+        "offset": 254125700,
+        "length": 800,
+        "sha256": "488a8dbdbcfb31784e8bd1062588020fac63c38e9fd958bb38006afd87d5965b"
+      },
+      {
+        "label": "usage_nonstream_credit",
+        "offset": 228055500,
+        "length": 1000,
+        "sha256": "4d528b9f701c1826d19b52f5a83d254164665c5541ddf24a368732e506cc8173"
       }
     ]
   }

@@ -220,3 +220,85 @@ PY
 남은 위험: 이 문서와 오프라인 설정 전파 검사만으로 구독 공급자의 실제 1회 응답·각 응답8192 상한 준수를 입증할 수 없다.
 
 준비 상태와 #285/#111/#47은 미완료로 유지한다. 실제 평가 freeze/run과 모델 호출은 계속 보류한다.
+
+## #297 사고 토큰·사용량 완전성 조사
+
+대상은 위와 같은2.1.310 bytes·OAuth·Haiku5.5/xhigh이며, 생성 G·검사 C 각각과 두 출력 모드에 적용한다. 2026-10-25에 기존35조각을 재검증하고 아래10조각을 추가했다. 설치본 실행과 공급자 관측은 없다. 이번 오프라인 조사 완료는 `subscription_thinking_accounting_unverified` 해소가 아니다.
+
+### 공식 계약의 적용 범위
+
+- **일반 Messages API:** `message_delta.usage`는 메시지 내 누적값이다. 이벤트 이름의 delta를 토큰 증분으로 해석해 더하지 않는다. `message_stop`이 정상 종료 이벤트이며 스트림 내부 오류도 가능하다. [Streaming messages](https://platform.claude.com/docs/en/build-with-claude/streaming)
+- **일반 API 사고:** `output_tokens`가 숨겨진 사고와 응답을 포함하고 `max_tokens`를 공유한다. 선택적 `output_tokens_details.thinking_tokens`는 원래 사고의 세부량이며 전체에 다시 더하지 않는다. 스트리밍에서는 마지막 `message_delta`에 세부량이 온다고 설명한다. 보이는 요약 길이는 원래 사고량이 아니다. [Thinking](https://platform.claude.com/docs/en/build-with-claude/thinking), [Steering thinking: pricing](https://platform.claude.com/docs/en/build-with-claude/thinking-steering-and-cost#pricing)
+- **Agent SDK/CLI 보고:** assistant 메시지의 출력은 시작 시점 placeholder이며, 부분 이벤트와 최종 result가 출력 집계 경로다. 동일 응답에서 여러 assistant가 같은 ID를 공유하므로 별도 응답처럼 합산하면 안 된다. result `usage`는 누적, `modelUsage`는 모델별 집계다. 재개된 세션의 이전 사용량이 포함될 수 있다. 성공·오류 result 모두 사용량을 가지지만 crash에서는0으로 초기화되거나 예산 오류에서 `usage`가 마지막 응답을 빠뜨릴 수 있다. 연결·프로세스 실패에서는 result 자체가 없을 수 있다. [Track cost and usage](https://code.claude.com/docs/en/agent-sdk/cost-tracking)
+- **OAuth 구독의 대상 계약:** 위 문서와 설치본만으로 모든 내부 생성의 숨겨진 사고가 빠짐없이 보고됐다고 확정할 수 없다. 두 출력 모드·G/C·복구/취소별 보장과 실제 적용이 미확인이다. `claude -p`가 SDK의 CLI 표면이라는 설명은 연결 근거이지 공급자 완전성 인증이 아니다. [Programmatic CLI](https://code.claude.com/docs/en/headless)
+
+### 필드별 판정 표
+
+| 필드·단위 | 의미와 중복 처리 | 완전성 판정·현재 실행기 |
+| --- | --- | --- |
+| API `message_start.message.usage.output_tokens` / 토큰·메시지 | 시작 시점 값. 최종 출력으로 합산하지 않음. | 시작만으로 완료/0사용량 판정 불가. Tracker는 시작 수를 셈. |
+| API/CLI partial `message_delta.usage.output_tokens` / 토큰·현재 메시지 | 누적 snapshot. 같은 값의 반복은1회 값, 증가 시 교체. | 마지막 관측값이지 누락 토큰을 포함한 완전한 총량 증명은 아님. 감소는 이번 수정에서 오류. |
+| API `usage.output_tokens_details.thinking_tokens` / 토큰·메시지 | 전체 output의 부분집합. 합산 금지. | 미제공이면 unknown, 사고0 아님. 일반 API 정의를 OAuth 보장으로 승격하지 않음. |
+| CLI `assistant.message.id` + `usage` | 같은 ID의 assistant 사본은 별도 생성이 아님. 출력은 placeholder일 수 있음. | Tracker는 assistant usage를 출력 합계에 넣지 않음. 원래 ID는 보고서에 보존하지 않음. |
+| CLI `result.usage.output_tokens` / 토큰·보고 집계 | 최종 누적 집계. stream이나 modelUsage와 더하지 않고 비교. | `_call`은 성공 결과의 비음수 정수·8192 이하를 요구. 오류에서 보고된0도 실제0을 증명하지 않음. |
+| CLI `result.modelUsage[model].outputTokens` / 토큰·모델 집계 | 별도 표시 축. result.usage와 중복 합산 금지. | 있으면 상한과 result 일치 검사. 없으면 그 교차검사는 미실시. 전체 요청 누락을 증명할 수 없음. |
+| CLI `modelUsage[model].thinkingTokens` | 설치본 별도 세부 누적. 전체에 재가산하지 않음. | 아래 기본0 경로 때문에 이 필드0만으로 사고0 확정 불가. Tracker는 세부량을 보존하지 않으며 미기록=unknown. |
+| input/cache 각 필드 / 입력 토큰 | 별도 입력 집계. 출력과 더하지 않음. | 출력/사고의 대체 지표가 아님. 누락은 현재 metadata에서 null. |
+| `message.id`, request ID, role/mode | 메시지·전송·앱 역할은 서로 다른 단위. 복구 전송 연결 필요. | 현재 trace는 시작 수와 duplicate_id만 남김. 전체 request ID 연결·완전성 schema는 구현되지 않음. |
+| stop/result/error/cancel 상태 | 스트림 정상 종료·CLI 성공·로컬 회수·공급자 집계 완료는 서로 다른 사실. | 현재 `message_stop`은 완전성 gate가 아님. 부분/취소 뒤 숨은 사용량은 unknown. 호출 전 `ready=False` 유지. |
+
+여기서 비교는 **한 역할·한 메시지·한 모델**을 요구하는 현재 실행기의 보수적 일관성 검사다. 같은 ID의 두 번째 `message_start`도 안전하게 중단하며 재전송 사본이라고 추정해 무시하지 않는다. 이 정책으로 관측한 시작 수가 공급자의 실제 전송 수가 되지는 않는다. 지원되는 조정/credit 때문에 누적값이 감소하는 예외가 있다면 해당 계약을 먼저 확보해야 하며, 그 전에는 자동 수용하지 않는다.
+
+### 설치본에서 연결한 정적 경로
+
+다음 조각의 정확한 offset·길이·SHA는 지원 JSON에 있다. 심볼은 이 bytes의 해당 문맥에 한정되며 다른 번들의 동명 함수와 혼동하지 않는다.
+
+| 조각 | 정적으로 확인한 연결 | 남은 한계 |
+| --- | --- | --- |
+| 기존 `reported_usage_accounting` + `usage_model_accumulator` | `yGt`가 output 전체와 thinking 세부량을 각각 누적하고 `D7e`가 모델 ledger 및 since-last-result 집계에 전달. thinking 누락은 `??0`. | 기본0이 공급자 보고0과 구별되지 않음. 모든 진입·ledger reset 전체 미추적. |
+| `usage_message_delta_credit` | `Lke`로 delta usage를 병합하고 stop_reason 시 `D7e`에 전달. `credited` 상태로 이 분기의 중복 적립 방지. | fallback/credit 조정 경로와 모든 오류 종료에서 완전성 보장 아님. |
+| `usage_snapshot_merge` | `Lke`는 output을 새값 또는 이전값으로 교체, thinking도 새값/이전값 선택. `SRo` 별도 fallback 병합 존재. | 필드 누락은 새 공급자 관측이 아님. 초기값/이전값이 원래 토큰을 복원하지 못함. |
+| `usage_sum` | `XNt`는 두 집계의 output과 thinking을 각각 합산. | 호출 단위가 중복되지 않는지는 호출자 조건이 필요. |
+| `usage_unstreamed_dedup` | `uP`는 API 오류/특수 모델/현재 스트림ID/직전 unstreamed ID를 제외. | 전역 seen-ID 집합이 아니며 임의 재정렬 전체 보장 아님. |
+| `usage_assistant_accumulation` | assistant 경로가 `uP` 반환분만 `XNt`로 turn usage에 추가. | 누락·재전송의 모든 도달 경로 미확인. |
+| `usage_print_stream` | 시작 때 메시지 usage 초기화·ID 기억, delta 교체, `message_stop`에서 turn 합계에 추가. | stop 미도착/취소 시 합계 누락 가능성을 제거하지 못함. |
+| `usage_result_projection` | print 결과를 만들 때 turn `usage`를 넣고 기존 result의 다른 필드를 유지. | result와 모델 ledger가 동일 범위라는 전면 증명 아님. |
+| `usage_error_projection` | 스키마 시도 종료 오류도 turn usage와 모델 ledger를 보고. | 오류에 필드가 있다는 것과 완전한 사용량은 다름. |
+| `usage_nonstream_credit` | 비스트리밍 결과의 usage를 병합해 `D7e`로 전달. | fallback 전 부분 사용량과 새 요청의 중복/누락 전체는 미확인. |
+
+Smallnext 연결은 `Tracker.consume → metadata`, `_call → call → oauth_quality.evaluate / oauth_bridge.evaluate`다. 현재 metadata는 최종 result의 입력/출력/cache 값과 마지막 stream 출력값을 분리한다. thinking detail을 보존하지 않으므로 세부 사고량을0으로 만들어 보고하지 않는다. 원문·signature·실제 ID를 추가 저장하지 않았다.
+
+### 모의 회귀와 최소 보완
+
+기존 검사에서8192+thinking4096 재합산 방지, final output 누락/비정상값/상한 초과, stream/result 및 model/result 불일치, 추가 메시지·재시도·취소·프로세스 회수를 확인한다. 이번에는 빠진 사례를 기존 가짜 CLI 경계에 보완했다.
+
+| 사례 | 검증하는 동작 | 증명하지 않는 것 |
+| --- | --- | --- |
+| 누적80→8, final8 | 수정 전 성공으로 재현. 수정 후 `output_usage_mismatch`, 앞선80 보존, 출력 없음·프로세스 회수. | 공급자의 조정 규칙/실제 토큰 수 |
+| 누적2→4096→8192→8192 + assistant 사본2개 + result/model8192 | 누적·표시 사본을 더하지 않음. input/cache는 출력과 분리. | 숨은 요청/누락이 없다는 보장 |
+| 전체8192, thinking4096 있음/없음 | 전체 유지, 세부값 재가산·누락을0으로 생성하지 않음. | 구독 사고의 실제 포함/세부량 |
+| 동일ID 두 번째 시작 / 중복result | 각각 추가 요청/중복결과 오류. ID 원문 비저장. | 동일ID 재전송의 공급자 의미 |
+| 부분12 뒤 EOF / timeout | stream12 보존, 최종 usage null, 결과 실패와 회수. | 취소 뒤 공급자가 생성한 잔여 토큰 |
+
+기존 active cancellation 회귀는 회수 동작을 검증한다. 부분 사용량 이후 취소·오류별 공급자 완전성, 복구 요청 ID별 전체 연결, 누락 thinking detail의 공급자 정의는 모의 테스트로 입증할 수 없다. 새 범용 관측 하네스나 설정 옵션은 만들지 않았다. 실행기 bytes 변경은 rejudge의 명시적 호환 hash에 추가하며 과거 hash·평가 기록을 유지한다.
+
+### 공급자에게 필요한 최소 관측 계약과 질문 초안
+
+아래는 **요구할 schema 초안**이며 현재 CLI가 모두 제공한다거나 수집을 승인했다는 뜻이 아니다. 자유형 원문 대신 허용된 enum·비음수 정수·null만 사용한다. ID는 공급자가 허용한 비밀정보 없는 연결 키 또는 승인된 비가역 별칭으로 한정하고, 원문 ID 공유도 #298에서 범위를 승인받는다.
+
+| 묶음 | 최소 필드와 의미 |
+| --- | --- |
+| 대상 | CLI bytes/hash, runtime head, auth category, requested/applied model·effort, role G/C, mode structured/text-json |
+| 연결 | `request_id`, `message_id`, `generation_ordinal`, `parent_request_id` 각각 nullable. CLI event 순번은 별도이며 요청 수로 대체 불가. |
+| 사용량 | `output_total: int|null`, `thinking_detail: int|null`, `unit: tokens`, `scope: message|request|role|model|unknown`, `aggregation: cumulative|incremental|unknown`, `source: stream|assistant|result|model_usage` |
+| 상태 | `completion: partial|complete|error|cancelled|unknown`, `usage_completeness: complete|partial|unknown`, 누락 필드 목록, 허용 stop_reason, 공급자 완전성 근거 reference |
+
+관측값과 계약 판정을 분리한다. `complete` 이벤트라도 전체 토큰 보고 보장이 없으면 `usage_completeness=unknown`; 명시적0과 missing/null은 구별한다. 마지막 부분값을 전체로 승격하지 않고, stream/result/modelUsage를 서로 더하지 않는다. thinking은 output에 포함된 세부량만 별도로 유지한다. 연결 키 없는 복구는 같은/다른 요청이라고 추정하지 않는다. prompt·응답·사고/서명 원문·계정 식별자·token/cookie는 제외한다. 새 보존 기한을 만들거나 과거 삭제 상한을 연장하지 않는다.
+
+발송하지 않은 질문:
+
+1. 정확한 OAuth·CLI2.1.310·Haiku5.5/xhigh·G/C·두 모드에서 숨겨진/요약된 사고가 `output_tokens`에 포함되고 visible과8192를 공유하는가? API 계약과 다른 예외 및 버전별 보장 범위를 공식 문서/지원 답변으로 제공할 수 있는가?
+2. 각 partial/result/modelUsage의 단위·누적 범위·ID 연결·중복 제거·reset/credit/fallback 규칙은 무엇인가? thinking detail의 미제공과 명시적0을 구분할 지원 필드가 있는가? `??0` 이후 모델집계0만으로 판단할 수 없는 경우의 대안은 무엇인가?
+3. EOF·timeout·취소·오류·추가 요청·자동 복구에서 보고되지 않은 토큰까지 완전하게 연결하는 공식 metadata 또는 사후 확인 경로가 있는가? 최종 보고 누락/0초기화·예산 초과 응답 누락·부분 사용량만 남은 경우를 어떻게 표시하는가? 이 확인에 원문·사고 텍스트 없이 필요한 최소 필드는 무엇인가?
+
+공식 지원 후보 경로와 발송 경계는 #296 절을 재사용한다. #298에서 수신처·질문·공유자료의 별도 승인을 받거나 사용자가 직접 보낸다. 지원 경로가 없으면 unknown을 유지하며 TLS 가로채기·계정 추출·설치본 patch로 대신하지 않는다. 이 조사로 #299 관측 호출이나 #285 실제 평가를 승인하지 않는다.
