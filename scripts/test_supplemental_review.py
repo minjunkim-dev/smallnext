@@ -336,7 +336,9 @@ print(json.dumps({'type':'stream_event','event':{'type':'message_delta','delta':
             self.assertEqual(result.returncode, 0, result.stderr)
             report = json.loads(result.stdout)
             self.assertTrue(report['output_review']['work_complete'])
-            self.assertFalse(report['preparation']['ready'])
+            self.assertTrue(report['preparation']['ready'])
+            self.assertFalse(report['preparation']['actual_execution_authorized'])
+            self.assertEqual(len(report['preparation']['limitations']), 3)
             self.assertNotIn('PRIVATE', result.stdout)
             self.assertEqual(json.loads((root/'review-report.json').read_bytes()), report)
 
