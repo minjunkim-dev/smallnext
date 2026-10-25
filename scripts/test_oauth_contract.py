@@ -36,6 +36,19 @@ class CompactContractParityTests(unittest.TestCase):
 
 
 class InsufficientInfoFormatTests(unittest.TestCase):
+    def test_source_work_states_keep_the_approved_reference_and_grounded_evidence(self):
+        fixture = json.loads((qa.REPO / "contracts/fixtures/insufficient-info.json").read_text())
+        cases = {case["id"]: case for case in fixture["checker_cases"]}
+        for ident, verdict in (("useful-source-check", "reject"),
+                               ("conflicting-sources", "reject"),
+                               ("source-omission-is-not-absence", "accept")):
+            with self.subTest(case=ident):
+                case = cases[ident]
+                self.assertEqual(case["check"]["verdict"], verdict)
+                self.assertTrue(qa.proposal_valid(case["input"], fixture["generated"]))
+                self.assertIn(case["check"]["evidence"],
+                              "\n".join([case["input"]["current_blocker"], *case["input"]["available"]]))
+
     def test_shared_notice_fields_and_request_kind_schema(self):
         fixture = json.loads((qa.REPO / "contracts/fixtures/insufficient-info.json").read_text())
         original, candidate = fixture["input"], fixture["generated"]

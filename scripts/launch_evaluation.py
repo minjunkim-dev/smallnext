@@ -246,7 +246,8 @@ def load(directory, *, descriptor=None, for_report=False):
     source = directory if descriptor is None else descriptor
     manifest = qa.load(directory, read_bytes=lambda path: private_bytes(source, path.relative_to(directory)),
                        allowed_runner_sha256=tuple(sources['scripts/oauth_quality.py'] for sources in
-                           (supplemental.LEGACY_REPORT_SOURCES, supplemental.ONCE_REPORT_SOURCES))
+                           (supplemental.LEGACY_REPORT_SOURCES, supplemental.ONCE_REPORT_SOURCES,
+                            supplemental.REVISED_ONCE_REPORT_SOURCES))
                                              if for_report else ())
     if manifest.get('suite') != 'launch' or manifest.get('parallelism') != 1:
         raise ValueError('wrong launch manifest')
