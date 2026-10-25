@@ -185,56 +185,64 @@ class SingleRepeatTests(unittest.TestCase):
             empty = launch.report(root, comparisons=True)['private_comparisons']
             self.assertIn('1차 검토 대기', launch.supplemental_review.comparison_markdown(empty))
 
-    def test_reviewed_legacy_source_bundle_is_reportable_but_not_executable(self):
-        # Manufacture a legacy synthetic fixture; never touch a past evaluation or execute frozen code.
-        with tempfile.TemporaryDirectory() as directory:
-            root, manifest = fixed.SupplementalFixedPlanTests.freeze(self, directory)
-            launch.run(root, invoke=fixed.SupplementalFixedPlanTests.response, clock=lambda: 0)
-            old = qa.digest((root/'manifest.json').read_bytes())
-            sources = {name: ('synthetic historical source: ' + name).encode()
-                       for name in launch.supplemental.LEGACY_REPORT_SOURCES}
-            self.enterContext(patch.object(launch.supplemental, 'LEGACY_REPORT_SOURCES',
-                                           {name: qa.digest(raw) for name, raw in sources.items()}))
-            self.enterContext(patch.object(subprocess, 'check_output',
-                                           side_effect=AssertionError('no Git history required')))
-            for name, raw in sources.items():
-                manifest['sources'][name] = dict(sha256=qa.digest(raw), utf8=raw.decode())
-            manifest['plan_sha256'] = launch.supplemental.binding(manifest)
-            (root/'manifest.json').write_bytes(qa.encoded(manifest))
-            new = qa.digest((root/'manifest.json').read_bytes())
-            def rebind(value):
-                if isinstance(value, dict):
-                    return {key: new if key == 'manifest_sha256' and item == old else rebind(item)
-                            for key, item in value.items()}
-                if isinstance(value, list):
-                    return [rebind(item) for item in value]
-                return value
+    def test_reviewed_legacy_source_bundle_is_reportable_but_not_runnable(self):
+        # Historical source bytes are data, never executed; no Git history dependency.
+        for once in (False, True):
+            with self.subTest(once=once), tempfile.TemporaryDirectory() as directory:
+                root, manifest = (self.freeze(directory) if once else
+                                  fixed.SupplementalFixedPlanTests.freeze(self, directory))
+                launch.run(root, invoke=fixed.SupplementalFixedPlanTests.response, clock=lambda: 0)
+                old = qa.digest((root/'manifest.json').read_bytes())
+                attribute = 'ONCE_REPORT_SOURCES' if once else 'LEGACY_REPORT_SOURCES'
+                sources = {name: ('synthetic historical source: ' + name).encode()
+                           for name in getattr(launch.supplemental, attribute)}
+                support_path = 'docs/research/claude-output-limit-support.json'
+                evidence = json.loads(manifest['sources'][support_path]['utf8'])
+                sources[support_path] = qa.encoded(dict(evidence, synthetic_history=True))
+                self.enterContext(patch.object(launch.supplemental, attribute,
+                                               {name: qa.digest(raw) for name, raw in sources.items()}))
+                self.enterContext(patch.object(subprocess, 'check_output',
+                                               side_effect=AssertionError('no Git history required')))
+                for name, raw in sources.items():
+                    manifest['sources'][name] = dict(sha256=qa.digest(raw), utf8=raw.decode())
+                manifest['plan_sha256'] = launch.supplemental.binding(manifest)
+                (root/'manifest.json').write_bytes(qa.encoded(manifest))
+                new = qa.digest((root/'manifest.json').read_bytes())
+                def rebind(value):
+                    if isinstance(value, dict):
+                        return {key: new if key == 'manifest_sha256' and item == old else rebind(item)
+                                for key, item in value.items()}
+                    if isinstance(value, list):
+                        return [rebind(item) for item in value]
+                    return value
 
-            for path in root.rglob('*'):
-                if not path.is_file() or path.name == 'manifest.json' or path.suffix not in ('.json', '.receipt'):
-                    continue
-                value = json.loads(path.read_bytes())
-                path.write_bytes(qa.encoded(rebind(value)))
-            for path in (root/'results').glob('*.json'):
-                row = json.loads(path.read_bytes())
-                for call in row['calls']:
-                    receipt_path = root/'calls'/f"{row['request_id']}-{call['role']}.receipt"
-                    receipt = json.loads(receipt_path.read_bytes())
-                    receipt['record_sha256'] = qa.digest(qa.encoded(call))
-                    receipt_path.write_bytes(qa.encoded(receipt))
-            for path in (root/'requests').glob('*.receipt'):
-                receipt = json.loads(path.read_bytes())
-                receipt['record_sha256'] = qa.digest((root/'results'/receipt['result_file']).read_bytes())
-                path.write_bytes(qa.encoded(receipt))
-            report = launch.report(root)
-            self.assertTrue(report['automatic_passed'], (report['unreadable_records'], report['requests'], report['stop_reason']))
-            with self.assertRaisesRegex(ValueError, 'source changed|runner differs'):
-                launch.load(root)
-            changed = deepcopy(manifest)
-            changed['sources']['scripts/supplemental_review.py']['sha256'] = '0'*64
-            changed['plan_sha256'] = launch.supplemental.binding(changed)
-            with self.assertRaises(ValueError):
-                launch.validate_supplemental(changed, for_report=True)
+                for path in root.rglob('*'):
+                    if not path.is_file() or path.name == 'manifest.json' or path.suffix not in ('.json', '.receipt'):
+                        continue
+                    value = json.loads(path.read_bytes())
+                    path.write_bytes(qa.encoded(rebind(value)))
+                for path in (root/'results').glob('*.json'):
+                    row = json.loads(path.read_bytes())
+                    for call in row['calls']:
+                        receipt_path = root/'calls'/f"{row['request_id']}-{call['role']}.receipt"
+                        receipt = json.loads(receipt_path.read_bytes())
+                        receipt['record_sha256'] = qa.digest(qa.encoded(call))
+                        receipt_path.write_bytes(qa.encoded(receipt))
+                for path in (root/'requests').glob('*.receipt'):
+                    receipt = json.loads(path.read_bytes())
+                    receipt['record_sha256'] = qa.digest((root/'results'/receipt['result_file']).read_bytes())
+                    path.write_bytes(qa.encoded(receipt))
+                report = launch.report(root)
+                self.assertTrue(report['automatic_passed'], (report['unreadable_records'], report['requests'], report['stop_reason']))
+                self.assertTrue(report['preparation']['ready'])
+                self.assertEqual(report['preparation']['evidence_sha256'], qa.digest(sources[support_path]))
+                with self.assertRaisesRegex(ValueError, 'source changed|runner differs'):
+                    launch.load(root)
+                changed = deepcopy(manifest)
+                changed['sources']['scripts/supplemental_review.py']['sha256'] = '0'*64
+                changed['plan_sha256'] = launch.supplemental.binding(changed)
+                with self.assertRaises(ValueError):
+                    launch.validate_supplemental(changed, for_report=True)
 
     def test_private_markdown_export_keeps_public_stdout_clean_and_refuses_replacement(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -29,13 +29,28 @@ LEGACY_REPORT_SOURCES = {
     'scripts/launch_evaluation.py': 'ff3af0c3201ff07783105b26306ba0bbfc986c81d05394b4f7159a80b1527c0e',
     'scripts/supplemental_evaluation.py': 'de4b8a8f007d227ed5bc2e5ca87dd2edaa878bf765311bfeb512237b11bda00e',
     'scripts/supplemental_review.py': '32c62290df6b122ec10c6938c543d15660813a5c2467cc300d1c857048646503',
+    'docs/research/claude-output-limit-support.json': '50d6edec463da28e571d9dca93045fb1728368a1a66ba3e8b083003b9b7d7971',
+}
+
+
+# #308: preserve read-only reporting of the reviewed #306 bundle after evidence cleanup.
+ONCE_REPORT_SOURCES = {
+    'scripts/oauth_quality.py': '86ad71aacde3015d63e644901e60875eb14e3bc30e62bdeee0f8636b517f1f65',
+    'scripts/launch_evaluation.py': '34e1065ac8e5c772a9f7adc30c2eb3ca72b9d977866340c2ce93923f6884be14',
+    'scripts/supplemental_evaluation.py': '29419f53f9ab19e6e5455c0669380139ec0beac14e0cf139c5ab0c1a1a46f166',
+    'scripts/supplemental_review.py': 'fa720a9afc1afc84c6b9b44a0f2d0d7883416052a0cab17731e90f41d41e0e8d',
+    'docs/research/claude-output-limit-support.json': '50d6edec463da28e571d9dca93045fb1728368a1a66ba3e8b083003b9b7d7971',
 }
 
 
 def legacy_report_sources(manifest):
-    return (manifest.get('version') == 3 and manifest.get('plan_kind') == 'supplemental-fixed'
-            and all(manifest['sources'].get(path, {}).get('sha256') == sha
-                    for path, sha in LEGACY_REPORT_SOURCES.items()))
+    for version, kind, sources in ((3, 'supplemental-fixed', LEGACY_REPORT_SOURCES),
+                                   (4, 'supplemental-once', ONCE_REPORT_SOURCES)):
+        if (manifest.get('version') == version and manifest.get('plan_kind') == kind
+                and all(manifest['sources'].get(path, {}).get('sha256') == sha
+                        for path, sha in sources.items())):
+            return sources
+    return {}
 
 
 def fixed_flows(*, once=False):
@@ -102,7 +117,7 @@ def validate(manifest, *, for_report=False):
     delete_by = datetime.fromisoformat(retention['delete_by'])
     if end.tzinfo is None or delete_by.tzinfo is None or delete_by > end + timedelta(days=30):
         raise ValueError('fixed retention limit changed')
-    legacy = LEGACY_REPORT_SOURCES if for_report and legacy_report_sources(manifest) else {}
+    legacy = legacy_report_sources(manifest) if for_report else {}
     for path in REQUIRED_SOURCES:
         expected = legacy.get(path, qa.digest((qa.REPO / path).read_bytes()))
         if manifest['sources'].get(path, {}).get('sha256') != expected:

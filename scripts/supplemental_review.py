@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 import json
 
 import oauth_quality as qa
+import supplemental_evaluation as supplemental
 
 
 DECISIONS = {'meets_expectation', 'generation_violation', 'checker_misjudgement',
@@ -10,11 +11,15 @@ DECISIONS = {'meets_expectation', 'generation_violation', 'checker_misjudgement'
 
 
 def output_report(manifest, records, end, summary, review, record_hashes):
-    support = qa.output_readiness(manifest['output_mode'])
-    frozen_support = manifest['sources']['docs/research/claude-output-limit-support.json']['sha256']
+    path = 'docs/research/claude-output-limit-support.json'
+    frozen_support = manifest['sources'][path]['sha256']
+    historical_pin = supplemental.legacy_report_sources(manifest).get(path)
+    support = (qa.evidence_readiness(manifest['output_mode'], manifest['sources'][path]['utf8'].encode(),
+                                    historical_pin) if historical_pin else
+               qa.output_readiness(manifest['output_mode']))
     metadata = {}
-    if frozen_support == qa.OUTPUT_SUPPORT_SHA256:
-        evidence = json.loads(manifest['sources']['docs/research/claude-output-limit-support.json']['utf8'])
+    if frozen_support == (historical_pin or qa.OUTPUT_SUPPORT_SHA256):
+        evidence = json.loads(manifest['sources'][path]['utf8'])
         metadata = {key: evidence[key] for key in ('checked_on', 'cli_version', 'cli_sha256', 'sources',
                     'authentication', 'transport', 'output_modes', 'scope', 'provider_observation')}
     if support.get('evidence_sha256') != frozen_support:

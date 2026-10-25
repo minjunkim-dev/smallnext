@@ -23,7 +23,7 @@ MODEL = "claude-haiku-5-5"
 EFFORT = "xhigh"
 OUTPUT_TOKENS = 8192
 OUTPUT_SUPPORT = REPO / "docs/research/claude-output-limit-support.json"
-OUTPUT_SUPPORT_SHA256 = "50d6edec463da28e571d9dca93045fb1728368a1a66ba3e8b083003b9b7d7971"
+OUTPUT_SUPPORT_SHA256 = "aa2a1150ccdbc05d2bf428e30ade5515bf507be58686dc748fa0ed302179f0e4"
 
 
 def encoded(value):
@@ -320,17 +320,24 @@ def output_count(value):
 
 
 def output_readiness(output_mode):
-    """Check offline preparation separately from provider guarantees and execution approval."""
-    status = {"ready": False, "output_tokens": OUTPUT_TOKENS,
-              "provider_application": "unobserved", "reasons": [], "limitations": [],
-              "actual_execution_authorized": False}
+    """Check current offline preparation; execution always uses the current evidence pin."""
     try:
         raw = OUTPUT_SUPPORT.read_bytes()
     except OSError:
+        raw = None
+    return evidence_readiness(output_mode, raw, OUTPUT_SUPPORT_SHA256)
+
+
+def evidence_readiness(output_mode, raw, expected_sha256):
+    """Read pinned evidence bytes without running or authorizing any model request."""
+    status = {"ready": False, "output_tokens": OUTPUT_TOKENS,
+              "provider_application": "unobserved", "reasons": [], "limitations": [],
+              "actual_execution_authorized": False}
+    if raw is None:
         status["reasons"] = ["support_missing"]
         return status
     status["evidence_sha256"] = digest(raw)
-    if status["evidence_sha256"] != OUTPUT_SUPPORT_SHA256:
+    if status["evidence_sha256"] != expected_sha256:
         status["reasons"] = ["support_changed"]
         return status
     evidence = json.loads(raw)
