@@ -7,6 +7,7 @@ import oauth_quality as qa
 
 
 PLAN_ID = 'supplemental-fixed-v1'
+ONCE_PLAN_ID = 'supplemental-once-v1'
 FIXTURE = 'contracts/fixtures/supplemental-evaluation.json'
 REFERENCE = 'contracts/fixtures/insufficient-info.json'
 SOURCE_PATHS = (FIXTURE, REFERENCE, 'scripts/supplemental_evaluation.py',
@@ -22,7 +23,21 @@ CHECK_IDS = ('no-source-or-answer', 'useful-source-check', 'real-unanswered-ques
              'known-unknown-rewrite', 'unsupported-fill-in', 'specific-user-statement')
 
 
-def fixed_flows():
+# #304: reviewed #303 source bytes may be read for reports, never executed or rewritten.
+LEGACY_REPORT_SOURCES = {
+    'scripts/launch_evaluation.py': 'ff3af0c3201ff07783105b26306ba0bbfc986c81d05394b4f7159a80b1527c0e',
+    'scripts/supplemental_evaluation.py': 'de4b8a8f007d227ed5bc2e5ca87dd2edaa878bf765311bfeb512237b11bda00e',
+    'scripts/supplemental_review.py': '32c62290df6b122ec10c6938c543d15660813a5c2467cc300d1c857048646503',
+}
+
+
+def legacy_report_sources(manifest):
+    return (manifest.get('version') == 3 and manifest.get('plan_kind') == 'supplemental-fixed'
+            and all(manifest['sources'].get(path, {}).get('sha256') == sha
+                    for path, sha in LEGACY_REPORT_SOURCES.items()))
+
+
+def fixed_flows(*, once=False):
     fixture = json.loads((qa.REPO / FIXTURE).read_bytes())
     if (fixture['id'] != PLAN_ID or fixture['order'] != dict(repeats=[1, 2, 3],
             groups=['fixed-checks', 'supplemental-flows'],
@@ -33,7 +48,7 @@ def fixed_flows():
     reference = json.loads(raw)
     checks = {case['id']: case for case in reference['checker_cases']}
     flows = []
-    for repeat in range(1, 4):
+    for repeat in range(1, 2 if once else 4):
         for ident in CHECK_IDS:
             case = checks[ident]
             candidate = case.get('generated', reference['generated'])
@@ -69,8 +84,10 @@ def binding(manifest):
     return qa.digest(qa.encoded({key: value for key, value in manifest.items() if key != 'plan_sha256'}))
 
 
-def validate(manifest):
-    if (manifest.get('plan_id') != PLAN_ID or manifest.get('flows') != fixed_flows()
+def validate(manifest, *, for_report=False):
+    once = manifest.get('plan_kind') == 'supplemental-once'
+    if (manifest.get('plan_id') != (ONCE_PLAN_ID if once else PLAN_ID)
+            or manifest.get('flows') != fixed_flows(once=once)
             or manifest.get('model') != qa.MODEL or manifest.get('effort') != qa.EFFORT
             or manifest.get('plan_sha256') != binding(manifest)):
         raise ValueError('fixed supplemental plan changed')
@@ -84,8 +101,10 @@ def validate(manifest):
     delete_by = datetime.fromisoformat(retention['delete_by'])
     if end.tzinfo is None or delete_by.tzinfo is None or delete_by > end + timedelta(days=30):
         raise ValueError('fixed retention limit changed')
+    legacy = LEGACY_REPORT_SOURCES if for_report and legacy_report_sources(manifest) else {}
     for path in REQUIRED_SOURCES:
-        if manifest['sources'].get(path, {}).get('sha256') != qa.digest((qa.REPO / path).read_bytes()):
+        expected = legacy.get(path, qa.digest((qa.REPO / path).read_bytes()))
+        if manifest['sources'].get(path, {}).get('sha256') != expected:
             raise ValueError('fixed supplemental source changed')
     for role in ('generate', 'check'):
         base = 'services/api/src/suggestion/'
