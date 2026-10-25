@@ -27,6 +27,24 @@ class CompactContractParityTests(unittest.TestCase):
                 self.assertEqual(prompt, self.fixture["prompts"][case["prompt"]])
                 self.assertEqual(schema, self.fixture["schemas"][case["schema"]])
 
+    def test_generation_reduction_instructions_are_status_scoped_and_grounded(self):
+        fixture = json.loads((qa.REPO / "contracts/fixtures/insufficient-info.json").read_text())
+        for kind in ("first_action", "next_action", "smaller", "replacement"):
+            payload = dict(fixture["input"], request_kind=kind)
+            compact, _ = qa.request(self.manifest["prompts"]["generate"],
+                                    qa.schema_for(self.manifest, payload), payload)
+            for prompt in (self.manifest["prompts"]["generate"], compact):
+                with self.subTest(kind=kind, compact=prompt == compact):
+                    self.assertTrue('Outside smaller action/minimum, set reduction to "" for insufficient_info' in prompt,
+                                    'missing status-scoped reduction default')
+                    self.assertTrue('and to "해당 없음" for every other status.' in prompt, 'missing other-status default')
+                    self.assertFalse('Otherwise set reduction to "해당 없음".' in prompt, 'unscoped default conflicts with notice')
+                    self.assertTrue('do not add unsupported quantities, steps or results' in prompt, 'missing prior-work grounding')
+            # Replay the malformed pattern without weakening validation or repairing output.
+            malformed = dict(fixture["generated"], reduction="해당 없음")
+            self.assertEqual(qa.proposal_invalid_fields(payload, malformed), ["reduction"])
+            self.assertTrue(qa.proposal_valid(payload, fixture["generated"]))
+
     def test_status_table_matches_rust(self):
         for kind, allowed in self.fixture["statuses"].items():
             with self.subTest(kind=kind):
