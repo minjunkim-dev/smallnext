@@ -8,7 +8,7 @@
 
 8192 설정의 문서 근거는 확인되지만 대상 OAuth의 모든 내부 경로 적용을 증명하지는 못한다. 구독의 실제 상한·사고 집계·역할당 응답 1회는 **미확인**이다. [Claude Code 환경변수](https://code.claude.com/docs/en/env-vars)
 
-문서로 식별되는 오류 재시도·스키마 검증 시도 제한은 오프라인 보완의 근거가 된다. 출력 상한 복구·사고만 생성한 응답·잘린 스트림 등 다른 내부 분기는 설치본에서 별도로 추적해야 한다. 공식 변경 이력은 출력 상한 뒤 자동 이어쓰기가 존재함을 명시한다. [Claude Code 공식 CHANGELOG](https://github.com/anthropics/claude-code/blob/main/CHANGELOG.md#210)
+문서로 식별되는 오류 재시도·스키마 검증 시도 제한은 오프라인 보완의 근거가 된다. 아래 #295 조사에서 일반 스트림 가드와 별도 복구 경로를 연결했지만, 전체 전송 경로의 차단은 입증하지 못했다. 공식 변경 이력은 출력 상한 뒤 자동 이어쓰기가 존재함을 명시한다. [Claude Code 공식 CHANGELOG](https://github.com/anthropics/claude-code/blob/main/CHANGELOG.md#210)
 
 ## Claude Code 환경변수의 직접 근거
 
@@ -22,6 +22,7 @@
 | `MAX_STRUCTURED_OUTPUT_RETRIES` | `-p --json-schema` 검증 실패 시 총 시도 횟수, 기본 5 = 최초 1 + 재시도 4. | 공식 변수명. 1은 최초 시도만 허용한다는 해석. |
 | `CLAUDE_CODE_RETRY_WATCHDOG` | 켜면 429·529 재시도와 다른 일시 오류의 기본 재시도를 확대한다. | 상속 여부도 통제 대상. |
 | `CLAUDE_CODE_DISABLE_NONSTREAMING_FALLBACK` | 중간 스트리밍 실패의 비스트리밍 전환을 끄고 오류를 retry layer로 전달한다. | 출력 상한 이어쓰기 전체 중단 근거는 아님. |
+| `CLAUDE_CODE_NONSTREAMING_TIMEOUT_RETRIES` | 비스트리밍 요청의 timeout 재전송 횟수. 0이면 첫 timeout에서 실패하며 2.1.285 이상이 필요하다. | #295에서 별도 재전송 경로에 0을 고정. 최초 fallback 진입을 막는 설정은 아님. |
 | `CLAUDE_CODE_RESUME_INTERRUPTED_TURN` | 중단된 이전 세션의 재개를 제어한다. unset 또는 0으로 끈다. | 현재 요청의 출력 상한 복구와 다른 문맥. |
 
 `CLAUDE_CODE_MAX_STRUCTURED_OUTPUT_RETRIES`·`MAX_RETRIES`는 표에서 미발견이다. [환경변수](https://code.claude.com/docs/en/env-vars)
@@ -57,7 +58,7 @@ Claude Code 모델 문서는 Haiku 5.5에 `xhigh`를 지원하며, 항상 adapti
 
 ## 구현한 오프라인 보완
 
-기존 자식 환경에 `CLAUDE_CODE_MAX_RETRIES=0`, `MAX_STRUCTURED_OUTPUT_RETRIES=1`, `CLAUDE_CODE_DISABLE_NONSTREAMING_FALLBACK=1`을 고정했다. 부모의 큰 재시도 값이나 watchdog는 상속하지 않는다. 기존8192·구독 강제·모델/effort·설정 출처 차단·도구/hooks/MCP 차단을 유지한다.
+기존 자식 환경에 `CLAUDE_CODE_MAX_RETRIES=0`, `MAX_STRUCTURED_OUTPUT_RETRIES=1`, `CLAUDE_CODE_DISABLE_NONSTREAMING_FALLBACK=1`을 고정했다. #295에서는 `CLAUDE_CODE_NONSTREAMING_TIMEOUT_RETRIES=0`도 고정했다. 부모의 큰 재시도 값이나 watchdog는 상속하지 않는다. 기존8192·구독 강제·모델/effort·설정 출처 차단·도구/hooks/MCP 차단을 유지한다.
 
 생성·검사와 두 출력 경로에서 가짜 CLI가 받은 값 및 정상 결과·오류 뒤 회수를 검증한다. 이는 가짜 프로세스의 전달 검증이며 실제 CLI 내부 실행의 검증이 아니다. 사고 세부 사용량이 있는 합성 스트림에서도 전체 `output_tokens`를 사용하며 사고 토큰을 또 더하거나 별도 예산을 만들지 않는 회귀를 확인한다. 실제 공급자 집계의 완전성은 확인하지 않았다.
 
@@ -69,7 +70,7 @@ Claude Code 모델 문서는 Haiku 5.5에 `xhigh`를 지원하며, 항상 adapti
 - `reported_usage_accounting`: `output_tokens`는 전체 출력에 더하고 `output_tokens_details.thinking_tokens`는 별도 사고 세부 집계에 더한다. 사고를 전체 출력에 한 번 더 더하는 코드는 아니다. 공급자가 실제로 포함해 보고했다는 관측은 없다.
 - `api_retry_limit`: 명시된 재시도 값은0 이상이면 사용한다. 기본 오류 재시도를0으로 요청할 정적 근거다.
 - `structured_output_attempts`: print 검증 루프가 설정과 누적 시도를 비교하고 `error_max_structured_output_retries`로 종료하는 분기를 확인했다.
-- `nonstreaming_fallback_switch`·`separate_stream_recovery`: fallback 차단값을 읽는 분기와별개의 사고만 생성한 응답·잘린 스트림 복구 카운터가 공존한다. 세 설정을 전체 내부 재호출 차단으로 승격하지 않는다.
+- `nonstreaming_fallback_switch`·`separate_stream_recovery`: fallback 차단값을 읽는 분기와별개의 사고만 생성한 응답·잘린 스트림 복구 카운터가 공존한다. 이 설정들을 전체 내부 재호출 차단으로 승격하지 않는다. #295의 후속 경로 표를 함께 읽는다.
 
 각 이름의0기준 byte offset·길이·조각 SHA-256은 [스냅샷](claude-output-limit-support.json)의 `cli_static_evidence.fragments`가 기준이다. 읽기 전용 재현은 다음과 같으며 CLI를 실행하지 않는다.
 
@@ -87,6 +88,54 @@ for fragment in evidence['cli_static_evidence']['fragments']:
 print('installed binary and static fragment hashes match; no CLI invocation')
 PY
 ```
+
+## #295 분기별 요청 전 차단 조사
+
+이 절은 같은 설치본의 정적 읽기 결과다. 실행이나 계정 관측이 아니다. 아래 식별자는 지원 JSON의 `cli_static_evidence.fragments`에 추가했고 기존8조각은 보존했다. 해시 재현은 위 명령으로 전체21조각을 검사한다. 함수명은 이 설치본 안의 지역 이름이며 공개 API가 아니다. 조각 간 연결은 아래에 명시한 범위만 확인했다. 이름이 같은 다른 모듈을 연결하거나 전체 호출 그래프를 복원했다고 주장하지 않는다.
+
+### 전송점과 가드 연결
+
+- **일반 API 오류:** `api_retry_limit`의 `Ket` → `retry_budget_options`의 `FLe` → `Ukn` → `stream_retry_options`의 남은 재시도 → `request_retry_entry`의 `cRe` 순으로 연결된다. SDK client 자체의 `maxRetries`는0이고, `cRe`가 별도 루프에서 `stream_request_send`의 `beta.messages.create` 콜백을 호출한다. 일반 경로는 `Gn <= h+1` / `Gn > h` 가드를 거쳐0에서 첫 실패로 끝난다. **단, 오류 수정·인증 등 아래 예외를 거치지 않았다는 조건에서만** 이 가드가 적용된다.
+- **오류 수정·인증 예외:** `request_error_repair`는 `onError`가 새로운 수정 키를 반환하면 `Gn--` 뒤 루프에 재진입한다. `stream_retry_options`는 실제 오류 수정 콜백을 전달한다. 따라서 일반 횟수 가드보다 앞의 수정 경로를 재시도0으로 차단했다고 볼 수 없다. `credential_retry_guard`도 인증 조건과 별도 갱신 허용량을 확인하고 카운터를 되돌린다. `retry_ledger`의 갱신 허용량과 총 API 시도 ledger는 별개다. OAuth 갱신 자체는 생성 요청이 아니지만, `request_retry_entry`의 갱신/클라이언트 재구성 뒤 콜백 재호출은 생성 재전송 가능 경로다. 실제 OAuth 조건 판정·서버 오류 분류·모든 수정 키의 도달 여부는 미추적이다.
+- **스트림 복구:** `stream_recovery_policy`에서 thinking-only/truncation/stall 등의 일부 분기는 `YH` → `yL`의 `retries < maxRetries` 가드로 연결된다. `thinking_stream_reentry`에서는 분류 결과가 retry이면 바깥 스트림 루프에 재진입한다. 일반 가드0에서 해당 retry 결정은 막히지만, `stream_error_repair`의 오류 수정 후 카운터 복원·재진입과 모델 fallback 등은 별도다. 모든 원인·진행 상태 조합을 차단했다고 보고하지 않는다.
+- **비스트리밍 전환:** `nonstreaming_fallback_switch`의 차단값은 중간 스트림 실패 분류에 전달된다. 반면 `stream_recovery_policy`의 HTTP404 처리 → `retry_ledger.onWithRetryGaveUp` → `nonstreaming_404_entry`는 별도 `X_t` 진입이다. 이 진입 위치에서는 중간 스트림 fallback 차단값을 다시 검사하지 않는다. `X_t`의 모든 전송 하위 경로와 실제404 도달 여부는 미추적이다. 최초 전환과 전환 후 timeout 재전송은 다르다.
+- **비스트리밍 timeout:** `request_error_repair`의 timeout 분기는 공식 `CLAUDE_CODE_NONSTREAMING_TIMEOUT_RETRIES`와 누적값을 먼저 비교한다. 0이면 첫 timeout에서 예외로 끝내는 정적 근거가 있다. #295는 이 변수0을 자식 환경에 추가하고 부모99를 덮어쓰는 가짜 CLI 전달을 검증한다. 이 보완은404 최초 전환이나 다른 오류 수정을 막는 증거가 아니다.
+- **출력 상한·상위 이어쓰기:** `output_recovery_configuration`은 기본 복구 상한3과 원격 설정 해석을 가진다. `output_recovery_transition`은 `max_output_tokens_recovery` 또는 `truncated_response_recovery` 상태를 만들고 반환한다. 이 조각에는 위 오류 재시도·schema 횟수·fallback 차단값을 검사하는 가드가 없다. 다음 상태에서 새 모델 호출로 돌아가는 전체 dispatcher 간선, print의 turn 제한과의 순서, 두 출력 방식의 실제 도달 여부는 미추적이다. 원격 내부 키를 사용자용 disable 옵션으로 사용하지 않는다.
+- **schema 검증:** `structured_output_attempts`는 print 루프의 특정 user 상태와 schema 조건에서 누적 시도를 비교하고, 유효 출력이 없으면 종료 결과를 내보낸 뒤 반환한다. 총1시도 가드는 그 분기에 적용된다. 완료 출력의 모델 fallback 철회가 이 비교를 언제 거치는지와 상위 복구보다 앞서 종료되는지는 미추적이다. schema가 없는 `text-json`에는 이 가드로 전체 요청 수를 증명하지 않는다. 공식 SDK도 철회 후 유효 출력 부재를 오류에 포함한다. [구조화 출력 오류](https://code.claude.com/docs/en/agent-sdk/structured-outputs#error-handling)
+
+공통 `stream_retry_options` → `stream_request_send`의 주 요청은 기존 `main_request_cap` → `wire_max_tokens`와 연결된다. 그러나 다른 모델·비스트리밍·상위 복구의 상한 전달까지 전수 확인하지 않았다. 그 적용·예외는 [#296](https://github.com/minjunkim-dev/smallnext/issues/296)의 조사 범위이며8192 보장을 해소하지 않는다. optional `apiAttemptsLeft` ledger는 존재하지만 print 경로에서 역할당1로 초기화되고 모든 하위 요청에 전파된다는 근거가 없다. 공개된 역할당 요청 수 옵션으로 취급하지 않는다.
+
+### G/C와 출력 방식별 적용 표
+
+`적용`은 해당 **부분 가드**를 정적으로 연결했다는 뜻이며 전체 요청 전 차단 성공을 뜻하지 않는다. `미추적`은 가드 예외·도달 조건·다음 전송 간선 중 일부가 남은 상태다. `비적용`은 schema가 없는 경로에 schema 가드를 사용하지 않는다는 뜻이다. G와 C는 같은 호출 어댑터지만 prompt/schema가 다르며 실제 동등성을 관측하지 않았다. 모든 칸은 실행 결과가 아니다.
+
+| 분기·검사 대상 | G structured | C structured | G text-json | C text-json | 근거 식별자·남은 간선 |
+| --- | --- | --- | --- | --- | --- |
+| 일반 API 오류·429/529·연결 실패의 횟수 가드 | 적용 | 적용 | 적용 | 적용 | `api_retry_limit`, `retry_budget_options`, `stream_retry_options`, `request_retry_entry`; 수정·인증·capacity 예외는 다음 행 |
+| 오류 수정·capacity 대기·인증 후 생성 재전송 | 미추적 | 미추적 | 미추적 | 미추적 | `request_error_repair`, `credential_retry_guard`, `retry_ledger`; 실제 오류 분류·계정/원격 조건과 모든 예외 미추적 |
+| schema 실패의 총1시도 가드 | 적용 | 적용 | 비적용 | 비적용 | `structured_output_attempts`; 특정 print 상태에서 종료, 전체 선행 경로는 미추적 |
+| 모델 fallback의 완료 출력 철회 | 미추적 | 미추적 | 비적용 | 비적용 | schema 없는 칸은 schema 출력 철회에 비적용; 모델 전환 자체는 아래 별도 행 |
+| max_tokens 뒤 상위 자동 이어쓰기 | 미추적 | 미추적 | 미추적 | 미추적 | `output_recovery_configuration`, `output_recovery_transition`; 다음 dispatcher·turn 순서 미추적 |
+| thinking-only의 일반 스트림 재시도 가드 | 적용 | 적용 | 적용 | 적용 | `stream_recovery_policy`, `thinking_stream_reentry`; 수정/인증·상위 복구는 보장 밖 |
+| 잘린 스트림의 일반 재시도 가드 | 적용 | 적용 | 적용 | 적용 | `stream_recovery_policy`; 상위 `truncated_response_recovery`는 미추적 |
+| 중간 스트림 실패의 nonstreaming 차단 가드 | 적용 | 적용 | 적용 | 적용 | `nonstreaming_fallback_switch`; 오류는 retry layer로 전달됨 |
+| HTTP404 뒤 최초 nonstreaming 진입 | 미추적 | 미추적 | 미추적 | 미추적 | `stream_recovery_policy`, `retry_ledger`, `nonstreaming_404_entry`; `X_t` 이하 전수 미추적 |
+| nonstreaming timeout 재전송0 가드 | 적용 | 적용 | 적용 | 적용 | `request_error_repair`; 도달 여부를 실행으로 확인한 것은 아님 |
+| 모델 자동 fallback·호출 재시작 | 미추적 | 미추적 | 미추적 | 미추적 | `stream_recovery_policy`, `thinking_stream_reentry`; 모델 선택/상위 catch·재전송 연결 미추적 |
+| 관리 정책·원격 설정에 따른 우회/재정의 | 미추적 | 미추적 | 미추적 | 미추적 | `output_recovery_configuration`, `retry_budget_options`; 계정·관리/원격 상태를 읽지 않음 |
+
+### 공급자 질문 초안과 필요한 답변
+
+아래는 [#298](https://github.com/minjunkim-dev/smallnext/issues/298)에 넘길 질문 초안이다. 발송하거나 호출하지 않았다. 대상은 이 문서 첫머리의 구독 OAuth·설치 SHA·모델/effort·G/C·두 애플리케이션 방식이다. 동일 CLI `stream-json`이라는 점도 함께 명시해야 한다.
+
+1. 네 고정값(API 오류 재시도0, schema 총1, 중간 스트림 fallback 차단1, 비스트리밍 timeout 재전송0)과 `--max-turns 1`에서 **최초 생성 요청 뒤 모든 추가 생성 요청을 전송 전에 거부하는 공식 지원 제어**가 있는가? 있다면 최소 버전·정확한 옵션·우선순위·적용 범위와 오류/종료 결과를 문서로 제공해 달라. 네 값의 조합을 그 보장으로 인정할 수 없다면 지원 불가/예외를 명시해 달라.
+2. 오류 수정/헤더 재구성,429/529·capacity 대기·연결 복구, OAuth401 갱신 뒤 재전송, 모델 fallback,404 비스트리밍 진입 각각에서 위 횟수 가드를 우회하는가? 인증 갱신 요청과 생성 재전송을 나누고, 전송 전 차단 위치와 opt-in 없는 자동 재전송의 예외를 설명해 달라.
+3. max_tokens·thinking-only·truncation의 상위 복구/이어쓰기를 각각 끄는 지원 방법이 있는가? schema 검증/완료 출력 철회와 agentic turn 제한보다 어떤 순서로 실행되며, 관리 정책·원격 설정으로 동작이 달라질 수 있는가?
+4. 지원한다면 모든 하위 전송을 포함하는 역할당 최초1/추가0 ledger의 범위와, 요청ID에 연결된 생성 요청 수·실제 적용 모델/8192·완료/누락 상태를 어떤 **공식 메타데이터 경로**로 확인할 수 있는가? 내부 ledger나 사후 이벤트만으로 전송 전 차단을 입증할 수 없다면 그 한계도 명시해 달라.
+
+필요한 답변은 대상 인증·버전·모델·출력 방식과 예외가 명시된 공식 문서/지원 답변 또는 검토 가능한 전체 경로 근거다. 일반 API 설명·문의 접수·짧은 정상 응답 몇 건은 충분하지 않다. 답변이 없거나 지원 불가이면 미확인을 유지한다. 질문에 원문 입력/출력·사고 텍스트·계정/자격 증명·vendor 추출 코드는 필요 없다.
+
+#295의 오프라인 조사는 이 표와 질문 정리로 완료할 수 있지만, 준비 상태나 실관측 승인으로 이어지지 않는다. [#299](https://github.com/minjunkim-dev/smallnext/issues/299)는 전송 전 통제와 관측 경로가 불명확한 동안 승인 요청 준비 상태로도 올리지 않는다. 하네스의 추가 메시지/재시도 이벤트 감지와 프로세스 회수는 사후 방어이며 이미 시작된 추가 요청0회 증거가 아니다.
 
 ## 남은 근거와 조사 한계
 

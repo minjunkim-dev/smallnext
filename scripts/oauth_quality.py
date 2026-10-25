@@ -23,7 +23,7 @@ MODEL = "claude-haiku-5-5"
 EFFORT = "xhigh"
 OUTPUT_TOKENS = 8192
 OUTPUT_SUPPORT = REPO / "docs/research/claude-output-limit-support.json"
-OUTPUT_SUPPORT_SHA256 = "d9a8ff811d8878e9d70ade4b3ff04039d7d3c60584359d004dc97f5351032e24"
+OUTPUT_SUPPORT_SHA256 = "5f58c5ba4b64e9eb246d7462dad7f07ee7d56ef7213ac61a6e5a8b0ab2f69321"
 
 
 def encoded(value):
@@ -394,6 +394,7 @@ def environment():
     env["CLAUDE_CODE_MAX_RETRIES"] = "0"
     env["MAX_STRUCTURED_OUTPUT_RETRIES"] = "1"
     env["CLAUDE_CODE_DISABLE_NONSTREAMING_FALLBACK"] = "1"
+    env["CLAUDE_CODE_NONSTREAMING_TIMEOUT_RETRIES"] = "0"
     return env
 
 

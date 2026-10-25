@@ -178,6 +178,7 @@ assert os.environ['CLAUDE_CODE_MAX_OUTPUT_TOKENS'] == '8192'
 assert os.environ['CLAUDE_CODE_MAX_RETRIES'] == '0'
 assert os.environ['MAX_STRUCTURED_OUTPUT_RETRIES'] == '1'
 assert os.environ['CLAUDE_CODE_DISABLE_NONSTREAMING_FALLBACK'] == '1'
+assert os.environ['CLAUDE_CODE_NONSTREAMING_TIMEOUT_RETRIES'] == '0'
 assert 'CLAUDE_CODE_RETRY_WATCHDOG' not in os.environ
 assert not any(k.startswith(('ANTHROPIC_', 'CLAUDE_CODE_USE_', 'MCP_', 'MAX_THINKING_')) for k in os.environ)
 assert 'CLAUDE_CODE_OAUTH_TOKEN' not in os.environ
@@ -199,7 +200,8 @@ print(json.dumps({'type':'result','subtype':'success','is_error':False,
                 env = dict(os.environ, ANTHROPIC_API_KEY='PRIVATE', CLAUDE_CODE_USE_BEDROCK='1',
                            CLAUDE_CODE_OAUTH_TOKEN='PRIVATE', MAX_THINKING_TOKENS='99999', MCP_SECRET='PRIVATE',
                            CLAUDE_CODE_MAX_RETRIES='99', MAX_STRUCTURED_OUTPUT_RETRIES='99',
-                           CLAUDE_CODE_DISABLE_NONSTREAMING_FALLBACK='0', CLAUDE_CODE_RETRY_WATCHDOG='1')
+                           CLAUDE_CODE_DISABLE_NONSTREAMING_FALLBACK='0', CLAUDE_CODE_RETRY_WATCHDOG='1',
+                           CLAUDE_CODE_NONSTREAMING_TIMEOUT_RETRIES='99')
                 env.pop('CLAUDE_CODE_MAX_OUTPUT_TOKENS', None)
                 if parent is not None:
                     env['CLAUDE_CODE_MAX_OUTPUT_TOKENS'] = parent
