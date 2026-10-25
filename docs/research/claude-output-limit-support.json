@@ -26,7 +26,7 @@
     "공식 문서는 대부분 요청의 출력 상한으로 설명한다. 설치본의 상한 해석과 주 요청 max_tokens 연결을 정적으로 확인했지만 해당 구독 공급자 경로의 실제 적용은 미확인이다.",
     "공식 API는 사고와 응답이 max_tokens를 공유한다고 설명한다. 설치본은 output_tokens를 전체 출력에, thinking_tokens를 별도 세부 집계에 누적한다. 구독 응답의 동일 집계와 완전성은 관측하지 않았다.",
     "실패 API 재시도0회, 구조화 출력 총1회 시도와 비스트리밍 fallback 차단의 공식 변수 및 설치본 읽기 지점을 확인했다. 가짜 CLI 전달 검사는 실제 CLI 내부 실행의 검증이 아니다.",
-    "별도 스트림 truncation/사고만 생성된 응답의 재시도 분기가 있다. --max-turns와 위 설정만으로 내부 재시도/이어쓰기 전체를 통제했다고 보고하지 않는다.",
+    "스트림 복구의 일반 재시도 가드와 주 요청 전송점을 정적으로 연결했다. 오류 수정 콜백·인증 갱신의 카운터 예외, HTTP404 비스트리밍 전환과 별도 출력 상한 복구가 있어 전체 추가 요청0회는 미확인이다. 비스트리밍 timeout 재전송0을 추가 고정했지만 다른 복구의 전면 차단 근거로 올리지 않는다.",
     "전역/사용자 설정·설치본을 변경하지 않고 파일 SHA와 제한한 바이트 범위만 정적으로 읽었다. 계정/키/세션/과거 평가 원문과 실제 모델 호출은 사용하지 않았다."
   ],
   "unverified": [
@@ -40,7 +40,8 @@
     "CLAUDE_CODE_MAX_OUTPUT_TOKENS": "8192",
     "CLAUDE_CODE_MAX_RETRIES": "0",
     "MAX_STRUCTURED_OUTPUT_RETRIES": "1",
-    "CLAUDE_CODE_DISABLE_NONSTREAMING_FALLBACK": "1"
+    "CLAUDE_CODE_DISABLE_NONSTREAMING_FALLBACK": "1",
+    "CLAUDE_CODE_NONSTREAMING_TIMEOUT_RETRIES": "0"
   },
   "analysis_note": "docs/research/claude-output-limit-evidence.md",
   "cli_static_evidence": {
@@ -94,6 +95,84 @@
         "offset": 227904400,
         "length": 900,
         "sha256": "1cc13e754b65101c22b74d36d72bf60307c734f7b50457dfdb8ed4431148174d"
+      },
+      {
+        "label": "request_retry_entry",
+        "offset": 227882920,
+        "length": 3100,
+        "sha256": "b5245a1ea134b0dbdcbcae6c4c70bccca16e04b2c17b1f47f5c72026ba392079"
+      },
+      {
+        "label": "request_error_repair",
+        "offset": 227886500,
+        "length": 1800,
+        "sha256": "14c7355097c2957bc4b56c10a64d4144f5d8ff75ba2e64b0a18857a3cf87684b"
+      },
+      {
+        "label": "credential_retry_guard",
+        "offset": 227891150,
+        "length": 850,
+        "sha256": "6e8ea4d0aec57598b2b6ef8d5ef15d1a200a6e2e77eb2c5b95763b3332e63a0b"
+      },
+      {
+        "label": "stream_recovery_policy",
+        "offset": 227903000,
+        "length": 3250,
+        "sha256": "674e5be1f08b40075302bb8a6055a400b34f2e8591b0b3b655adff23304761fa"
+      },
+      {
+        "label": "retry_ledger",
+        "offset": 227906500,
+        "length": 1800,
+        "sha256": "243eba77301b8bf55f4c7e15dcb54a4dee0bfbe776256a45fd70113cd250dba9"
+      },
+      {
+        "label": "retry_budget_options",
+        "offset": 227975995,
+        "length": 530,
+        "sha256": "533158e59d54e2ca708d8ae3fa1a026b78303057b7598786fd3ba84896d73504"
+      },
+      {
+        "label": "stream_request_send",
+        "offset": 228010950,
+        "length": 650,
+        "sha256": "99fe4b7b2ac787d15f15dbd0fd601140f7211a6d68a77aa68b621526e28681f9"
+      },
+      {
+        "label": "stream_retry_options",
+        "offset": 228011850,
+        "length": 1050,
+        "sha256": "7dc46caba215d43f0be0be1975dd610bf1f3fe8a9d7f81aac152fb054c0e5d02"
+      },
+      {
+        "label": "thinking_stream_reentry",
+        "offset": 228041000,
+        "length": 2200,
+        "sha256": "a1e4d72cd9951c41908db1755eb4ca0a15588dbc1b1aee6e857d562fc1549644"
+      },
+      {
+        "label": "stream_error_repair",
+        "offset": 228048570,
+        "length": 350,
+        "sha256": "c05321de18c4e2a676fb45eb14dd8c31645dcfd9c6e135ec1babec39fce083e7"
+      },
+      {
+        "label": "nonstreaming_404_entry",
+        "offset": 228052500,
+        "length": 1200,
+        "sha256": "3d2e5426c3bf1b47f651245cfef610f8008f9690ccd9e733ce92b1296d2ef16e"
+      },
+      {
+        "label": "output_recovery_configuration",
+        "offset": 234376300,
+        "length": 1100,
+        "sha256": "9443f4fdba2dd5aa7004483158c6fed07e076e105d757d1ff0e406dab569abc2"
+      },
+      {
+        "label": "output_recovery_transition",
+        "offset": 234449050,
+        "length": 1550,
+        "sha256": "f0e683dad743e159a96ae49d18e376bce54af979a247bf7acbee54923c77b4b1"
       }
     ]
   }

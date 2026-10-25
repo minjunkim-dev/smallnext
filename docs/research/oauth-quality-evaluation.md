@@ -31,7 +31,8 @@ API 키를 읽거나 토큰을 추출하지 않는다.
 
 어댑터의 정제한 자식 환경에는 `CLAUDE_CODE_MAX_OUTPUT_TOKENS=8192`를 고정한다.
 실패 API 재시도는 `CLAUDE_CODE_MAX_RETRIES=0`, 구조화 출력 총 시도는 `MAX_STRUCTURED_OUTPUT_RETRIES=1`,
-비스트리밍 전환 차단은 `CLAUDE_CODE_DISABLE_NONSTREAMING_FALLBACK=1`로 고정한다.
+비스트리밍 전환 차단은 `CLAUDE_CODE_DISABLE_NONSTREAMING_FALLBACK=1`,
+비스트리밍 timeout 재전송은 `CLAUDE_CODE_NONSTREAMING_TIMEOUT_RETRIES=0`으로 고정한다.
 이는 모든 내부 복구를 차단했다는 증거가 아니다. [공식 문서·설치본 정적 근거와 남은 미확인](claude-output-limit-evidence.md)을 함께 확인한다.
 생성·검사 각 공급자 응답의 출력 토큰 한도이며 전체 역할 합산 예산이나 문자/바이트 제한이 아니다.
 사고 토큰용 별도 예산을 더하지 않는다. 부모의 큰 값·잘못된 값과 API 키·공급자 전환 설정은 전달하지 않는다.
