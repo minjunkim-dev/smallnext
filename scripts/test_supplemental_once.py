@@ -191,10 +191,14 @@ class SingleRepeatTests(unittest.TestCase):
             root, manifest = fixed.SupplementalFixedPlanTests.freeze(self, directory)
             launch.run(root, invoke=fixed.SupplementalFixedPlanTests.response, clock=lambda: 0)
             old = qa.digest((root/'manifest.json').read_bytes())
-            for name, expected in launch.supplemental.LEGACY_REPORT_SOURCES.items():
-                raw = subprocess.check_output(['git', 'show', '096b4413c1ab77834755ecfeaa229cfaa5f3eb04:'+name], cwd=qa.REPO)
-                self.assertEqual(qa.digest(raw), expected)
-                manifest['sources'][name] = dict(sha256=expected, utf8=raw.decode())
+            sources = {name: ('synthetic historical source: ' + name).encode()
+                       for name in launch.supplemental.LEGACY_REPORT_SOURCES}
+            self.enterContext(patch.object(launch.supplemental, 'LEGACY_REPORT_SOURCES',
+                                           {name: qa.digest(raw) for name, raw in sources.items()}))
+            self.enterContext(patch.object(subprocess, 'check_output',
+                                           side_effect=AssertionError('no Git history required')))
+            for name, raw in sources.items():
+                manifest['sources'][name] = dict(sha256=qa.digest(raw), utf8=raw.decode())
             manifest['plan_sha256'] = launch.supplemental.binding(manifest)
             (root/'manifest.json').write_bytes(qa.encoded(manifest))
             new = qa.digest((root/'manifest.json').read_bytes())
