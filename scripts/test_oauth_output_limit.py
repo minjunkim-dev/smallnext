@@ -180,6 +180,7 @@ assert os.environ['MAX_STRUCTURED_OUTPUT_RETRIES'] == '1'
 assert os.environ['CLAUDE_CODE_DISABLE_NONSTREAMING_FALLBACK'] == '1'
 assert os.environ['CLAUDE_CODE_NONSTREAMING_TIMEOUT_RETRIES'] == '0'
 assert 'CLAUDE_CODE_RETRY_WATCHDOG' not in os.environ
+assert 'CLAUDE_CODE_EXTRA_BODY' not in os.environ
 assert not any(k.startswith(('ANTHROPIC_', 'CLAUDE_CODE_USE_', 'MCP_', 'MAX_THINKING_')) for k in os.environ)
 assert 'CLAUDE_CODE_OAUTH_TOKEN' not in os.environ
 assert sys.argv[sys.argv.index('--model')+1] == 'claude-haiku-5-5'
@@ -201,7 +202,8 @@ print(json.dumps({'type':'result','subtype':'success','is_error':False,
                            CLAUDE_CODE_OAUTH_TOKEN='PRIVATE', MAX_THINKING_TOKENS='99999', MCP_SECRET='PRIVATE',
                            CLAUDE_CODE_MAX_RETRIES='99', MAX_STRUCTURED_OUTPUT_RETRIES='99',
                            CLAUDE_CODE_DISABLE_NONSTREAMING_FALLBACK='0', CLAUDE_CODE_RETRY_WATCHDOG='1',
-                           CLAUDE_CODE_NONSTREAMING_TIMEOUT_RETRIES='99')
+                           CLAUDE_CODE_NONSTREAMING_TIMEOUT_RETRIES='99',
+                           CLAUDE_CODE_EXTRA_BODY='{"max_tokens":65536,"model":"other"}')
                 env.pop('CLAUDE_CODE_MAX_OUTPUT_TOKENS', None)
                 if parent is not None:
                     env['CLAUDE_CODE_MAX_OUTPUT_TOKENS'] = parent

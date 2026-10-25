@@ -20,10 +20,13 @@
     "https://platform.claude.com/docs/en/build-with-claude/thinking",
     "https://code.claude.com/docs/en/model-config",
     "https://code.claude.com/docs/en/settings#settings-precedence",
-    "https://github.com/anthropics/claude-code/blob/main/CHANGELOG.md#210"
+    "https://github.com/anthropics/claude-code/blob/main/CHANGELOG.md#210",
+    "https://platform.claude.com/docs/en/build-with-claude/thinking-steering-and-cost",
+    "https://support.claude.com/en/articles/9015913-how-to-get-support"
   ],
   "findings": [
     "공식 문서는 대부분 요청의 출력 상한으로 설명한다. 설치본의 상한 해석과 주 요청 max_tokens 연결을 정적으로 확인했지만 해당 구독 공급자 경로의 실제 적용은 미확인이다.",
+    "#296에서 환경값 parse/clamp→modelFacts 선택→request override와 min→후순위 extra body→stream 전송 및 공유 builder→nonstreaming min→전송을 정적으로 연결했다. 부모 extra body는 기존 허용 목록에서 제외되어 회귀를 보강했다. 관리 env·전달된 modelFacts·후순위 body 전체·상위 복구의 도달/재구성과 실제 OAuth 적용은 미확인이다.",
     "공식 API는 사고와 응답이 max_tokens를 공유한다고 설명한다. 설치본은 output_tokens를 전체 출력에, thinking_tokens를 별도 세부 집계에 누적한다. 구독 응답의 동일 집계와 완전성은 관측하지 않았다.",
     "실패 API 재시도0회, 구조화 출력 총1회 시도와 비스트리밍 fallback 차단의 공식 변수 및 설치본 읽기 지점을 확인했다. 가짜 CLI 전달 검사는 실제 CLI 내부 실행의 검증이 아니다.",
     "스트림 복구의 일반 재시도 가드와 주 요청 전송점을 정적으로 연결했다. 오류 수정 콜백·인증 갱신의 카운터 예외, HTTP404 비스트리밍 전환과 별도 출력 상한 복구가 있어 전체 추가 요청0회는 미확인이다. 비스트리밍 timeout 재전송0을 추가 고정했지만 다른 복구의 전면 차단 근거로 올리지 않는다.",
@@ -173,6 +176,90 @@
         "offset": 234449050,
         "length": 1550,
         "sha256": "f0e683dad743e159a96ae49d18e376bce54af979a247bf7acbee54923c77b4b1"
+      },
+      {
+        "label": "output_cap_parse",
+        "offset": 219022829,
+        "length": 418,
+        "sha256": "0d137ed928ebc2e6263d6856bfd632fae2a25a114e2bd9f2d2c2af958ffae521"
+      },
+      {
+        "label": "output_cap_dynamic_default",
+        "offset": 219158822,
+        "length": 271,
+        "sha256": "a060132b617be85cd525e15340bd90f28f7029250501b6dce553a94f38de0cca"
+      },
+      {
+        "label": "output_cap_model_metadata",
+        "offset": 219153917,
+        "length": 240,
+        "sha256": "b608d887bffd087c9566bb2ec85c28c42cc9abebdc5fd2b48d3e22449d596250"
+      },
+      {
+        "label": "model_facts_output_cap",
+        "offset": 226088817,
+        "length": 650,
+        "sha256": "5f3c42d10b559f8027a107e5dd480a2adb59af23c3c134218c766ba8ae293345"
+      },
+      {
+        "label": "request_model_facts_choice",
+        "offset": 227936195,
+        "length": 330,
+        "sha256": "2adcea8490f2d3ea88e8f0c28c04b2c4f76e16f1125bef1d37092cbe14ae00a3"
+      },
+      {
+        "label": "request_extra_body",
+        "offset": 227912447,
+        "length": 1240,
+        "sha256": "84fafca215b0f2c6717aa5f09898324b2cc08d45e5d4c29b3a6353b3e93c2f15"
+      },
+      {
+        "label": "request_body_builder",
+        "offset": 227966733,
+        "length": 850,
+        "sha256": "49ad952e0ce68efc83ea4a4897e5b6f4bfebafd52a94494e4b4228a1dc25722a"
+      },
+      {
+        "label": "request_body_merge",
+        "offset": 227973700,
+        "length": 1300,
+        "sha256": "f4204b0010a7381110ab1ac1e101d0bf079c8e83da28a69180e937d1ed4405d1"
+      },
+      {
+        "label": "request_wire_transform",
+        "offset": 224584773,
+        "length": 395,
+        "sha256": "8c537e2b9309f9adb48955a59a60de7ec0de162639d4e2e9f86c391c0a67c5d6"
+      },
+      {
+        "label": "nonstreaming_cap_send",
+        "offset": 227920396,
+        "length": 1100,
+        "sha256": "6a830f0e82c4a4c9aa696b1e4cc57ed86677575d54f39499c923077a04a84f04"
+      },
+      {
+        "label": "nonstreaming_cap_clamp",
+        "offset": 228066485,
+        "length": 245,
+        "sha256": "f96fd08601b56f4e2e2c6669c09cb7ed3ce68d2e5d779be1384296bea015e025"
+      },
+      {
+        "label": "nonstreaming_shared_builder",
+        "offset": 228004054,
+        "length": 2115,
+        "sha256": "dd525cf34b4c4968389a5e7f45e00cb7a661495222bb6f21feb2d3264b389602"
+      },
+      {
+        "label": "upper_recovery_cap_reset",
+        "offset": 234396600,
+        "length": 500,
+        "sha256": "beea073f1a3e9ae4111685bcddbca30112610e57ff61780e9f415a9915e37061"
+      },
+      {
+        "label": "upper_recovery_cap_argument",
+        "offset": 234419850,
+        "length": 550,
+        "sha256": "966335b807de54de991700236c8b0f6fc6bd2c9242f9242175678f9897c67962"
       }
     ]
   }
