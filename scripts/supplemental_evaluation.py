@@ -30,6 +30,7 @@ LEGACY_REPORT_SOURCES = {
     'scripts/supplemental_evaluation.py': 'de4b8a8f007d227ed5bc2e5ca87dd2edaa878bf765311bfeb512237b11bda00e',
     'scripts/supplemental_review.py': '32c62290df6b122ec10c6938c543d15660813a5c2467cc300d1c857048646503',
     'docs/research/claude-output-limit-support.json': '50d6edec463da28e571d9dca93045fb1728368a1a66ba3e8b083003b9b7d7971',
+    REFERENCE: 'e3181ca5616b57490951ebd87e5dcdf55bb271b47cc1caee4e08d143a3cddacb',
 }
 
 
@@ -40,6 +41,7 @@ ONCE_REPORT_SOURCES = {
     'scripts/supplemental_evaluation.py': '29419f53f9ab19e6e5455c0669380139ec0beac14e0cf139c5ab0c1a1a46f166',
     'scripts/supplemental_review.py': 'fa720a9afc1afc84c6b9b44a0f2d0d7883416052a0cab17731e90f41d41e0e8d',
     'docs/research/claude-output-limit-support.json': '50d6edec463da28e571d9dca93045fb1728368a1a66ba3e8b083003b9b7d7971',
+    REFERENCE: 'e3181ca5616b57490951ebd87e5dcdf55bb271b47cc1caee4e08d143a3cddacb',
 }
 
 
@@ -53,14 +55,14 @@ def legacy_report_sources(manifest):
     return {}
 
 
-def fixed_flows(*, once=False):
+def fixed_flows(*, once=False, reference_raw=None):
     fixture = json.loads((qa.REPO / FIXTURE).read_bytes())
     if (fixture['id'] != PLAN_ID or fixture['order'] != dict(repeats=[1, 2, 3],
             groups=['fixed-checks', 'supplemental-flows'],
             request_kinds=['first_action', 'next_action', 'smaller', 'replacement'],
             branches=['new-facts', 'still-unknown'])):
         raise ValueError('unsupported fixed schedule')
-    raw = (qa.REPO / REFERENCE).read_bytes()
+    raw = (qa.REPO / REFERENCE).read_bytes() if reference_raw is None else reference_raw
     reference = json.loads(raw)
     checks = {case['id']: case for case in reference['checker_cases']}
     flows = []
@@ -102,8 +104,10 @@ def binding(manifest):
 
 def validate(manifest, *, for_report=False):
     once = manifest.get('plan_kind') == 'supplemental-once'
+    legacy = legacy_report_sources(manifest) if for_report else {}
+    reference_raw = manifest['sources'][REFERENCE]['utf8'].encode() if legacy else None
     if (manifest.get('plan_id') != (ONCE_PLAN_ID if once else PLAN_ID)
-            or manifest.get('flows') != fixed_flows(once=once)
+            or manifest.get('flows') != fixed_flows(once=once, reference_raw=reference_raw)
             or manifest.get('model') != qa.MODEL or manifest.get('effort') != qa.EFFORT
             or manifest.get('plan_sha256') != binding(manifest)):
         raise ValueError('fixed supplemental plan changed')
@@ -117,7 +121,6 @@ def validate(manifest, *, for_report=False):
     delete_by = datetime.fromisoformat(retention['delete_by'])
     if end.tzinfo is None or delete_by.tzinfo is None or delete_by > end + timedelta(days=30):
         raise ValueError('fixed retention limit changed')
-    legacy = legacy_report_sources(manifest) if for_report else {}
     for path in REQUIRED_SOURCES:
         expected = legacy.get(path, qa.digest((qa.REPO / path).read_bytes()))
         if manifest['sources'].get(path, {}).get('sha256') != expected:

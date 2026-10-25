@@ -101,6 +101,47 @@ class OutputLimitTests(unittest.TestCase):
         self.assertEqual(record['cleanup_error'], 'signal_failed')
         self.assertNotIn('PRIVATE', json.dumps(record))
 
+    def test_cap_stop_preserves_same_event_usage_without_waiting_for_final_result(self):
+        for tokens in (0, 8192):
+            with self.subTest(tokens=tokens):
+                events = [
+                    {'type': 'stream_event', 'event': {'type': 'message_start'}},
+                    {'type': 'stream_event', 'event': {'type': 'message_delta',
+                     'delta': {'stop_reason': 'max_tokens'}, 'usage': {'output_tokens': tokens}}}]
+                record = self.invoke(events, linger=True)
+                self.assertEqual(record['error'], 'max_tokens', record)
+                self.assertEqual(record['stream_output_tokens'], tokens)
+                self.assertIsNone(record['usage']['output_tokens'])
+                self.assertEqual(record['max_tokens'], 1)
+                self.assertNotIn('output', record)
+                self.assertTrue(record['process_reaped'])
+                self.assertFalse(record['process_group_alive'])
+
+    def test_cap_stop_validates_usage_and_retains_last_valid_observation(self):
+        for usage, error, observed in (({}, 'max_tokens', 80),
+                (None, 'unverified_output_usage', 80),
+                ({'output_tokens': True}, 'unverified_output_usage', 80),
+                ({'output_tokens': -1}, 'unverified_output_usage', 80),
+                ({'output_tokens': 'PRIVATE'}, 'unverified_output_usage', 80),
+                ({'output_tokens': 8}, 'output_usage_mismatch', 80),
+                ({'output_tokens': 8193}, 'output_tokens_exceeded', 8193)):
+            with self.subTest(usage=usage):
+                events = [
+                    {'type': 'stream_event', 'event': {'type': 'message_start'}},
+                    {'type': 'stream_event', 'event': {'type': 'message_delta',
+                     'usage': {'output_tokens': 80}}},
+                    {'type': 'stream_event', 'event': {'type': 'message_delta',
+                     'delta': {'stop_reason': 'max_tokens'}, 'usage': usage}}]
+                record = self.invoke(events)
+                self.assertEqual(record['error'], error, record)
+                self.assertEqual(record['max_tokens'], 1)
+                self.assertEqual(record['stream_output_tokens'], observed)
+                self.assertIsNone(record['usage']['output_tokens'])
+                self.assertNotIn('output', record)
+                self.assertNotIn('PRIVATE', json.dumps(record))
+                self.assertTrue(record['process_reaped'])
+                self.assertFalse(record['process_group_alive'])
+
     def test_thinking_is_part_of_reported_output_not_an_extra_budget(self):
         usage = {'output_tokens': 8192, 'output_tokens_details': {'thinking_tokens': 4096}}
         events = [

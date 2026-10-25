@@ -236,20 +236,23 @@ class Tracker:
                             self.structured_json[detail.get("index")] += delta.get(key, "")
                         if kind == "thinking_delta":
                             self.last_thinking = seconds
-            if detail.get("delta", {}).get("stop_reason") == "max_tokens":
+            if reason == "max_tokens":
                 self.max_tokens += 1
-                raise ValueError("max_tokens")
             if detail.get("type") == "message_delta" and "usage" in detail:
                 usage = detail["usage"]
                 if not isinstance(usage, dict):
                     raise ValueError("unverified_output_usage")
                 if "output_tokens" in usage:
                     tokens = usage["output_tokens"]
-                    if (type(tokens) is int and tokens >= 0 and self.output_tokens is not None
-                            and tokens < self.output_tokens):
+                    if type(tokens) is not int or tokens < 0:
+                        raise ValueError("unverified_output_usage")
+                    if self.output_tokens is not None and tokens < self.output_tokens:
                         raise ValueError("output_usage_mismatch")
-                    self.output_tokens = tokens if type(tokens) is int and tokens >= 0 else None
+                    self.output_tokens = tokens
                     output_count(tokens)
+            # The terminating delta may carry the last observable usage.
+            if reason == "max_tokens":
+                raise ValueError("max_tokens")
         if event.get("type") in {"assistant", "user"}:
             for block in event.get("message", {}).get("content", []):
                 if not isinstance(block, dict):
