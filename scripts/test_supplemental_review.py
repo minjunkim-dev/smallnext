@@ -22,7 +22,7 @@ class SupplementalReviewTests(unittest.TestCase):
     def setUp(self):
         legacy.isolate_private_root(self)
 
-    def test_full_mock_plan_has_one_private_link_per_output_and_incomplete_readiness(self):
+    def test_full_mock_plan_has_one_private_link_per_output_and_offline_readiness(self):
         with tempfile.TemporaryDirectory() as directory:
             root, manifest = self.freeze(directory)
             summary = launch.run(root, invoke=self.response, clock=lambda: 0)
@@ -32,7 +32,9 @@ class SupplementalReviewTests(unittest.TestCase):
             self.assertEqual(review['state'], 'awaiting_human_review')
             self.assertFalse(review['work_complete'])
             self.assertEqual(review['contract_fit'], 'deferred')
-            self.assertFalse(summary['preparation']['ready'])
+            self.assertTrue(summary['preparation']['ready'])
+            self.assertFalse(summary['preparation']['actual_execution_authorized'])
+            self.assertEqual(len(summary['preparation']['limitations']), 3)
             self.assertEqual(summary['preparation']['output_tokens'], 8192)
             self.assertEqual(summary['plan_sha256'], manifest['plan_sha256'])
             for item in review['items']:
@@ -70,13 +72,9 @@ class SupplementalReviewTests(unittest.TestCase):
             complete = launch.report(root, review=review)
             self.assertEqual(complete['output_review']['state'], 'synthetic_work_complete')
             self.assertTrue(complete['output_review']['work_complete'])
-            self.assertEqual(complete['output_review']['contract_fit'], 'deferred')
-            with patch.object(qa, 'output_readiness', return_value=dict(ready=True, output_tokens=8192,
-                    evidence_sha256=manifest['sources']['docs/research/claude-output-limit-support.json']['sha256'])):
-                simulated = launch.report(root, review=review)
-            self.assertEqual(simulated['output_review']['contract_fit'], 'synthetic_fit')
-            self.assertFalse(simulated['preparation']['actual_execution_authorized'])
-            self.assertIsNone(simulated['quality_passed'])
+            self.assertEqual(complete['output_review']['contract_fit'], 'synthetic_fit')
+            self.assertFalse(complete['preparation']['actual_execution_authorized'])
+            self.assertIsNone(complete['quality_passed'])
             generated = next(entry for entry in review['entries'] if entry['output_id'].endswith(':generate'))
             generated['decision'] = 'generation_violation'
             review['entries'][0]['decision'] = 'checker_misjudgement'
@@ -236,7 +234,7 @@ print(json.dumps({'type':'stream_event','event':{'type':'message_delta','delta':
             fake.chmod(0o700)
 
             def invoke(role, prompt, schema, data, deadline, cancelled):
-                with patch.object(qa, 'output_readiness', return_value={'ready':True}):
+                with patch.object(qa, 'output_readiness', return_value={'ready':True,'actual_execution_authorized':True}):
                     return qa.call(str(fake), prompt, schema, data, deadline, cancelled, output_mode='text-json')
 
             summary = launch.run(root, invoke=invoke)
@@ -247,7 +245,9 @@ print(json.dumps({'type':'stream_event','event':{'type':'message_delta','delta':
             self.assertTrue(row['calls'][0]['process_reaped'])
             self.assertFalse(row['calls'][0]['process_group_alive'])
             self.assertIsNone(row['calls'][0]['usage']['output_tokens'])
-            self.assertFalse(summary['preparation']['ready'])
+            self.assertTrue(summary['preparation']['ready'])
+            self.assertFalse(summary['preparation']['actual_execution_authorized'])
+            self.assertEqual(len(summary['preparation']['limitations']), 3)
             self.assertEqual(len(summary['output_review']['unavailable_outputs']), 1)
             reviewed = launch.report(root, review=self.decisions(summary))
             self.assertFalse(reviewed['output_review']['work_complete'])
@@ -275,7 +275,7 @@ print(json.dumps({'type':'stream_event','event':{'type':'message_delta','delta':
                 fake.write_text('#!' + sys.executable + '\nimport json,sys\njson.load(sys.stdin)\n' +
                     '\n'.join('print(' + repr(json.dumps(event)) + ')' for event in events))
                 fake.chmod(0o700)
-                with patch.object(qa, 'output_readiness', return_value={'ready':True}):
+                with patch.object(qa, 'output_readiness', return_value={'ready':True,'actual_execution_authorized':True}):
                     return qa.call(str(fake), prompt, schema, data, deadline, cancelled, output_mode='text-json')
 
             summary = launch.run(root, invoke=invoke)
@@ -336,7 +336,9 @@ print(json.dumps({'type':'stream_event','event':{'type':'message_delta','delta':
             self.assertEqual(result.returncode, 0, result.stderr)
             report = json.loads(result.stdout)
             self.assertTrue(report['output_review']['work_complete'])
-            self.assertFalse(report['preparation']['ready'])
+            self.assertTrue(report['preparation']['ready'])
+            self.assertFalse(report['preparation']['actual_execution_authorized'])
+            self.assertEqual(len(report['preparation']['limitations']), 3)
             self.assertNotIn('PRIVATE', result.stdout)
             self.assertEqual(json.loads((root/'review-report.json').read_bytes()), report)
 

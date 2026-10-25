@@ -13,9 +13,9 @@ import oauth_quality as qa
 
 
 def permit_fake_cli(test):
-    """Only fake-process tests replace the intentionally blocked production readiness."""
+    """Only fake-process tests replace the production execution hold."""
     test.enterContext(patch.object(qa, 'output_readiness', return_value={
-        'ready': True, 'provider_application': 'fake_cli_only'}))
+        'ready': True, 'actual_execution_authorized': True, 'provider_application': 'fake_cli_only'}))
 
 
 def fake_command(script, *args):
@@ -24,7 +24,7 @@ def fake_command(script, *args):
             "import runpy,sys; from pathlib import Path; from unittest.mock import patch; "
             "sys.path.insert(0,str(Path(sys.argv[1]).parent)); import oauth_quality as qa; "
             "sys.argv=sys.argv[1:]; "
-            "patch.object(qa,'output_readiness',return_value={'ready':True,'provider_application':'fake_cli_only'}).start(); "
+            "patch.object(qa,'output_readiness',return_value={'ready':True,'actual_execution_authorized':True,'provider_application':'fake_cli_only'}).start(); "
             "qa.main() if Path(sys.argv[0]).stem=='oauth_quality' else runpy.run_path(sys.argv[0],run_name='__main__')",
             str(script), *map(str, args)]
 
@@ -42,7 +42,7 @@ class OutputLimitTests(unittest.TestCase):
             fake.chmod(0o700)
             schema = {'type': 'object', 'properties': {'ok': {'type': 'boolean'}},
                       'required': ['ok'], 'additionalProperties': False}
-            with patch.object(qa, 'output_readiness', return_value={'ready': True}):
+            with patch.object(qa, 'output_readiness', return_value={'ready': True, 'actual_execution_authorized': True}):
                 return qa.call(str(fake), 'prompt', schema, {}, qa.monotonic()+2,
                                threading.Event(), output_mode='text-json')
 
@@ -190,7 +190,7 @@ class OutputLimitTests(unittest.TestCase):
                 cancel = threading.Event()
                 results = []
                 deadline = qa.monotonic() + (.2 if reason == 'timed_out' else 5)
-                with patch.object(qa, 'output_readiness', return_value={'ready': True}):
+                with patch.object(qa, 'output_readiness', return_value={'ready': True, 'actual_execution_authorized': True}):
                     worker = threading.Thread(target=lambda: results.append(qa.call(str(fake), '', {},
                         {'input': 'x'*180000}, deadline, cancel)))
                     worker.start()
@@ -211,24 +211,49 @@ class OutputLimitTests(unittest.TestCase):
                 self.assertTrue(results[0]['process_reaped'])
                 self.assertFalse(results[0]['process_group_alive'])
 
-    def test_unverified_missing_or_changed_support_blocks_child_creation(self):
+    def test_preparation_and_execution_hold_are_separate(self):
+        for mode in ('structured', 'text-json'):
+            with self.subTest(mode=mode), patch.object(qa.subprocess, 'Popen') as spawn:
+                result = qa.call('must-not-start', '', {'properties': {}}, {}, qa.monotonic()+2,
+                                 threading.Event(), output_mode=mode)
+                self.assertEqual(result.get('error'), 'evaluation_not_authorized')
+                support = result['output_limit_support']
+                self.assertTrue(support['ready'])
+                self.assertEqual(support['reasons'], [])
+                self.assertEqual(len(support['limitations']), 3)
+                self.assertEqual(support['provider_application'], 'unobserved')
+                self.assertFalse(support['actual_execution_authorized'])
+                self.assertNotIn('cli_pid', result)
+                spawn.assert_not_called()
+            result = subprocess.run([sys.executable, str(qa.REPO/'scripts/oauth_quality.py'),
+                                     'readiness', '--output-mode', mode],
+                                    capture_output=True, text=True, timeout=2)
+            self.assertEqual(result.returncode, 0)
+            self.assertEqual(json.loads(result.stdout), support)
+
+    def test_missing_changed_or_mismatched_support_blocks_child_creation(self):
         with tempfile.TemporaryDirectory() as directory:
             missing = Path(directory) / 'support.json'
             changed = Path(directory) / 'changed.json'
-            changed.write_text('{"ready":true,"output_tokens":65536}')
-            for source in (qa.REPO / 'docs/research/claude-output-limit-support.json', missing, changed):
-                with self.subTest(source=source), patch.object(qa, 'OUTPUT_SUPPORT', source), \
+            changed.write_text('{"ready":true,"actual_execution_authorized":true,"output_tokens":65536}')
+            for source, reason in ((missing, 'support_missing'), (changed, 'support_changed')):
+                with self.subTest(reason=reason), patch.object(qa, 'OUTPUT_SUPPORT', source), \
                         patch.object(qa.subprocess, 'Popen') as spawn:
                     result = qa.call('must-not-start', '', {}, {}, qa.monotonic()+2, threading.Event())
                     self.assertEqual(result.get('error'), 'output_limit_unverified')
                     self.assertFalse(result['output_limit_support']['ready'])
-                    self.assertTrue(result['output_limit_support']['reasons'])
-                    self.assertNotIn('cli_pid', result)
+                    self.assertEqual(result['output_limit_support']['reasons'], [reason])
                     spawn.assert_not_called()
-            result = subprocess.run([sys.executable, str(qa.REPO/'scripts/oauth_quality.py'), 'readiness'],
-                                    capture_output=True, text=True, timeout=2)
-            self.assertEqual(result.returncode, 1)
-            self.assertFalse(json.loads(result.stdout)['ready'])
+            for setting, value in (('OUTPUT_TOKENS', 65536), ('MODEL', 'other'), ('EFFORT', 'other')):
+                with self.subTest(setting=setting), patch.object(qa, setting, value), \
+                        patch.object(qa.subprocess, 'Popen') as spawn:
+                    result = qa.call('must-not-start', '', {}, {}, qa.monotonic()+2, threading.Event())
+                    self.assertEqual(result.get('error'), 'output_limit_unverified')
+                    self.assertEqual(result['output_limit_support']['reasons'], ['support_mismatch'])
+                    spawn.assert_not_called()
+            with patch.object(qa, 'environment', return_value={}):
+                self.assertEqual(qa.output_readiness('text-json')['reasons'], ['support_mismatch'])
+            self.assertEqual(qa.output_readiness('other')['reasons'], ['support_mismatch'])
 
     def test_each_role_gets_fixed_limit_and_subscription_isolation(self):
         schema = {"type": "object", "properties": {"ok": {"type": "boolean"}},
@@ -271,7 +296,7 @@ print(json.dumps({'type':'result','subtype':'success','is_error':False,
                     env['CLAUDE_CODE_MAX_OUTPUT_TOKENS'] = parent
                 for role_data in ({}, {'original_request': {}, 'candidate': {}}):
                     with self.subTest(parent=parent, check=bool(role_data)), patch.dict(os.environ, env, clear=True), \
-                            patch.object(qa, 'output_readiness', return_value={'ready': True}):
+                            patch.object(qa, 'output_readiness', return_value={'ready': True, 'actual_execution_authorized': True}):
                         role_schema = json.loads((qa.REPO/'services/api/src/suggestion/check.json').read_bytes()) if role_data else schema
                         for mode in ('structured', 'text-json'):
                             result = qa.call(str(fake), 'prompt', role_schema, role_data,

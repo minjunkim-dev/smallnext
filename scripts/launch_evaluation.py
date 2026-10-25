@@ -872,7 +872,7 @@ def run(directory, *, claude='claude', invoke=None, cancelled=None, clock=monoto
     directory = Path(directory)
     manifest = load(directory)
     if manifest.get('plan_kind') in ('supplemental', 'supplemental-fixed') and invoke is None:
-        raise ValueError('supplemental preparation incomplete; actual evaluation remains blocked')
+        raise ValueError('supplemental execution not authorized; actual evaluation remains blocked')
     if datetime.now(timezone.utc) >= datetime.fromisoformat(manifest['retention']['evaluation_ends_at']):
         raise ValueError('frozen evaluation end time reached')
     lock_path = Path(lock_path or private_root()/'launch-model.lock')
