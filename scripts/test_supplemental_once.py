@@ -199,12 +199,18 @@ class SingleRepeatTests(unittest.TestCase):
                 support_path = 'docs/research/claude-output-limit-support.json'
                 evidence = json.loads(manifest['sources'][support_path]['utf8'])
                 sources[support_path] = qa.encoded(dict(evidence, synthetic_history=True))
+                reference_path = launch.supplemental.REFERENCE
+                reference = json.loads(manifest['sources'][reference_path]['utf8'])
+                sources[reference_path] = qa.encoded(dict(reference, synthetic_history=True))
                 self.enterContext(patch.object(launch.supplemental, attribute,
                                                {name: qa.digest(raw) for name, raw in sources.items()}))
                 self.enterContext(patch.object(subprocess, 'check_output',
                                                side_effect=AssertionError('no Git history required')))
                 for name, raw in sources.items():
                     manifest['sources'][name] = dict(sha256=qa.digest(raw), utf8=raw.decode())
+                for flow in manifest['flows']:
+                    if flow['kind'] == 'check':
+                        flow['reference']['source_sha256'] = qa.digest(sources[reference_path])
                 manifest['plan_sha256'] = launch.supplemental.binding(manifest)
                 (root/'manifest.json').write_bytes(qa.encoded(manifest))
                 new = qa.digest((root/'manifest.json').read_bytes())
@@ -242,6 +248,11 @@ class SingleRepeatTests(unittest.TestCase):
                 changed['sources']['scripts/supplemental_review.py']['sha256'] = '0'*64
                 changed['plan_sha256'] = launch.supplemental.binding(changed)
                 with self.assertRaises(ValueError):
+                    launch.validate_supplemental(changed, for_report=True)
+                changed = deepcopy(manifest)
+                changed['flows'][0]['input']['current_blocker'] = 'changed after freezing'
+                changed['plan_sha256'] = launch.supplemental.binding(changed)
+                with self.assertRaisesRegex(ValueError, 'plan changed'):
                     launch.validate_supplemental(changed, for_report=True)
 
     def test_private_markdown_export_keeps_public_stdout_clean_and_refuses_replacement(self):
