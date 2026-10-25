@@ -117,7 +117,7 @@ class SupplementalFixedPlanTests(unittest.TestCase):
                         self.assertFalse(summary['automatic_passed'])
                         self.assertEqual(launch.report(root), summary)
 
-    def test_fixed_expected_reject_and_uncertain_are_distinct_from_checker_misjudgement(self):
+    def test_fixed_expected_reject_is_distinct_from_checker_misjudgement(self):
         with tempfile.TemporaryDirectory() as directory:
             root, _ = self.freeze(directory)
             failed = [False]

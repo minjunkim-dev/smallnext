@@ -45,9 +45,21 @@ ONCE_REPORT_SOURCES = {
 }
 
 
+# #313: retain the #311/#312 evaluation's original inputs and references for reports.
+REVISED_ONCE_REPORT_SOURCES = {
+    'scripts/oauth_quality.py': '09792cb09a52dd0260d4c2f4ffcd1aa1a00be85254c697f4bdbc1ad82f362195',
+    'scripts/launch_evaluation.py': '6b2132fb299ca6df08d5d9a060d477262d4b75f215523401b9e746697e97d043',
+    'scripts/supplemental_evaluation.py': 'b45cc3fa8cff4b913fc145df13d5fa34a994e1bb793eb04f7d296dc71e45ca4c',
+    'scripts/supplemental_review.py': 'c896f3f450526a2a32d949516297b0de591733ae2cba0386eeedfd1e0262c293',
+    'docs/research/claude-output-limit-support.json': 'aa2a1150ccdbc05d2bf428e30ade5515bf507be58686dc748fa0ed302179f0e4',
+    REFERENCE: 'b6c8bfdb7561daba6251a95341f4b9dba2890e2a9bfc7205ac10ec5343b150c7',
+}
+
+
 def legacy_report_sources(manifest):
     for version, kind, sources in ((3, 'supplemental-fixed', LEGACY_REPORT_SOURCES),
-                                   (4, 'supplemental-once', ONCE_REPORT_SOURCES)):
+                                   (4, 'supplemental-once', ONCE_REPORT_SOURCES),
+                                   (4, 'supplemental-once', REVISED_ONCE_REPORT_SOURCES)):
         if (manifest.get('version') == version and manifest.get('plan_kind') == kind
                 and all(manifest['sources'].get(path, {}).get('sha256') == sha
                         for path, sha in sources.items())):

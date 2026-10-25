@@ -1,5 +1,6 @@
 """Synthetic single-repeat plans and bounded direct-human review; no real model calls."""
 from copy import deepcopy
+from contextlib import ExitStack
 from datetime import datetime, timedelta, timezone
 import json
 from pathlib import Path
@@ -187,24 +188,32 @@ class SingleRepeatTests(unittest.TestCase):
 
     def test_reviewed_legacy_source_bundle_is_reportable_but_not_runnable(self):
         # Historical source bytes are data, never executed; no Git history dependency.
-        for once in (False, True):
-            with self.subTest(once=once), tempfile.TemporaryDirectory() as directory:
-                root, manifest = (self.freeze(directory) if once else
-                                  fixed.SupplementalFixedPlanTests.freeze(self, directory))
-                launch.run(root, invoke=fixed.SupplementalFixedPlanTests.response, clock=lambda: 0)
+        for attribute in ('LEGACY_REPORT_SOURCES', 'ONCE_REPORT_SOURCES', 'REVISED_ONCE_REPORT_SOURCES'):
+            once = attribute != 'LEGACY_REPORT_SOURCES'
+            with self.subTest(source_group=attribute), tempfile.TemporaryDirectory() as directory, ExitStack() as contexts:
+                reference_path = launch.supplemental.REFERENCE
+                read_bytes = Path.read_bytes
+                historical = json.loads((qa.REPO/reference_path).read_bytes())
+                conflict = next(c for c in historical['checker_cases'] if c['id'] == 'conflicting-sources')
+                conflict['input']['current_blocker'] = 'synthetic historical source conflict: ' + attribute
+                conflict['check']['verdict'] = 'uncertain'
+                historical_raw = qa.encoded(historical)
+                with patch.object(Path, 'read_bytes', lambda p: historical_raw
+                                  if p == qa.REPO/reference_path else read_bytes(p)):
+                    root, manifest = (self.freeze(directory) if once else
+                                      fixed.SupplementalFixedPlanTests.freeze(self, directory))
+                    launch.run(root, invoke=fixed.SupplementalFixedPlanTests.response, clock=lambda: 0)
                 old = qa.digest((root/'manifest.json').read_bytes())
-                attribute = 'ONCE_REPORT_SOURCES' if once else 'LEGACY_REPORT_SOURCES'
-                sources = {name: ('synthetic historical source: ' + name).encode()
+                sources = {name: ('synthetic historical source: ' + attribute + ':' + name).encode()
                            for name in getattr(launch.supplemental, attribute)}
                 support_path = 'docs/research/claude-output-limit-support.json'
                 evidence = json.loads(manifest['sources'][support_path]['utf8'])
-                sources[support_path] = qa.encoded(dict(evidence, synthetic_history=True))
-                reference_path = launch.supplemental.REFERENCE
+                sources[support_path] = qa.encoded(dict(evidence, synthetic_history=attribute))
                 reference = json.loads(manifest['sources'][reference_path]['utf8'])
-                sources[reference_path] = qa.encoded(dict(reference, synthetic_history=True))
-                self.enterContext(patch.object(launch.supplemental, attribute,
+                sources[reference_path] = qa.encoded(dict(reference, synthetic_history=attribute))
+                contexts.enter_context(patch.object(launch.supplemental, attribute,
                                                {name: qa.digest(raw) for name, raw in sources.items()}))
-                self.enterContext(patch.object(subprocess, 'check_output',
+                contexts.enter_context(patch.object(subprocess, 'check_output',
                                                side_effect=AssertionError('no Git history required')))
                 for name, raw in sources.items():
                     manifest['sources'][name] = dict(sha256=qa.digest(raw), utf8=raw.decode())
@@ -242,13 +251,17 @@ class SingleRepeatTests(unittest.TestCase):
                 self.assertTrue(report['automatic_passed'], (report['unreadable_records'], report['requests'], report['stop_reason']))
                 self.assertTrue(report['preparation']['ready'])
                 self.assertEqual(report['preparation']['evidence_sha256'], qa.digest(sources[support_path]))
+                self.assertEqual(manifest['flows'][3]['expected']['verdicts'], ['uncertain'])
+                self.assertEqual(launch.supplemental.fixed_flows(once=once)[3]['expected']['verdicts'], ['reject'])
+                self.assertEqual(report['reference_mismatches'], 0)
                 with self.assertRaisesRegex(ValueError, 'source changed|runner differs'):
                     launch.load(root)
-                changed = deepcopy(manifest)
-                changed['sources']['scripts/supplemental_review.py']['sha256'] = '0'*64
-                changed['plan_sha256'] = launch.supplemental.binding(changed)
-                with self.assertRaises(ValueError):
-                    launch.validate_supplemental(changed, for_report=True)
+                for changed_path in ('scripts/supplemental_review.py', reference_path):
+                    changed = deepcopy(manifest)
+                    changed['sources'][changed_path]['sha256'] = '0'*64
+                    changed['plan_sha256'] = launch.supplemental.binding(changed)
+                    with self.assertRaises(ValueError):
+                        launch.validate_supplemental(changed, for_report=True)
                 changed = deepcopy(manifest)
                 changed['flows'][0]['input']['current_blocker'] = 'changed after freezing'
                 changed['plan_sha256'] = launch.supplemental.binding(changed)
