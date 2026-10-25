@@ -111,11 +111,73 @@ class OutputLimitTests(unittest.TestCase):
             {'type': 'result', 'subtype': 'success', 'is_error': False,
              'modelUsage': {qa.MODEL: {'outputTokens': 8192, 'thinkingTokens': 4096}},
              'usage': usage, 'result': '{"ok":true}'}]
+        for details in (True, False):
+            with self.subTest(details=details):
+                if not details:
+                    usage.pop('output_tokens_details')
+                    events[-1]['modelUsage'][qa.MODEL].pop('thinkingTokens')
+                record = self.invoke(events)
+                self.assertEqual(record.get('output'), {'ok': True}, record)
+                self.assertEqual(record['usage']['output_tokens'], 8192)
+                self.assertEqual(record['stream_output_tokens'], 8192)
+                self.assertNotIn('thinking_tokens', record['usage'])
+                self.assertNotIn('PRIVATE', json.dumps(record))
+
+    def test_cumulative_snapshots_and_summary_copies_are_not_added(self):
+        start = {'type': 'stream_event', 'event': {'type': 'message_start',
+                 'message': {'id': 'PRIVATE_MESSAGE_ID', 'usage': {'output_tokens': 1}}}}
+        deltas = [{'type': 'stream_event', 'event': {'type': 'message_delta',
+                   'usage': {'output_tokens': count}}} for count in (2, 4096, 8192, 8192)]
+        assistant = {'type': 'assistant', 'message': {'id': 'PRIVATE_MESSAGE_ID',
+                     'content': [], 'usage': {'output_tokens': 1}}}
+        result = {'type': 'result', 'subtype': 'success', 'is_error': False,
+                  'usage': {'output_tokens': 8192, 'input_tokens': 10000,
+                            'cache_read_input_tokens': 20000, 'cache_creation_input_tokens': 30000},
+                  'modelUsage': {qa.MODEL: {'outputTokens': 8192}}, 'result': '{"ok":true}'}
+        events = [start, *deltas, assistant, assistant, result]
         record = self.invoke(events)
         self.assertEqual(record.get('output'), {'ok': True}, record)
-        self.assertEqual(record['usage']['output_tokens'], 8192)
         self.assertEqual(record['stream_output_tokens'], 8192)
-        self.assertNotIn('PRIVATE', json.dumps(record))
+        self.assertEqual(record['usage']['output_tokens'], 8192)
+        self.assertNotIn('PRIVATE_MESSAGE_ID', json.dumps(record))
+        for extra, error in ((start, 'additional_provider_request'), (result, 'duplicate_result')):
+            with self.subTest(error=error):
+                record = self.invoke([*events, extra])
+                self.assertEqual(record.get('error'), error, record)
+                self.assertNotIn('output', record)
+                self.assertTrue(record['process_reaped'])
+                self.assertFalse(record['process_group_alive'])
+
+    def test_partial_stream_preserves_observed_count_without_inventing_final_usage(self):
+        events = [{'type': 'stream_event', 'event': {'type': 'message_start'}},
+                  {'type': 'stream_event', 'event': {'type': 'message_delta',
+                   'usage': {'output_tokens': 12}}}]
+        for linger, error in ((False, 'provider_failed'), (True, 'timed_out')):
+            with self.subTest(error=error):
+                record = self.invoke(events, linger=linger)
+                self.assertEqual(record.get('error'), error, record)
+                self.assertEqual(record['stream_output_tokens'], 12)
+                self.assertIsNone(record['usage']['output_tokens'])
+                self.assertNotIn('output', record)
+                self.assertTrue(record['process_reaped'])
+                self.assertFalse(record['process_group_alive'])
+
+    def test_decreasing_cumulative_usage_cannot_be_hidden_by_final_result(self):
+        events = [
+            {'type': 'stream_event', 'event': {'type': 'message_start'}},
+            {'type': 'stream_event', 'event': {'type': 'message_delta',
+             'usage': {'output_tokens': 80}}},
+            {'type': 'stream_event', 'event': {'type': 'message_delta',
+             'usage': {'output_tokens': 8}}},
+            {'type': 'result', 'subtype': 'success', 'is_error': False,
+             'modelUsage': {qa.MODEL: {'outputTokens': 8}},
+             'usage': {'output_tokens': 8}, 'result': '{"ok":true}'}]
+        record = self.invoke(events)
+        self.assertEqual(record.get('error'), 'output_usage_mismatch', record)
+        self.assertEqual(record['stream_output_tokens'], 80)
+        self.assertNotIn('output', record)
+        self.assertTrue(record['process_reaped'])
+        self.assertFalse(record['process_group_alive'])
 
     def test_cancel_and_timeout_reap_child_that_never_reads_large_stdin(self):
         for reason in ('cancelled', 'timed_out'):
