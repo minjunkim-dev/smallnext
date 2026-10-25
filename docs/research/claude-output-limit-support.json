@@ -42,7 +42,7 @@
     "internal_retry_and_continuation_contract_unverified"
   ],
   "provider_observation": "none; no model request was made",
-  "readiness": "incomplete",
+  "readiness": "offline_prepared",
   "configured_environment": {
     "CLAUDE_CODE_MAX_OUTPUT_TOKENS": "8192",
     "CLAUDE_CODE_MAX_RETRIES": "0",
@@ -326,5 +326,6 @@
         "sha256": "4d528b9f701c1826d19b52f5a83d254164665c5541ddf24a368732e506cc8173"
       }
     ]
-  }
+  },
+  "readiness_basis": "Issue #285/#299: reviewed configuration and offline guards; provider unknowns remain limitations, not prerequisites. Actual evaluation is not authorized."
 }

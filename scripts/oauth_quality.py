@@ -23,7 +23,7 @@ MODEL = "claude-haiku-5-5"
 EFFORT = "xhigh"
 OUTPUT_TOKENS = 8192
 OUTPUT_SUPPORT = REPO / "docs/research/claude-output-limit-support.json"
-OUTPUT_SUPPORT_SHA256 = "987cc76ef9c07f6851d810cf910cf55f2d76c46f58bd655bd956f61e98e5da4e"
+OUTPUT_SUPPORT_SHA256 = "50d6edec463da28e571d9dca93045fb1728368a1a66ba3e8b083003b9b7d7971"
 
 
 def encoded(value):
@@ -319,9 +319,10 @@ def output_count(value):
 
 
 def output_readiness(output_mode):
-    """The reviewed evidence is incomplete; changing a status flag cannot authorize calls."""
+    """Check offline preparation separately from provider guarantees and execution approval."""
     status = {"ready": False, "output_tokens": OUTPUT_TOKENS,
-              "provider_application": "unobserved", "reasons": []}
+              "provider_application": "unobserved", "reasons": [], "limitations": [],
+              "actual_execution_authorized": False}
     try:
         raw = OUTPUT_SUPPORT.read_bytes()
     except OSError:
@@ -332,10 +333,13 @@ def output_readiness(output_mode):
         status["reasons"] = ["support_changed"]
         return status
     evidence = json.loads(raw)
-    if output_mode not in evidence["output_modes"] or OUTPUT_TOKENS != evidence["output_tokens"]:
+    if (output_mode not in evidence["output_modes"] or OUTPUT_TOKENS != evidence["output_tokens"]
+            or MODEL != evidence["model"] or EFFORT != evidence["effort"]
+            or any(environment().get(key) != value for key, value in evidence["configured_environment"].items())):
         status["reasons"] = ["support_mismatch"]
         return status
-    status["reasons"] = evidence["unverified"]
+    status["ready"] = True
+    status["limitations"] = evidence["unverified"]
     return status
 
 
@@ -485,6 +489,8 @@ def _call(claude, prompt, schema, data, deadline, cancelled, output_mode="struct
         record["output_limit_support"] = output_readiness(output_mode)
         if not record["output_limit_support"]["ready"]:
             raise ValueError("output_limit_unverified")
+        if not record["output_limit_support"].get("actual_execution_authorized", False):
+            raise ValueError("evaluation_not_authorized")
         with tempfile.TemporaryDirectory(prefix="smallnext-oauth-") as workspace:
             child = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                      stderr=subprocess.DEVNULL, start_new_session=True,
@@ -570,7 +576,7 @@ def _call(claude, prompt, schema, data, deadline, cancelled, output_mode="struct
                    "unverified_message_count", "unsupported_schema", "invalid_output", "provider_retry",
                    "additional_provider_request", "max_tokens", "duplicate_result",
                    "unverified_output_usage", "output_tokens_exceeded", "output_usage_mismatch",
-                   "output_limit_unverified"}
+                   "output_limit_unverified", "evaluation_not_authorized"}
         record["error"] = str(error) if str(error) in allowed else "invalid_stream"
         if isinstance(error, OutputError):
             record["output_error"] = error.detail
