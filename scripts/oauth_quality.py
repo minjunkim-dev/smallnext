@@ -23,7 +23,7 @@ MODEL = "claude-haiku-5-5"
 EFFORT = "xhigh"
 OUTPUT_TOKENS = 8192
 OUTPUT_SUPPORT = REPO / "docs/research/claude-output-limit-support.json"
-OUTPUT_SUPPORT_SHA256 = "5f58c5ba4b64e9eb246d7462dad7f07ee7d56ef7213ac61a6e5a8b0ab2f69321"
+OUTPUT_SUPPORT_SHA256 = "7fbe4e423836f9f966c5dc78f2e39407e4ae138f3f37d6e095101d51010742d0"
 
 
 def encoded(value):

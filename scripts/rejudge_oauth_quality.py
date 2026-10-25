@@ -11,6 +11,7 @@ import oauth_quality as qa
 
 # Reviewed runner bytes: #186/#218/#252/#260/#273/#288/#285 record cancellation; #135 kept it only in memory.
 PROTOCOLS = {
+    "2a34ea2fbd59884994e88329a4f9d2a86d457d035634ef469d3d2831bf678929": "cancellation-marker-v1",
     "5c2b737f0e2a37f97d0315ed8ff2a3ff22379c8778577a6f4956b863a0c6a9ab": "cancellation-marker-v1",
     "a5aa0d74c2f6aaf1feef8d83498a81229109c3f1969e1b16b2adc5d4c8560aa8": "cancellation-marker-v1",
     "808ff25eddb8506820027e0a153b45bcf139e04207ef64550be379b360c1598b": "cancellation-marker-v1",

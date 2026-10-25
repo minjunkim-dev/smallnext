@@ -91,7 +91,7 @@ PY
 
 ## #295 분기별 요청 전 차단 조사
 
-이 절은 같은 설치본의 정적 읽기 결과다. 실행이나 계정 관측이 아니다. 아래 식별자는 지원 JSON의 `cli_static_evidence.fragments`에 추가했고 기존8조각은 보존했다. 해시 재현은 위 명령으로 전체21조각을 검사한다. 함수명은 이 설치본 안의 지역 이름이며 공개 API가 아니다. 조각 간 연결은 아래에 명시한 범위만 확인했다. 이름이 같은 다른 모듈을 연결하거나 전체 호출 그래프를 복원했다고 주장하지 않는다.
+이 절은 같은 설치본의 정적 읽기 결과다. 실행이나 계정 관측이 아니다. 아래 식별자는 지원 JSON의 `cli_static_evidence.fragments`에 추가했고 기존8조각은 보존했다. 해시 재현은 위 명령으로 이 절의21조각과 #296 추가14조각을 검사한다. 함수명은 이 설치본 안의 지역 이름이며 공개 API가 아니다. 조각 간 연결은 아래에 명시한 범위만 확인했다. 이름이 같은 다른 모듈을 연결하거나 전체 호출 그래프를 복원했다고 주장하지 않는다.
 
 ### 전송점과 가드 연결
 
@@ -103,7 +103,7 @@ PY
 - **출력 상한·상위 이어쓰기:** `output_recovery_configuration`은 기본 복구 상한3과 원격 설정 해석을 가진다. `output_recovery_transition`은 `max_output_tokens_recovery` 또는 `truncated_response_recovery` 상태를 만들고 반환한다. 이 조각에는 위 오류 재시도·schema 횟수·fallback 차단값을 검사하는 가드가 없다. 다음 상태에서 새 모델 호출로 돌아가는 전체 dispatcher 간선, print의 turn 제한과의 순서, 두 출력 방식의 실제 도달 여부는 미추적이다. 원격 내부 키를 사용자용 disable 옵션으로 사용하지 않는다.
 - **schema 검증:** `structured_output_attempts`는 print 루프의 특정 user 상태와 schema 조건에서 누적 시도를 비교하고, 유효 출력이 없으면 종료 결과를 내보낸 뒤 반환한다. 총1시도 가드는 그 분기에 적용된다. 완료 출력의 모델 fallback 철회가 이 비교를 언제 거치는지와 상위 복구보다 앞서 종료되는지는 미추적이다. schema가 없는 `text-json`에는 이 가드로 전체 요청 수를 증명하지 않는다. 공식 SDK도 철회 후 유효 출력 부재를 오류에 포함한다. [구조화 출력 오류](https://code.claude.com/docs/en/agent-sdk/structured-outputs#error-handling)
 
-공통 `stream_retry_options` → `stream_request_send`의 주 요청은 기존 `main_request_cap` → `wire_max_tokens`와 연결된다. 그러나 다른 모델·비스트리밍·상위 복구의 상한 전달까지 전수 확인하지 않았다. 그 적용·예외는 [#296](https://github.com/minjunkim-dev/smallnext/issues/296)의 조사 범위이며8192 보장을 해소하지 않는다. optional `apiAttemptsLeft` ledger는 존재하지만 print 경로에서 역할당1로 초기화되고 모든 하위 요청에 전파된다는 근거가 없다. 공개된 역할당 요청 수 옵션으로 취급하지 않는다.
+공통 `stream_retry_options` → `stream_request_send`의 주 요청은 기존 `main_request_cap` → `wire_max_tokens`와 연결된다. 그러나 다른 모델·비스트리밍·상위 복구의 상한 전달까지 전수 확인하지 않았다. 그 적용·예외는 아래 #296 조사에서 일부 보완했으며8192 보장을 해소하지 않는다. optional `apiAttemptsLeft` ledger는 존재하지만 print 경로에서 역할당1로 초기화되고 모든 하위 요청에 전파된다는 근거가 없다. 공개된 역할당 요청 수 옵션으로 취급하지 않는다.
 
 ### G/C와 출력 방식별 적용 표
 
@@ -137,12 +137,83 @@ PY
 
 #295의 오프라인 조사는 이 표와 질문 정리로 완료할 수 있지만, 준비 상태나 실관측 승인으로 이어지지 않는다. [#299](https://github.com/minjunkim-dev/smallnext/issues/299)는 전송 전 통제와 관측 경로가 불명확한 동안 승인 요청 준비 상태로도 올리지 않는다. 하네스의 추가 메시지/재시도 이벤트 감지와 프로세스 회수는 사후 방어이며 이미 시작된 추가 요청0회 증거가 아니다.
 
+## #296 응답별8192 경로·예외 조사
+
+대상·설치 SHA·확인일은 첫머리와 같다. 기존21조각을 보존하고14조각을 추가했다. 아래 식별자는 지원 JSON의 offset·길이·해시로 재현한다. 표의 연결은 제한한 정적 코드 해석이며, 실행한 CLI·공급자 요청을 관측한 결과가 아니다. G/C는 같은 `call` 어댑터를 쓰며 prompt/schema만 다르다. 요청한 모델/인증과 실제 적용된 값을 구분한다.
+
+### 설정 선택에서 전송까지
+
+| 단계 | 확인한 경로 | 미확인·예외 |
+| --- | --- | --- |
+| 자식 경계 | `environment()`의 허용 목록 후 고정8192, `_call`의 `--setting-sources ''`, inline `forcedLoginMethod=claudeai`, 고정 모델/effort. 기존 가짜 CLI 검사에서 G/C×두 방식의 부모 미설정/65536/invalid를8192로 덮어씀 | 가짜 프로세스가 받은 환경·인수만 증명. CLI가 실제로 읽은 최종 설정이나 계정 인증을 관측하지 않음 |
+| 공식 우선순위 | `--setting-sources`는 user/project/local 선택이며 inline `--settings`는 managed 아래다. 환경변수와 전용 key 우선순위는 쌍마다 다르고 settings `env`도 설정 우선순위를 따름 | 설정 출처 빈 값으로 managed까지 껐다고 판단하지 않음. 사용자/관리 설정을 읽지 않았으며 최종 env의 값은 미확인. [설정 우선순위](https://code.claude.com/docs/en/settings#settings-precedence), [CLI](https://code.claude.com/docs/en/cli-reference) |
+| 모델별 default/ceiling | 기존 `output_limit_resolution`: `kue`가 모델 식별·상한/descriptor·동적 기본값·모델 metadata를 선택. `output_cap_dynamic_default`는 양의 정수 기본값 선택, `output_cap_model_metadata`는 모델 목록에서 일치/부분일치 metadata 선택 | 모델 정보·캐시/원격 입력의 실제 값과 공급자별 일치가 미확인. 이 값은 공개 사용자용 override 옵션으로 취급하지 않음 |
+| env parse/clamp | `output_cap_parse`의 `Mzt`: 값 없음/invalid/0 이하는 default, ceiling 초과는 ceiling, 나머지는 양수값. `pvt`는 고정 env를 이 계산에 전달 | 유효8192와 정상 ceiling이면 결과는8192 이하. invalid에서 실패 종료하지 않고 default로 복귀하므로 부모값 차단만으로 CLI 내부 fallback까지 실패 차단했다고 볼 수 없음. 실제 parser의 모든 문자열을 모의 재구현하지 않음 |
+| 모델 정보 선택 | `model_facts_output_cap`: `_c`가 `maxOutputTokens:pvt(e)`를 구성. `request_model_facts_choice`: 모델이 일치하는 전달 `modelFacts`를 재사용하거나 `_c(pt)`로 계산 | 전달 modelFacts의 생성/갱신 시점·원격 조건과 모든 caller를 전수 추적하지 않음. 현재 env로 매 전송 직전 재계산한다고 단정하지 않음 |
+| 요청 override와 사고 | 기존 `main_request_cap`: retry `maxTokensOverride`, 요청 `maxOutputTokensOverride`, descriptor 값 중 선택한 값을 descriptor와 `min`. 고정 사고 예산은 `min(JT-1,budget)` 뒤 최소1024 적용, adaptive는 별도 고정 사고 예산을 만들지 않음 | descriptor가8192 이하면 이 `min` 자체는 늘리지 않음. 모델/descriptor 변경과 이후 body 병합까지 보장하는 최종 cap은 아님. 구독의 사고 포함 계약은 #297 미확인 |
+| 후순위 body·stream | `request_body_builder`의 `ELe→xeo`가 `i2`를 읽음. `request_extra_body`는 `CLAUDE_CODE_EXTRA_BODY` JSON 객체를 가져오고 `request_body_merge`는 계산한 `max_tokens` 뒤에 이 객체를 spread함. 기존 `stream_request_send`에서 `pcn` 후 `beta.messages.create(stream:true)` | extra body에 `max_tokens`가 있으면 앞 계산을 덮어쓸 수 있는 정적 순서. 다른 후순위 spread 전체의 입력은 미추적. `request_wire_transform`의 `pcn`은 도구/메시지 변환이며 이 조각에서 cap을 다시 적용하지 않음. SDK 내부 직렬화·네트워크·서버는 관측 안 함 |
+| nonstreaming 전환 | `nonstreaming_shared_builder`: `X_t`가 `j_r`에 같은 `ELe` 전달. `nonstreaming_cap_send`: builder 결과를 `bkr`로 낮춘 뒤 `pcn`·`beta.messages.create(stream:false)`. `nonstreaming_cap_clamp`: body cap과 별도 상수의 `min`, 고정 사고 budget도 재조정 | 입력 body가8192 이하면 이 `min`은 증액하지 않음. 입력이 이미 후순위 override된 경우8192 복구 보장은 아님. #295의404 진입과 timeout 재전송0은 전환/횟수 제어로서 cap 보장과 별개 |
+| 상위 복구·재호출 | `upper_recovery_cap_reset`는 transition 없을 때만 요청 override를 재사용하고 transition이면 제거. `upper_recovery_cap_argument`는 그 값을 다음 호출 옵션에 전달 | override 제거가 고정8192의 해제라는 뜻은 아니지만, 다음 descriptor/모델/body 재구축·dispatcher의 모든 간선은 미추적. #295의 recovery 상태와 결합해도 모든 추가 전송 cap/횟수 보장은 아님 |
+
+공식 env 문구는 **대부분 요청**의 cap이다. 이를 대상 OAuth의 모든 최초·복구 요청에 확장하지 않는다. 일반 API의 `max_tokens`는 사고+텍스트를 합친 요청당 한도이며, 각 재요청은 별도 한도다. API 문서의128K ceiling·xhigh 설명은 구독에서8192가 실제 적용됐다는 증거가 아니다. [환경변수](https://code.claude.com/docs/en/env-vars), [API 사고·출력 한도](https://platform.claude.com/docs/en/build-with-claude/thinking#output-limits), [요청별 비용 제어](https://platform.claude.com/docs/en/build-with-claude/thinking-steering-and-cost#cost-control)
+
+### #295 분기와 G/C·두 출력 방식의 대응
+
+`부분`은 위 builder·clamp의 일부 간선을 연결했다는 뜻이다. `미추적`은 최종 body/도달/재계산/전송 중 빠진 간선이 있다는 뜻이다. **어느 칸도 실제8192 적용 통과가 아니다.** schema 없는 칸도 상한 조사 대상이며 schema 횟수 가드로 cap을 증명하지 않는다.
+
+| #295 분기·최초 요청 | G structured | C structured | G text-json | C text-json | 상한 근거·남은 간선 |
+| --- | --- | --- | --- | --- | --- |
+| 최초 주 stream 요청 | 부분 | 부분 | 부분 | 부분 | parse→facts→min→body→send; managed/modelFacts/후순위 body는 미확인 |
+| 일반 API 오류·429/529·연결 실패 | 부분 | 부분 | 부분 | 부분 | retry 콜백이 `ELe`를 다시 호출; 수정·인증/capacity 예외 전체는 미추적 |
+| 오류 수정·capacity·인증 뒤 생성 재전송 | 미추적 | 미추적 | 미추적 | 미추적 | #295 `request_error_repair`, `credential_retry_guard`; 수정 키별 body/모델 변화 미추적 |
+| schema 실패의 총1시도 | 미추적 | 미추적 | 비적용 | 비적용 | `structured_output_attempts`의 종료는 cap 증거가 아님; 우회/선행 호출 미추적 |
+| 모델 fallback의 완료 출력 철회 | 미추적 | 미추적 | 비적용 | 비적용 | 철회 자체는 schema 경로; 재요청은 모델 전환 행 |
+| max_tokens 뒤 상위 이어쓰기 | 미추적 | 미추적 | 미추적 | 미추적 | `output_recovery_transition`, override reset/argument; 전체 재구축 미추적 |
+| thinking-only의 일반 stream 재시도 | 부분 | 부분 | 부분 | 부분 | 주 builder를 재사용하는 일반 경로만; 다른 상위 복구 미추적 |
+| 잘린 stream의 일반 재시도 | 부분 | 부분 | 부분 | 부분 | 일반 재진입만; 상위 truncation 복구 미추적 |
+| 중간 stream 실패의 nonstreaming 차단 | 부분 | 부분 | 부분 | 부분 | 차단 분기는 #295; 전환 시 공유 builder→nonstream min→send만 연결 |
+| HTTP404 뒤 최초 nonstreaming | 부분 | 부분 | 부분 | 부분 | `nonstreaming_404_entry`→shared builder→cap/send; 후순위 body/실제 도달은 미확인 |
+| nonstreaming timeout 재전송 | 부분 | 부분 | 부분 | 부분 | #295 timeout0 가드와 같은 builder; 다른 오류 예외는 미추적 |
+| 모델 자동 fallback·호출 재시작 | 미추적 | 미추적 | 미추적 | 미추적 | 모델별 descriptor·effort·env/body 재구축 전수 미추적 |
+| 관리 정책·원격 설정의 재정의 | 미추적 | 미추적 | 미추적 | 미추적 | managed/env/modelFacts/원격 복구 실제 입력은 읽거나 실행하지 않음 |
+
+### 보완과 판정 기준
+
+현재 자식 환경 허용 목록은 부모의 `CLAUDE_CODE_EXTRA_BODY`를 이미 제외한다. 이 티켓에서는 기존 가짜 CLI 경계에 부모의 `max_tokens:65536`·다른 모델을 가진 합성 extra body를 넣고 G/C×두 방식 모두 자식에 전달되지 않음을 확인한다. 기존 미설정/큰값/invalid cap 변형도 함께 유지한다. CLI 내부 설정 적용을 흉내 낸 새 하네스나 중복 cap 설정은 추가하지 않았다. production 동작의 새 결함을 재현하지 않았으므로 동작 변경 없이 근거 JSON과 pin/source 호환 hash만 갱신한다. 기존 역사 hash는 보존한다.
+
+| 증거 종류 | 충족 판정 | 현재 상태·미충족 처리 |
+| --- | --- | --- |
+| 공식 계약 | 정확한 OAuth·CLI 버전·모델/effort·G/C·두 방식과 최초/모든 복구 예외의 응답별8192·사고 포함 범위를 명시 | 대부분 요청/일반 API 설명만으로 불충족 |
+| 정적 경로 | 설정 선택부터 모든 전송의 최종 body·override·원격/모델 예외까지 추적 가능 |35조각의 제한한 경로만 확인. 동적 입력/간선이 남아 불충족 |
+| 모의 전달 | 기존 fake CLI가 고정8192와 격리 인수를 수신하고 부모 extra body가 없음 | 전달 경계만 충족. 실제 CLI/공급자 cap 검증으로 승격 안 함 |
+| 향후 별도 승인 관측 | 지원되는 공식 경로로 요청ID와 결합한 요청값·실제 적용값·응답/누락 상태를 대조 | 미실행. 짧은 응답·문자/byte 길이·123역할 합산·몇 건 정상 종료는 보장 증거 아님 |
+
+### 공급자 질문·최소 메타데이터·확보 채널
+
+[#298](https://github.com/minjunkim-dev/smallnext/issues/298)에 넘길 **초안**이며 발송 승인은 아니다. 대상 식별자는 첫머리의 계약과 설치 SHA를 사용하고, 내부 vendor 코드나 offset 원문을 문의에 첨부하지 않는다.
+
+1. 이 OAuth 구독/CLI2.1.310/Haiku5.5/xhigh의 G/C×schema 있음/없음(둘 다 stream-json)에서 환경8192가 **모든 응답의 사고+텍스트 합계**에 적용되는 공식 계약인가? 대부분 요청에서 제외되는 종류, 최소 버전, 우선순위, 관리/원격 정책 예외, 미지원/값 누락 시 종료 동작을 명시해 달라.
+2. 전달된 모델 정보·요청 override·후순위 extra body·모델 전환·오류 수정/인증·404/nonstreaming·상위 max_tokens/thinking-only/truncation 복구 각각에 cap이 다시 적용되는 위치와 지원되는 고정 방법은 무엇인가? 기본값 복귀나 증액 가능한 예외와 요청 전 거부 방법도 설명해 달라. 횟수0 가드와 응답별 cap 계약을 구분해 달라.
+3. payload 없이 확인할 **요청ID 결합 공식 메타데이터 경로**가 있는가? 클라이언트가 요청한 `max_tokens`와 공급자가 실제 적용한 cap·사고 포함 여부를 별도 필드로 확인할 수 있는지, 필드 미제공/취소/미완료에서는 무엇을 미확인으로 남겨야 하는지 알려 달라.
+
+| 최소 필드 | 필요한 구분·확보 경로 |
+| --- | --- |
+| CLI 버전/SHA, 요청 역할·방식·최초/복구 분기 식별자 | 현재 정적/모의 근거. 향후 승인된 실행에서는 같은 계약 식별자로 연결 |
+| 인증 종류(비밀값 제외), 요청/실제 적용 model·effort | 공식 문서/지원 답변에서 대상 범위 확인. 실제 값은 공급자가 지원하는 metadata에 있을 때만 기록 |
+| 요청 `max_tokens`, 공급자 적용 cap, 사고 포함 규칙 | 요청값/적용값을 구분. 서버 필드가 없으면 env/요청값으로 대체하지 않음 |
+| request ID, response/message ID, 생성 요청 순번·완료/누락 상태 | 지원되는 request/response header 또는 비식별 이벤트/지원 조회 경로가 존재하는지 먼저 공식 확인. 임의 필드·API endpoint를 만들지 않음 |
+| stop reason, reported total output tokens 및 완전성/취소 상태 | 한도 도달·추가 요청·누락을 성공으로 보정하지 않음. 사용량의 집계 계약은 #297과 연결 |
+
+공개 공식 문서의 명시된 범위를 우선 사용한다. 부족할 때의 후보 채널은 [공식 지원 안내](https://support.claude.com/en/articles/9015913-how-to-get-support)의 Claude 계정 메뉴 `Get help` → support messenger → `Send us a message`다. Fin이 필요한 조사를 Product Support로 넘기고 같은 대화/계정 이메일로 답변한다는 공개 절차만 확인했으며, 로그인하거나 messenger를 열지 않았다. 정확한 수신 경로·최종 문안·공유 범위는 #298에서 별도 사용자 승인을 받거나 사용자가 직접 발송한다. 비공식 이슈 답변·접수 확인·일반 API 설명만으로 닫지 않는다. payload·입출력 원문·사고 텍스트·서명·토큰·쿠키·계정 식별자는 필요 없다. 공식 metadata 경로가 없으면 TLS 가로채기/프록시/CLI 패치로 우회하지 않고 미확인을 유지한다. 이 표는 관측 schema 요구이며 필드가 현재 CLI에 존재한다는 주장이 아니다.
+
+#296의 오프라인 조사 종료는 `subscription_model_output_cap_unverified` 해소가 아니다. 세 미확인과 `ready=False`, #285/#111/#47 OPEN을 유지한다. #297 사고 집계 조사·#298 문의 발송 승인·#299 실관측 필요성/별도 승인과 구분하며, 실제 평가 freeze/run·모델 호출·문의 발송은 계속 보류한다.
+
 ## 남은 근거와 조사 한계
 
 - OAuth 구독 요청에서 실제 적용된8192 및 사고+응답의 동일 집계: 설치 버전·모델·인증·두 출력 경로를 명시한 공급자 지원 계약이나, 향후 별도 허가를 받은 최소 요청/응답 메타데이터 근거가 필요하다. 현재 공급자 관측은 없어 미확인이다.
 - 내부 재호출 전체 통제: 출력 상한·사고만 생성·잘린 스트림·연결/인증 복구 등 각 분기의 요청 전 입장 차단과 상한 전달을 보장하는 공식 제어·지원 계약 또는 검토 가능한 전체 경로 근거가 필요하다. 이벤트를 받은 뒤 중단한 사실만으로 추가 요청이 시작되지 않았다고 증명할 수 없다.
 - 출력 상한 복구 전용 disable 변수·CLI 옵션: 조사한 env-vars·CLI reference 및 공식 변경 이력에서 계약을 찾지 못했다. 전체 기능의 부존재를 단정하지 않는다.
-- `settings` 본문과 우선순위는 읽었지만 연결된 `settings-reference` 전체는 공개 문서 도구의 4 MiB 크기 제한으로 열리지 않았다. 공식 Markdown 경로의 직접 읽기도 HTTP 403으로 실패했다. 따라서 모든 settings key를 전수 조사했다는 결론은 내리지 않는다. [All settings](https://code.claude.com/docs/en/settings-reference)
+- `settings` 본문과 우선순위는 읽었지만 연결된 `settings-reference` 전체는 공개 문서 도구의 4 MiB 크기 제한으로 열리지 않았다. 공식 Markdown 경로의 직접 읽기도 HTTP 403으로 실패했다. #296에서 공식 색인의 해당 Markdown 경로와 본문/anchor를 정상 GET으로 재확인했지만 같은 크기 제한/403으로 전체 key를 읽지 못했다. 따라서 모든 settings key를 전수 조사했다는 결론은 내리지 않는다. [All settings](https://code.claude.com/docs/en/settings-reference)
 - 번역본·커뮤니티 이슈·비공식 소스 재구성 자료는 현재 동작의 근거로 사용하지 않았다. 문서 상태는 확인일의 스냅샷이다.
 
 생략·미검사: 설치 CLI 실행, 실제 모델/평가 호출, 계정·키·세션·과거 평가 원문 접근은 하지 않았다.
