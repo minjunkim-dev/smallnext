@@ -172,7 +172,11 @@ def private_root(repo=qa.REPO):
 
 
 def freeze(directory, *, owner, ends_at, delete_method, flow_id=None, max_smaller=None, pipeline_seconds=120,
-           plan_kind='launch', flows=None):
+           plan_kind='launch', flows=None, approved_once=False):
+    if approved_once is not False and (approved_once is not True or plan_kind != 'supplemental-once'):
+        raise ValueError('approval is only for a single-repeat supplemental plan')
+    if approved_once is True and flows is None:
+        flows = supplemental.fixed_flows(once=True)
     directory = Path(directory).resolve()
     end = datetime.fromisoformat(ends_at)
     if not owner.strip() or not delete_method.strip() or end.tzinfo is None or end <= datetime.now(timezone.utc):
@@ -229,6 +233,8 @@ def freeze(directory, *, owner, ends_at, delete_method, flow_id=None, max_smalle
                             output_token_limit=qa.OUTPUT_TOKENS)
             if plan_kind == 'supplemental-once':
                 manifest.update(limits=ONCE_LIMITS, contract=ONCE_CONTRACT)
+                if approved_once is True:
+                    manifest['boundary'] = 'user-approved single evaluation; direct human review pending'
             manifest['plan_sha256'] = supplemental.binding(manifest)
         validate_supplemental(manifest)
     qa.save(directory / 'manifest.json', manifest)
@@ -238,7 +244,9 @@ def freeze(directory, *, owner, ends_at, delete_method, flow_id=None, max_smalle
 def load(directory, *, descriptor=None, for_report=False):
     directory = Path(directory)
     source = directory if descriptor is None else descriptor
-    manifest = qa.load(directory, read_bytes=lambda path: private_bytes(source, path.relative_to(directory)))
+    manifest = qa.load(directory, read_bytes=lambda path: private_bytes(source, path.relative_to(directory)),
+                       allowed_runner_sha256=(supplemental.LEGACY_REPORT_SOURCES['scripts/oauth_quality.py'],)
+                                             if for_report else ())
     if manifest.get('suite') != 'launch' or manifest.get('parallelism') != 1:
         raise ValueError('wrong launch manifest')
     if manifest.get('version') in (2, 3, 4) or 'plan_kind' in manifest:
@@ -817,6 +825,7 @@ def report_bundle(directory, descriptor, observations, review=None, *, compariso
                          for row in records}
         summary.update(supplemental_review.report(manifest, records, end, summary, review, record_hashes,
                                                   comparisons=comparisons))
+        summary['preparation']['actual_execution_authorized'] = claim.get('approved_once') is True
     elif review is not None or comparisons:
         raise ValueError('output review requires a fixed supplemental plan')
     return summary
@@ -877,12 +886,15 @@ def supplemental_report(manifest, records, end, run_id, request_names, call_name
 
 
 def run(directory, *, claude='claude', invoke=None, cancelled=None, clock=monotonic, lock_path=None,
-        mode='subscription'):
+        mode='subscription', approved_once=False):
     if mode != 'subscription':
         raise ValueError('paid transport unavailable; separate-server preconditions required')
     directory = Path(directory)
     manifest = load(directory)
-    if manifest.get('plan_kind') in ('supplemental', 'supplemental-fixed', 'supplemental-once') and invoke is None:
+    if approved_once is not False and (approved_once is not True or manifest.get('plan_kind') != 'supplemental-once'):
+        raise ValueError('approval is only for a single-repeat supplemental plan')
+    if (manifest.get('plan_kind') in ('supplemental', 'supplemental-fixed', 'supplemental-once')
+            and invoke is None and approved_once is not True):
         raise ValueError('supplemental execution not authorized; actual evaluation remains blocked')
     if datetime.now(timezone.utc) >= datetime.fromisoformat(manifest['retention']['evaluation_ends_at']):
         raise ValueError('frozen evaluation end time reached')
@@ -894,7 +906,7 @@ def run(directory, *, claude='claude', invoke=None, cancelled=None, clock=monoto
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
             raise ValueError('another launch evaluation owns the model') from None
-        claim = {'run_id': uuid.uuid4().hex, 'manifest_sha256': qa.digest(private_bytes(directory, 'manifest.json')),
+        claim = {'run_id': uuid.uuid4().hex, 'approved_once': approved_once, 'manifest_sha256': qa.digest(private_bytes(directory, 'manifest.json')),
                  'controller_pid': os.getpid(), 'controller_birth': qa.process_birth(os.getpid())}
         qa.save(directory/'run-started.json', claim)
         for name in ('results', 'requests', 'calls'):
@@ -936,7 +948,8 @@ def run(directory, *, claude='claude', invoke=None, cancelled=None, clock=monoto
                         and account.get('apiProvider') == 'firstParty'):
                     raise ValueError('subscription OAuth login required')
                 invoke = lambda role, prompt, schema, data, deadline, cancel: qa.call(
-                    claude, prompt, schema, data, deadline, cancel, output_mode=manifest['output_mode'])
+                    claude, prompt, schema, data, deadline, cancel, output_mode=manifest['output_mode'],
+                    approved_once=approved_once)
             for flow in manifest['flows']:
                 data = deepcopy(flow['input'])
                 roles = roles_for(flow)
@@ -1106,9 +1119,11 @@ def main():
     frozen.add_argument('--pipeline-seconds', type=int, choices=PIPELINE_SECONDS, default=120,
                         help='per-request generate+check limit')
     frozen.add_argument('--plan-kind', choices=('launch', 'supplemental', 'supplemental-fixed', 'supplemental-once'), default='launch')
+    frozen.add_argument('--approved-once', action='store_true', help='사용자가 명시 승인한 새1회 계획만 고정')
     running = commands.add_parser('run')
     running.add_argument('directory', type=Path)
     running.add_argument('--claude', default='claude')
+    running.add_argument('--approved-once', action='store_true', help='명시 승인한 새1회 계획의 구독 호출 시작')
     reporting = commands.add_parser('report')
     reporting.add_argument('directory', type=Path)
     reporting.add_argument('--observations', type=Path)
@@ -1123,11 +1138,11 @@ def main():
         if args.command == 'freeze':
             freeze(args.directory, owner=args.owner, ends_at=args.ends_at, delete_method=args.delete_method,
                    flow_id=args.flow, max_smaller=args.max_smaller, pipeline_seconds=args.pipeline_seconds,
-                   plan_kind=args.plan_kind)
+                   plan_kind=args.plan_kind, approved_once=args.approved_once)
             print(json.dumps({'frozen': True, 'model_calls': 0}))
             return 0
         if args.command == 'run':
-            summary = run(args.directory, claude=args.claude)
+            summary = run(args.directory, claude=args.claude, approved_once=args.approved_once)
         elif args.command == 'report':
             if Path(args.output).name != args.output or args.output in {'manifest.json', 'integrity.json'}:
                 raise ValueError('report filename required')

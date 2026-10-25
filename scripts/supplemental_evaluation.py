@@ -25,6 +25,7 @@ CHECK_IDS = ('no-source-or-answer', 'useful-source-check', 'real-unanswered-ques
 
 # #304: reviewed #303 source bytes may be read for reports, never executed or rewritten.
 LEGACY_REPORT_SOURCES = {
+    'scripts/oauth_quality.py': 'a77278906d6c5e64ea12b538f50d773afc032ad990b039a7e49f0a9adeb128b5',
     'scripts/launch_evaluation.py': 'ff3af0c3201ff07783105b26306ba0bbfc986c81d05394b4f7159a80b1527c0e',
     'scripts/supplemental_evaluation.py': 'de4b8a8f007d227ed5bc2e5ca87dd2edaa878bf765311bfeb512237b11bda00e',
     'scripts/supplemental_review.py': '32c62290df6b122ec10c6938c543d15660813a5c2467cc300d1c857048646503',
