@@ -164,6 +164,74 @@ class SingleRepeatTests(unittest.TestCase):
                 changed['plan_sha256'] = launch.supplemental.binding(changed)
                 with self.subTest(changes=changes.keys()), self.assertRaises(ValueError): launch.validate_supplemental(changed)
 
+    def test_missing_first_pass_and_progress_fields_are_visible_only_in_private_cards(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root, _ = self.freeze(directory)
+            initial = launch.run(root, invoke=fixed.SupplementalFixedPlanTests.response, clock=lambda: 0)
+            agent = self.agent(initial)
+            removed = agent['entries'].pop(0)
+            next(item for item in agent['entries'] if item['output_id'].endswith(':generate')).update(
+                decision='uncertain', reason='PRIVATE anomaly explanation')
+            reviewed = launch.report(root, review=dict(first_pass=agent, human=None), comparisons=True)
+            anomaly = next(card for card in reviewed['comparison_review']['cards'] if card['kind']=='anomaly')
+            self.assertIn('agent_review_missing', anomaly['anomalies'])
+            private = reviewed.pop('private_comparisons')
+            text = launch.supplemental_review.comparison_markdown(private)
+            self.assertIn('PRIVATE anomaly explanation', text)
+            self.assertIn('검토 대기', text)
+            for label in ('남은 범위', '목표 완료 여부', '현재 행동 완료 여부', '보존된 완료 기록'):
+                self.assertIn(label, text)
+            self.assertNotIn('PRIVATE', json.dumps(reviewed))
+            empty = launch.report(root, comparisons=True)['private_comparisons']
+            self.assertIn('1차 검토 대기', launch.supplemental_review.comparison_markdown(empty))
+
+    def test_reviewed_legacy_source_bundle_is_reportable_but_not_executable(self):
+        # Manufacture a legacy synthetic fixture; never touch a past evaluation or execute frozen code.
+        with tempfile.TemporaryDirectory() as directory:
+            root, manifest = fixed.SupplementalFixedPlanTests.freeze(self, directory)
+            launch.run(root, invoke=fixed.SupplementalFixedPlanTests.response, clock=lambda: 0)
+            old = qa.digest((root/'manifest.json').read_bytes())
+            for name, expected in launch.supplemental.LEGACY_REPORT_SOURCES.items():
+                raw = subprocess.check_output(['git', 'show', '096b4413c1ab77834755ecfeaa229cfaa5f3eb04:'+name], cwd=qa.REPO)
+                self.assertEqual(qa.digest(raw), expected)
+                manifest['sources'][name] = dict(sha256=expected, utf8=raw.decode())
+            manifest['plan_sha256'] = launch.supplemental.binding(manifest)
+            (root/'manifest.json').write_bytes(qa.encoded(manifest))
+            new = qa.digest((root/'manifest.json').read_bytes())
+            def rebind(value):
+                if isinstance(value, dict):
+                    return {key: new if key == 'manifest_sha256' and item == old else rebind(item)
+                            for key, item in value.items()}
+                if isinstance(value, list):
+                    return [rebind(item) for item in value]
+                return value
+
+            for path in root.rglob('*'):
+                if not path.is_file() or path.name == 'manifest.json' or path.suffix not in ('.json', '.receipt'):
+                    continue
+                value = json.loads(path.read_bytes())
+                path.write_bytes(qa.encoded(rebind(value)))
+            for path in (root/'results').glob('*.json'):
+                row = json.loads(path.read_bytes())
+                for call in row['calls']:
+                    receipt_path = root/'calls'/f"{row['request_id']}-{call['role']}.receipt"
+                    receipt = json.loads(receipt_path.read_bytes())
+                    receipt['record_sha256'] = qa.digest(qa.encoded(call))
+                    receipt_path.write_bytes(qa.encoded(receipt))
+            for path in (root/'requests').glob('*.receipt'):
+                receipt = json.loads(path.read_bytes())
+                receipt['record_sha256'] = qa.digest((root/'results'/receipt['result_file']).read_bytes())
+                path.write_bytes(qa.encoded(receipt))
+            report = launch.report(root)
+            self.assertTrue(report['automatic_passed'], (report['unreadable_records'], report['requests'], report['stop_reason']))
+            with self.assertRaisesRegex(ValueError, 'source changed'):
+                launch.load(root)
+            changed = deepcopy(manifest)
+            changed['sources']['scripts/supplemental_review.py']['sha256'] = '0'*64
+            changed['plan_sha256'] = launch.supplemental.binding(changed)
+            with self.assertRaises(ValueError):
+                launch.validate_supplemental(changed, for_report=True)
+
     def test_private_markdown_export_keeps_public_stdout_clean_and_refuses_replacement(self):
         with tempfile.TemporaryDirectory() as directory:
             root, _ = self.freeze(directory)

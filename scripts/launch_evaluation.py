@@ -235,21 +235,22 @@ def freeze(directory, *, owner, ends_at, delete_method, flow_id=None, max_smalle
     qa.save(directory / 'integrity.json', {'manifest_sha256': qa.digest(private_bytes(directory, 'manifest.json'))})
 
 
-def load(directory, *, descriptor=None):
+def load(directory, *, descriptor=None, for_report=False):
     directory = Path(directory)
     source = directory if descriptor is None else descriptor
     manifest = qa.load(directory, read_bytes=lambda path: private_bytes(source, path.relative_to(directory)))
     if manifest.get('suite') != 'launch' or manifest.get('parallelism') != 1:
         raise ValueError('wrong launch manifest')
     if manifest.get('version') in (2, 3, 4) or 'plan_kind' in manifest:
-        validate_supplemental(manifest)
+        validate_supplemental(manifest, for_report=for_report)
     elif (manifest.get('version') != 1
           or any(key in manifest for key in ('contract', 'check_seconds', 'plan_id', 'plan_sha256', 'output_token_limit'))
           or any(path in manifest['sources'] for path in supplemental.SOURCE_PATHS)
           or any(any(key in flow for key in ('kind', 'candidate', 'repeat', 'rerequest',
                                             'synthetic_start', 'case_id', 'reference')) for flow in manifest['flows'])):
         raise ValueError('unsupported launch version')
-    if qa.digest(Path(__file__).read_bytes()) != manifest['sources']['scripts/launch_evaluation.py']['sha256']:
+    if (qa.digest(Path(__file__).read_bytes()) != manifest['sources']['scripts/launch_evaluation.py']['sha256']
+            and not (for_report and supplemental.legacy_report_sources(manifest))):
         raise ValueError('launch runner differs from frozen version')
     if qa.digest(private_bytes(source, 'regression/manifest.json')) != manifest['regression']['manifest_sha256']:
         raise ValueError('regression changed')
@@ -260,7 +261,7 @@ def roles_for(flow):
     return ('check',) if flow.get('kind') == 'check' else ('generate', 'check')
 
 
-def validate_supplemental(manifest):
+def validate_supplemental(manifest, *, for_report=False):
     once = manifest.get('plan_kind') == 'supplemental-once'
     fixed = manifest.get('plan_kind') in ('supplemental-fixed', 'supplemental-once')
     if (manifest.get('version') != (4 if once else 3 if fixed else 2)
@@ -273,7 +274,7 @@ def validate_supplemental(manifest):
             or manifest.get('output_mode') != 'text-json'):
         raise ValueError('unsupported supplemental contract or limits')
     if fixed:
-        supplemental.validate(manifest)
+        supplemental.validate(manifest, for_report=for_report)
         if manifest.get('measurement') != MEASUREMENT or manifest.get('cost_basis') != COST_BASIS:
             raise ValueError('unsupported fixed measurement')
     elif (any(key in manifest for key in ('plan_id', 'plan_sha256'))
@@ -561,7 +562,7 @@ def report(directory, *, observations=(), review=None, comparisons=False):
 
 def report_bundle(directory, descriptor, observations, review=None, *, comparisons=False):
     directory = Path(directory)
-    manifest = load(directory, descriptor=descriptor)
+    manifest = load(directory, descriptor=descriptor, for_report=True)
     claim = private_json(descriptor, 'run-started.json')
     if claim.get('manifest_sha256') != qa.digest(private_bytes(descriptor, 'manifest.json')):
         raise ValueError('run manifest binding mismatch')
@@ -869,7 +870,7 @@ def supplemental_report(manifest, records, end, run_id, request_names, call_name
                         **{s: states[role, s] for s in ('completed', 'failed', 'cancelled', 'not_executed')})
               for role in ('generate', 'check')}
     return {'plan_kind': manifest['plan_kind'], 'contract': manifest['contract'],
-            'planned': validate_supplemental(manifest), 'units': units, 'role_counts': counts,
+            'planned': validate_supplemental(manifest, for_report=True), 'units': units, 'role_counts': counts,
             'elapsed_seconds': end.get('budget', {}).get('elapsed_seconds'),
             'provider_observations': {key: sum(c.get(key, 0) for r in records for c in r['calls'] if c.get('started', True))
                 for key in ('provider_messages', 'provider_retries', 'additional_provider_requests')}}

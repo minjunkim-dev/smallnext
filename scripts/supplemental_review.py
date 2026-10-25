@@ -166,6 +166,7 @@ def report(manifest, records, end, summary, review, record_hashes, *, comparison
         if agent['work_complete'] else 'awaiting_agent_review'
     agent['contract_fit'] = 'not_a_human_verdict'
     by_request = {row['request_id']: row for row in records}
+    reasons = {item['output_id']: item['reason'] for item in first_pass['entries']} if first_pass else {}
     cards = []
     for flow in manifest['flows']:
         phases, anomalies = [], []
@@ -176,6 +177,8 @@ def report(manifest, records, end, summary, review, record_hashes, *, comparison
             flags = ([unit['reason'] or 'unit_incomplete'] if unit['state'] != 'completed' else [])
             if unit['reference_matched'] is False:
                 flags.append('reference_mismatch')
+            if first_pass is not None and any(item['agent_decision'] is None for item in outputs):
+                flags.append('agent_review_missing')
             flags.extend(item['agent_decision'] for item in outputs
                          if item['agent_decision'] not in (None, 'meets_expectation'))
             flags.extend(item['reason'] for item in agent['unavailable_outputs']
@@ -187,11 +190,14 @@ def report(manifest, records, end, summary, review, record_hashes, *, comparison
                 checker=calls.get('check', {}).get('output'),
                 evidence=[dict(output_id=item['output_id'], record_sha256=item['record_sha256'],
                     output_sha256=item['output_sha256'], agent_decision=item['agent_decision'],
-                    agent_reason_sha256=item['agent_reason_sha256']) for item in outputs]))
+                    agent_reason_sha256=item['agent_reason_sha256'],
+                    agent_reason=reasons.get(item['output_id'])) for item in outputs]))
         if flow['kind'] == 'generate_check' or anomalies:
             cards.append(dict(card_id=flow['id'], kind='comparison' if flow['kind'] == 'generate_check' else 'anomaly',
                               case_id=flow['case_id'], request_kind=flow['input']['request_kind'],
-                              branch=flow.get('branch'), anomalies=sorted(set(anomalies)), phases=phases))
+                              branch=flow.get('branch'), anomalies=sorted(set(anomalies)), phases=phases,
+                              first_pass_state='pending' if any(item['agent_decision'] is None
+                                  for phase in phases for item in phase['evidence']) else 'reviewed'))
     if summary['unreadable_records'] or summary['roles']['unrecorded'] or summary['requests']['unrecorded'] \
             or not result['preparation']['ready']:
         cards.append(dict(card_id='record-inventory', kind='anomaly', phases=[],
@@ -219,7 +225,8 @@ def report(manifest, records, end, summary, review, record_hashes, *, comparison
             decisions[entry['card_id']] = entry
     public = [dict(card_id=card['card_id'], card_sha256=card['card_sha256'], kind=card['kind'],
         output_ids=[item['output_id'] for phase in card['phases'] for item in phase['evidence']],
-        anomalies=card['anomalies'], human_decision=decisions.get(card['card_id'], {}).get('decision'),
+        anomalies=card['anomalies'], first_pass_state=card.get('first_pass_state', 'unverified'),
+        human_decision=decisions.get(card['card_id'], {}).get('decision'),
         human_reason_sha256=qa.digest(qa.encoded(decisions[card['card_id']]['reason']))
                             if card['card_id'] in decisions else None) for card in cards]
     pending = [card['card_id'] for card in cards if card['card_id'] not in decisions]
@@ -244,7 +251,9 @@ def comparison_markdown(bundle):
     lines = ['# 평가 전후 비교와 이상 사례', '', '모델/에이전트의 판정과 사용자의 직접 판정은 별개입니다.', '',
              '실행: ' + bundle['run_id'], '계획 해시: ' + bundle['manifest_sha256'], '']
     labels = {'status': '상태', 'action': '제안', 'reason': '이유', 'completion_condition': '완료 조건',
-              'estimated_minutes': '예상 분', 'facts': '근거', 'reduction': '줄어든 범위'}
+              'estimated_minutes': '예상 분', 'facts': '근거', 'reduction': '줄어든 범위',
+              'remaining_work': '남은 범위', 'goal_completed': '목표 완료 여부',
+              'current_action_completed': '현재 행동 완료 여부', 'preserved_completed_ids': '보존된 완료 기록'}
 
     def block(value):
         text = value if isinstance(value, str) else json.dumps(value, ensure_ascii=False, indent=2)
@@ -252,17 +261,23 @@ def comparison_markdown(bundle):
 
     for card in bundle['cards']:
         lines.extend(['## ' + card['card_id'], '', '검토 연결 해시: ' + card['card_sha256'], '',
-                      '이상 사항: ' + (', '.join(card['anomalies']) or '자동 검사/1차 검토에서 표시된 이상 없음'), ''])
+                      '이상 사항', ''])
+        lines.extend(block(', '.join(card['anomalies']) or
+            ('1차 검토 대기: 아직 이상 없음으로 판정하지 않음' if card.get('first_pass_state') == 'pending'
+             else '자동 검사/1차 검토에서 표시된 이상 없음')))
         for phase in card['phases']:
             title = {'initial': '보충 전', 'explicit_rerequest': '보충 후 재요청', 'fixed_check': '고정 답변 검사'}[phase['phase']]
             lines.extend(['### ' + title, '', '진행: ' + phase['state'], '', '입력과 보충 자료', ''])
             lines.extend(block(phase['input']))
             candidate = phase['candidate']
             if candidate is None:
-                lines.extend(['답변 없음: ' + (phase['reason'] or '미실행 또는 미확인'), ''])
+                lines.extend(['답변 없음', '']); lines.extend(block(phase['reason'] or '미실행 또는 미확인'))
             else:
-                for key, label in labels.items():
-                    if key in candidate:
-                        lines.extend([label, '']); lines.extend(block(candidate[key]))
+                for key, value in candidate.items():
+                    lines.extend([labels.get(key, key), '']); lines.extend(block(value))
             lines.extend(['검사 모델 판정', '']); lines.extend(block(phase['checker']))
+            for item in phase['evidence']:
+                lines.extend(['에이전트 1차 판정 (' + item['output_id'] + ')', ''])
+                lines.extend(block(item['agent_decision'] or '검토 대기'))
+                lines.extend(block(item['agent_reason'] or '사유 아직 없음'))
     return '\n'.join(lines) + '\n'
