@@ -188,7 +188,8 @@ class SingleRepeatTests(unittest.TestCase):
 
     def test_reviewed_legacy_source_bundle_is_reportable_but_not_runnable(self):
         # Historical source bytes are data, never executed; no Git history dependency.
-        for attribute in ('LEGACY_REPORT_SOURCES', 'ONCE_REPORT_SOURCES', 'REVISED_ONCE_REPORT_SOURCES'):
+        for attribute in ('LEGACY_REPORT_SOURCES', 'ONCE_REPORT_SOURCES', 'REVISED_ONCE_REPORT_SOURCES',
+                          'ALIGNED_ONCE_REPORT_SOURCES'):
             once = attribute != 'LEGACY_REPORT_SOURCES'
             with self.subTest(source_group=attribute), tempfile.TemporaryDirectory() as directory, ExitStack() as contexts:
                 reference_path = launch.supplemental.REFERENCE
@@ -217,6 +218,11 @@ class SingleRepeatTests(unittest.TestCase):
                                                side_effect=AssertionError('no Git history required')))
                 for name, raw in sources.items():
                     manifest['sources'][name] = dict(sha256=qa.digest(raw), utf8=raw.decode())
+                base = 'services/api/src/suggestion/'
+                manifest['prompts']['generate'] = (manifest['sources'][base+'generate.md']['utf8']
+                                                   + '\n' + manifest['sources'][base+'contract.md']['utf8'])
+                self.assertEqual(launch.supplemental.legacy_report_sources(
+                    dict(manifest, version=3 if once else 4)), {})
                 for flow in manifest['flows']:
                     if flow['kind'] == 'check':
                         flow['reference']['source_sha256'] = qa.digest(sources[reference_path])
@@ -256,7 +262,7 @@ class SingleRepeatTests(unittest.TestCase):
                 self.assertEqual(report['reference_mismatches'], 0)
                 with self.assertRaisesRegex(ValueError, 'source changed|runner differs'):
                     launch.load(root)
-                for changed_path in ('scripts/supplemental_review.py', reference_path):
+                for changed_path in ('scripts/supplemental_review.py', reference_path, base+'generate.md'):
                     changed = deepcopy(manifest)
                     changed['sources'][changed_path]['sha256'] = '0'*64
                     changed['plan_sha256'] = launch.supplemental.binding(changed)

@@ -31,6 +31,7 @@ LEGACY_REPORT_SOURCES = {
     'scripts/supplemental_review.py': '32c62290df6b122ec10c6938c543d15660813a5c2467cc300d1c857048646503',
     'docs/research/claude-output-limit-support.json': '50d6edec463da28e571d9dca93045fb1728368a1a66ba3e8b083003b9b7d7971',
     REFERENCE: 'e3181ca5616b57490951ebd87e5dcdf55bb271b47cc1caee4e08d143a3cddacb',
+    'services/api/src/suggestion/generate.md': '68bc0af452c270ef95ee9379e98558311f4ae05f5ea4b5665a7f13a9769be268',
 }
 
 
@@ -42,6 +43,7 @@ ONCE_REPORT_SOURCES = {
     'scripts/supplemental_review.py': 'fa720a9afc1afc84c6b9b44a0f2d0d7883416052a0cab17731e90f41d41e0e8d',
     'docs/research/claude-output-limit-support.json': '50d6edec463da28e571d9dca93045fb1728368a1a66ba3e8b083003b9b7d7971',
     REFERENCE: 'e3181ca5616b57490951ebd87e5dcdf55bb271b47cc1caee4e08d143a3cddacb',
+    'services/api/src/suggestion/generate.md': '68bc0af452c270ef95ee9379e98558311f4ae05f5ea4b5665a7f13a9769be268',
 }
 
 
@@ -53,13 +55,27 @@ REVISED_ONCE_REPORT_SOURCES = {
     'scripts/supplemental_review.py': 'c896f3f450526a2a32d949516297b0de591733ae2cba0386eeedfd1e0262c293',
     'docs/research/claude-output-limit-support.json': 'aa2a1150ccdbc05d2bf428e30ade5515bf507be58686dc748fa0ed302179f0e4',
     REFERENCE: 'b6c8bfdb7561daba6251a95341f4b9dba2890e2a9bfc7205ac10ec5343b150c7',
+    'services/api/src/suggestion/generate.md': '68bc0af452c270ef95ee9379e98558311f4ae05f5ea4b5665a7f13a9769be268',
+}
+
+
+# #316: preserve read-only reports of #314/#315 after generation instructions change.
+ALIGNED_ONCE_REPORT_SOURCES = {
+    'scripts/oauth_quality.py': '09792cb09a52dd0260d4c2f4ffcd1aa1a00be85254c697f4bdbc1ad82f362195',
+    'scripts/launch_evaluation.py': '74ff4f25073521869b72c1d99ea76659a25030e001ba5b18359c7c4f682d8a4c',
+    'scripts/supplemental_evaluation.py': '0862bd269ecb78cb4af7556c644a7093f2930e338d7814df343f3a902a3333c0',
+    'scripts/supplemental_review.py': 'c896f3f450526a2a32d949516297b0de591733ae2cba0386eeedfd1e0262c293',
+    'docs/research/claude-output-limit-support.json': 'aa2a1150ccdbc05d2bf428e30ade5515bf507be58686dc748fa0ed302179f0e4',
+    REFERENCE: '7be8f8dcaa566eb34d863778aa54ef065de3b7b507cf81a24476eebca1483c44',
+    'services/api/src/suggestion/generate.md': '68bc0af452c270ef95ee9379e98558311f4ae05f5ea4b5665a7f13a9769be268',
 }
 
 
 def legacy_report_sources(manifest):
     for version, kind, sources in ((3, 'supplemental-fixed', LEGACY_REPORT_SOURCES),
                                    (4, 'supplemental-once', ONCE_REPORT_SOURCES),
-                                   (4, 'supplemental-once', REVISED_ONCE_REPORT_SOURCES)):
+                                   (4, 'supplemental-once', REVISED_ONCE_REPORT_SOURCES),
+                                   (4, 'supplemental-once', ALIGNED_ONCE_REPORT_SOURCES)):
         if (manifest.get('version') == version and manifest.get('plan_kind') == kind
                 and all(manifest['sources'].get(path, {}).get('sha256') == sha
                         for path, sha in sources.items())):
