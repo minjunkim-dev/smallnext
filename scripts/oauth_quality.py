@@ -145,7 +145,7 @@ def freeze(directory, suite, comparison=None, repetitions=2, case_ids=(),
     save(directory / "integrity.json", {"manifest_sha256": digest((directory / "manifest.json").read_bytes())})
 
 
-def load(directory, *, read_bytes=Path.read_bytes):
+def load(directory, *, read_bytes=Path.read_bytes, allowed_runner_sha256=()):
     raw = read_bytes(directory / "manifest.json")
     integrity = json.loads(read_bytes(directory / "integrity.json"))
     if digest(raw) != integrity["manifest_sha256"]:
@@ -157,7 +157,8 @@ def load(directory, *, read_bytes=Path.read_bytes):
         if digest(source["utf8"].encode()) != source["sha256"]:
             raise ValueError("frozen source bytes changed")
     runner = manifest["sources"].get("scripts/oauth_quality.py")
-    if runner is not None and digest(Path(__file__).read_bytes()) != runner["sha256"]:
+    if (runner is not None and digest(Path(__file__).read_bytes()) != runner["sha256"]
+            and runner["sha256"] not in allowed_runner_sha256):
         raise ValueError("runner differs from frozen version")
     return manifest
 

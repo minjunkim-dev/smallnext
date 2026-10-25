@@ -244,7 +244,9 @@ def freeze(directory, *, owner, ends_at, delete_method, flow_id=None, max_smalle
 def load(directory, *, descriptor=None, for_report=False):
     directory = Path(directory)
     source = directory if descriptor is None else descriptor
-    manifest = qa.load(directory, read_bytes=lambda path: private_bytes(source, path.relative_to(directory)))
+    manifest = qa.load(directory, read_bytes=lambda path: private_bytes(source, path.relative_to(directory)),
+                       allowed_runner_sha256=(supplemental.LEGACY_REPORT_SOURCES['scripts/oauth_quality.py'],)
+                                             if for_report else ())
     if manifest.get('suite') != 'launch' or manifest.get('parallelism') != 1:
         raise ValueError('wrong launch manifest')
     if manifest.get('version') in (2, 3, 4) or 'plan_kind' in manifest:

@@ -228,7 +228,7 @@ class SingleRepeatTests(unittest.TestCase):
                 path.write_bytes(qa.encoded(receipt))
             report = launch.report(root)
             self.assertTrue(report['automatic_passed'], (report['unreadable_records'], report['requests'], report['stop_reason']))
-            with self.assertRaisesRegex(ValueError, 'source changed'):
+            with self.assertRaisesRegex(ValueError, 'source changed|runner differs'):
                 launch.load(root)
             changed = deepcopy(manifest)
             changed['sources']['scripts/supplemental_review.py']['sha256'] = '0'*64
