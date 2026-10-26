@@ -209,6 +209,24 @@ final class ScreenTimingTests: XCTestCase {
                 budget: 60, expectedAction: "펜 다섯 개 정리하기")
     }
 
+    func testApprovedSingleScreen() throws {
+        let environment = ProcessInfo.processInfo.environment
+        try XCTSkipUnless(environment["SMALLNEXT_SCREEN_ONCE"] == "1",
+                          "승인된 화면 측정의 현재 슬롯에서만 실행한다.")
+        continueAfterFailure = false
+        let kind = try XCTUnwrap(environment["SMALLNEXT_SCREEN_KIND"])
+        XCTAssertTrue(["first_action", "smaller"].contains(kind))
+        let url = try XCTUnwrap(environment["SMALLNEXT_TIMING_TEST_URL"])
+        let app = XCUIApplication()
+        app.launchArguments = ["-ios_core_flow", "YES", "-user_server_ai", "NO",
+                               "-development_ai_url", url, "-suggestion_timing", "YES"]
+        app.launch()
+        let button = kind == "first_action" ? "확인하고 시작" : "더 작게"
+        XCTAssertTrue(app.buttons[button].waitForExistence(timeout: 10))
+        observe(app, button: button, kind: kind, outcome: "normal", budget: 180, mockOnly: false)
+        app.terminate()
+    }
+
     func testFirstInsufficientInfoRestoresAndReturnsToGoalList() throws {
         continueAfterFailure = false
         let url = try XCTUnwrap(ProcessInfo.processInfo.environment["SMALLNEXT_TIMING_TEST_URL"])
@@ -529,7 +547,7 @@ final class ScreenTimingTests: XCTestCase {
         app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "timing:"))
     }
     private func observe(_ app: XCUIApplication, button: String, kind: String, outcome: String,
-                         budget: Double = 10, expectedAction: String? = nil) {
+                         budget: Double = 10, expectedAction: String? = nil, mockOnly: Bool = true) {
         let previous = markers(app).firstMatch.exists ? markers(app).firstMatch.identifier : ""
         let clock = ContinuousClock()
         let started = clock.now
@@ -544,7 +562,11 @@ final class ScreenTimingTests: XCTestCase {
             let marker = markers(app).firstMatch
             if marker.exists, marker.isHittable {
                 let id = marker.identifier
-                if id != previous, id.hasSuffix(":\(kind):\(outcome)") { observed = id }
+                let matches = outcome == "normal"
+                    ? ["action", "question"].contains { id.hasSuffix(":\(kind):\($0)") }
+                    : id.hasSuffix(":\(kind):\(outcome)")
+                if id != previous, matches { observed = id }
+                if outcome == "normal", id != previous, id.hasSuffix(":\(kind):failed") { break }
             }
             if let id = observed {
                 // 전환 중 접근성 표식도 먼저 생긴다. 사진을 확인할 상한에 안정화 대기를 포함한다.
@@ -572,9 +594,10 @@ final class ScreenTimingTests: XCTestCase {
         let elapsed = seconds(started.duration(to: ended))
         let status = termination(elapsed: elapsed, budget: budget, screenshotHash: screenshotHash)
         let parts = observed?.split(separator: ":")
+        let observedOutcome = outcome == "normal" ? parts.map { String($0[3]) } ?? "" : outcome
         let report: [String: Any] = [
             "run_id": parts.map { String($0[1]) } as Any? ?? NSNull(),
-            "request_kind": kind, "expected_outcome": outcome,
+            "request_kind": kind, "expected_outcome": observedOutcome,
             "expected_action": expectedAction as Any? ?? NSNull(),
             "observed_upper_seconds": elapsed, "budget_seconds": budget,
             "max_sample_interval_seconds": maxInterval,
@@ -582,7 +605,7 @@ final class ScreenTimingTests: XCTestCase {
             "unstable_samples": unstableSamples, "missing_screenshot": screenshotHash == nil,
             "evidence_sha256": screenshotHash as Any? ?? NSNull(), "termination": status,
             "method": "XCTest-visible-accessibility+result-screenshot; manual pixel verification required",
-            "mock_only": true
+            "mock_only": mockOnly
         ]
         let data = try! JSONSerialization.data(withJSONObject: report, options: [.sortedKeys])
         let attachment = XCTAttachment(data: data, uniformTypeIdentifier: "public.json")
