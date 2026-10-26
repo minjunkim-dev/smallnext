@@ -149,6 +149,32 @@ class ScreenEvaluationTests(unittest.TestCase):
             screen.run(self.bundle, wrong, approved_once=True, clock=self.clock)
         self.assertFalse(list((self.bundle / 'calls').glob('*-started.json')))
 
+    def test_legitimate_minimum_is_checked_and_kept_as_normal_action_screen(self):
+        result = self.result
+        def minimal(output):
+            if output.get('status') == 'action':
+                output['status'] = 'minimum'
+            return result(output)
+        with patch.object(self, 'result', side_effect=minimal):
+            screen.run(self.bundle, self.observe, approved_once=True, clock=self.clock)
+        self.assertEqual(len(self.seen), 20)
+
+    def test_frozen_absolute_cutoff_bounds_in_flight_call(self):
+        end = datetime.fromisoformat(screen.load(self.bundle)['retention']['evaluation_ends_at'])
+        with patch.object(screen, 'datetime', wraps=datetime) as wall:
+            wall.now.return_value = end - timedelta(seconds=2)
+            def observer(index, slot, budget):
+                def invoke(deadline, cancelled):
+                    self.assertLessEqual(deadline - screen.monotonic(), 2)
+                    wall.now.return_value = end + timedelta(seconds=1)
+                    self.assertTrue(cancelled.is_set())
+                    return {'error': 'cancelled', 'usage': {'input_tokens': 1, 'output_tokens': 0}}
+                screen.role_call(self.bundle, slot['input'], invoke, self.parent)
+                raise ValueError('cutoff')
+            with self.assertRaises(ValueError):
+                screen.run(self.bundle, observer, approved_once=True)
+        self.assertEqual(len(list((self.bundle / 'calls').glob('*-started.json'))), 1)
+
     def test_cli_bridge_uses_session_gate_and_preserves_full_output(self):
         fake = self.root / 'fake-claude'
         fake.write_text('#!' + sys.executable + '''

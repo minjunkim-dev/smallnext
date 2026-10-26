@@ -172,8 +172,9 @@ Claude Code 구독 OAuth·`claude-haiku-5-5 / xhigh` 설정을 변경하지 않�
    실제 CLI와 관측 실행 파일을 전달한다. 원래 결과·기한을 변경하지 않는다.
    `screen_observer.Observer`의 `preflight()`는 전용 시뮬레이터와 빈 목표 DB를 확인한다.
 3. 전용 `codex` wrapper만 `oauth_bridge.py --screen-session <새 폴더> --output-mode text-json`을 호출한다.
-   wrapper는 절대 경로의 승인 CLI·기록 위치를 사용한다. Rust의 기존120초·앱160초를 유지한다.
+   wrapper는 절대 경로의 승인 CLI·기록 위치를 사용한다. Rust의 기존120초·개발 앱130초를 유지한다.
    bridge는 현재 슬롯의 고정 입력과 생성→검사 순서, 후보 동일성·모델/사용량·8192 설정·취소/정리를 확인한다.
+   이 개발 HTTP 앱의 실제 timeout은130초다. 사용자 서버 경로의160초와 구분하며 승인한160초 상한보다 짧다.
 4. `run`은 기존 평가와 같은 `launch-model.lock`을 소유하며 새 run-started를 한 번만 기록한다.
    `Observer`는 새 합성 목표만 추가하고 첫 행동용 준비 상태 또는 축소용 미완료 현재 행동을 복원한다.
    모델 목표 준비나 사용자 수행/완료 기록은 만들지 않는다. 입력은 기존 Swift HTTP 전송 결과와 정확히 대조한다.
@@ -184,6 +185,7 @@ Claude Code 구독 OAuth·`claude-haiku-5-5 / xhigh` 설정을 변경하지 않�
 6. 총20요청·생성20+검사20=40역할·연속60분을 넘지 않는다. 실행기의 전체 시계는 첫 슬롯 준비 직전부터
    보관까지 포함하므로 버튼 시작 기준보다 보수적이다. 생성 시작부터 검사 완료까지 합계120초다.
    오류·품질 거부/불확실·기록 누락·상한에서는 전체 종료한다. 재시도·재개·대체/보충·warm-up 호출은 없다.
+   추출·앱 종료도 같은 남은 관측 예산을 사용한다. 상한 뒤에는 새 작업을 시작하지 않으며 필수 프로세스 회수만 끝낸다.
    QA 앱 종료로 HTTP를 끊고 bridge는 소유권 상실 시 CLI를 종료·회수한다.
 7. 사진을 실제 확인한 뒤 해당hash의 `samples/NN-review.json`에 `basis=agent_pixel_review`,
    `visible_normal_result=true/false`를 새로 기록한다. 원래 사진/관측 자료는 수정하지 않는다.

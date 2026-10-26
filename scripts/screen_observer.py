@@ -1,12 +1,13 @@
 """Local #111 observer using the existing TimingValidation scheme and QA simulator only."""
 import json
+from contextlib import closing
 import os
 from pathlib import Path
 import plistlib
 import signal
 import sqlite3
 import subprocess
-from time import monotonic
+from time import monotonic, sleep
 
 import oauth_quality as qa
 
@@ -24,14 +25,18 @@ class Observer:
             child = subprocess.Popen(argv, stdout=output, stderr=subprocess.STDOUT, start_new_session=True)
             try:
                 return child.wait(timeout=timeout)
-            finally:
-                if child.poll() is None:
-                    os.killpg(child.pid, signal.SIGTERM)
+            except BaseException:
+                # Keep the leader unreaped until both signals, even if TERM ends it first.
+                for sig in (signal.SIGTERM, signal.SIGKILL):
                     try:
-                        child.wait(timeout=3)
-                    except subprocess.TimeoutExpired:
-                        os.killpg(child.pid, signal.SIGKILL)
-                        child.wait(timeout=3)
+                        os.killpg(child.pid, sig)
+                    except (ProcessLookupError, PermissionError):
+                        # macOS may report EPERM for a group containing only the unreaped leader.
+                        pass
+                    if sig == signal.SIGTERM:
+                        sleep(.05)
+                child.wait(timeout=1)
+                raise
 
     def preflight(self):
         devices = json.loads(self.command(['xcrun', 'simctl', 'list', 'devices', '-j']))['devices']
@@ -44,13 +49,13 @@ class Observer:
         self.database = self.container / 'Library/Application Support/Smallnext/smallnext.sqlite'
         if not self.database.is_file():
             raise ValueError('initialize the empty QA app without a development URL first')
-        with sqlite3.connect(f'file:{self.database}?mode=rw', uri=True) as db:
+        with closing(sqlite3.connect(f'file:{self.database}?mode=rw', uri=True)) as db:
             if db.execute('SELECT COUNT(*) FROM goal').fetchone()[0]:
                 raise ValueError('QA simulator must start with no goals')
 
     def prepare(self, slot):
         # Only insert new synthetic goals into this run's empty QA database; never erase a goal.
-        with sqlite3.connect(f'file:{self.database}?mode=rw', uri=True) as db:
+        with closing(sqlite3.connect(f'file:{self.database}?mode=rw', uri=True)) as db, db:
             first = slot['input']['request_kind'] == 'first_action'
             cursor = db.execute('''INSERT INTO goal
                 (statement,current_state,materials,available_minutes,is_confirmed,completion_criteria,
@@ -72,6 +77,11 @@ class Observer:
 
     def __call__(self, index, slot, budget):
         started = monotonic()
+        def remaining(maximum):
+            value = budget - (monotonic() - started)
+            if value <= 0:
+                raise TimeoutError('screen observation budget exhausted')
+            return min(maximum, value)
         self.prepare(slot)
         result = self.directory / f'{index:02d}.xcresult'
         exported = self.directory / f'{index:02d}-attachments'
@@ -98,12 +108,12 @@ class Observer:
                 f'platform=iOS Simulator,id={self.simulator}', '-resultBundlePath', str(result),
                 '-parallel-testing-enabled', 'NO', '-test-iterations', '1',
                 '-only-testing:SmallnextTimingUITests/ScreenTimingTests/testApprovedSingleScreen',
-                'test-without-building'], timeout=max(.01, budget - (monotonic() - started)),
+                'test-without-building'], timeout=remaining(180),
                 log=self.directory / f'{index:02d}-xcodebuild.log')
             if code:
                 raise ValueError('screen observation failed; no retry')
             self.command(['xcrun', 'xcresulttool', 'export', 'attachments', '--path', str(result),
-                          '--output-path', str(exported)], timeout=30)
+                          '--output-path', str(exported)], timeout=remaining(30))
             observations = []
             for path in exported.glob('*.json'):
                 value = json.loads(path.read_bytes())
@@ -119,6 +129,7 @@ class Observer:
             if len(app) != 1 or len(images) != 1:
                 raise ValueError('UUID cache or PNG missing')
             qa.save(self.directory / f'{index:02d}-app-cache.json', cache)
+            remaining(180)
             for parent, directories, files in os.walk(exported):
                 os.chmod(parent, 0o700)
                 for name in directories:
@@ -135,4 +146,4 @@ class Observer:
         finally:
             # The QA app owns the HTTP request; terminating it disconnects Rust's CLI worker.
             subprocess.run(['xcrun', 'simctl', 'terminate', self.simulator, 'dev.smallnext.app'],
-                           capture_output=True, timeout=15, check=False)
+                           capture_output=True, timeout=max(.01, min(15, budget - (monotonic() - started))), check=False)

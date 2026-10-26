@@ -127,12 +127,14 @@ def stop(directory, reason):
 
 
 class Cancelled:
-    def __init__(self, directory, parent, deadline):
+    def __init__(self, directory, parent, deadline, ends_at):
         self.directory, self.parent, self.deadline = directory, parent, deadline
+        self.ends_at = ends_at
 
     def is_set(self):
         # Parent loss reaps the CLI even when Rust kills the bridge without a handler.
-        return self.parent.is_set() or not live(self.directory) or monotonic() >= self.deadline
+        return (self.parent.is_set() or monotonic() >= self.deadline
+                or datetime.now(timezone.utc) >= self.ends_at or not live(self.directory))
 
 
 def role_call(directory, data, invoke, parent, *, clock=monotonic):
@@ -166,7 +168,9 @@ def role_call(directory, data, invoke, parent, *, clock=monotonic):
             role_started = launch.private_json(directory, f'calls/{index:02d}-generate-started.json')['started']
         else:
             role_started = clock()
-        deadline = min(role_started + 120, active['total_deadline'])
+        ends_at = datetime.fromisoformat(manifest['retention']['evaluation_ends_at'])
+        deadline = min(role_started + 120, active['total_deadline'],
+                       clock() + (ends_at - datetime.now(timezone.utc)).total_seconds())
         if clock() >= deadline or parent.is_set():
             stop(directory, 'time_limit')
             raise ValueError('screen time limit')
@@ -178,7 +182,7 @@ def role_call(directory, data, invoke, parent, *, clock=monotonic):
         except FileExistsError:
             stop(directory, 'duplicate_role')
             raise ValueError('duplicate screen role') from None
-    record = invoke(deadline, Cancelled(directory, parent, deadline))
+    record = invoke(deadline, Cancelled(directory, parent, deadline, ends_at))
     output = record.get('output', {})
     error = record.get('error')
     if not error and (record.get('actual_models') != [qa.MODEL] or record.get('provider_messages') != 1
@@ -190,10 +194,11 @@ def role_call(directory, data, invoke, parent, *, clock=monotonic):
         error = 'usage_unknown'
     if not error and (usage['output_tokens'] % 1 or usage['output_tokens'] > qa.OUTPUT_TOKENS):
         error = 'output_tokens_exceeded'
-    if not error and (clock() >= deadline or not live(directory) or parent.is_set()):
+    if not error and (clock() >= deadline or datetime.now(timezone.utc) >= ends_at
+                      or not live(directory) or parent.is_set()):
         error = 'time_limit_or_cancelled'
     if not error and role == 'generate' and (qa.proposal_invalid_fields(original, output)
-                                            or output.get('status') not in ('action', 'need_info')):
+                                            or output.get('status') not in ('action', 'minimum', 'need_info')):
         error = 'invalid_or_non_normal_proposal'
     if not error and role == 'check' and (not qa.check_valid(output) or output.get('verdict') != 'accept'):
         error = 'unexpected_quality'
