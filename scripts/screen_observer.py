@@ -107,7 +107,7 @@ class Observer:
         try:
             code = self.command(['xcodebuild', '-xctestrun', str(test_file), '-destination',
                 f'platform=iOS Simulator,id={self.simulator}', '-resultBundlePath', str(result),
-                '-parallel-testing-enabled', 'NO', '-test-iterations', '1',
+                '-parallel-testing-enabled', 'NO',
                 '-only-testing:SmallnextTimingUITests/ScreenTimingTests/testApprovedSingleScreen',
                 'test-without-building'], timeout=remaining(180),
                 log=self.directory / f'{index:02d}-xcodebuild.log')
@@ -131,18 +131,19 @@ class Observer:
                 raise ValueError('UUID cache or PNG missing')
             qa.save(self.directory / f'{index:02d}-app-cache.json', cache)
             remaining(180)
-            for parent, directories, files in os.walk(exported):
-                os.chmod(parent, 0o700)
-                for name in directories:
-                    path = Path(parent) / name
-                    if path.is_symlink():
-                        raise ValueError('unexpected evidence symlink')
-                    os.chmod(path, 0o700)
-                for name in files:
-                    path = Path(parent) / name
-                    if path.is_symlink():
-                        raise ValueError('unexpected evidence symlink')
-                    os.chmod(path, 0o600)
+            for tree in (result, exported):
+                for parent, directories, files in os.walk(tree):
+                    os.chmod(parent, 0o700)
+                    for name in directories:
+                        path = Path(parent) / name
+                        if path.is_symlink():
+                            raise ValueError('unexpected evidence symlink')
+                        os.chmod(path, 0o700)
+                    for name in files:
+                        path = Path(parent) / name
+                        if path.is_symlink():
+                            raise ValueError('unexpected evidence symlink')
+                        os.chmod(path, 0o600)
             return observation, app[0], images[0]
         finally:
             # The QA app owns the HTTP request; terminating it disconnects Rust's CLI worker.
