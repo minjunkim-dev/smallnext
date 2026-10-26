@@ -14,7 +14,40 @@ import unittest
 
 from check_github_settings import audit, codeql_source_drift, differences
 
-BASELINE = json.loads((settings.ROOT / ".github/repository-settings.json").read_text())
+# Synthetic default-setup profile: unit tests must not depend on a consumer checkout.
+BASELINE = {
+    "schema_version": 1, "repository": "owner/repo", "repository_id": 12, "default_branch": "main",
+    "expected": {
+        "repository": {
+            "default_branch": "main", "visibility": "private", "allow_merge_commit": False,
+            "allow_rebase_merge": False, "allow_squash_merge": True, "allow_auto_merge": False,
+            "delete_branch_on_merge": True, "allow_update_branch": True,
+            "squash_merge_commit_title": "PR_TITLE", "squash_merge_commit_message": "PR_BODY",
+            "security_and_analysis": {
+                name: {"status": "enabled"} for name in
+                ("dependabot_security_updates", "secret_scanning", "secret_scanning_push_protection")
+            },
+        },
+        "protection": {
+            "required_status_checks": {"strict": True, "checks": [{"context": "CI", "app_id": 15368}]},
+            "required_pull_request_reviews": {
+                "required_approving_review_count": 0, "dismiss_stale_reviews": True,
+                "require_code_owner_reviews": False, "require_last_push_approval": False,
+            },
+            **{name: {"enabled": enabled} for name, enabled in {
+                "enforce_admins": True, "required_linear_history": True,
+                "required_conversation_resolution": True, "allow_force_pushes": False,
+                "allow_deletions": False, "lock_branch": False,
+            }.items()},
+        },
+        "rulesets": [], "actions": {"enabled": True, "allowed_actions": "selected", "sha_pinning_required": True},
+        "allowed_actions": {"github_owned_allowed": True, "verified_allowed": False, "patterns_allowed": []},
+        "workflow_token": {"default_workflow_permissions": "read", "can_approve_pull_request_reviews": False},
+        "fork_policy": {"approval_policy": "all_external_contributors"},
+        "immutable_releases": {"enabled": True}, "dependabot_alerts": {"enabled": True},
+        "codeql": {"state": "configured"},
+    },
+}
 
 
 def advanced(profile):
@@ -45,14 +78,25 @@ class GitHubSettingsTests(unittest.TestCase):
         self.assertEqual(differences(True, 1, "enabled"), ["enabled"])
 
     def test_baseline_pins_checked_out_codeql_workflow(self):
-        # Dependabot edits only codeql.yml; a stale pin would report drift after merge.
-        self.assertEqual(codeql_source_drift(BASELINE), [],
-                         "Set codeql_main_source.sha to `git hash-object .github/workflows/codeql.yml`")
-        if "codeql_main_source" not in BASELINE["expected"]:
-            return  # default setup: validate_profile forbids a workflow pin
-        profile = copy.deepcopy(BASELINE)
-        profile["expected"]["codeql_main_source"]["sha"] = "0" * 40
-        self.assertEqual(codeql_source_drift(profile), ["codeql_main_source.sha"])
+        profile = advanced(BASELINE)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            workflow = root / profile["expected"]["codeql_main_source"]["path"]
+            workflow.parent.mkdir(parents=True)
+            data = ("steps:\n  - uses: github/codeql-action/analyze@" + "a" * 40 + "\n").encode()
+            workflow.write_bytes(data)
+            profile["expected"]["codeql_main_source"]["sha"] = settings.hashlib.sha1(
+                b"blob %d\0" % len(data) + data).hexdigest()
+            with patch.object(settings, "ROOT", root):
+                self.assertEqual(codeql_source_drift(profile), [])
+                profile["expected"]["codeql_main_source"]["sha"] = "0" * 40
+                self.assertEqual(codeql_source_drift(profile), ["codeql_main_source.sha"])
+        # Installed copies additionally check the consumer's real profile and workflow pin.
+        path = settings.ROOT / ".github/repository-settings.json"
+        if path.exists():
+            project = json.loads(path.read_text())
+            settings.validate_profile(project)
+            self.assertEqual(codeql_source_drift(project), [])
 
     def test_codeql_action_steps_must_share_one_commit(self):
         # Split Dependabot PRs bumped init without analyze; every analyze job failed.
@@ -208,6 +252,77 @@ class GitHubSettingsTests(unittest.TestCase):
         self.assertEqual(status, 1)
         self.assertIn("repository.required_status_checks", out)
         self.assertEqual(err, "")
+
+    def exception(self, status="unsupported"):
+        return {"status": status, "reason": "Private repository plan lacks this feature",
+                "evidence": "GitHub documentation and repository setup review"}
+
+    def test_declared_unsupported_control_is_limited_and_other_drift_still_fails(self):
+        profile = self.profile()
+        del profile["expected"]["protection"]
+        profile["exceptions"] = {"protection": self.exception()}
+        def read(path):
+            self.assertFalse(path.endswith("/protection"), "Unavailable control must not be queried")
+            return self.reader(path)
+        status, out, err = self.run_main(profile, read)
+        self.assertEqual((status, err), (0, ""))
+        self.assertIn("UNSUPPORTED: protection", out)
+        self.assertIn("LIMITED:", out)
+        self.assertNotIn("PASS:", out)
+        profile["expected"]["actions"]["enabled"] = False
+        self.assertEqual(self.run_main(profile, read)[0], 1)
+
+    def test_nested_unavailable_fields_and_codeql_language_exception(self):
+        profile = advanced(self.profile())
+        for name in ("codeql", *settings.ADVANCED_CODEQL):
+            del profile["expected"][name]
+        del profile["expected"]["repository"]["security_and_analysis"]["secret_scanning"]
+        del profile["expected"]["actions"]["sha_pinning_required"]
+        profile["exceptions"] = {
+            "codeql": self.exception("not_applicable"),
+            "repository.security_and_analysis.secret_scanning.status": self.exception(),
+            "actions.sha_pinning_required": self.exception(),
+        }
+        def read(path):
+            self.assertNotIn("code-scanning", path)
+            self.assertNotIn("codeql.yml", path)
+            result = self.reader(path)
+            if path == "repos/owner/repo":
+                del result["security_and_analysis"]["secret_scanning"]
+            elif path.endswith("actions/permissions"):
+                del result["sha_pinning_required"]
+            return result
+        status, out, err = self.run_main(profile, read)
+        self.assertEqual((status, err), (0, ""))
+        self.assertIn("NOT_APPLICABLE: codeql", out)
+        self.assertEqual(codeql_source_drift(profile), [])
+
+    def test_invalid_exceptions_cannot_erase_required_controls(self):
+        cases = [None, {"protection": {}}, {"secrets": self.exception()},
+                 {"repository.allow_squash_merge": self.exception()},
+                 {"protection": self.exception("unverified")},
+                 {"protection": self.exception() | {"evidence": " "}},
+                 {"protection": self.exception(), "actions": self.exception(),
+                  "actions.sha_pinning_required": self.exception()}]
+        for exceptions in cases:
+            profile = self.profile()
+            del profile["expected"]["protection"]
+            profile["exceptions"] = exceptions
+            with self.subTest(exceptions=exceptions):
+                self.assertEqual(self.run_main(profile, lambda _: self.fail("Invalid exception reached API"))[0], 2)
+        profile = self.profile()
+        profile["exceptions"] = {"protection": self.exception()}
+        self.assertEqual(self.run_main(profile, lambda _: self.fail("Conflicting expectation reached API"))[0], 2)
+
+    def test_403_and_404_do_not_automatically_become_availability_exceptions(self):
+        for code in (403, 404):
+            def read(path):
+                if path.endswith("/protection"):
+                    raise settings.subprocess.CalledProcessError(1, ["gh", "api"], stderr=f"HTTP {code}")
+                return self.reader(path)
+            status, out, err = self.run_main(self.profile(), read)
+            self.assertEqual((status, out), (2, ""))
+            self.assertIn("UNVERIFIED", err)
 
     def test_main_pass_and_drift_have_distinct_exit_codes(self):
         status, out, err = self.run_main(self.profile(), self.reader)

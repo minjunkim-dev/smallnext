@@ -22,3 +22,7 @@
 - Issue tracker: GitHub `minjunkim-dev/smallnext`. `docs/agents/issue-tracker.md`를 읽습니다.
 - Triage labels: `docs/agents/triage-labels.md`에서 다섯 역할과 라벨을 확인합니다.
 - Domain docs: [문서 길잡이](docs/agents/domain.md)를 따릅니다.
+
+### 작업 진입
+
+작업 진입·초기 설정 확인·명세와 티켓의 통합: [개발 절차](docs/agents/development.md)를 읽습니다. 작은 수정에는 전체 명세 절차를 강제하지 않습니다.

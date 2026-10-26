@@ -220,6 +220,6 @@ API 배포를 켜기 전에 운영 도메인·VM·관리형 DB·비밀정보 제
 - [Gradle 빌드 캐시](https://docs.gradle.org/9.8.0/userguide/build_cache.html)
 - [Docker 로컬 캐시](https://docs.docker.com/build/cache/backends/local/)
 
-## Bugbot 규칙 검사
+## 공통 기준 복사본 검사
 
-Repository hygiene는 `scripts/check_bugbot_rules.py`를 실행한다. root와 모든 추적된 영역 규칙의 개별 30,000자·총 95,000자 한도를 검사한다. 필수 규칙 파일 누락·빈 파일·symlink와 로컬 문서 링크를 거부한다. 상세 문서는 이 예산에 포함하지 않는다. 문서 선택은 `docs/agents/review.md`의 로컬 리뷰 길잡이를 따른다. 서버 실제 포함은 수동 verbose 표로 별도 확인한다.
+Repository hygiene는 `python3 scripts/check_repo_baseline.py`로 manifest의 복사본 해시를 검사한다. 남은 공통 테스트는 전체 scripts 탐색에서 실행한다. CodeQL blob pin 검사는 유지한다. 자체 리뷰의 자료 선택과 사용자 요청 회고는 `docs/agents/review.md`를 따른다.

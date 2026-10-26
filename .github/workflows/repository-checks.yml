@@ -28,8 +28,8 @@ jobs:
         env:
           PYTHONDONTWRITEBYTECODE: "1"
         run: python3 scripts/check_repository.py
-      - name: Validate core and scoped Bugbot rules
-        run: python3 -B scripts/check_bugbot_rules.py
+      - name: Verify shared baseline copies
+        run: python3 -B scripts/check_repo_baseline.py
       - name: Check shared instructions and feature flags
         run: python3 scripts/workflow_policy.py
       - name: Test project selection, workflow policy and review authorization

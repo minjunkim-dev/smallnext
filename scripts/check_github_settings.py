@@ -121,15 +121,48 @@ STRING_FIELDS = {
 }
 
 
+# Only feature availability can narrow coverage; repository identity and merge policy stay required.
+EXCEPTION_PATHS = (set(REQUIRED_FIELDS) - {"repository"} - ADVANCED_CODEQL) | {
+    "repository." + field for field in REQUIRED_FIELDS["repository"].split()
+    if field.startswith("security_and_analysis.")
+} | {"actions.sha_pinning_required"}
+
+
+def validate_exceptions(profile):
+    exceptions = profile.get("exceptions", {})
+    if not isinstance(exceptions, dict):
+        raise ValueError("Exceptions must be an object")
+    for path, entry in exceptions.items():
+        if path not in EXCEPTION_PATHS or not isinstance(entry, dict):
+            raise ValueError(f"Invalid availability exception: {path}")
+        if (set(entry) != {"status", "reason", "evidence"}
+                or entry["status"] not in ("unsupported", "not_applicable")
+                or any(not isinstance(entry[key], str) or not entry[key].strip()
+                       for key in ("reason", "evidence"))):
+            raise ValueError(f"Exception needs status, reason and evidence: {path}")
+        if any(path.startswith(other + ".") for other in exceptions):
+            raise ValueError(f"Overlapping availability exceptions: {path}")
+        value = profile.get("expected", {})
+        for part in path.split("."):
+            if not isinstance(value, dict) or part not in value:
+                break
+            value = value[part]
+        else:
+            raise ValueError(f"Exception must be omitted from expected: {path}")
+    return exceptions
+
+
 def validate_profile(profile):
     if not isinstance(profile, dict):
         raise ValueError("Baseline must be an object")
     expected = profile.get("expected")
     if not isinstance(expected, dict):
         raise ValueError("Baseline must include every required control")
+    exceptions = validate_exceptions(profile)
     codeql = expected.get("codeql")
     default_setup = isinstance(codeql, dict) and codeql.get("state") == "configured"
-    required = set(REQUIRED_FIELDS) - ADVANCED_CODEQL if default_setup else set(REQUIRED_FIELDS)
+    required = set(REQUIRED_FIELDS) - (ADVANCED_CODEQL if default_setup or "codeql" in exceptions else set())
+    required -= {name for name in exceptions if "." not in name}
     if set(expected) != required:
         raise ValueError("Baseline must include every required control")
     for control, fields in REQUIRED_FIELDS.items():
@@ -143,6 +176,8 @@ def validate_profile(profile):
         if not isinstance(value, dict):
             raise ValueError(f"Invalid control: {control}")
         for field in fields.split():
+            if f"{control}.{field}" in exceptions:
+                continue
             current = value
             for part in field.split("."):
                 if not isinstance(current, dict) or part not in current:
@@ -215,10 +250,16 @@ def main():
     except (ValueError, KeyError, TypeError, OSError, subprocess.SubprocessError) as error:
         print(f"UNVERIFIED: GitHub settings lookup failed ({type(error).__name__})", file=sys.stderr)
         return 2
+    exceptions = profile.get("exceptions", {})
+    for path, entry in sorted(exceptions.items()):
+        print(f"{entry['status'].upper()}: {path}: {entry['reason']} ({entry['evidence']})")
     if drift:
         print("DRIFT: " + ", ".join(drift))
         return 1
-    print(f"PASS: {profile['repository']} settings match baseline; no writes performed")
+    if exceptions:
+        print(f"LIMITED: {profile['repository']} checked settings match; declared exceptions were not verified; no writes performed")
+    else:
+        print(f"PASS: {profile['repository']} settings match baseline; no writes performed")
     return 0
 
 

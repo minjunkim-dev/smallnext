@@ -44,7 +44,7 @@ class ScopeTests(unittest.TestCase):
                 self.assert_selected([path], api=True, container=True)
 
     def test_api_review_rules_skip_project_builds(self):
-        self.assert_selected(["services/api/.cursor/BUGBOT.md"])
+        self.assert_selected(["services/api/REVIEW_NOTES.md"])
 
     def test_container_config_selects_only_container(self):
         self.assert_selected([".dockerignore", ".env.example", "infra/production/compose.yaml"], container=True)

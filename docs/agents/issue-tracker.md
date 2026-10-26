@@ -30,3 +30,7 @@ GitHub는 Issue와 PR의 번호를 공유한다. 대상이 모호하면 `gh pr v
 - Resolve: 실제 확정 답을 해결 댓글로 게시한다. 질문을 닫는다. 지도의 Decisions so far에는 제목 링크와 한 줄 요약만 추가한다.
 
 native sub-issue나 dependency가 없는 tracker로 바꾸면 해당 대체 규칙을 이 문서에 기록한다. GitHub에서 사용할 수 있는 native 관계를 본문 목록으로 대체하지 않는다.
+
+## 명세·티켓 의존성
+
+`to-spec`·`to-tickets`·`implement-spec`는 [개발 절차](development.md)로 연결한다. 승인된 티켓은 부모 명세와 연결하고 GitHub native sub-issue·dependency를 사용한다. 지원되지 않으면 부모 참조와 명시적인 `Blocked by`를 기록한다. 선행 티켓의 실제 완료 상태와 담당자를 확인하고 준비된 작업만 선택한다. 기존 본문·코멘트·착수 소유권 규칙을 유지한다. 명세 작성·티켓 분해만으로 부모를 닫지 않으며, 구현·통합 검증·기존 병합 조건을 충족한 뒤 tracker의 완료 관례를 따른다.
