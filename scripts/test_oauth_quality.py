@@ -22,6 +22,44 @@ class FrozenEvaluationTests(unittest.TestCase):
     def setUp(self):
         permit_fake_cli(self)
 
+    def test_failed_cli_keeps_safe_exit_and_stream_diagnostics_without_raw_errors(self):
+        with tempfile.TemporaryDirectory() as directory:
+            fake = Path(directory) / 'claude'
+            stderr = 'PRIVATE-ERROR Bearer PRIVATE-TOKEN\n' * 10000
+            fake.write_text('#!/usr/bin/env python3\nimport json,sys\n'
+                f'sys.stderr.write({stderr!r})\n'
+                "print(json.dumps({'type':'result','subtype':'error_during_execution',"
+                "'is_error':True,'errors':['PRIVATE-PROVIDER-ERROR']}))\n"
+                'sys.exit(7)\n')
+            fake.chmod(0o700)
+            schema = {'type': 'object', 'properties': {}, 'required': [], 'additionalProperties': False}
+            record = qa.call(str(fake), 'prompt', schema, {}, qa.monotonic()+2,
+                             threading.Event(), output_mode='text-json')
+            self.assertEqual(record['error'], 'provider_failed')
+            self.assertEqual(record['cli_exit_code'], 7)
+            self.assertEqual(record['stderr_bytes'], len(stderr.encode()))
+            self.assertEqual(record['stderr_sha256'], qa.digest(stderr.encode()))
+            self.assertEqual(record['provider_result'], {'subtype': 'error_during_execution', 'is_error': True})
+            self.assertTrue(record['process_reaped'])
+            self.assertFalse(record['process_group_alive'])
+            self.assertNotIn('PRIVATE', json.dumps(record))
+
+    def test_nonstandard_provider_result_cannot_copy_error_text_or_break_failure_record(self):
+        with tempfile.TemporaryDirectory() as directory:
+            fake = Path(directory) / 'claude'
+            schema = {'type': 'object', 'properties': {}, 'required': [], 'additionalProperties': False}
+            for result in (None, {'type': 'result', 'subtype': ['PRIVATE'], 'is_error': 'PRIVATE'}):
+                fake.write_text('#!/usr/bin/env python3\nimport json,sys\n'
+                    + (f'print(json.dumps({result!r}))\n' if result else '') + 'sys.exit(3)\n')
+                fake.chmod(0o700)
+                record = qa.call(str(fake), 'prompt', schema, {}, qa.monotonic()+2,
+                                 threading.Event(), output_mode='text-json')
+                self.assertEqual(record['error'], 'provider_failed')
+                self.assertEqual(record['cli_exit_code'], 3)
+                self.assertEqual(record['provider_result'], None if result is None else
+                                 {'subtype': 'other', 'is_error': None})
+                self.assertNotIn('PRIVATE', json.dumps(record))
+
     def test_generation_cleanup_failure_never_calls_checker(self):
         failures = [({"process_group_alive": True}, "process_cleanup"),
                     ({"cli_pid": 1, "process_reaped": False}, "process_cleanup"),

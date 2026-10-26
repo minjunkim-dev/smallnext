@@ -302,6 +302,11 @@ class Tracker:
                 "last_thinking_seconds": self.last_thinking, "delta_characters": self.characters,
                 "trace": self.trace, "block_seconds": self.block_seconds,
                 "actual_models": sorted({name if name == MODEL else "unexpected_model" for name in models}),
+                "provider_result": None if self.result is None else {
+                    "subtype": result.get("subtype") if type(result.get("subtype")) is str and result.get("subtype") in {
+                        "success", "error_during_execution", "error_max_turns", "error_max_budget_usd",
+                        "error_max_structured_output_retries"} else "other",
+                    "is_error": result.get("is_error") if type(result.get("is_error")) is bool else None},
                 "api_seconds": numeric(result.get("duration_api_ms"), 1000),
                 "usage": {key: numeric(usage.get(key)) for key in (
                     "input_tokens", "output_tokens", "cache_read_input_tokens", "cache_creation_input_tokens")}}
@@ -470,6 +475,8 @@ def _call(claude, prompt, schema, data, deadline, cancelled, output_mode="struct
     tracker = Tracker(schema)
     started = monotonic()
     child = None
+    stderr_digest = hashlib.sha256()
+    stderr_bytes = 0
     if output_mode == "text-json":
         prompt += ("\nOutput only a JSON object, starting with { and ending with }. "
                    "Do not wrap the object in backticks or code fences. No preamble or trailing text. "
@@ -506,7 +513,7 @@ def _call(claude, prompt, schema, data, deadline, cancelled, output_mode="struct
             raise ValueError("evaluation_not_authorized")
         with tempfile.TemporaryDirectory(prefix="smallnext-oauth-") as workspace:
             child = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                                     stderr=subprocess.DEVNULL, start_new_session=True,
+                                     stderr=subprocess.PIPE, start_new_session=True,
                                      cwd=workspace, env=environment())
             record["cli_pid"] = child.pid
             pending = memoryview(encoded(data))
@@ -516,8 +523,9 @@ def _call(claude, prompt, schema, data, deadline, cancelled, output_mode="struct
             with selectors.DefaultSelector() as selector:
                 selector.register(child.stdin, selectors.EVENT_WRITE)
                 selector.register(child.stdout, selectors.EVENT_READ)
-                eof = False
-                while not eof:
+                selector.register(child.stderr, selectors.EVENT_READ)
+                streams = {child.stdout, child.stderr}
+                while streams:
                     if cancelled.is_set():
                         raise ValueError("cancelled")
                     if monotonic() >= deadline:
@@ -533,19 +541,25 @@ def _call(claude, prompt, schema, data, deadline, cancelled, output_mode="struct
                             if not pending:
                                 selector.unregister(child.stdin)
                                 child.stdin.close()
-                    if not any(key.fileobj is child.stdout for key, _ in ready):
-                        continue
-                    raw = os.read(child.stdout.fileno(), 65536)
-                    if not raw:
-                        eof = True
-                    buffer += raw
-                    total_bytes += len(raw)
-                    if total_bytes > 4 * 1024 * 1024 or len(buffer) > 512 * 1024:
-                        raise ValueError("output_limit")
-                    while b"\n" in buffer:
-                        line, buffer = buffer.split(b"\n", 1)
-                        if line.strip():
-                            tracker.consume(json.loads(line), round(monotonic() - started, 3))
+                            continue
+                        raw = os.read(key.fileobj.fileno(), 65536)
+                        if not raw:
+                            selector.unregister(key.fileobj)
+                            streams.remove(key.fileobj)
+                            continue
+                        if key.fileobj is child.stderr:
+                            # Error text can contain credentials; retain only size and digest.
+                            stderr_bytes += len(raw)
+                            stderr_digest.update(raw)
+                            continue
+                        buffer += raw
+                        total_bytes += len(raw)
+                        if total_bytes > 4 * 1024 * 1024 or len(buffer) > 512 * 1024:
+                            raise ValueError("output_limit")
+                        while b"\n" in buffer:
+                            line, buffer = buffer.split(b"\n", 1)
+                            if line.strip():
+                                tracker.consume(json.loads(line), round(monotonic() - started, 3))
                 if buffer.strip():
                     tracker.consume(json.loads(buffer), round(monotonic() - started, 3))
         result = tracker.result or {}
@@ -613,12 +627,14 @@ def _call(claude, prompt, schema, data, deadline, cancelled, output_mode="struct
             try:
                 child.wait(timeout=1)
                 record["process_reaped"] = True
+                record["cli_exit_code"] = child.returncode
             except (subprocess.TimeoutExpired, OSError):
                 record["cleanup_error"] = "reap_failed"
             if child.returncode != 0 and "error" not in record:
                 record.pop("output", None)
                 record["error"] = "provider_failed"
-            for stream in (child.stdin, child.stdout):
+            record.update(stderr_bytes=stderr_bytes, stderr_sha256=stderr_digest.hexdigest())
+            for stream in (child.stdin, child.stdout, child.stderr):
                 try:
                     stream.close()
                 except OSError:
