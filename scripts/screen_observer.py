@@ -45,14 +45,18 @@ class Observer:
                     for device in rows if device['udid'] == self.simulator]
         if len(selected) != 1 or not selected[0]['name'].startswith('Smallnext111-'):
             raise ValueError('fresh dedicated Smallnext111 iOS 27.0 simulator required')
-        self.container = Path(self.command(['xcrun', 'simctl', 'get_app_container', self.simulator,
-                                            'dev.smallnext.app', 'data']))
-        self.database = self.container / 'Library/Application Support/Smallnext/smallnext.sqlite'
+        self.refresh_container()
         if not self.database.is_file():
             raise ValueError('initialize the empty QA app without a development URL first')
         with closing(sqlite3.connect(f'file:{self.database}?mode=rw', uri=True)) as db:
             if db.execute('SELECT COUNT(*) FROM goal').fetchone()[0]:
                 raise ValueError('QA simulator must start with no goals')
+
+    def refresh_container(self, timeout=30):
+        # XCTest installation can move the preserved app data to a new container UUID.
+        self.container = Path(self.command(['xcrun', 'simctl', 'get_app_container', self.simulator,
+                                            'dev.smallnext.app', 'data'], timeout=timeout))
+        self.database = self.container / 'Library/Application Support/Smallnext/smallnext.sqlite'
 
     def prepare(self, slot):
         # Only insert new synthetic goals into this run's empty QA database; never erase a goal.
@@ -83,6 +87,7 @@ class Observer:
             if value <= 0:
                 raise TimeoutError('screen observation budget exhausted')
             return min(maximum, value)
+        self.refresh_container(timeout=remaining(30))
         self.prepare(slot)
         result = self.directory / f'{index:02d}.xcresult'
         exported = self.directory / f'{index:02d}-attachments'
@@ -123,6 +128,7 @@ class Observer:
             if len(observations) != 1:
                 raise ValueError('one UUID-linked screen observation required')
             observation = observations[0]
+            self.refresh_container(timeout=remaining(30))
             cache = json.loads((self.container / 'Library/Caches/suggestion-timing.json').read_bytes())
             app = [sample for sample in cache if sample.get('runID') == observation['run_id']]
             images = [path.read_bytes() for path in exported.glob('*.png')

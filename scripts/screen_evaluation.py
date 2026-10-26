@@ -146,7 +146,8 @@ def role_call(directory, data, invoke, parent, *, clock=monotonic):
         raise ValueError('evaluation cutoff reached')
     role = 'check' if 'candidate' in data else 'generate'
     original = data.get('original_request') if role == 'check' else data
-    with (directory / 'admission.lock').open('a') as lock:
+    descriptor = os.open(directory / 'admission.lock', os.O_WRONLY | os.O_CREAT | os.O_NOFOLLOW, 0o600)
+    with os.fdopen(descriptor, 'a') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
         if not live(directory):
             raise ValueError('screen execution inactive')

@@ -3,18 +3,60 @@ from pathlib import Path
 from contextlib import closing
 import sqlite3
 import os
+import json
+import plistlib
 import signal
 import subprocess
 import sys
 import tempfile
 import time
 import unittest
+from unittest.mock import patch
+
+import oauth_quality as qa
 
 from screen_evaluation import slots
 from screen_observer import Observer
 
 
 class ScreenObserverTests(unittest.TestCase):
+    def test_relocated_app_cache_and_export_share_remaining_observation_budget(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            old, new = directory / 'old-container', directory / 'new-container'
+            (new / 'Library/Caches').mkdir(parents=True)
+            sample = {'runID': 'current-uuid'}
+            (new / 'Library/Caches/suggestion-timing.json').write_text(json.dumps([sample]))
+            configuration = directory / 'test.xctestrun'
+            configuration.write_bytes(plistlib.dumps({'target': {'TestBundlePath': '__TESTROOT__/dummy'}}))
+            observer = Observer(directory, 'fake-simulator', configuration, 'http://127.0.0.1:58114')
+            now, reads = [0], []
+            image = b'\x89PNG\r\n\x1a\nfixture'
+            observation = {'method': 'XCTest-visible-fixture', 'run_id': 'current-uuid',
+                           'evidence_sha256': qa.digest(image)}
+            def command(argv, *, timeout=30, log=None):
+                if 'get_app_container' in argv:
+                    reads.append(timeout)
+                    return str(old if len(reads) == 1 else new)
+                if argv[0] == 'xcodebuild':
+                    (directory / '00.xcresult').mkdir()
+                    now[0] += 179
+                    return 0
+                self.assertLessEqual(timeout, 1)
+                exported = directory / '00-attachments'
+                exported.mkdir()
+                (exported / 'observation.json').write_text(json.dumps(observation))
+                (exported / 'screen.png').write_bytes(image)
+                return ''
+            with patch.object(observer, 'command', side_effect=command), patch.object(observer, 'prepare'), \
+                    patch('screen_observer.monotonic', side_effect=lambda: now[0]), \
+                    patch('screen_observer.subprocess.run') as terminate:
+                result = observer(0, slots()[0], 180)
+            self.assertEqual(result[1], sample)
+            self.assertEqual(len(reads), 2)
+            self.assertLessEqual(reads[-1], 1)
+            self.assertLessEqual(terminate.call_args.kwargs['timeout'], 1)
+
     def test_independent_synthetic_seeds_preserve_older_goals_and_never_complete_actions(self):
         with tempfile.TemporaryDirectory() as temporary:
             directory = Path(temporary)
