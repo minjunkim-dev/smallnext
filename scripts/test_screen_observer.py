@@ -92,7 +92,7 @@ class ScreenObserverTests(unittest.TestCase):
                 return ''
             with patch.object(observer, 'command', side_effect=command), patch.object(observer, 'prepare'), \
                     patch('screen_observer.monotonic', side_effect=lambda: now[0]), \
-                    patch('screen_observer.subprocess.run') as terminate:
+                    patch('screen_observer.subprocess.run', return_value=subprocess.CompletedProcess([], 0)) as terminate:
                 result = observer(0, slots()[0], 180)
             self.assertEqual(result[1], sample)
             self.assertEqual(len(reads), 2)
@@ -106,6 +106,21 @@ class ScreenObserverTests(unittest.TestCase):
                 with self.assertRaisesRegex(OSError, 'PRIVATE'):
                     observer(1, slots()[1], 180)
             self.assertEqual(json.loads((directory / '01-cleanup.json').read_bytes()), {'error': 'terminate_failed'})
+
+            for index, (code, stderr, accepted) in enumerate(((3, b'found nothing to terminate', True),
+                    (1, b'found nothing to terminate', False), (3, b'PRIVATE', False)), start=2):
+                now[0] = 0
+                result = subprocess.CompletedProcess([], code, stderr=stderr)
+                with patch.object(observer, 'command', side_effect=command), patch.object(observer, 'prepare'), \
+                        patch('screen_observer.monotonic', side_effect=lambda: now[0]), \
+                        patch('screen_observer.subprocess.run', return_value=result):
+                    if accepted:
+                        self.assertEqual(observer(index, slots()[index], 180)[1], sample)
+                    else:
+                        with self.assertRaises(subprocess.CalledProcessError):
+                            observer(index, slots()[index], 180)
+                        self.assertEqual(json.loads((directory / f'{index:02d}-cleanup.json').read_bytes()),
+                                         {'error': 'terminate_failed'})
 
     def test_independent_synthetic_seeds_preserve_older_goals_and_never_complete_actions(self):
         with tempfile.TemporaryDirectory() as temporary:

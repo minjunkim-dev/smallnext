@@ -1,6 +1,7 @@
 """Local #111 observer using the existing TimingValidation scheme and QA simulator only."""
 import json
 from contextlib import closing
+import errno
 import os
 from pathlib import Path
 import plistlib
@@ -164,9 +165,13 @@ class Observer:
             # The QA app owns the HTTP request; terminating it disconnects Rust's CLI worker.
             failed = sys.exc_info()[0] is not None
             try:
-                subprocess.run(['xcrun', 'simctl', 'terminate', self.simulator, 'dev.smallnext.app'],
-                               capture_output=True, timeout=max(.01, min(15, budget - (monotonic() - started))), check=False)
-            except (OSError, subprocess.TimeoutExpired) as error:
+                result = subprocess.run(['xcrun', 'simctl', 'terminate', self.simulator, 'dev.smallnext.app'],
+                                        capture_output=True, timeout=max(.01, min(15, budget - (monotonic() - started))), check=False)
+                already_stopped = (result.returncode == errno.ESRCH
+                                   and b'found nothing to terminate' in result.stderr)
+                if result.returncode != 0 and not already_stopped:
+                    raise subprocess.CalledProcessError(result.returncode, result.args)
+            except (OSError, subprocess.SubprocessError) as error:
                 try:
                     qa.save(self.directory / f'{index:02d}-cleanup.json',
                             {'error': 'terminate_timeout' if isinstance(error, subprocess.TimeoutExpired) else 'terminate_failed'})
