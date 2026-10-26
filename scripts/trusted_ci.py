@@ -151,9 +151,11 @@ def aggregate(event, repo, get):
                     f"{job['name']}: copied result from earlier attempt; re-run all jobs")
     require(run["conclusion"] == "success", "Source run failed or was cancelled")
 
-    latest = get(f"actions/workflows/{workflow['id']}/runs?event=pull_request&branch="
-                 f"{quote(run['head_branch'], safe='')}&head_sha={run['head_sha']}&per_page=1")
-    require(latest["workflow_runs"] and latest["workflow_runs"][0]["id"] == run_id, "A newer source run exists")
+    latest = pages(get, f"actions/workflows/{workflow['id']}/runs?event=pull_request&branch="
+                   f"{quote(run['head_branch'], safe='')}&head_sha={run['head_sha']}", "workflow_runs")
+    # Same-second runs can arrive out of order; use the workflow's run sequence.
+    require(latest and max(latest, key=lambda item: item["run_number"])["id"] == run_id,
+            "A newer source run exists")
     fresh_run = get(f"actions/runs/{run_id}")
     validate_run(fresh_run, event_run, repo, workflow)
     require(fresh_run["conclusion"] == "success", "Source result changed during collection")
