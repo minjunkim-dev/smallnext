@@ -1,12 +1,14 @@
 """Local #111 observer using the existing TimingValidation scheme and QA simulator only."""
 import json
 from contextlib import closing
+import errno
 import os
 from pathlib import Path
 import plistlib
 import signal
 import sqlite3
 import subprocess
+import sys
 from time import monotonic, sleep
 
 import oauth_quality as qa
@@ -25,7 +27,15 @@ class Observer:
             os.chmod(log, 0o600)
             child = subprocess.Popen(argv, stdout=output, stderr=subprocess.STDOUT, start_new_session=True)
             try:
-                return child.wait(timeout=timeout)
+                deadline = monotonic() + timeout
+                while True:
+                    if (self.directory / 'stopped.json').exists():
+                        raise ValueError('screen run stopped')
+                    try:
+                        return child.wait(timeout=max(.001, min(.1, deadline - monotonic())))
+                    except subprocess.TimeoutExpired:
+                        if monotonic() >= deadline:
+                            raise
             except BaseException:
                 # Keep the leader unreaped until both signals, even if TERM ends it first.
                 for sig in (signal.SIGTERM, signal.SIGKILL):
@@ -153,5 +163,19 @@ class Observer:
             return observation, app[0], images[0]
         finally:
             # The QA app owns the HTTP request; terminating it disconnects Rust's CLI worker.
-            subprocess.run(['xcrun', 'simctl', 'terminate', self.simulator, 'dev.smallnext.app'],
-                           capture_output=True, timeout=max(.01, min(15, budget - (monotonic() - started))), check=False)
+            failed = sys.exc_info()[0] is not None
+            try:
+                result = subprocess.run(['xcrun', 'simctl', 'terminate', self.simulator, 'dev.smallnext.app'],
+                                        capture_output=True, timeout=max(.01, min(15, budget - (monotonic() - started))), check=False)
+                already_stopped = (result.returncode == errno.ESRCH
+                                   and b'found nothing to terminate' in result.stderr)
+                if result.returncode != 0 and not already_stopped:
+                    raise subprocess.CalledProcessError(result.returncode, result.args)
+            except (OSError, subprocess.SubprocessError) as error:
+                try:
+                    qa.save(self.directory / f'{index:02d}-cleanup.json',
+                            {'error': 'terminate_timeout' if isinstance(error, subprocess.TimeoutExpired) else 'terminate_failed'})
+                except OSError:
+                    pass  # Keep the primary failure even when its secondary diagnostic cannot be written.
+                if not failed:
+                    raise

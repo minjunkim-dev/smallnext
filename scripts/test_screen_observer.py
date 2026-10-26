@@ -20,6 +20,48 @@ from screen_observer import Observer
 
 
 class ScreenObserverTests(unittest.TestCase):
+    def test_known_run_stop_interrupts_command_without_waiting_for_observation_timeout(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            observer = Observer(directory, 'unused', directory / 'unused', '')
+            program = ('import time;from pathlib import Path;'
+                       f'Path({str(directory / "stopped.json")!r}).write_text("{{}}\");time.sleep(30)')
+            started = time.monotonic()
+            with self.assertRaisesRegex(ValueError, 'screen run stopped'):
+                observer.command([sys.executable, '-c', program], timeout=1, log=directory / 'command.log')
+            self.assertLess(time.monotonic()-started, 1)
+
+    def test_cleanup_timeout_is_recorded_without_masking_original_observation_failure(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            configuration = directory / 'test.xctestrun'
+            configuration.write_bytes(plistlib.dumps({'target': {'TestBundlePath': '__TESTROOT__/dummy'}}))
+            observer = Observer(directory, 'fake-simulator', configuration, '')
+            failure = ValueError('screen observation failed; no retry')
+            cleanup = subprocess.TimeoutExpired(['xcrun', 'simctl', 'terminate'], .01)
+            with patch.object(observer, 'refresh_container'), patch.object(observer, 'prepare'), \
+                    patch.object(observer, 'command', side_effect=failure), \
+                    patch('screen_observer.subprocess.run', side_effect=cleanup):
+                with self.assertRaises(ValueError) as raised:
+                    observer(0, slots()[0], 180)
+            self.assertIs(raised.exception, failure)
+            self.assertEqual(json.loads((directory / '00-cleanup.json').read_bytes()), {'error': 'terminate_timeout'})
+
+    def test_cleanup_record_write_failure_keeps_original_failure(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            configuration = directory / 'test.xctestrun'
+            configuration.write_bytes(plistlib.dumps({}))
+            observer = Observer(directory, 'fake-simulator', configuration, '')
+            failure = ValueError('screen observation failed; no retry')
+            with patch.object(observer, 'refresh_container'), patch.object(observer, 'prepare'), \
+                    patch.object(observer, 'command', side_effect=failure), \
+                    patch('screen_observer.subprocess.run', side_effect=OSError('PRIVATE')), \
+                    patch.object(qa, 'save', side_effect=OSError('PRIVATE')):
+                with self.assertRaises(ValueError) as raised:
+                    observer(0, slots()[0], 180)
+            self.assertIs(raised.exception, failure)
+
     def test_relocated_app_cache_and_export_share_remaining_observation_budget(self):
         with tempfile.TemporaryDirectory() as temporary:
             directory = Path(temporary)
@@ -39,23 +81,46 @@ class ScreenObserverTests(unittest.TestCase):
                     reads.append(timeout)
                     return str(old if len(reads) == 1 else new)
                 if argv[0] == 'xcodebuild':
-                    (directory / '00.xcresult').mkdir()
+                    Path(argv[argv.index('-resultBundlePath')+1]).mkdir()
                     now[0] += 179
                     return 0
                 self.assertLessEqual(timeout, 1)
-                exported = directory / '00-attachments'
+                exported = Path(argv[argv.index('--output-path')+1])
                 exported.mkdir()
                 (exported / 'observation.json').write_text(json.dumps(observation))
                 (exported / 'screen.png').write_bytes(image)
                 return ''
             with patch.object(observer, 'command', side_effect=command), patch.object(observer, 'prepare'), \
                     patch('screen_observer.monotonic', side_effect=lambda: now[0]), \
-                    patch('screen_observer.subprocess.run') as terminate:
+                    patch('screen_observer.subprocess.run', return_value=subprocess.CompletedProcess([], 0)) as terminate:
                 result = observer(0, slots()[0], 180)
             self.assertEqual(result[1], sample)
             self.assertEqual(len(reads), 2)
             self.assertLessEqual(reads[-1], 1)
             self.assertLessEqual(terminate.call_args.kwargs['timeout'], 1)
+
+            now[0] = 0
+            with patch.object(observer, 'command', side_effect=command), patch.object(observer, 'prepare'), \
+                    patch('screen_observer.monotonic', side_effect=lambda: now[0]), \
+                    patch('screen_observer.subprocess.run', side_effect=OSError('PRIVATE')):
+                with self.assertRaisesRegex(OSError, 'PRIVATE'):
+                    observer(1, slots()[1], 180)
+            self.assertEqual(json.loads((directory / '01-cleanup.json').read_bytes()), {'error': 'terminate_failed'})
+
+            for index, (code, stderr, accepted) in enumerate(((3, b'found nothing to terminate', True),
+                    (1, b'found nothing to terminate', False), (3, b'PRIVATE', False)), start=2):
+                now[0] = 0
+                result = subprocess.CompletedProcess([], code, stderr=stderr)
+                with patch.object(observer, 'command', side_effect=command), patch.object(observer, 'prepare'), \
+                        patch('screen_observer.monotonic', side_effect=lambda: now[0]), \
+                        patch('screen_observer.subprocess.run', return_value=result):
+                    if accepted:
+                        self.assertEqual(observer(index, slots()[index], 180)[1], sample)
+                    else:
+                        with self.assertRaises(subprocess.CalledProcessError):
+                            observer(index, slots()[index], 180)
+                        self.assertEqual(json.loads((directory / f'{index:02d}-cleanup.json').read_bytes()),
+                                         {'error': 'terminate_failed'})
 
     def test_independent_synthetic_seeds_preserve_older_goals_and_never_complete_actions(self):
         with tempfile.TemporaryDirectory() as temporary:
