@@ -13,9 +13,10 @@ import oauth_quality as qa
 
 
 class Observer:
-    def __init__(self, directory, simulator, xctestrun, url):
+    def __init__(self, directory, simulator, xctestrun, url, *, mock_only=False):
         self.directory, self.simulator = Path(directory), simulator
         self.xctestrun, self.url = Path(xctestrun), url
+        self.mock_only = mock_only
 
     def command(self, argv, *, timeout=30, log=None):
         if log is None:
@@ -93,7 +94,7 @@ class Observer:
                 if 'TestBundlePath' in value:
                     value['EnvironmentVariables'] = dict(value.get('EnvironmentVariables', {}),
                         SMALLNEXT_SCREEN_ONCE='1', SMALLNEXT_SCREEN_KIND=slot['input']['request_kind'],
-                        SMALLNEXT_TIMING_TEST_URL=self.url)
+                        SMALLNEXT_TIMING_TEST_URL=self.url, SMALLNEXT_SCREEN_MOCK='1' if self.mock_only else '0')
                 return value
             if isinstance(value, list):
                 return [configure(item) for item in value]

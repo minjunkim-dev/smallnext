@@ -223,7 +223,8 @@ final class ScreenTimingTests: XCTestCase {
         app.launch()
         let button = kind == "first_action" ? "확인하고 시작" : "더 작게"
         XCTAssertTrue(app.buttons[button].waitForExistence(timeout: 10))
-        observe(app, button: button, kind: kind, outcome: "normal", budget: 180, mockOnly: false)
+        observe(app, button: button, kind: kind, outcome: "normal", budget: 180,
+                mockOnly: environment["SMALLNEXT_SCREEN_MOCK"] == "1")
         app.terminate()
     }
 
