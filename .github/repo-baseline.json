@@ -6,23 +6,15 @@
     },
     "scripts/test_repo_baseline.py": {
       "source": "scripts/test_repo_baseline.py",
-      "sha256": "fe307d6f94ef24bd4435e94f38f9121f0876bb5b592a96d273e9746a2470447a"
+      "sha256": "d8218967d9d4d4f0ade68196328b5f193b0d993bfb38c33267be76a334e8fd89"
     },
     "scripts/check_github_settings.py": {
       "source": "scripts/check_github_settings.py",
-      "sha256": "e6e65c971c63b73d82aed63501f4a21979ed5829c19a37127c3c2198265061be"
+      "sha256": "098499b06ac24025de1badc871e2d486c99cb72ebfe5fb5da268bc9aad14188f"
     },
     "scripts/test_github_settings.py": {
       "source": "scripts/test_github_settings.py",
-      "sha256": "b9151141a670abb4601d1b5686eac8293ed9777c599ccf5660681de3f73db577"
-    },
-    "scripts/check_bugbot_rules.py": {
-      "source": "scripts/check_bugbot_rules.py",
-      "sha256": "0866ae613b79a979d85a3215ea86830f414e5a679df08ebcfeaaafba14c78b37"
-    },
-    "scripts/test_bugbot_rules.py": {
-      "source": "scripts/test_bugbot_rules.py",
-      "sha256": "8716cbbd3de9e8762716930e6302aa647d2e15dd2f1cacae84b6fa32e6df7003"
+      "sha256": "fbf6239243b13dcf6c94f143985cb89458a74000066ef83ea609c38900a39153"
     },
     ".github/dependabot.yml": {
       "source": "templates/dependabot.yml",
@@ -43,15 +35,6 @@
       "sha256": "70ff016b340818a25acc8d7d3843565de6b74212ade46095bd514e09425f0937"
     }
   },
-  "bugbot_rules": [
-    ".cursor/BUGBOT.md",
-    ".github/.cursor/BUGBOT.md",
-    "apps/android/.cursor/BUGBOT.md",
-    "apps/ios/.cursor/BUGBOT.md",
-    "docs/.cursor/BUGBOT.md",
-    "scripts/.cursor/BUGBOT.md",
-    "services/api/.cursor/BUGBOT.md"
-  ],
   "source": "minjunkim-dev/repo-baseline",
-  "source_commit": "9e695b8f5b3cc94588b6174da37a66dab8bdc9bc"
+  "source_commit": "9d3958b5dc35b43b98ee8adb53bd416eac956e0a"
 }

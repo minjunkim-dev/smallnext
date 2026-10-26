@@ -30,3 +30,10 @@ Actions 기본 권한은 읽기다. 쓰기 권한·Secret은 필요한 job·단�
 
 도메인은 [CONTEXT](../CONTEXT.md), 보안·서버 제약은 [SERVER_AI](SERVER_AI.md),
 작업·플래그·병합은 [WORKFLOW](WORKFLOW.md), 저작권은 [COPYRIGHT](../COPYRIGHT.md)를 따른다.
+
+## 영역별 회귀와 근거
+
+- API는 OpenAPI·앱 호출자·기존 DB transaction·경합·롤백·삭제 범위를 함께 확인한다. 사용자용 서버 AI 기본 OFF와 인증 조회 실패 시 호출 금지를 유지한다. 예산 예약·정산·취소·시간 제한, 자동 재시도·재생성·모델 대체 금지와 미확인 사용량의 임의 환급 금지는 관련 SERVER_AI 계약을 따른다.
+- iOS·Android는 목표·완료·보류·중단·삭제의 같은 도메인 의미, 저장·복구·취소·늦은 응답의 리비전을 확인한다. 접근성·앱 수명 주기·네트워크 오류·동의 경계를 유지하고 앱에 서버 비밀정보를 넣지 않는다. 기기 검증 보류를 단위 테스트·시뮬레이터·archive로 해제하지 않는다.
+- 검증 스크립트의 오류·timeout·취소·하위 프로세스 회수·소유한 임시 파일 정리를 보존한다. 삭제·덮어쓰기·경로 탈출·큰 출력·부분 결과의 실패를 확인한다.
+- GitHub 수집·집계·게시의 pagination·최신 attempt·head/base/merge SHA·publisher·최종 상태를 대조한다. Draft는 main source·같은 SHA의 CI를 확인하고 기존 Release·태그·asset을 덮어쓰지 않는다.

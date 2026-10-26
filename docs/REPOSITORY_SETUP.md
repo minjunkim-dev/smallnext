@@ -7,13 +7,7 @@
 [Issue #125](https://github.com/minjunkim-dev/smallnext/issues/125)에 따라 자동 AI 댓글·코드·AI 보안 리뷰를 로컬 독립 리뷰로 전환한다.
 절차는 [리뷰](agents/review.md), 코딩 규칙은 [coding-standards](coding-standards.md), 미공개 CD는 [Draft CD](DRAFT_RELEASE.md)를 따른다.
 필수 CI·dependency 검사·독립 집계와 기존 Cloud 저장소 접근은 보존한다.
-Bugbot은 필요한 PR에서 수동 보조 리뷰로 사용한다. Manual Only / Default, As Comment, 위험 점수 On, Draft 자동 리뷰 Off, Autofix Off를 적용한다.
-On-demand는 Disabled를 유지한다. Incremental은 기존 값을 유지한다. 다른 저장소와 계정 기본 설정은 바꾸지 않는다.
-YAML은 base branch에서 읽는다. 개인 override가 YAML보다 우선한다. Manual Only와 결제는 대시보드에서 확인한다.
-현재 개인 Bugbot 연결에서는 PR 작성자와 Cursor에 연결한 GitHub 계정이 같아야 수동 리뷰가 실행된다.
-2026-10-14 Dependabot 작성 PR #107의 수동 요청은 [실제 응답](https://github.com/minjunkim-dev/smallnext/pull/107#issuecomment-6158071176)에서 `GitHub account mismatch`로 거부됐다.
-요청 ID 발급과 Analytics counter 증가를 리뷰 성공으로 보고하지 않는다. 이 요청의 리뷰·규칙·요약 출력은 검증하지 못했다.
-본인 작성 PR에서 `bugbot run verbose=true`를 한 번 요청한다. 실제 검토 head, 규칙 테이블, 지적, 요약 댓글과 관측 사용량을 확인한다.
+2026-10-26부터 저장소의 Bugbot 전용 파일·검사·실행 요구를 제거하고 자체 리뷰를 사용한다. 고유 기준은 코딩 규칙과 리뷰 자료 선택 표에 보존한다. 서버 서비스·계정 연결은 이 파일 변경으로 제어하지 않는다.
 실제 외부 반영·CI·독립 리뷰·Draft 실행 상태는 [검증 보고서](PR_QUALITY_VALIDATION.md)를 따른다.
 
 아래 자동 리뷰 설명과 연결 절차는 이전 운영 방식의 근거다. 다시 활성화하는 지시가 아니다.
@@ -197,4 +191,12 @@ Project checks는 iOS·Android·API와 컨테이너를 검사합니다.
 실제 AI 품질과 운영 배포는 초기 셋업의 검증 범위에 포함하지 않습니다.
 
 CodeQL workflow를 바꾸면 기준선의 `codeql_main_source.sha`도 새 Git blob SHA로 갱신합니다. PR의 `Repository hygiene` unittest가 갱신하지 않은 SHA를 거부합니다. 감사 도구는 필수 제어 항목이나 보호 필드가 빠진 기준선을 `UNVERIFIED`로 거부합니다.
-공통 검사기(`check_github_settings.py`·`check_bugbot_rules.py`·`check_repo_baseline.py`)와 테스트는 비공개 `minjunkim-dev/repo-baseline`에서 복사합니다. 이 저장소에서 직접 고치지 않습니다. 원본을 고친 뒤 `tools/apply_baseline.py`로 다시 적용합니다. 복사본이 `.github/repo-baseline.json`의 해시와 다르면 unittest가 실패합니다. CodeQL 단계들이 서로 다른 `github/codeql-action` commit을 쓰는 것도 거부합니다.
+공통 검사기(`check_github_settings.py`·`check_repo_baseline.py`)와 테스트는 비공개 `minjunkim-dev/repo-baseline`에서 복사합니다. 이 저장소에서 직접 고치지 않습니다. 원본을 고친 뒤 `tools/apply_baseline.py`로 다시 적용합니다. 복사본이 `.github/repo-baseline.json`의 해시와 다르면 `python3 scripts/check_repo_baseline.py`가 실패합니다. CodeQL 단계들이 서로 다른 `github/codeql-action` commit을 쓰는 것도 거부합니다.
+
+## 공통 기준 갱신과 설정 관측 기록
+
+적용 원본은 `minjunkim-dev/repo-baseline`의 main `9d3958b5dc35b43b98ee8adb53bd416eac956e0a`다. 복사본의 경로·생태계를 유지하며 원본 도구로 갱신했다. 로컬 스킬 설정과 일상 작업 진입은 [개발 절차](agents/development.md), 자체 리뷰와 사용자 요청 회고는 [리뷰 절차](agents/review.md)를 따른다.
+
+기존 기준선의 설명용 `exceptions` 배열은 내용을 보존해 `observations`로 옮겼다. 관측 기록은 API 감사 항목을 제외하지 않는다. 실제 기능 미지원·비해당을 감사 범위에서 제외하려면 원본의 [설정 기준선 형식](https://github.com/minjunkim-dev/repo-baseline/blob/9d3958b5dc35b43b98ee8adb53bd416eac956e0a/docs/github-settings-profile.md)에 맞는 `exceptions` 객체와 사유·근거가 필요하다. 예외가 있으면 exit 0이어도 결과는 전체 PASS가 아닌 LIMITED다. 미선언 403·404·누락·권한 오류는 계속 실패한다.
+
+이번 갱신은 GitHub 서버 기대값·권한·필수 체크·CodeQL·배포를 변경하지 않는다. 과거 실행 기록을 현재 검증 결과로 바꾸지 않는다.
