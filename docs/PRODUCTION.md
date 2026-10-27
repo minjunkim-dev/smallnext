@@ -145,6 +145,23 @@ timer는 매월 1일 `00:01 UTC`에 실행한다. `Persistent=true`가 중단 �
 성공·실패는 호스트 journal의 고정 문구로 확인한다. 인증·제공사 호출은 없다.
 API의 시작·매분 삭제도 유지한다. 일정 등록만으로 실제 삭제 성공을 판정하지 않는다.
 
+## 운영 지표를 조회한다
+
+AI ON 운영 중에 `[FROM, TO)` UTC 날짜 범위의 익명 지표를 JSON으로 출력한다.
+
+```sh
+docker compose --env-file infra/production/.env.production --env-file infra/production/.env.image \
+  -f infra/production/compose.yaml run --rm --no-deps --pull never -T \
+  api report-ai-metrics 2026-11-01 2026-11-15
+```
+
+출력은 요청 수·결과별 수·서버 처리 ms의 p50/p95/p99·정산 비용·고유 사용자 수·한도 차단 수·일별 사용자 수다.
+`started` 결과는 취소된 요청이거나 조회 시점에 진행 중인 요청이다. 사용자 수는 30일 보관 범위 안에서만 정확하다.
+비용은 설정 단가로 계산한 값이다. Anthropic 청구액과 대조하기 전에는 실제 비용으로 보고하지 않는다.
+지표를 기록할 때 기간·배포 이미지 source SHA·서버 지역·모델/effort·표본 수를 함께 남긴다.
+인증 실패·예산 차단·동시 요청·처리 용량 초과는 API 컨테이너 로그의 `AI request rejected: <사유>` 고정 문구로 센다. 로그에는 UID·토큰·본문이 없다.
+로그는 10 MB × 5로 회전한다. 대량 요청이 오면 오래된 거부 로그가 밀려나 건수가 줄어든다. 매일 같은 시각에 세어 기록한다.
+
 ## 6. 확인 결과와 미확인 범위를 기록한다
 
 #164에 확인 UTC 시각·배포 이미지 태그 또는 ID·source SHA·200/200/404 결과·timer 실행 결과만 기록한다.

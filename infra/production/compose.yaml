@@ -22,6 +22,16 @@ services:
       AI_INPUT_MICRO_USD_PER_MILLION:
       AI_OUTPUT_MICRO_USD_PER_MILLION:
       AI_BUDGET_MICRO_USD:
+      AI_DAILY_BUDGET_MICRO_USD:
+      AI_USER_DAILY_REQUESTS:
+      AI_PUBLIC_ACCESS:
+      AI_USAGE_HASH_KEY:
+    # Rejected-request logs are unauthenticated input; cap their disk use.
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "5"
     expose:
       - "8080"
     volumes:
@@ -51,6 +61,11 @@ services:
       - ./site:/srv/smallnext-site:ro
       - caddy-data:/data
       - caddy-config:/config
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "5"
     depends_on:
       - api
     restart: unless-stopped

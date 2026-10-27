@@ -68,7 +68,13 @@ async fn session_and_client_privileges_fail_closed_without_changing_auth_schema(
     let session = "33333333-3333-4333-8333-333333333333";
     assert!(!active(&pool, user, session).await);
     for role in ["anon", "authenticated", "service_role"] {
-        for table in ["ai_budget", "app_metadata", "_sqlx_migrations"] {
+        for table in [
+            "ai_budget",
+            "ai_daily_usage",
+            "ai_request_metrics",
+            "app_metadata",
+            "_sqlx_migrations",
+        ] {
             let permission: bool = sqlx::query_scalar(
                 "SELECT has_table_privilege($1, $2, 'SELECT,INSERT,UPDATE,DELETE')",
             )
@@ -88,6 +94,16 @@ async fn session_and_client_privileges_fail_closed_without_changing_auth_schema(
                 .unwrap();
         assert!(!permission, "client role must not inspect sessions");
     }
+    for table in ["ai_daily_usage", "ai_request_metrics"] {
+        let permission: bool = sqlx::query_scalar(
+            "SELECT has_table_privilege('smallnext_backup', $1, 'SELECT,INSERT,UPDATE,DELETE')",
+        )
+        .bind(format!("{schema}.{table}"))
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert!(!permission, "backup reads only the budget columns");
+    }
     let execute: bool =
         sqlx::query_scalar("SELECT has_function_privilege('smallnext_api', $1, 'EXECUTE')")
             .bind(format!("{schema}.smallnext_session_active(text,text)"))
@@ -95,9 +111,9 @@ async fn session_and_client_privileges_fail_closed_without_changing_auth_schema(
             .await
             .unwrap();
     assert!(execute);
-    let protected: i64 = sqlx::query_scalar("SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname=$1 AND c.relname IN ('ai_budget','app_metadata','_sqlx_migrations') AND c.relrowsecurity")
+    let protected: i64 = sqlx::query_scalar("SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname=$1 AND c.relname IN ('ai_budget','ai_daily_usage','ai_request_metrics','app_metadata','_sqlx_migrations') AND c.relrowsecurity")
         .bind(&schema).fetch_one(&pool).await.unwrap();
-    assert_eq!(protected, 3);
+    assert_eq!(protected, 5);
 
     // Synthetic managed Auth schema, never executed against a remote Supabase project.
     sqlx::raw_sql("CREATE SCHEMA auth; CREATE TABLE auth.users(id UUID PRIMARY KEY, deleted_at TIMESTAMPTZ, banned_until TIMESTAMPTZ, is_anonymous BOOLEAN); CREATE TABLE auth.sessions(id UUID PRIMARY KEY, user_id UUID, not_after TIMESTAMPTZ)")

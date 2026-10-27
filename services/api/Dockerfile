@@ -9,7 +9,7 @@ COPY services/api/src ./src
 COPY services/api/migrations ./migrations
 COPY services/api/build.rs ./
 COPY config/feature-flags.json /workspace/config/feature-flags.json
-RUN cargo build --release --locked --bin smallnext-api --bin purge-ai-budget --bin migrate-api
+RUN cargo build --release --locked --bin smallnext-api --bin purge-ai-budget --bin report-ai-metrics --bin migrate-api
 
 FROM debian:bookworm-slim@sha256:7c7b2c966bc9ee8cedfeef67e0e279108992c77681fa595db4a9d65c06ccc587
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates \
@@ -17,6 +17,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
     && useradd --system --uid 10001 --create-home smallnext
 COPY --from=builder /workspace/services/api/target/release/smallnext-api /usr/local/bin/smallnext-api
 COPY --from=builder /workspace/services/api/target/release/purge-ai-budget /usr/local/bin/purge-ai-budget
+COPY --from=builder /workspace/services/api/target/release/report-ai-metrics /usr/local/bin/report-ai-metrics
 COPY --from=builder /workspace/services/api/target/release/migrate-api /usr/local/bin/migrate-api
 USER smallnext
 ENV API_BIND_ADDRESS=0.0.0.0:8080

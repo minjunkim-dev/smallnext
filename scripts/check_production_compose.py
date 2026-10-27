@@ -19,7 +19,8 @@ AI_SETTINGS = (
     "SUPABASE_PUBLISHABLE_KEY", "AI_MODEL_CONFIRMED", "ANTHROPIC_API_KEY",
     "AI_MODEL_CONTEXT_TOKENS", "AI_MAX_OUTPUT_TOKENS",
     "AI_INPUT_MICRO_USD_PER_MILLION", "AI_OUTPUT_MICRO_USD_PER_MILLION",
-    "AI_BUDGET_MICRO_USD",
+    "AI_BUDGET_MICRO_USD", "AI_DAILY_BUDGET_MICRO_USD", "AI_USER_DAILY_REQUESTS",
+    "AI_PUBLIC_ACCESS", "AI_USAGE_HASH_KEY",
 )
 DATABASE_URL = "postgres://smallnext:smallnext-local-only@postgres:5432/smallnext"
 
@@ -184,6 +185,7 @@ def check(image, check_purge, check_deploy=False):
                 "SUPABASE_URL": "https://test-project.supabase.co",
                 "SUPABASE_PUBLISHABLE_KEY": "sb_publishable_synthetic",
                 "AI_ALLOWED_SUPABASE_UIDS": "00000000-0000-0000-0000-000000000001",
+                "AI_USAGE_HASH_KEY": "synthetic-usage-key-of-at-least-32-chars",
                 "AI_MODEL_CONFIRMED": "1", "ANTHROPIC_API_KEY": "synthetic-provider",
             }
             for missing in required:
