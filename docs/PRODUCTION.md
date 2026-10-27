@@ -11,6 +11,17 @@ Supabase 프로젝트 생성·연결은 [#168](https://github.com/minjunkim-dev/
 [#162](https://github.com/minjunkim-dev/smallnext/issues/162)의 전체 wizard 실행과 [#164](https://github.com/minjunkim-dev/smallnext/issues/164)의 실제 서버 실행은 보류한다.
 아래 절차는 해당 실행을 승인한 뒤에 따른다. 로컬 연결의 확인 범위는 [서버 AI](SERVER_AI.md#supabase-free-연결-확인과-남은-조건)를 따른다.
 
+## 베타 계정을 준비한다
+
+[#241](https://github.com/minjunkim-dev/smallnext/issues/241)의 Apple·Anthropic·도메인·Turnstile 준비는 별도 wizard가 안내한다.
+
+```sh
+scripts/prepare_beta_accounts.sh
+```
+
+wizard는 계정 생성·결제·구매를 대신하지 않는다. 처리방침 URL만 Git 밖 `Local.Release.xcconfig`에 기록한다.
+Anthropic API 키는 만들지 않는다. CAPTCHA는 켜지 않는다. 서버 단계는 아래 준비 wizard로 넘긴다.
+
 ## 1. 준비 wizard를 실행한다
 
 값을 숨길 수 있는 로컬 대화형 터미널에서 실행한다. 파이프와 실행 로그 수집을 사용하지 않는다.
