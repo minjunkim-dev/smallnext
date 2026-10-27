@@ -376,7 +376,8 @@ if [[ -z "$API_HOST" ]]; then
     done
   else
     SKIPPED+=("도메인 구매와 Turnstile 위젯: 도메인을 정한 뒤 이 wizard를 다시 실행")
-    if [[ -f "$ENV_FILE" ]] && grep -aqE "^[[:space:]]*${PRIVACY_KEY}[[:space:]]*=" "$ENV_FILE"; then
+    # The example file's empty assignment adds no URL to the build, so only a non-empty value counts.
+    if [[ -f "$ENV_FILE" ]] && grep -aqE "^[[:space:]]*${PRIVACY_KEY}[[:space:]]*=[[:space:]]*[^[:space:]]" "$ENV_FILE"; then
       warn "$ENV_FILE에 기존 $PRIVACY_KEY 줄이 그대로 남아 Release 빌드에 들어갑니다."
       SKIPPED+=("$ENV_FILE의 기존 $PRIVACY_KEY 줄 확인 또는 삭제")
     fi
@@ -417,10 +418,10 @@ if confirm "서버 공급자를 정하고 Linux VPS를 만들었습니까?"; the
     fi
     pause "위 안내를 확인했으면 Enter를 누르십시오."
   else
-    SKIPPED+=("서버·DNS·DB 준비(#162): python3 scripts/prepare_production.py")
+    SKIPPED+=("서버·DNS·DB 준비: #162 실행 승인 후 python3 scripts/prepare_production.py")
   fi
 else
-  SKIPPED+=("서버 공급자 선택과 VPS 생성 뒤 python3 scripts/prepare_production.py(#162)")
+  SKIPPED+=("서버 공급자 선택과 VPS 생성 뒤, #162 실행 승인 후 python3 scripts/prepare_production.py")
 fi
 
 SKIPPED+=("Anthropic 서버 전용 API 키: 서버 AI를 켜는 승인 단계에서 생성(docs/PRODUCTION.md)")

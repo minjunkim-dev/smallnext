@@ -21,7 +21,7 @@ scripts/prepare_beta_accounts.sh
 
 wizard는 계정 생성·결제·구매를 대신하지 않는다. 처리방침 URL만 Git 밖 `Local.Release.xcconfig`에 기록한다.
 이 wizard의 실행은 아래 #162·#164 실행 승인과 별개다. 서버 단계는 아래 준비 wizard로 넘긴다.
-Console 결제 수단과 월 지출 한도 40 USD는 #237에서 정한 보호 설정이다. 서버 예산 값과 제공사 API 키 생성은 위의 별도 승인 범위를 따른다.
+wizard는 #241의 Console 결제 수단 등록과 #237에서 정한 월 지출 한도 40 USD 설정을 안내한다. 서버 예산 값과 제공사 API 키 생성은 위의 별도 승인 범위를 따른다.
 Turnstile 위젯은 만들지만 Supabase CAPTCHA와 iOS CAPTCHA 값은 켜지 않는다. [CAPTCHA 조건](#captcha와-접근-제한의-배포-전-조건)을 따른다.
 
 ## 1. 준비 wizard를 실행한다
