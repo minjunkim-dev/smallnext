@@ -14,6 +14,7 @@ pub enum ProposalStatus {
     Minimum,
     GoalSummary,
     NoAction,
+    InsufficientInfo,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, ToSchema)]
@@ -28,6 +29,30 @@ pub struct Proposal {
     pub goal_completed: bool,
     pub current_action_completed: bool,
     pub preserved_completed_ids: Vec<String>,
+}
+
+/// Model-only fields the checker compares; the app response never carries them (#259).
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Grounding {
+    facts: Vec<Fact>,
+    reduction: String,
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Fact {
+    fact: String,
+    source: FactSource,
+    if_absent: String,
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum FactSource {
+    Present,
+    Absent,
+    Unknown,
 }
 
 #[derive(Serialize, Deserialize, ToSchema)]
@@ -115,10 +140,15 @@ pub(crate) async fn evaluate<M: Model>(model: &M, input: &AiInput) -> Evaluation
         let (generated, bill) =
             crate::timing::measure(Role::Generate, model.call(Role::Generate, &original)).await;
         bills.push(bill);
-        let proposal: Proposal =
-            serde_json::from_value(generated?).map_err(|_| Disposition::InvalidProposal)?;
+        let (proposal, grounding) = split(generated?)?;
         validate_proposal(input, &proposal)?;
-        let payload = json!({"original_request": original, "candidate": proposal});
+        if proposal.status == ProposalStatus::InsufficientInfo && !grounding.reduction.is_empty() {
+            return Err(Disposition::InvalidProposal);
+        }
+        let mut candidate = json!(proposal);
+        candidate["facts"] = json!(grounding.facts);
+        candidate["reduction"] = json!(grounding.reduction);
+        let payload = json!({"original_request": original, "candidate": candidate});
         let (checked, bill) =
             crate::timing::measure(Role::Check, model.call(Role::Check, &payload)).await;
         bills.push(bill);
@@ -156,7 +186,10 @@ fn allowed_statuses(kind: Option<&str>) -> &'static [ProposalStatus] {
     use ProposalStatus::*;
     match kind {
         Some("goal_preparation") => &[GoalSummary, NeedInfo],
-        Some("replacement") => &[Action, NeedInfo, Minimum, NoAction],
+        Some("replacement") => &[Action, NeedInfo, Minimum, NoAction, InsufficientInfo],
+        Some("first_action" | "next_action" | "smaller") => {
+            &[Action, NeedInfo, Minimum, InsufficientInfo]
+        }
         _ => &[Action, NeedInfo, Minimum],
     }
 }
@@ -194,9 +227,27 @@ pub(crate) fn instructions(role: Role) -> String {
     format!("{instructions}\n{}", include_str!("suggestion/contract.md"))
 }
 
+fn split(mut generated: Value) -> Result<(Proposal, Grounding), Disposition> {
+    let object = generated
+        .as_object_mut()
+        .ok_or(Disposition::InvalidProposal)?;
+    let grounding =
+        json!({"facts": object.remove("facts"), "reduction": object.remove("reduction")});
+    Ok((
+        serde_json::from_value(generated).map_err(|_| Disposition::InvalidProposal)?,
+        serde_json::from_value(grounding).map_err(|_| Disposition::InvalidProposal)?,
+    ))
+}
+
 fn validate_proposal(input: &AiInput, proposal: &Proposal) -> Result<(), Disposition> {
-    if proposal.action.trim().is_empty()
-        || proposal.completion_condition.trim().is_empty()
+    let invalid_result = if proposal.status == ProposalStatus::InsufficientInfo {
+        !proposal.action.is_empty()
+            || !proposal.completion_condition.is_empty()
+            || proposal.estimated_minutes != 0.0
+    } else {
+        proposal.action.trim().is_empty() || proposal.completion_condition.trim().is_empty()
+    };
+    if invalid_result
         || proposal.reason.trim().is_empty()
         || !proposal.estimated_minutes.is_finite()
         || proposal.estimated_minutes < 0.0

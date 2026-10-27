@@ -39,6 +39,7 @@ DB는 기존 Rust 서버가 TLS PostgreSQL로 직접 연결합니다. Data API�
 반복 시작 실패를 입력이 명시하고 원인을 모르면 첫 실제 걸림돌을 직접 묻는 공통 지침을 사용합니다.
 이 경우 더 작은 신체 동작을 제안하는 후보도 검사에서 거부하게 합니다.
 개발 CLI와 사용자용 API는 같은 생성·검사 지침을 사용합니다. 요청별 허용 status를 생성 schema와 구조 검사에서 함께 사용합니다.
+생성은 결과가 기대는 과거 사실과 출처 상태(`facts`), smaller의 감소 내용(`reduction`)도 함께 냅니다. 검사는 이 두 칸을 후보와 원본에 대조합니다. 두 칸은 검사에만 쓰고 앱 응답에서는 서버가 제거합니다([#259](https://github.com/minjunkim-dev/smallnext/issues/259)).
 알려진 제목 복사를 알 수 없는 과거 사실의 근거 확보로 취급하지 않습니다. 제목 작성 자체가 목표인 경우와 구분합니다. 이 지침이 모든 의미 오류를 막는다고 보장하지 않습니다.
 거부·불확실·실패·취소에서는 적용 후보를 반환하지 않습니다.
 앱은 기존 리비전 검사를 유지합니다. 늦은 응답으로 진행 상태를 바꾸지 않습니다.
@@ -134,6 +135,10 @@ SDK가 익명 계정·요청 시 토큰 갱신·Keychain 보관을 관리합니�
 익명 계정을 유실하면 새 계정을 만들고 허용 UID를 다시 등록할 수 있습니다. 기기의 목표·진행 상태는 유지합니다.
 FirebaseCore와 FirebaseCrashlytics는 Crashlytics에만 유지합니다. Analytics와 FirebaseAuth는 앱에 연결하지 않습니다.
 서버 401 뒤에는 같은 AI 요청을 자동 재전송하지 않습니다.
+`user_server_ai`가 ON이면 앱은 첫 화면 전에 목표·자료가 Anthropic으로 전송된다는 동의를 받습니다(App Review 5.1.2(i)).
+동의가 없으면 공급자가 요청마다 전송을 막습니다. 목표 목록에서 동의를 철회하면 동의 화면으로 돌아갑니다.
+목표 목록과 동의 화면은 `SMALLNEXT_PRIVACY_POLICY_URL`의 처리방침을 엽니다.
+`apps/ios/Resources`의 AppIcon은 직접 그린 임시 자산입니다. 최종 아이콘은 사람이 확정합니다. `PrivacyInfo.xcprivacy`와 앱 개인정보 라벨은 처리방침과 함께 사람이 확인합니다.
 `apps/ios/Config/Local.xcconfig.example`을 운영 준비에는 `Local.Release.xcconfig`로 복사합니다.
 개발용 설정은 같은 폴더의 `Local.Debug.xcconfig`로 분리합니다. 운영 설정을 개발 파일에 복사하지 마십시오.
 실제 파일은 Git에서 제외합니다. 저장소에는 값 없는 예시 파일만 유지합니다.
@@ -145,10 +150,11 @@ FirebaseCore와 FirebaseCrashlytics는 Crashlytics에만 유지합니다. Analyt
 | `SMALLNEXT_API_BASE_URL` | 경로·쿼리·사용자 정보가 없는 HTTPS 서버 원점 |
 | `SMALLNEXT_SUPABASE_URL` | 경로·쿼리·사용자 정보가 없는 HTTPS 프로젝트 원점 |
 | `SMALLNEXT_SUPABASE_PUBLISHABLE_KEY` | `sb_publishable_` 공개 key; secret key는 사용하지 않음 |
+| `SMALLNEXT_PRIVACY_POLICY_URL` | 사용자 정보가 없는 HTTPS 개인정보 처리방침 페이지; 없으면 서버 AI를 `사용 불가`로 둠 |
 
 선택적인 `SMALLNEXT_FIREBASE_*` 설정은 Crashlytics에만 사용합니다. 인증 설정과 분리합니다.
 
-두 URL의 `https://`는 xcconfig에서 `https:/$()/`로 씁니다.
+URL 설정의 `https://`는 xcconfig에서 `https:/$()/`로 씁니다.
 xcconfig는 `//` 뒤를 주석으로 처리합니다. `$()`는 빌드 때 빈 문자열로 확장됩니다.
 다른 값에는 따옴표·줄바꿈·build setting 확장을 넣지 않습니다.
 `Config/Debug.xcconfig`와 `Config/Release.xcconfig`가 각각 해당 로컬 파일만 읽습니다.
@@ -176,7 +182,7 @@ make ios-check IOS_SIMULATOR='iPhone 18 Pro'
 DB 검사는 `TEST_DATABASE_URL`의 격리 schema에서 HTTP 경계를 검증합니다.
 합성 RSA·EC 키, Supabase JWKS·계정 응답·세션 상태·제공사 응답을 사용합니다.
 정상·거부·불확실·잘못된 구조·위조 토큰·철회·예산 경합·재시작·취소를 확인합니다.
-생성 결정 5필드와 검사 결정 3필드를 공개 응답으로 변환합니다. 남은 작업·완료 ID와 두 미완료 플래그는 서버가 보존합니다.
+생성 결정 7필드(검사 전용 `facts`·`reduction` 포함)와 검사 결정 3필드를 공개 응답으로 변환합니다. 공개 `proposal`은 9필드이며 두 검사 전용 칸을 담지 않습니다. 남은 작업·완료 ID와 두 미완료 플래그는 서버가 보존합니다.
 `smaller`의 `need_info`만 질문 검사 지침을 사용합니다. 다섯 기준과 최종 보존 검사를 유지합니다.
 결정 원문의 구문·중복 키를 먼저 검사합니다. 이어 schema·타입·필수 필드·추가 필드를 검사합니다.
 진단 기록에는 역할·고정 오류 분류·허용 필드 이름만 남깁니다. 모델 원문은 남기지 않습니다.

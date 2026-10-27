@@ -21,6 +21,9 @@ from concurrent.futures import ThreadPoolExecutor
 REPO = Path(__file__).resolve().parents[1]
 MODEL = "claude-haiku-5-5"
 EFFORT = "xhigh"
+OUTPUT_TOKENS = 8192
+OUTPUT_SUPPORT = REPO / "docs/research/claude-output-limit-support.json"
+OUTPUT_SUPPORT_SHA256 = "aa2a1150ccdbc05d2bf428e30ade5515bf507be58686dc748fa0ed302179f0e4"
 
 
 def encoded(value):
@@ -78,6 +81,7 @@ def freeze(directory, suite, comparison=None, repetitions=2, case_ids=(),
     status = source(base + "status-contract-checks.json")
     latency = source(base + "checker-latency-checks.json")
     references = source(base + "oauth-quality-references.json")
+    grounding = source(base + "grounded-checker-candidates.json")["cases"]
     prompt_dir = "services/api/src/suggestion/"
     contract = source(prompt_dir + "contract.md", False)
     prompts = {role: source(prompt_dir + role + ".md", False) + "\n" + contract
@@ -90,6 +94,12 @@ def freeze(directory, suite, comparison=None, repetitions=2, case_ids=(),
     known = next(c for c in status["cases"] if c["id"] == "useful-minimum-known")
     for c in references["checker_cases"]:
         checkers.append(dict(deepcopy(c), original_request=deepcopy(known["input"])))
+    # #260: preserved candidates gain only the generator grounding; their files and verdicts stay as is.
+    if (set(grounding) != {c["id"] for c in checkers}
+            or any(set(fields) != {"facts", "reduction"} for fields in grounding.values())):
+        raise ValueError("grounding must add exactly facts and reduction to each checker case")
+    for c in checkers:
+        c["candidate"].update(deepcopy(grounding[c["id"]]))
     generators = deepcopy(contracts["generator_cases"])
     generators.extend(deepcopy(c) for c in status["cases"] if c["id"] != "deferred-alias"
                       and c["id"] != "real-reduction")
@@ -135,7 +145,7 @@ def freeze(directory, suite, comparison=None, repetitions=2, case_ids=(),
     save(directory / "integrity.json", {"manifest_sha256": digest((directory / "manifest.json").read_bytes())})
 
 
-def load(directory, *, read_bytes=Path.read_bytes):
+def load(directory, *, read_bytes=Path.read_bytes, allowed_runner_sha256=()):
     raw = read_bytes(directory / "manifest.json")
     integrity = json.loads(read_bytes(directory / "integrity.json"))
     if digest(raw) != integrity["manifest_sha256"]:
@@ -147,7 +157,8 @@ def load(directory, *, read_bytes=Path.read_bytes):
         if digest(source["utf8"].encode()) != source["sha256"]:
             raise ValueError("frozen source bytes changed")
     runner = manifest["sources"].get("scripts/oauth_quality.py")
-    if runner is not None and digest(Path(__file__).read_bytes()) != runner["sha256"]:
+    if (runner is not None and digest(Path(__file__).read_bytes()) != runner["sha256"]
+            and runner["sha256"] not in allowed_runner_sha256):
         raise ValueError("runner differs from frozen version")
     return manifest
 
@@ -168,6 +179,7 @@ class Tracker:
         self.blocks = {}
         self.block_seconds = {}
         self.structured_json = {}
+        self.output_tokens = None
 
     def consume(self, event, seconds):
         if not isinstance(event, dict):
@@ -224,8 +236,22 @@ class Tracker:
                             self.structured_json[detail.get("index")] += delta.get(key, "")
                         if kind == "thinking_delta":
                             self.last_thinking = seconds
-            if detail.get("delta", {}).get("stop_reason") == "max_tokens":
+            if reason == "max_tokens":
                 self.max_tokens += 1
+            if detail.get("type") == "message_delta" and "usage" in detail:
+                usage = detail["usage"]
+                if not isinstance(usage, dict):
+                    raise ValueError("unverified_output_usage")
+                if "output_tokens" in usage:
+                    tokens = usage["output_tokens"]
+                    if type(tokens) is not int or tokens < 0:
+                        raise ValueError("unverified_output_usage")
+                    if self.output_tokens is not None and tokens < self.output_tokens:
+                        raise ValueError("output_usage_mismatch")
+                    self.output_tokens = tokens
+                    output_count(tokens)
+            # The terminating delta may carry the last observable usage.
+            if reason == "max_tokens":
                 raise ValueError("max_tokens")
         if event.get("type") in {"assistant", "user"}:
             for block in event.get("message", {}).get("content", []):
@@ -270,18 +296,67 @@ class Tracker:
         usage = result.get("usage") if isinstance(result.get("usage"), dict) else {}
         models = result.get("modelUsage") if isinstance(result.get("modelUsage"), dict) else {}
         return {"provider_messages": self.messages, "provider_retries": self.retries,
+                "output_token_limit": OUTPUT_TOKENS, "stream_output_tokens": self.output_tokens,
                 "additional_provider_requests": max(0, self.messages - 1) + self.retries,
                 "max_tokens": self.max_tokens, "first_response_seconds": self.first_response,
                 "last_thinking_seconds": self.last_thinking, "delta_characters": self.characters,
                 "trace": self.trace, "block_seconds": self.block_seconds,
                 "actual_models": sorted({name if name == MODEL else "unexpected_model" for name in models}),
+                "provider_result": None if self.result is None else {
+                    "subtype": result.get("subtype") if type(result.get("subtype")) is str and result.get("subtype") in {
+                        "success", "error_during_execution", "error_max_turns", "error_max_budget_usd",
+                        "error_max_structured_output_retries"} else "other",
+                    "is_error": result.get("is_error") if type(result.get("is_error")) is bool else None},
                 "api_seconds": numeric(result.get("duration_api_ms"), 1000),
                 "usage": {key: numeric(usage.get(key)) for key in (
                     "input_tokens", "output_tokens", "cache_read_input_tokens", "cache_creation_input_tokens")}}
 
 
 def numeric(value, divisor=1):
-    return value / divisor if type(value) in (int, float) and math.isfinite(value) and value >= 0 else None
+    try:
+        return value / divisor if type(value) in (int, float) and math.isfinite(value) and value >= 0 else None
+    except OverflowError:
+        return None
+
+
+def output_count(value):
+    if type(value) is not int or value < 0:
+        raise ValueError("unverified_output_usage")
+    if value > OUTPUT_TOKENS:
+        raise ValueError("output_tokens_exceeded")
+    return value
+
+
+def output_readiness(output_mode):
+    """Check current offline preparation; execution always uses the current evidence pin."""
+    try:
+        raw = OUTPUT_SUPPORT.read_bytes()
+    except OSError:
+        raw = None
+    return evidence_readiness(output_mode, raw, OUTPUT_SUPPORT_SHA256)
+
+
+def evidence_readiness(output_mode, raw, expected_sha256):
+    """Read pinned evidence bytes without running or authorizing any model request."""
+    status = {"ready": False, "output_tokens": OUTPUT_TOKENS,
+              "provider_application": "unobserved", "reasons": [], "limitations": [],
+              "actual_execution_authorized": False}
+    if raw is None:
+        status["reasons"] = ["support_missing"]
+        return status
+    status["evidence_sha256"] = digest(raw)
+    if status["evidence_sha256"] != expected_sha256:
+        status["reasons"] = ["support_changed"]
+        return status
+    evidence = json.loads(raw)
+    if (output_mode not in evidence["output_modes"] or OUTPUT_TOKENS != evidence["output_tokens"]
+            or MODEL != evidence["model"] or EFFORT != evidence["effort"]
+            or any(environment().get(key) != value for key, value in evidence["configured_environment"].items())):
+        status["reasons"] = ["support_mismatch"]
+        return status
+    status["ready"] = True
+    status["limitations"] = evidence["unverified"]
+    return status
 
 
 class OutputError(ValueError):
@@ -338,6 +413,11 @@ def environment():
         "PATH", "HOME", "TMPDIR", "SSL_CERT_FILE", "SSL_CERT_DIR", "HTTP_PROXY",
         "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY") if key in os.environ}
     env["USER"] = env["LOGNAME"] = pwd.getpwuid(os.getuid()).pw_name
+    env["CLAUDE_CODE_MAX_OUTPUT_TOKENS"] = str(OUTPUT_TOKENS)
+    env["CLAUDE_CODE_MAX_RETRIES"] = "0"
+    env["MAX_STRUCTURED_OUTPUT_RETRIES"] = "1"
+    env["CLAUDE_CODE_DISABLE_NONSTREAMING_FALLBACK"] = "1"
+    env["CLAUDE_CODE_NONSTREAMING_TIMEOUT_RETRIES"] = "0"
     return env
 
 
@@ -388,13 +468,15 @@ def request(prompt, schema, data):
     return prompt, schema
 
 
-def _call(claude, prompt, schema, data, deadline, cancelled, output_mode="structured"):
+def _call(claude, prompt, schema, data, deadline, cancelled, output_mode="structured", *, approved_once=False):
     proposal_schema = check_schema = schema
     single_explanation, decision_only = compact_roles(schema, data)
     prompt, schema = request(prompt, schema, data)
     tracker = Tracker(schema)
     started = monotonic()
     child = None
+    stderr_digest = hashlib.sha256()
+    stderr_bytes = 0
     if output_mode == "text-json":
         prompt += ("\nOutput only a JSON object, starting with { and ending with }. "
                    "Do not wrap the object in backticks or code fences. No preamble or trailing text. "
@@ -422,36 +504,62 @@ def _call(claude, prompt, schema, data, deadline, cancelled, output_mode="struct
             raise ValueError("cancelled")
         if monotonic() >= deadline:
             raise ValueError("timed_out")
+        record["output_limit_support"] = output_readiness(output_mode)
+        if not record["output_limit_support"]["ready"]:
+            raise ValueError("output_limit_unverified")
+        if approved_once is True:
+            record["output_limit_support"]["actual_execution_authorized"] = True
+        if not record["output_limit_support"].get("actual_execution_authorized", False):
+            raise ValueError("evaluation_not_authorized")
         with tempfile.TemporaryDirectory(prefix="smallnext-oauth-") as workspace:
             child = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                                     stderr=subprocess.DEVNULL, start_new_session=True,
+                                     stderr=subprocess.PIPE, start_new_session=True,
                                      cwd=workspace, env=environment())
             record["cli_pid"] = child.pid
-            child.stdin.write(encoded(data))
-            child.stdin.close()
+            pending = memoryview(encoded(data))
+            os.set_blocking(child.stdin.fileno(), False)
             buffer = b""
             total_bytes = 0
             with selectors.DefaultSelector() as selector:
+                selector.register(child.stdin, selectors.EVENT_WRITE)
                 selector.register(child.stdout, selectors.EVENT_READ)
-                eof = False
-                while not eof:
+                selector.register(child.stderr, selectors.EVENT_READ)
+                streams = {child.stdout, child.stderr}
+                while streams:
                     if cancelled.is_set():
                         raise ValueError("cancelled")
                     if monotonic() >= deadline:
                         raise ValueError("timed_out")
-                    if not selector.select(min(.1, max(0, deadline - monotonic()))):
-                        continue
-                    raw = os.read(child.stdout.fileno(), 65536)
-                    if not raw:
-                        eof = True
-                    buffer += raw
-                    total_bytes += len(raw)
-                    if total_bytes > 4 * 1024 * 1024 or len(buffer) > 512 * 1024:
-                        raise ValueError("output_limit")
-                    while b"\n" in buffer:
-                        line, buffer = buffer.split(b"\n", 1)
-                        if line.strip():
-                            tracker.consume(json.loads(line), round(monotonic() - started, 3))
+                    ready = selector.select(min(.1, max(0, deadline - monotonic())))
+                    for key, _ in ready:
+                        if key.fileobj is child.stdin:
+                            try:
+                                written = os.write(child.stdin.fileno(), pending[:65536])
+                            except BlockingIOError:
+                                continue
+                            pending = pending[written:]
+                            if not pending:
+                                selector.unregister(child.stdin)
+                                child.stdin.close()
+                            continue
+                        raw = os.read(key.fileobj.fileno(), 65536)
+                        if not raw:
+                            selector.unregister(key.fileobj)
+                            streams.remove(key.fileobj)
+                            continue
+                        if key.fileobj is child.stderr:
+                            # Error text can contain credentials; retain only size and digest.
+                            stderr_bytes += len(raw)
+                            stderr_digest.update(raw)
+                            continue
+                        buffer += raw
+                        total_bytes += len(raw)
+                        if total_bytes > 4 * 1024 * 1024 or len(buffer) > 512 * 1024:
+                            raise ValueError("output_limit")
+                        while b"\n" in buffer:
+                            line, buffer = buffer.split(b"\n", 1)
+                            if line.strip():
+                                tracker.consume(json.loads(line), round(monotonic() - started, 3))
                 if buffer.strip():
                     tracker.consume(json.loads(buffer), round(monotonic() - started, 3))
         result = tracker.result or {}
@@ -479,12 +587,23 @@ def _call(claude, prompt, schema, data, deadline, cancelled, output_mode="struct
                           preserved_completed_ids=deepcopy(data["completed_ids"]),
                           goal_completed=False, current_action_completed=False)
             validate(output, proposal_schema)
+        usage = result.get("usage")
+        tokens = output_count(usage.get("output_tokens") if isinstance(usage, dict) else None)
+        model_usage = result["modelUsage"][MODEL]
+        if not isinstance(model_usage, dict):
+            raise ValueError("unverified_output_usage")
+        if "outputTokens" in model_usage and output_count(model_usage["outputTokens"]) != tokens:
+            raise ValueError("output_usage_mismatch")
+        if tracker.output_tokens is not None and tracker.output_tokens != tokens:
+            raise ValueError("output_usage_mismatch")
         record["output"] = output
     except ValueError as error:
         # Provider exception text can contain secrets; only our own codes leave this process.
         allowed = {"cancelled", "timed_out", "output_limit", "provider_failed", "wrong_model",
                    "unverified_message_count", "unsupported_schema", "invalid_output", "provider_retry",
-                   "additional_provider_request", "max_tokens", "duplicate_result"}
+                   "additional_provider_request", "max_tokens", "duplicate_result",
+                   "unverified_output_usage", "output_tokens_exceeded", "output_usage_mismatch",
+                   "output_limit_unverified", "evaluation_not_authorized"}
         record["error"] = str(error) if str(error) in allowed else "invalid_stream"
         if isinstance(error, OutputError):
             record["output_error"] = error.detail
@@ -500,22 +619,42 @@ def _call(claude, prompt, schema, data, deadline, cancelled, output_mode="struct
                 except (ProcessLookupError, PermissionError):
                     # macOS can return EPERM for a group containing only an unreaped zombie.
                     pass
+                except OSError:
+                    record["cleanup_error"] = "signal_failed"
                 if sig == signal.SIGTERM:
                     # Keep the group leader unreaped until both signals to prevent PID reuse.
                     threading.Event().wait(.05)
-            child.wait()
+            try:
+                child.wait(timeout=1)
+                record["process_reaped"] = True
+                record["cli_exit_code"] = child.returncode
+            except (subprocess.TimeoutExpired, OSError):
+                record["cleanup_error"] = "reap_failed"
             if child.returncode != 0 and "error" not in record:
                 record.pop("output", None)
                 record["error"] = "provider_failed"
-            child.stdout.close()
-            record["process_reaped"] = True
-            try:
-                os.killpg(child.pid, 0)
-                record["process_group_alive"] = True
-            except ProcessLookupError:
-                record["process_group_alive"] = False
-            except PermissionError:
-                record["process_group_alive"] = True
+            record.update(stderr_bytes=stderr_bytes, stderr_sha256=stderr_digest.hexdigest())
+            for stream in (child.stdin, child.stdout, child.stderr):
+                try:
+                    stream.close()
+                except OSError:
+                    record["cleanup_error"] = "pipe_close_failed"
+            cleanup_deadline = monotonic() + 1
+            while True:
+                try:
+                    os.killpg(child.pid, 0)
+                    record["process_group_alive"] = True
+                except ProcessLookupError:
+                    record["process_group_alive"] = False
+                except PermissionError:
+                    record["process_group_alive"] = True
+                except OSError:
+                    record["process_group_alive"] = True
+                    record["cleanup_error"] = "group_status_failed"
+                if not record["process_group_alive"] or monotonic() >= cleanup_deadline:
+                    break
+                # Killed descendants can remain zombies briefly while their new parent reaps them.
+                threading.Event().wait(.01)
         record.update(tracker.metadata())
         record["seconds"] = round(monotonic() - started, 3)
     return record
@@ -532,8 +671,8 @@ def question_prompt(prompt):
         return prompt
     lines=paragraphs[4].splitlines()
     prefixes=('Status selection:', '- goal_preparation', '- first_action,', '- need_info ',
-              '- For smaller,', '- Also stop smaller', '- action is', '- no_action uses')
-    if len(lines)!=8 or any(not line.startswith(prefix) for line,prefix in zip(lines,prefixes)):
+              '- For smaller,', '- Also stop smaller', '- action is', '- no_action uses', '- insufficient_info ')
+    if len(lines)!=len(prefixes) or any(not line.startswith(prefix) for line,prefix in zip(lines,prefixes)):
         return prompt
     paragraphs[4]='\n'.join([lines[0],*lines[2:6]])
     return ('Independently check all five mandatory criteria for this need_info question on a smaller request. '
@@ -549,7 +688,7 @@ def question_prompt(prompt):
             'For accept, return exactly criteria [1,2,3,4,5]; for reject or uncertain, return at least one relevant failing or unsupported criterion. Use nonblank exact quotes and a concise Korean justification.\n\n'+'\n\n'.join(paragraphs))
 
 def result_failure(record):
-    if record.get("process_group_alive") or ("cli_pid" in record and (
+    if record.get("cleanup_error") or record.get("process_group_alive") or ("cli_pid" in record and (
             record.get("process_reaped") is not True or record.get("process_group_alive") is not False)):
         return "process_cleanup"
     if "error" in record:
@@ -562,11 +701,13 @@ def result_failure(record):
     return None
 
 
-def call(claude,prompt,schema,data,deadline,cancelled,output_mode='structured'):
+def call(claude,prompt,schema,data,deadline,cancelled,output_mode='structured', *, approved_once=False):
     is_check,_=compact_roles(schema,data)
-    record=_call(claude,prompt,schema,data,deadline,cancelled,output_mode)
+    record=_call(claude,prompt,schema,data,deadline,cancelled,output_mode,approved_once=approved_once)
     failure=result_failure(record)
     if failure is not None:
+        if 'error' in record and record['error'] != failure:
+            record['primary_error'] = record['error']
         record['error']=failure
         record.pop('output',None)
     output=record.get('output')
@@ -591,14 +732,21 @@ def schema_for(manifest, original):
     schema = deepcopy(manifest["schemas"]["generate"])
     schema["properties"]["status"]["enum"] = (
         ["goal_summary", "need_info"] if original.get("request_kind") == "goal_preparation" else
-        ["action", "need_info", "minimum", "no_action"] if original.get("request_kind") == "replacement" else
+        ["action", "need_info", "minimum", "no_action", "insufficient_info"] if original.get("request_kind") == "replacement" else
+        ["action", "need_info", "minimum", "insufficient_info"] if original.get("request_kind") in {"first_action", "next_action", "smaller"} else
         ["action", "need_info", "minimum"])
     return schema
 
 
 def proposal_invalid_fields(original, proposal):
     failures = {key: not proposal[key].strip() for key in ("action", "completion_condition", "reason")}
-    failures.update(estimated_minutes=not 0 <= proposal["estimated_minutes"] <= original["available_minutes"],
+    if proposal["status"] == "insufficient_info":
+        failures.update(status=original.get("request_kind") not in {"first_action", "next_action", "smaller", "replacement"},
+                        action=proposal["action"] != "",
+                        completion_condition=proposal["completion_condition"] != "",
+                        estimated_minutes=proposal["estimated_minutes"] != 0,
+                        reduction=proposal["reduction"] != "")
+    failures.update(estimated_minutes=failures.get("estimated_minutes", False) or not 0 <= proposal["estimated_minutes"] <= original["available_minutes"],
                     remaining_work=proposal["remaining_work"] != original["remaining_work"],
                     preserved_completed_ids=proposal["preserved_completed_ids"] != original["completed_ids"],
                     goal_completed=proposal["goal_completed"] is not False,
@@ -814,6 +962,8 @@ def recover_summary(directory):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
+    readiness = sub.add_parser("readiness", help="출력 상한 근거 확인; Claude 호출 없음")
+    readiness.add_argument("--output-mode", choices=("structured", "text-json"), default="text-json")
     frozen = sub.add_parser("freeze")
     frozen.add_argument("directory", type=Path)
     frozen.add_argument("--suite", choices=("quality", "latency"), required=True)
@@ -831,6 +981,10 @@ def main():
     recovery = sub.add_parser("summarize", help="recover an interrupted summary without any provider calls")
     recovery.add_argument("directory", type=Path)
     args = parser.parse_args()
+    if args.command == "readiness":
+        status = output_readiness(args.output_mode)
+        print(json.dumps(status))
+        raise SystemExit(0 if status["ready"] else 1)
     if args.command == "freeze":
         freeze(args.directory, args.suite, args.comparison_role, args.repetitions, args.case,
                args.output_mode, args.comparison_output, sequential=args.sequential)

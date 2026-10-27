@@ -18,6 +18,15 @@ fn proposal() -> Proposal {
     }
 }
 
+/// Model output: the app proposal plus the model-only grounding fields.
+fn generated() -> Value {
+    let mut value = json!(proposal());
+    value["facts"] =
+        json!([{"fact":"파란 펜이 책상 왼쪽에 있다","source":"present","if_absent":"해당 없음"}]);
+    value["reduction"] = json!("해당 없음");
+    value
+}
+
 #[test]
 fn request_status_contract() {
     for kind in [
@@ -199,24 +208,39 @@ fn accept() -> Value {
 
 #[tokio::test]
 async fn accepted_candidate_is_checked_against_the_original_request() {
-    let model = Scripted::new(vec![Ok(json!(proposal())), Ok(accept())]);
+    let model = Scripted::new(vec![Ok(generated()), Ok(accept())]);
     let evaluation = evaluate(&model, &input()).await;
-    assert_eq!(evaluation.result, Ok(proposal()));
+    assert_eq!(
+        evaluation.result,
+        Ok(proposal()),
+        "grounding never reaches the app"
+    );
     assert_eq!(evaluation.bills, [Role::Generate, Role::Check]);
     let calls = model.calls.lock().unwrap();
     assert_eq!(calls[0].1, validate_input(&input()).unwrap());
     assert_eq!(calls[1].1["original_request"], calls[0].1);
-    assert_eq!(calls[1].1["candidate"], json!(proposal()));
+    assert_eq!(
+        calls[1].1["candidate"],
+        generated(),
+        "the checker compares grounding"
+    );
 }
 
 #[tokio::test]
 async fn invalid_or_failed_generation_never_starts_the_checker() {
-    let mut completed = proposal();
-    completed.goal_completed = true;
+    let mut completed = generated();
+    completed["goal_completed"] = json!(true);
+    let mut unsourced = generated();
+    unsourced["facts"][0]["source"] = json!("memory");
+    let mut extra = generated();
+    extra["facts"][0]["note"] = json!("추가");
     for (reply, expected) in [
         (Err(Disposition::BudgetLimit), Disposition::BudgetLimit),
         (Ok(json!({"status":"action"})), Disposition::InvalidProposal),
-        (Ok(json!(completed)), Disposition::InvalidProposal),
+        (Ok(completed), Disposition::InvalidProposal),
+        (Ok(json!(proposal())), Disposition::InvalidProposal),
+        (Ok(unsourced), Disposition::InvalidProposal),
+        (Ok(extra), Disposition::InvalidProposal),
     ] {
         let model = Scripted::new(vec![reply]);
         let evaluation = evaluate(&model, &input()).await;
@@ -243,7 +267,7 @@ async fn checker_verdict_or_failure_decides_without_retry() {
             Disposition::ConnectionLost,
         ),
     ] {
-        let model = Scripted::new(vec![Ok(json!(proposal())), reply]);
+        let model = Scripted::new(vec![Ok(generated()), reply]);
         let evaluation = evaluate(&model, &input()).await;
         assert_eq!(evaluation.result, Err(expected));
         assert_eq!(evaluation.bills, [Role::Generate, Role::Check]);
@@ -320,4 +344,107 @@ fn compact_contract_matches_shared_fixture() {
         actual, committed,
         "run UPDATE_CONTRACT_FIXTURES=1 cargo test, then update scripts/oauth_quality.py"
     );
+}
+
+#[tokio::test]
+async fn insufficient_info_is_checked_without_creating_an_action() {
+    let fixture: Value = serde_json::from_str(include_str!(
+        "../../../../contracts/fixtures/insufficient-info.json"
+    ))
+    .unwrap();
+    for kind in ["first_action", "next_action", "smaller", "replacement"] {
+        let mut original = fixture["input"].clone();
+        original["request_kind"] = json!(kind);
+        let data: AiInput = serde_json::from_value(original).unwrap();
+        let model = Scripted::new(vec![Ok(fixture["generated"].clone()), Ok(accept())]);
+        let evaluated = evaluate(&model, &data).await;
+        assert_eq!(
+            evaluated.result.unwrap(),
+            serde_json::from_value(fixture["response"]["proposal"].clone()).unwrap()
+        );
+        assert_eq!(model.roles(), [Role::Generate, Role::Check]);
+    }
+    for case in fixture["checker_cases"].as_array().unwrap() {
+        let data = serde_json::from_value(case["input"].clone()).unwrap();
+        let model = Scripted::new(vec![
+            Ok(case
+                .get("generated")
+                .unwrap_or(&fixture["generated"])
+                .clone()),
+            Ok(case["check"].clone()),
+        ]);
+        let evaluated = evaluate(&model, &data).await;
+        let disposition = match evaluated.result {
+            Ok(proposal) => {
+                let mut expected = case
+                    .get("generated")
+                    .unwrap_or(&fixture["generated"])
+                    .clone();
+                expected.as_object_mut().unwrap().remove("facts");
+                expected.as_object_mut().unwrap().remove("reduction");
+                assert_eq!(proposal, serde_json::from_value(expected).unwrap());
+                Disposition::Accepted
+            }
+            Err(failure) => failure,
+        };
+        assert_eq!(json!(disposition), case["expected"], "{}", case["id"]);
+        assert_eq!(model.roles(), [Role::Generate, Role::Check]);
+    }
+}
+
+#[tokio::test]
+async fn invalid_insufficient_info_never_starts_checker() {
+    let fixture: Value = serde_json::from_str(include_str!(
+        "../../../../contracts/fixtures/insufficient-info.json"
+    ))
+    .unwrap();
+    let original: AiInput = serde_json::from_value(fixture["input"].clone()).unwrap();
+    for (field, value) in [
+        ("action", json!("가짜 행동")),
+        ("completion_condition", json!(" ")),
+        ("estimated_minutes", json!(1)),
+        ("estimated_minutes", json!(-1)),
+        ("reason", json!(" ")),
+        ("reduction", json!("해당 없음")),
+        ("remaining_work", json!([])),
+        ("preserved_completed_ids", json!(["new"])),
+        ("goal_completed", json!(true)),
+        ("current_action_completed", json!(true)),
+    ] {
+        let mut generated = fixture["generated"].clone();
+        generated[field] = value;
+        let model = Scripted::new(vec![Ok(generated)]);
+        assert_eq!(
+            evaluate(&model, &original).await.result,
+            Err(Disposition::InvalidProposal),
+            "{field}"
+        );
+        assert_eq!(model.roles(), [Role::Generate]);
+    }
+    for kind in [None, Some("goal_preparation"), Some("unsupported")] {
+        let mut data = fixture["input"].clone();
+        data["request_kind"] = json!(kind);
+        let data = serde_json::from_value(data).unwrap();
+        let model = Scripted::new(vec![Ok(fixture["generated"].clone())]);
+        let expected = if kind == Some("unsupported") {
+            Disposition::InvalidInput
+        } else {
+            Disposition::InvalidProposal
+        };
+        assert_eq!(evaluate(&model, &data).await.result, Err(expected));
+        assert_eq!(
+            model.roles().len(),
+            usize::from(kind != Some("unsupported"))
+        );
+    }
+    let mut data = original;
+    data.remaining_work = vec!["둘째".into(), "첫째".into()];
+    data.completed_ids = vec!["2".into(), "1".into()];
+    let mut generated = fixture["generated"].clone();
+    generated["remaining_work"] = json!(data.remaining_work);
+    generated["preserved_completed_ids"] = json!(data.completed_ids);
+    let model = Scripted::new(vec![Ok(generated), Ok(accept())]);
+    let proposal = evaluate(&model, &data).await.result.unwrap();
+    assert_eq!(proposal.remaining_work, data.remaining_work);
+    assert_eq!(proposal.preserved_completed_ids, data.completed_ids);
 }

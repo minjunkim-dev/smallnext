@@ -43,6 +43,15 @@ fn proposal() -> Proposal {
     }
 }
 
+/// What the model emits: the proposal plus the model-only grounding fields.
+fn grounded(mut candidate: Value) -> Value {
+    if let Some(object) = candidate.as_object_mut() {
+        object.insert("facts".into(), json!([]));
+        object.entry("reduction").or_insert(json!("해당 없음"));
+    }
+    candidate
+}
+
 fn events(value: &Value) -> Vec<u8> {
     format!(
         "{}\n{}\n",
@@ -85,7 +94,11 @@ impl Fixture {
         use std::os::unix::fs::PermissionsExt;
         let dir = Workspace::new(Role::Generate, None).unwrap();
         let executable = dir.0.join("fake-codex");
-        std::fs::write(dir.0.join("candidate.json"), candidate.to_string()).unwrap();
+        std::fs::write(
+            dir.0.join("candidate.json"),
+            grounded(candidate).to_string(),
+        )
+        .unwrap();
         std::fs::write(dir.0.join("check.json"), check.to_string()).unwrap();
         let script = r#"#!/usr/bin/env python3
 import json, os, pathlib, sys, time
@@ -258,7 +271,10 @@ async fn accepts_only_after_two_isolated_oauth_calls() {
     assert_eq!(calls[0]["role"], "candidate");
     assert_eq!(calls[1]["role"], "check");
     assert_eq!(calls[1]["payload"]["original_request"], calls[0]["payload"]);
-    assert_eq!(calls[1]["payload"]["candidate"], json!(proposal()));
+    assert_eq!(
+        calls[1]["payload"]["candidate"],
+        grounded(json!(proposal()))
+    );
     for call in calls {
         let args = call["args"].as_array().unwrap();
         for required in [
@@ -650,4 +666,28 @@ async fn cancellation_timeout_and_stale_response_preserve_state() {
     assert_eq!(other.revision, state.revision);
     assert!(!other.finish(result));
     assert!(other.current().is_none());
+}
+
+#[tokio::test]
+#[cfg(unix)]
+async fn insufficient_info_uses_the_shared_contract_without_a_real_subscription_call() {
+    let shared: Value = serde_json::from_str(include_str!(
+        "../../../../contracts/fixtures/insufficient-info.json"
+    ))
+    .unwrap();
+    let fixture = Fixture::new(
+        shared["generated"].clone(),
+        json!({"verdict":"accept","criteria":[1,2,3,4,5],"evidence":"합성 입력과 후보", "reason":"다섯 기준 충족"}),
+        false,
+    );
+    let mut state = ActionState::new(None);
+    let ticket = state.begin().unwrap();
+    let original = serde_json::from_value(shared["input"].clone()).unwrap();
+    let result = fixture.ai.evaluate(&original, ticket).await;
+    assert_eq!(result.disposition, Disposition::Accepted);
+    assert_eq!(fixture.calls().len(), 2);
+    assert_eq!(
+        result.proposal.unwrap().status,
+        ProposalStatus::InsufficientInfo
+    );
 }

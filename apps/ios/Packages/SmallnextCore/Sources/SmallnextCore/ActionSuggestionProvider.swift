@@ -7,7 +7,7 @@ public protocol ActionSuggestionProvider: Sendable {
     func suggest(_ request: SuggestionRequest) async throws -> SuggestionCandidate
 }
 
-public enum SuggestionKind: String, Sendable {
+public enum SuggestionKind: String, Sendable, Codable {
     case goalPreparation = "goal_preparation"
     case firstAction = "first_action"
     case nextAction = "next_action"
@@ -35,6 +35,10 @@ public struct SuggestionRequest: Sendable, Equatable {
     /// 완료한 행동과 구분하는 미완료 분할 원본·현재·보류 행동이다.
     var remainingTasks: [String] = []
     var completedActionIDs: [String] = []
+    /// 행동 요청에 연결해 확인한 질문과 답이다. 목표 준비와 막힘 원인과 구분한다.
+    var actionAnswers: [GoalAnswer] = []
+    /// 명시적으로 재요청할 때 전송하는 확인 저장값이다. 편집 초안과 구분한다.
+    var supplementalText = ""
 }
 
 struct GoalAnswer: Equatable, Sendable {
@@ -73,6 +77,8 @@ public enum SuggestionCandidate: Sendable, Equatable {
     case minimalAction(ProposedAction)
     /// 선행 조건이 준비된 다른 행동이 없다. 대체 요청에서만 쓴다.
     case noAction
+    /// 유용한 행동이나 실제 미답 질문을 제안할 근거가 부족한 정상 안내다.
+    case insufficientInfo(String)
 }
 
 public enum SuggestionFailure: String, Error, Sendable, CaseIterable {
@@ -90,6 +96,9 @@ public enum SuggestionFailure: String, Error, Sendable, CaseIterable {
 enum CandidatePolicy {
     static func accept(_ candidate: SuggestionCandidate, for request: SuggestionRequest) -> SuggestionCandidate? {
         switch candidate {
+        case .insufficientInfo(let text):
+            guard request.kind != .goalPreparation, let reason = trimmed(text) else { return nil }
+            return .insufficientInfo(reason)
         case .goalSummary(let text):
             guard request.kind == .goalPreparation, let criteria = trimmed(text) else { return nil }
             return .goalSummary(criteria)
@@ -97,8 +106,7 @@ enum CandidatePolicy {
             // 대체 후보 없음은 대체 요청에서만 받는다.
             return request.kind == .replacement ? .noAction : nil
         case .question(let text):
-            // 목표 준비와 더 작게에서만 확인 질문 하나를 받는다.
-            guard request.kind == .goalPreparation || request.kind == .smaller, let question = trimmed(text) else { return nil }
+            guard let question = trimmed(text) else { return nil }
             return .question(question)
         case .action(let proposed):
             return action(proposed, for: request).map(SuggestionCandidate.action)

@@ -209,6 +209,298 @@ final class ScreenTimingTests: XCTestCase {
                 budget: 60, expectedAction: "펜 다섯 개 정리하기")
     }
 
+    func testApprovedSingleScreen() throws {
+        let environment = ProcessInfo.processInfo.environment
+        try XCTSkipUnless(environment["SMALLNEXT_SCREEN_ONCE"] == "1",
+                          "승인된 화면 측정의 현재 슬롯에서만 실행한다.")
+        continueAfterFailure = false
+        let kind = try XCTUnwrap(environment["SMALLNEXT_SCREEN_KIND"])
+        XCTAssertTrue(["first_action", "smaller"].contains(kind))
+        let url = try XCTUnwrap(environment["SMALLNEXT_TIMING_TEST_URL"])
+        let app = XCUIApplication()
+        app.launchArguments = ["-ios_core_flow", "YES", "-user_server_ai", "NO",
+                               "-development_ai_url", url, "-suggestion_timing", "YES"]
+        app.launch()
+        let button = kind == "first_action" ? "확인하고 시작" : "더 작게"
+        XCTAssertTrue(app.buttons[button].waitForExistence(timeout: 10))
+        observe(app, button: button, kind: kind, outcome: "normal", budget: 180,
+                mockOnly: environment["SMALLNEXT_SCREEN_MOCK"] == "1")
+        app.terminate()
+    }
+
+    func testFirstInsufficientInfoRestoresAndReturnsToGoalList() throws {
+        continueAfterFailure = false
+        let url = try XCTUnwrap(ProcessInfo.processInfo.environment["SMALLNEXT_TIMING_TEST_URL"])
+        let app = XCUIApplication()
+        app.launchArguments = ["-ios_core_flow", "YES", "-user_server_ai", "NO", "-development_ai_url", url, "-suggestion_timing", "NO"]
+        app.launch()
+        newGoal(app)
+        let goal = "정보 부족 안내 검증 \(UUID().uuidString)"
+        app.textFields["목표 한 문장"].tap()
+        app.textFields["목표 한 문장"].typeText(goal)
+        app.buttons["목표 정리"].tap()
+        XCTAssertTrue(app.buttons["확인하고 시작"].waitForExistence(timeout: 10))
+        app.buttons["확인하고 시작"].tap()
+        let title = "지금은 새 행동을 제안하기 어려워요"
+        let reason = "현재 제공된 정보로는 **당시 역할**을 확인할 수 없어요."
+        XCTAssertTrue(app.staticTexts[title].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts[reason].exists)
+        XCTAssertTrue(app.buttons["돌아가기"].isHittable)
+        XCTAssertFalse(app.buttons["완료"].exists)
+        XCTAssertFalse(app.buttons["다시 시도"].exists)
+        XCTAssertTrue(app.buttons["새 정보 추가"].isHittable)
+        XCTAssertNotNil(attach(app, name: "first-insufficient-info"))
+        let tree = XCTAttachment(string: app.debugDescription)
+        tree.name = "first-insufficient-info-accessibility-tree"
+        tree.lifetime = .keepAlways
+        add(tree)
+        XCTAssertLessThan(app.staticTexts[title].frame.maxY, app.staticTexts[reason].frame.minY)
+        XCTAssertLessThan(app.staticTexts[reason].frame.maxY, app.buttons["돌아가기"].frame.minY)
+        app.buttons["돌아가기"].tap()
+        let entry = goalEntry(app, goal: goal)
+        XCTAssertTrue(entry.waitForExistence(timeout: 10))
+        XCTAssertTrue(entry.label.contains("완료한 행동 0개"))
+        entry.tap()
+        XCTAssertTrue(app.staticTexts[title].waitForExistence(timeout: 10))
+        app.buttons["새 정보 추가"].tap()
+        let editor = app.textFields["추가로 알려줄 내용"]
+        XCTAssertTrue(editor.waitForExistence(timeout: 5))
+        editor.typeText("제가 첫 문단을 작성했어요.")
+        app.terminate()
+        app.launch()
+        XCTAssertTrue(editor.waitForExistence(timeout: 10))
+        XCTAssertEqual(editor.value as? String, "제가 첫 문단을 작성했어요.")
+        app.swipeUp()
+        app.buttons["확인하고 저장"].tap()
+        XCTAssertTrue(app.staticTexts["보충 내용을 저장했어요."].waitForExistence(timeout: 5))
+        let previousNotice = "이 안내 이후 새 정보를 저장했어요. 아직 다시 제안받지 않았어요."
+        XCTAssertTrue(app.staticTexts[previousNotice].exists)
+        XCTAssertTrue(app.buttons["새 정보로 다시 제안"].exists)
+        XCTAssertNotNil(attach(app, name: "supplemental-confirmed-with-previous-notice"))
+        let savedTree = XCTAttachment(string: app.debugDescription)
+        savedTree.name = "supplemental-saved-accessibility-tree"
+        savedTree.lifetime = .keepAlways
+        add(savedTree)
+        app.terminate()
+        app.launchArguments += ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]
+        app.launch()
+        XCTAssertTrue(app.staticTexts[title].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts[reason].exists)
+        XCTAssertTrue(app.staticTexts[previousNotice].exists)
+        app.buttons["새 정보 추가"].tap()
+        XCTAssertTrue(editor.waitForExistence(timeout: 5))
+        XCTAssertEqual(editor.value as? String, "제가 첫 문단을 작성했어요.")
+        editor.typeText(" 수정 중")
+        XCTAssertNotNil(attach(app, name: "first-insufficient-info-large-text-restored"))
+        app.swipeUp()
+        app.buttons["돌아가기"].tap()
+        let restoredEntry = goalEntry(app, goal: goal)
+        XCTAssertTrue(restoredEntry.waitForExistence(timeout: 10))
+        restoredEntry.tap()
+        XCTAssertTrue(editor.waitForExistence(timeout: 10))
+        XCTAssertEqual(editor.value as? String, "제가 첫 문단을 작성했어요. 수정 중")
+    }
+
+    func testConfirmedSupplementalFirstActionWaitsForExplicitRequestAndRestores() throws {
+        continueAfterFailure = false
+        let url = try XCTUnwrap(ProcessInfo.processInfo.environment["SMALLNEXT_TIMING_TEST_URL"])
+        var root = URL(fileURLWithPath: #filePath)
+        for _ in 0..<4 { root.deleteLastPathComponent() }
+        let shared = try JSONSerialization.jsonObject(with: Data(contentsOf: root.appendingPathComponent("contracts/fixtures/insufficient-info.json"))) as! [String: Any]
+        let scenario = shared["supplemental_first_action"] as! [String: Any]
+        let confirmed = (scenario["confirmed_text"] as! String).replacingOccurrences(of: "\r\n", with: "\n")
+        let app = XCUIApplication()
+        app.launchArguments = ["-ios_core_flow", "YES", "-user_server_ai", "NO", "-development_ai_url", url, "-suggestion_timing", "NO"]
+        app.launch()
+        newGoal(app)
+        app.textFields["목표 한 문장"].tap()
+        app.textFields["목표 한 문장"].typeText("정보 부족 안내 검증 \(UUID().uuidString)")
+        app.buttons["목표 정리"].tap()
+        XCTAssertTrue(app.buttons["확인하고 시작"].waitForExistence(timeout: 10))
+        app.buttons["확인하고 시작"].tap()
+        let title = "지금은 새 행동을 제안하기 어려워요"
+        XCTAssertTrue(app.staticTexts[title].waitForExistence(timeout: 10))
+        XCTAssertFalse(app.buttons["새 정보로 다시 제안"].exists)
+        app.buttons["새 정보 추가"].tap()
+        let editor = app.textFields["추가로 알려줄 내용"]
+        XCTAssertTrue(editor.waitForExistence(timeout: 5))
+        editor.typeText(confirmed)
+        app.swipeUp()
+        app.buttons["확인하고 저장"].tap()
+        XCTAssertTrue(app.buttons["새 정보로 다시 제안"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts[title].exists)
+        app.terminate()
+        app.launch()
+        XCTAssertTrue(app.buttons["새 정보로 다시 제안"].waitForExistence(timeout: 10))
+        XCTAssertNotNil(attach(app, name: "confirmed-supplemental-awaiting-explicit-request"))
+        if !app.buttons["새 정보로 다시 제안"].isHittable { app.swipeUp() }
+        app.buttons["새 정보로 다시 제안"].tap()
+        let response = scenario["response"] as! [String: Any]
+        let task = (response["proposal"] as! [String: Any])["action"] as! String
+        XCTAssertTrue(app.staticTexts[task].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["완료"].exists)
+        XCTAssertFalse(app.buttons["새 정보로 다시 제안"].exists)
+        XCTAssertNotNil(attach(app, name: "supplemental-first-action"))
+        let tree = XCTAttachment(string: app.debugDescription)
+        tree.name = "supplemental-first-action-accessibility-tree"
+        tree.lifetime = .keepAlways
+        add(tree)
+        app.terminate()
+        app.launch()
+        XCTAssertTrue(app.staticTexts[task].waitForExistence(timeout: 10))
+    }
+
+    func testActionQuestionsRestoreAndRetryOriginalKindWithNewInformation() throws {
+        continueAfterFailure = false
+        let url = try XCTUnwrap(ProcessInfo.processInfo.environment["SMALLNEXT_TIMING_TEST_URL"])
+        let question = "직접 확인할 수 있는 기록이 있나요?"
+        let title = "지금은 새 행동을 제안하기 어려워요"
+        for kind in ["first_action", "smaller", "next_action", "replacement"] {
+            let app = XCUIApplication()
+            app.launchArguments = ["-ios_core_flow", "YES", "-user_server_ai", "NO", "-development_ai_url", url, "-suggestion_timing", "NO"]
+            app.launch()
+            newGoal(app)
+            let goal = "후속 질문 검증 \(kind) \(UUID().uuidString)"
+            app.textFields["목표 한 문장"].tap()
+            app.textFields["목표 한 문장"].typeText(goal)
+            app.buttons["목표 정리"].tap()
+            XCTAssertTrue(app.buttons["확인하고 시작"].waitForExistence(timeout: 10))
+            app.buttons["확인하고 시작"].tap()
+            if kind != "first_action" {
+                XCTAssertTrue(app.staticTexts["펜 다섯 개 정리하기"].waitForExistence(timeout: 10))
+                if kind == "replacement" {
+                    app.buttons["더 보기"].tap()
+                    app.buttons["나중에"].tap()
+                } else { app.buttons[kind == "smaller" ? "더 작게" : "완료"].tap() }
+            }
+            let field = app.textFields[question]
+            XCTAssertTrue(field.waitForExistence(timeout: 10))
+            if !field.isHittable { app.swipeUp() }
+            field.tap()
+            field.typeText("모르고 확인할 자료도 없어요.")
+            app.terminate()
+            app.launch()
+            XCTAssertTrue(field.waitForExistence(timeout: 10))
+            XCTAssertEqual(field.value as? String, "모르고 확인할 자료도 없어요.")
+            if !field.isHittable { app.swipeUp() }
+            XCTAssertNotNil(attach(app, name: "\(kind)-question-restored"))
+            if !app.buttons["답하기"].isHittable { app.swipeUp() }
+            app.buttons["답하기"].tap()
+            XCTAssertTrue(app.staticTexts[title].waitForExistence(timeout: 10))
+            XCTAssertFalse(app.buttons["다시 시도"].exists)
+            XCTAssertFalse(app.buttons["완료"].exists)
+            XCTAssertNotNil(attach(app, name: "\(kind)-information-notice"))
+            let tree = XCTAttachment(string: app.debugDescription)
+            tree.name = "\(kind)-question-notice-accessibility-tree"
+            tree.lifetime = .keepAlways
+            add(tree)
+            app.buttons["돌아가기"].tap()
+            if kind == "smaller" {
+                XCTAssertTrue(app.staticTexts["펜 다섯 개 정리하기"].waitForExistence(timeout: 10))
+                XCTAssertTrue(app.buttons["완료"].exists)
+                app.buttons["목표 목록"].tap()
+            }
+            let entry = goalEntry(app, goal: goal)
+            XCTAssertTrue(entry.waitForExistence(timeout: 10))
+            XCTAssertTrue(entry.label.contains("완료한 행동 \(kind == "next_action" ? 1 : 0)개"))
+            app.terminate()
+            app.launch()
+            XCTAssertTrue(app.staticTexts[title].waitForExistence(timeout: 10))
+            app.buttons["새 정보 추가"].tap()
+            let supplemental = app.textFields["추가로 알려줄 내용"]
+            XCTAssertTrue(supplemental.waitForExistence(timeout: 5))
+            supplemental.tap()
+            supplemental.typeText("제가 첫 문단을 작성했어요.")
+            if !app.buttons["확인하고 저장"].isHittable { app.swipeUp() }
+            app.buttons["확인하고 저장"].tap()
+            XCTAssertTrue(app.staticTexts["이 안내 이후 새 정보를 저장했어요. 아직 다시 제안받지 않았어요."].waitForExistence(timeout: 5))
+            app.terminate()
+            app.launch()
+            let retry = app.buttons["새 정보로 다시 제안"]
+            XCTAssertTrue(retry.waitForExistence(timeout: 10))
+            if !retry.isHittable { app.swipeUp() }
+            XCTAssertNotNil(attach(app, name: "\(kind)-supplemental-restored"))
+            retry.tap()
+            let action = "확인한 첫 문단을 메모에 옮기기"
+            XCTAssertTrue(app.staticTexts[action].waitForExistence(timeout: 10))
+            XCTAssertTrue(app.buttons["완료"].exists)
+            XCTAssertFalse(retry.exists)
+            XCTAssertNotNil(attach(app, name: "\(kind)-supplemental-action"))
+            let retryTree = XCTAttachment(string: app.debugDescription)
+            retryTree.name = "\(kind)-supplemental-accessibility-tree"
+            retryTree.lifetime = .keepAlways
+            add(retryTree)
+            app.terminate()
+            app.launch()
+            XCTAssertTrue(app.staticTexts[action].waitForExistence(timeout: 10))
+            app.buttons["목표 목록"].tap()
+            let completed = goalEntry(app, goal: goal)
+            XCTAssertTrue(completed.waitForExistence(timeout: 10))
+            XCTAssertTrue(completed.label.contains("완료한 행동 \(kind == "next_action" ? 1 : 0)개"))
+            app.terminate()
+        }
+    }
+
+    func testSupplementalFocusAndDeletionKeepSameNamedGoal() throws {
+        continueAfterFailure = false
+        let url = try XCTUnwrap(ProcessInfo.processInfo.environment["SMALLNEXT_TIMING_TEST_URL"])
+        let app = XCUIApplication()
+        app.launchArguments = ["-ios_core_flow", "YES", "-user_server_ai", "NO", "-development_ai_url", url, "-suggestion_timing", "NO"]
+        app.launch()
+        let goal = "정보 부족 안내 검증 삭제 \(UUID().uuidString)"
+        let editor = app.textFields["추가로 알려줄 내용"]
+        for text in ["남길 목표의 보충 내용", "삭제할 목표의 보충 내용"] {
+            newGoal(app)
+            app.textFields["목표 한 문장"].tap()
+            app.textFields["목표 한 문장"].typeText(goal)
+            app.buttons["목표 정리"].tap()
+            XCTAssertTrue(app.buttons["확인하고 시작"].waitForExistence(timeout: 10))
+            app.buttons["확인하고 시작"].tap()
+            XCTAssertTrue(app.buttons["새 정보 추가"].waitForExistence(timeout: 10))
+            app.buttons["새 정보 추가"].tap()
+            XCTAssertTrue(editor.waitForExistence(timeout: 5))
+            // 자동 초점으로 입력할 수 있어야 한다. 탭으로 초점 누락을 가리지 않는다.
+            editor.typeText(text)
+            if !app.buttons["확인하고 저장"].isHittable { app.swipeUp() }
+            app.buttons["확인하고 저장"].tap()
+            XCTAssertTrue(app.staticTexts["보충 내용을 저장했어요."].waitForExistence(timeout: 5))
+        }
+        app.buttons["새 정보 추가"].tap()
+        editor.typeText(" 편집 중")
+        app.terminate()
+        app.launch()
+        XCTAssertTrue(editor.waitForExistence(timeout: 10))
+        XCTAssertEqual(editor.value as? String, "삭제할 목표의 보충 내용 편집 중")
+        app.buttons["목표 보기"].tap()
+        app.buttons["목표 삭제"].tap()
+        let confirmation = app.alerts["목표를 삭제할까요?"]
+        XCTAssertTrue(confirmation.waitForExistence(timeout: 5))
+        confirmation.buttons["취소"].tap()
+        app.buttons["닫기"].tap()
+        XCTAssertEqual(editor.value as? String, "삭제할 목표의 보충 내용 편집 중")
+        XCTAssertNotNil(attach(app, name: "supplemental-delete-cancelled"))
+        app.buttons["목표 보기"].tap()
+        app.buttons["목표 삭제"].tap()
+        confirmation.buttons["삭제"].tap()
+        app.buttons["목표 목록"].tap()
+        let entries = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", goal + ","))
+        XCTAssertTrue(entries.firstMatch.waitForExistence(timeout: 5))
+        XCTAssertEqual(entries.count, 1)
+        entries.firstMatch.tap()
+        XCTAssertTrue(app.buttons["새 정보 추가"].waitForExistence(timeout: 5))
+        app.buttons["새 정보 추가"].tap()
+        XCTAssertEqual(editor.value as? String, "남길 목표의 보충 내용")
+        app.terminate()
+        app.launch()
+        XCTAssertTrue(editor.waitForExistence(timeout: 10))
+        XCTAssertEqual(editor.value as? String, "남길 목표의 보충 내용")
+        XCTAssertNotNil(attach(app, name: "supplemental-same-name-retained"))
+        let tree = XCTAttachment(string: app.debugDescription)
+        tree.name = "supplemental-same-name-retained-accessibility-tree"
+        tree.lifetime = .keepAlways
+        add(tree)
+    }
+
     func testObservationRejectsMissingScreenshotAndLateCapture() {
         XCTAssertEqual(termination(elapsed: 59, budget: 60, screenshotHash: nil), "missing")
         XCTAssertEqual(termination(elapsed: 60.1, budget: 60, screenshotHash: "hash"), "time_exceeded")
@@ -234,9 +526,17 @@ final class ScreenTimingTests: XCTestCase {
     }
     private func selectLocalGoal(_ app: XCUIApplication, goal: String) {
         app.buttons["목표 목록"].tap()
-        let entry = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", goal + ",")).firstMatch
+        let entry = goalEntry(app, goal: goal)
         XCTAssertTrue(entry.waitForExistence(timeout: 10))
         entry.tap()
+    }
+    private func goalEntry(_ app: XCUIApplication, goal: String) -> XCUIElement {
+        let entry = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", goal + ",")).firstMatch
+        for _ in 0..<20 {
+            if entry.exists && entry.isHittable { break }
+            app.swipeUp()
+        }
+        return entry
     }
     private func newGoal(_ app: XCUIApplication) {
         if !app.textFields["목표 한 문장"].exists {
@@ -248,7 +548,7 @@ final class ScreenTimingTests: XCTestCase {
         app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "timing:"))
     }
     private func observe(_ app: XCUIApplication, button: String, kind: String, outcome: String,
-                         budget: Double = 10, expectedAction: String? = nil) {
+                         budget: Double = 10, expectedAction: String? = nil, mockOnly: Bool = true) {
         let previous = markers(app).firstMatch.exists ? markers(app).firstMatch.identifier : ""
         let clock = ContinuousClock()
         let started = clock.now
@@ -263,7 +563,11 @@ final class ScreenTimingTests: XCTestCase {
             let marker = markers(app).firstMatch
             if marker.exists, marker.isHittable {
                 let id = marker.identifier
-                if id != previous, id.hasSuffix(":\(kind):\(outcome)") { observed = id }
+                let matches = outcome == "normal"
+                    ? ["action", "question"].contains { id.hasSuffix(":\(kind):\($0)") }
+                    : id.hasSuffix(":\(kind):\(outcome)")
+                if id != previous, matches { observed = id }
+                if outcome == "normal", id != previous, id.hasSuffix(":\(kind):failed") { break }
             }
             if let id = observed {
                 // 전환 중 접근성 표식도 먼저 생긴다. 사진을 확인할 상한에 안정화 대기를 포함한다.
@@ -291,9 +595,10 @@ final class ScreenTimingTests: XCTestCase {
         let elapsed = seconds(started.duration(to: ended))
         let status = termination(elapsed: elapsed, budget: budget, screenshotHash: screenshotHash)
         let parts = observed?.split(separator: ":")
+        let observedOutcome = outcome == "normal" ? parts.map { String($0[3]) } ?? "" : outcome
         let report: [String: Any] = [
             "run_id": parts.map { String($0[1]) } as Any? ?? NSNull(),
-            "request_kind": kind, "expected_outcome": outcome,
+            "request_kind": kind, "expected_outcome": observedOutcome,
             "expected_action": expectedAction as Any? ?? NSNull(),
             "observed_upper_seconds": elapsed, "budget_seconds": budget,
             "max_sample_interval_seconds": maxInterval,
@@ -301,7 +606,7 @@ final class ScreenTimingTests: XCTestCase {
             "unstable_samples": unstableSamples, "missing_screenshot": screenshotHash == nil,
             "evidence_sha256": screenshotHash as Any? ?? NSNull(), "termination": status,
             "method": "XCTest-visible-accessibility+result-screenshot; manual pixel verification required",
-            "mock_only": true
+            "mock_only": mockOnly
         ]
         let data = try! JSONSerialization.data(withJSONObject: report, options: [.sortedKeys])
         let attachment = XCTAttachment(data: data, uniformTypeIdentifier: "public.json")

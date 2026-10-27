@@ -9,10 +9,23 @@ import launch_evaluation as launch
 import oauth_quality as qa
 
 
-# Reviewed runner bytes: #186/#218 record cancellation; #135 kept it only in memory.
+# Reviewed runner bytes: #186/#218/#252/#260/#273/#288/#285 record cancellation; #135 kept it only in memory.
 PROTOCOLS = {
+    "09792cb09a52dd0260d4c2f4ffcd1aa1a00be85254c697f4bdbc1ad82f362195": "cancellation-marker-v1",
+    "3dff87b76e1ddc4c998dc8b850fffff029f0c41aca165578cd1e33c9d0fa1f20": "cancellation-marker-v1",
+    "86ad71aacde3015d63e644901e60875eb14e3bc30e62bdeee0f8636b517f1f65": "cancellation-marker-v1",
+    "a77278906d6c5e64ea12b538f50d773afc032ad990b039a7e49f0a9adeb128b5": "cancellation-marker-v1",
+    "ca5053bc80470d0cf3d98dee4c12f52b770010a8eecc8c1b35a85e57ca38d069": "cancellation-marker-v1",
+    "2a34ea2fbd59884994e88329a4f9d2a86d457d035634ef469d3d2831bf678929": "cancellation-marker-v1",
+    "5c2b737f0e2a37f97d0315ed8ff2a3ff22379c8778577a6f4956b863a0c6a9ab": "cancellation-marker-v1",
+    "a5aa0d74c2f6aaf1feef8d83498a81229109c3f1969e1b16b2adc5d4c8560aa8": "cancellation-marker-v1",
+    "808ff25eddb8506820027e0a153b45bcf139e04207ef64550be379b360c1598b": "cancellation-marker-v1",
+    "b4befc291a69c3cfeb4d2f8bc9b105d31d8e5f4213958a49d3a0a973726b39f8": "cancellation-marker-v1",
     "1799cb2c4ef7c5cddd58f2a275cdad37750bae8b45d26286f21fcfd69d18afe2": "cancellation-marker-v1",
     "1e2d25eb61b3c52ef34fe1f54f1e1ebc73c9e938108da58f8768bedaa5d6ddff": "cancellation-marker-v1",
+    "a52650b83cca7c5213aad7009853e0e8c4db74ae66e592f11793b814c8586927": "cancellation-marker-v1",
+    "375f9752e5512160c1b1e55cb33ade85ebd41cc8a31ad1b00e1ac92e4af89ea1": "cancellation-marker-v1",
+    "880282c7189886ebded1a558f58e82b559e15ff62ffad16bd7c29fa74f3e7d11": "cancellation-marker-v1",
     "efd3c86de40152cc86f619622c03ea16b7ce3bd6766c70f3159d30d8f7e91037": "volatile-cancellation-v1",
 }
 

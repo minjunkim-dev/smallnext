@@ -26,6 +26,8 @@ SNAPSHOT = (
     "infra/production/compose.yaml", "infra/production/Caddyfile",
     "infra/production/captcha/index.html", "infra/production/captcha/bridge.js",
     "infra/production/captcha/style.css", "infra/production/tls/README.md",
+    "infra/production/site/privacy/index.html", "infra/production/site/support/index.html",
+    "infra/production/site/style.css",
     "infra/production/systemd/smallnext-backup-ai-budget.service",
     "infra/production/systemd/smallnext-backup-ai-budget.timer",
     "scripts/backup_ai_budget.py",

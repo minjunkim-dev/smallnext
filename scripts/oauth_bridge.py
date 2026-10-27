@@ -19,11 +19,20 @@ class ParentCancelled:
         return os.getppid() != self.parent
 
 
-def evaluate(args, data, claude, mode, parent):
+def evaluate(args, data, claude, mode, parent, screen_session=None):
     schema = json.loads(Path(args[args.index("--output-schema") + 1]).read_text())
     instructions = next(value for value in args if value.startswith("model_instructions_file="))
     prompt = Path(json.loads(instructions.split("=", 1)[1])).read_text()
-    record = call(claude, prompt, schema, data, monotonic() + 120, ParentCancelled(parent), mode)
+    cancelled = ParentCancelled(parent)
+    if screen_session is not None:
+        import screen_evaluation
+        manifest = screen_evaluation.load(screen_session)
+        if str(Path(claude).resolve()) != manifest['claude'] or mode != manifest['output_mode']:
+            raise ValueError('screen CLI or output mode differs')
+        record = screen_evaluation.role_call(screen_session, data,
+            lambda deadline, cancel: call(claude, prompt, schema, data, deadline, cancel, mode, approved_once=True), cancelled)
+    else:
+        record = call(claude, prompt, schema, data, monotonic() + 120, cancelled, mode)
     if "candidate" not in data and "status" in record.get("output", {}):
         record["invalid_proposal_fields"] = proposal_invalid_fields(data, record["output"])
     return record
@@ -41,6 +50,7 @@ def main():
     parser.add_argument("--claude", required=True)
     parser.add_argument("--output-mode", choices=["structured", "text-json"], default="structured")
     parser.add_argument("--records", type=Path, required=True)
+    parser.add_argument("--screen-session", type=Path)
     options, args = parser.parse_known_args()
     raw = sys.stdin.buffer.read(192 * 1024 + 1)
     if len(raw) > 192 * 1024:
@@ -59,7 +69,7 @@ def main():
         os.close(read_fd)
         os.close(sys.stdout.fileno())
         started = time()
-        record = evaluate(args, data, options.claude, options.output_mode, parent)
+        record = evaluate(args, data, options.claude, options.output_mode, parent, options.screen_session)
         output = record.pop("output", None)
         record.update(role=role, started_at=started, finished_at=time(), requested_model=MODEL,
                       requested_effort="xhigh", decision=output.get("verdict", output.get("status")) if output else None,

@@ -45,14 +45,82 @@ async fn external_provider(
         .is_some();
     let mut value = if generating {
         json!({"status": match mode.as_str() { "minimum" | "no_action" | "goal_summary" | "need_info" => mode.as_str(), _ => "action" },"action":"펜 하나 옮기기","completion_condition":"펜이 펜꽂이에 있다",
-            "estimated_minutes":1,"reason":"한 물건만 옮긴다"})
+            "estimated_minutes":1,"reason":"한 물건만 옮긴다","facts":[],"reduction":"해당 없음"})
     } else {
         json!({"verdict":if mode=="reject" || mode=="uncertain" { mode.as_str() } else { "accept" },"criteria":[1,2,3,4,5],"evidence":"원본과 일치"})
     };
     if (mode == "invalid" || mode == "invalid_missing_usage") && generating {
         value["goal_completed"] = json!(true);
     }
-    let fault = mode.strip_prefix(if generating { "generate_" } else { "check_" });
+    if (mode == "need_info" || mode == "supplemental_question") && generating {
+        let fixture: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../../contracts/fixtures/insufficient-info.json"
+        ))
+        .unwrap();
+        value["status"] = json!("need_info");
+        value["action"] = fixture[if mode == "supplemental_question" {
+            "supplemental_question"
+        } else {
+            "question"
+        }]
+        .clone();
+    }
+    if mode.starts_with("notice") {
+        let fixture: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../../contracts/fixtures/insufficient-info.json"
+        ))
+        .unwrap();
+        let case = mode.strip_prefix("notice-case-").map(|id| {
+            fixture["checker_cases"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|case| case["id"] == id)
+                .unwrap()
+        });
+        if generating {
+            value = case
+                .and_then(|case| case.get("generated"))
+                .unwrap_or(&fixture["generated"])
+                .clone();
+            for key in [
+                "remaining_work",
+                "preserved_completed_ids",
+                "goal_completed",
+                "current_action_completed",
+            ] {
+                value.as_object_mut().unwrap().remove(key);
+            }
+            match mode.as_str() {
+                "notice_action" => value["action"] = json!("가짜 행동"),
+                "notice_minutes" => value["estimated_minutes"] = json!(1),
+                "notice_reduction" => value["reduction"] = json!("축소"),
+                _ => {}
+            }
+        } else if let Some(case) = case {
+            value = case["check"].clone();
+            value.as_object_mut().unwrap().remove("reason");
+        }
+    }
+    if mode == "confirmed-first" && generating {
+        let fixture: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../../contracts/fixtures/insufficient-info.json"
+        ))
+        .unwrap();
+        value = fixture["supplemental_first_action"]["response"]["proposal"].clone();
+        for key in [
+            "remaining_work",
+            "preserved_completed_ids",
+            "goal_completed",
+            "current_action_completed",
+        ] {
+            value.as_object_mut().unwrap().remove(key);
+        }
+        value["facts"] = json!([]);
+        value["reduction"] = json!("");
+    }
+    let fault_mode = mode.strip_prefix("notice_").unwrap_or(&mode);
+    let fault = fault_mode.strip_prefix(if generating { "generate_" } else { "check_" });
     let field = if generating { "action" } else { "evidence" };
     match fault {
         Some("type") => value[field] = json!(["private-output"]),
@@ -464,6 +532,8 @@ async fn decisions_preserve_original_state_and_specialize_only_smaller_questions
     for (kind, mode, specialized) in [
         ("smaller", "need_info", true),
         ("first_action", "need_info", false),
+        ("next_action", "need_info", false),
+        ("replacement", "need_info", false),
         ("smaller", "minimum", false),
         ("replacement", "no_action", false),
     ] {
@@ -483,6 +553,17 @@ async fn decisions_preserve_original_state_and_specialize_only_smaller_questions
         )
         .await;
         assert_eq!(body["disposition"], "accepted");
+        if mode == "need_info" {
+            let shared: serde_json::Value = serde_json::from_str(include_str!(
+                "../../../../contracts/fixtures/insufficient-info.json"
+            ))
+            .unwrap();
+            assert_eq!(body["proposal"]["status"], "need_info");
+            assert_eq!(body["proposal"]["action"], shared["question"]);
+        }
+        assert!(
+            body["proposal"].get("facts").is_none() && body["proposal"].get("reduction").is_none()
+        );
         assert_eq!(
             body["proposal"]["remaining_work"],
             json!(["남은 작업", "보류 작업"])
@@ -515,7 +596,7 @@ async fn decisions_preserve_original_state_and_specialize_only_smaller_questions
         let checked: serde_json::Value =
             serde_json::from_str(calls[1]["messages"][0]["content"].as_str().unwrap()).unwrap();
         assert_eq!(checked["original_request"], input);
-        assert_eq!(checked["candidate"], body["proposal"]);
+        assert_eq!(checked["candidate"], grounded(&body["proposal"]));
     }
     fixture.close().await;
 }
@@ -864,7 +945,7 @@ async fn allowed_user_receives_only_independently_checked_proposal_and_usage() {
         let schema = &request["output_config"]["format"]["schema"];
         assert_eq!(
             schema["properties"].as_object().unwrap().len(),
-            if index == 0 { 5 } else { 3 }
+            if index == 0 { 7 } else { 3 }
         );
         assert_eq!(schema["additionalProperties"], false);
         assert!(
@@ -939,7 +1020,7 @@ async fn request_status_contract_and_schema_match_through_real_database_and_http
             let original: serde_json::Value =
                 serde_json::from_str(sent[0]["messages"][0]["content"].as_str().unwrap()).unwrap();
             assert_eq!(checked["original_request"], original);
-            assert_eq!(checked["candidate"], body["proposal"]);
+            assert_eq!(checked["candidate"], grounded(&body["proposal"]));
         }
     }
     fixture.close().await;
@@ -1326,6 +1407,167 @@ async fn public_mode_limits_each_user_per_day_and_keeps_only_anonymous_metrics()
     fixture.close().await;
 }
 
+/// The checker sees the app proposal plus the mock's grounding; the app never does.
+fn grounded(proposal: &serde_json::Value) -> serde_json::Value {
+    let mut candidate = proposal.clone();
+    candidate["facts"] = json!([]);
+    candidate["reduction"] = json!("해당 없음");
+    candidate
+}
+
+#[tokio::test]
+#[ignore = "requires TEST_DATABASE_URL; HTTP against real isolated PostgreSQL"]
+async fn insufficient_info_crosses_http_with_independent_checks_and_no_failure_conversion() {
+    let fixture = Fixture::new().await;
+    let shared: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../../contracts/fixtures/insufficient-info.json"
+    ))
+    .unwrap();
+    for kind in ["first_action", "next_action", "smaller", "replacement"] {
+        *fixture.remote.mode.lock().unwrap() = "notice".into();
+        fixture.remote.calls.lock().unwrap().clear();
+        let mut input = shared["input"].clone();
+        input["request_kind"] = json!(kind);
+        let response = result(fixture.request_input("allowed", kind, input.clone()).await).await;
+        assert_eq!(response["disposition"], "accepted");
+        let proposal: crate::suggestion::Proposal =
+            serde_json::from_value(response["proposal"].clone()).unwrap();
+        assert_eq!(
+            proposal,
+            serde_json::from_value(shared["response"]["proposal"].clone()).unwrap()
+        );
+        assert!(
+            response["proposal"].get("facts").is_none()
+                && response["proposal"].get("reduction").is_none()
+        );
+        let calls = fixture.remote.calls.lock().unwrap();
+        assert_eq!(calls.len(), 2);
+        let checked: serde_json::Value =
+            serde_json::from_str(calls[1]["messages"][0]["content"].as_str().unwrap()).unwrap();
+        assert_eq!(checked["original_request"], input);
+        assert_eq!(checked["candidate"]["reduction"], "");
+    }
+    for kind in ["first_action", "next_action", "smaller", "replacement"] {
+        for (mode, expected, calls) in [
+            ("need_info", "accepted", 2),
+            (
+                "no_action",
+                if kind == "replacement" {
+                    "accepted"
+                } else {
+                    "invalid_proposal"
+                },
+                if kind == "replacement" { 2 } else { 1 },
+            ),
+            ("reject", "rejected", 2),
+            ("uncertain", "uncertain", 2),
+            ("generate_type", "invalid_proposal", 1),
+        ] {
+            *fixture.remote.mode.lock().unwrap() = mode.into();
+            fixture.remote.calls.lock().unwrap().clear();
+            let mut input = shared["input"].clone();
+            input["request_kind"] = json!(kind);
+            input["current_blocker"] = json!("");
+            input["available"] = json!(["기록의 유무는 아직 확인하지 않았어요."]);
+            let response = result(
+                fixture
+                    .request_input("allowed", &format!("{kind}-{mode}"), input)
+                    .await,
+            )
+            .await;
+            assert_eq!(response["disposition"], expected, "{kind}/{mode}");
+            assert_eq!(
+                fixture.remote.calls.lock().unwrap().len(),
+                calls,
+                "{kind}/{mode}"
+            );
+            if mode == "need_info" {
+                assert_eq!(response["proposal"]["action"], shared["question"]);
+            }
+        }
+        *fixture.remote.mode.lock().unwrap() = "notice".into();
+        fixture.remote.calls.lock().unwrap().clear();
+        let mut input = shared["input"].clone();
+        input["request_kind"] = json!(kind);
+        input["available"] = json!([format!(
+            "행동 요청에서 이미 답한 질문: {} / 답: {}",
+            shared["question"].as_str().unwrap(),
+            shared["answer"].as_str().unwrap()
+        )]);
+        let response = result(
+            fixture
+                .request_input("allowed", &format!("{kind}-answered"), input.clone())
+                .await,
+        )
+        .await;
+        assert_eq!(response["proposal"]["status"], "insufficient_info");
+        assert_eq!(response["proposal"]["action"], "");
+        let calls = fixture.remote.calls.lock().unwrap();
+        assert_eq!(calls.len(), 2);
+        let checked: serde_json::Value =
+            serde_json::from_str(calls[1]["messages"][0]["content"].as_str().unwrap()).unwrap();
+        assert_eq!(checked["original_request"], input);
+    }
+    for case in shared["checker_cases"].as_array().unwrap() {
+        *fixture.remote.mode.lock().unwrap() =
+            format!("notice-case-{}", case["id"].as_str().unwrap());
+        fixture.remote.calls.lock().unwrap().clear();
+        let response = result(
+            fixture
+                .request_input(
+                    "allowed",
+                    case["id"].as_str().unwrap(),
+                    case["input"].clone(),
+                )
+                .await,
+        )
+        .await;
+        assert_eq!(response["disposition"], case["expected"], "{}", case["id"]);
+        assert_eq!(
+            response["proposal"].is_null(),
+            case["expected"] != "accepted"
+        );
+        let calls = fixture.remote.calls.lock().unwrap();
+        assert_eq!(calls.len(), 2);
+        let checked: serde_json::Value =
+            serde_json::from_str(calls[1]["messages"][0]["content"].as_str().unwrap()).unwrap();
+        let expected = case.get("generated").unwrap_or(&shared["generated"]);
+        assert_eq!(checked["original_request"], case["input"]);
+        for field in [
+            "status",
+            "action",
+            "completion_condition",
+            "facts",
+            "reduction",
+        ] {
+            assert_eq!(
+                checked["candidate"][field], expected[field],
+                "{}: {field}",
+                case["id"]
+            );
+        }
+    }
+    for (mode, expected, calls) in [
+        ("notice_action", "invalid_proposal", 1),
+        ("notice_minutes", "invalid_proposal", 1),
+        ("notice_reduction", "invalid_proposal", 1),
+        ("notice_check_type", "failed", 2),
+    ] {
+        *fixture.remote.mode.lock().unwrap() = mode.into();
+        fixture.remote.calls.lock().unwrap().clear();
+        let response = result(
+            fixture
+                .request_input("allowed", mode, shared["input"].clone())
+                .await,
+        )
+        .await;
+        assert_eq!(response["disposition"], expected);
+        assert!(response["proposal"].is_null());
+        assert_eq!(fixture.remote.calls.lock().unwrap().len(), calls);
+    }
+    fixture.close().await;
+}
+
 #[tokio::test]
 #[ignore = "requires TEST_DATABASE_URL; mock auth/provider against isolated PostgreSQL"]
 async fn daily_budget_stops_new_requests_before_provider_and_purge_expires_usage() {
@@ -1366,5 +1608,117 @@ async fn daily_budget_stops_new_requests_before_provider_and_purge_expires_usage
     .await
     .unwrap();
     assert_eq!(kept, (1, 1));
+    fixture.close().await;
+}
+
+#[tokio::test]
+#[ignore = "requires TEST_DATABASE_URL; supplemental input through real HTTP and independent fake roles"]
+async fn confirmed_supplemental_actions_preserve_input_and_independent_decisions() {
+    let fixture = Fixture::new().await;
+    let shared: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../../contracts/fixtures/insufficient-info.json"
+    ))
+    .unwrap();
+    let mut input = shared["input"].clone();
+    input["available"]
+        .as_array_mut()
+        .unwrap()
+        .push(shared["supplemental_first_action"]["available_fact"].clone());
+    for kind in ["first_action", "smaller", "next_action", "replacement"] {
+        let mut input = input.clone();
+        input["request_kind"] = json!(kind);
+        input["completed_ids"] = if kind == "next_action" {
+            json!(["completed-1"])
+        } else {
+            json!([])
+        };
+        input["remaining_work"] = json!(["과거 경력 사실 정리", "아직 남은 범위"]);
+        input["available"]
+            .as_array_mut()
+            .unwrap()
+            .push(json!(format!(
+                "행동 요청에서 이미 답한 질문: {} / 답: {}",
+                shared["question"].as_str().unwrap(),
+                shared["answer"].as_str().unwrap()
+            )));
+        for (mode, expected, count) in [
+            ("confirmed-first", "accepted", 2),
+            ("notice", "accepted", 2),
+            ("reject", "rejected", 2),
+            ("uncertain", "uncertain", 2),
+            ("generate_type", "invalid_proposal", 1),
+            ("check_type", "failed", 2),
+            ("supplemental_question", "accepted", 2),
+            (
+                "no_action",
+                if kind == "replacement" {
+                    "accepted"
+                } else {
+                    "invalid_proposal"
+                },
+                if kind == "replacement" { 2 } else { 1 },
+            ),
+        ] {
+            *fixture.remote.mode.lock().unwrap() = mode.into();
+            fixture.remote.calls.lock().unwrap().clear();
+            let response =
+                result(fixture.request_input("allowed", mode, input.clone()).await).await;
+            assert_eq!(response["disposition"], expected, "{mode}");
+            if mode == "confirmed-first" {
+                let mut expected =
+                    shared["supplemental_first_action"]["response"]["proposal"].clone();
+                expected["remaining_work"] = input["remaining_work"].clone();
+                expected["preserved_completed_ids"] = input["completed_ids"].clone();
+                assert_eq!(response["proposal"], expected);
+            }
+            if mode == "supplemental_question" {
+                assert_eq!(response["proposal"]["status"], "need_info");
+                assert_eq!(
+                    response["proposal"]["action"],
+                    shared["supplemental_question"]
+                );
+            }
+            if mode == "notice" {
+                let mut expected = shared["response"]["proposal"].clone();
+                expected["remaining_work"] = input["remaining_work"].clone();
+                expected["preserved_completed_ids"] = input["completed_ids"].clone();
+                assert_eq!(response["proposal"], expected);
+            }
+            let calls = fixture.remote.calls.lock().unwrap();
+            assert_eq!(calls.len(), count, "{mode}");
+            let generated: serde_json::Value =
+                serde_json::from_str(calls[0]["messages"][0]["content"].as_str().unwrap()).unwrap();
+            assert_eq!(generated, input);
+            if count == 2 {
+                let checked: serde_json::Value =
+                    serde_json::from_str(calls[1]["messages"][0]["content"].as_str().unwrap())
+                        .unwrap();
+                assert_eq!(checked["original_request"], input);
+            }
+        }
+    }
+    fixture.remote.calls.lock().unwrap().clear();
+    let mut oversized = input.clone();
+    oversized["current_blocker"] = json!("가".repeat(683));
+    assert_eq!(
+        fixture
+            .request_input("allowed", "blocker-limit", oversized)
+            .await
+            .status(),
+        StatusCode::BAD_REQUEST
+    );
+    let mut oversized = input;
+    oversized["available"]
+        .as_array_mut()
+        .unwrap()
+        .push(json!("가".repeat(10_923)));
+    assert_eq!(
+        fixture
+            .request_input("allowed", "body-limit", oversized)
+            .await
+            .status(),
+        StatusCode::PAYLOAD_TOO_LARGE
+    );
+    assert!(fixture.remote.calls.lock().unwrap().is_empty());
     fixture.close().await;
 }

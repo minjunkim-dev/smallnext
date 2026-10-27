@@ -263,7 +263,8 @@
           "need_info",
           "minimum",
           "goal_summary",
-          "no_action"
+          "no_action",
+          "insufficient_info"
         ]
       },
       "SuggestionRequest": {

@@ -1,0 +1,330 @@
+{
+  "checked_on": "2026-10-25",
+  "cli_version": "2.1.310 (Claude Code)",
+  "cli_sha256": "ffb64331bc0ee1b69efb7c2c428bd3ab516bc31b75bf60886b356c97c1c25ffd",
+  "cli_bytes": 274068224,
+  "model": "claude-haiku-5-5",
+  "effort": "xhigh",
+  "authentication": "Claude Code subscription OAuth; forcedLoginMethod=claudeai",
+  "transport": "-p --output-format stream-json --verbose --include-partial-messages --max-turns 1",
+  "output_modes": [
+    "structured",
+    "text-json"
+  ],
+  "setting": "CLAUDE_CODE_MAX_OUTPUT_TOKENS",
+  "output_tokens": 8192,
+  "scope": "each provider response, generation and checker separately; thinking and visible output share the limit",
+  "sources": [
+    "https://code.claude.com/docs/en/env-vars",
+    "https://code.claude.com/docs/en/cli-reference",
+    "https://platform.claude.com/docs/en/build-with-claude/thinking",
+    "https://code.claude.com/docs/en/model-config",
+    "https://code.claude.com/docs/en/settings#settings-precedence",
+    "https://github.com/anthropics/claude-code/blob/main/CHANGELOG.md#210",
+    "https://platform.claude.com/docs/en/build-with-claude/thinking-steering-and-cost",
+    "https://platform.claude.com/docs/en/build-with-claude/streaming",
+    "https://code.claude.com/docs/en/agent-sdk/cost-tracking",
+    "https://code.claude.com/docs/en/headless"
+  ],
+  "findings": [
+    "공식 문서는 대부분 요청의 출력 상한으로 설명한다. 설치본의 상한 해석과 주 요청 max_tokens 연결을 정적으로 확인했지만 해당 구독 공급자 경로의 실제 적용은 미확인이다.",
+    "#296에서 환경값 parse/clamp→modelFacts 선택→request override와 min→후순위 extra body→stream 전송 및 공유 builder→nonstreaming min→전송을 정적으로 연결했다. 부모 extra body는 기존 허용 목록에서 제외되어 회귀를 보강했다. 관리 env·전달된 modelFacts·후순위 body 전체·상위 복구의 도달/재구성과 실제 OAuth 적용은 미확인이다.",
+    "공식 API는 사고와 응답이 max_tokens를 공유한다고 설명한다. 설치본은 output_tokens를 전체 출력에, thinking_tokens를 별도 세부 집계에 누적한다. 구독 응답의 동일 집계와 완전성은 관측하지 않았다.",
+    "#297에서 메시지 누적 snapshot→turn 합계 및 별도 모델 ledger→result 경로를 정적으로 연결했다. thinking 누락의 기본0은 사고0의 증거가 아니다. 누적 출력 감소가 final 값에 숨겨지던 실행기 결함을 합성으로 재현·차단했다. 오류/취소/복구의 누락과 OAuth 전체 사고 포함·완전성은 여전히 미확인이다.",
+    "실패 API 재시도0회, 구조화 출력 총1회 시도와 비스트리밍 fallback 차단의 공식 변수 및 설치본 읽기 지점을 확인했다. 가짜 CLI 전달 검사는 실제 CLI 내부 실행의 검증이 아니다.",
+    "스트림 복구의 일반 재시도 가드와 주 요청 전송점을 정적으로 연결했다. 오류 수정 콜백·인증 갱신의 카운터 예외, HTTP404 비스트리밍 전환과 별도 출력 상한 복구가 있어 전체 추가 요청0회는 미확인이다. 비스트리밍 timeout 재전송0을 추가 고정했지만 다른 복구의 전면 차단 근거로 올리지 않는다.",
+    "전역/사용자 설정·설치본을 변경하지 않고 파일 SHA와 제한한 바이트 범위만 정적으로 읽었다. 계정/키/세션/과거 평가 원문과 실제 모델 호출은 사용하지 않았다."
+  ],
+  "unverified": [
+    "subscription_model_output_cap_unverified",
+    "subscription_thinking_accounting_unverified",
+    "internal_retry_and_continuation_contract_unverified"
+  ],
+  "provider_observation": "none; no model request was made",
+  "readiness": "offline_prepared",
+  "configured_environment": {
+    "CLAUDE_CODE_MAX_OUTPUT_TOKENS": "8192",
+    "CLAUDE_CODE_MAX_RETRIES": "0",
+    "MAX_STRUCTURED_OUTPUT_RETRIES": "1",
+    "CLAUDE_CODE_DISABLE_NONSTREAMING_FALLBACK": "1",
+    "CLAUDE_CODE_NONSTREAMING_TIMEOUT_RETRIES": "0"
+  },
+  "analysis_note": "docs/research/claude-output-limit-evidence.md",
+  "cli_static_evidence": {
+    "method": "read-only embedded JavaScript inspection; executable not invoked",
+    "offset_basis": "zero-based byte offsets in cli_sha256; fragments are not complete control-flow proofs",
+    "fragments": [
+      {
+        "label": "output_limit_resolution",
+        "offset": 219159093,
+        "length": 596,
+        "sha256": "ef6a9578d3969e93308517aefd24d2560dbe454bef01993e77a173cc602f1684"
+      },
+      {
+        "label": "main_request_cap",
+        "offset": 227968205,
+        "length": 850,
+        "sha256": "cd41089c2afba08a8f6b2f0a86c609c7cdcb0f693d1fb0531870af6843fab086"
+      },
+      {
+        "label": "wire_max_tokens",
+        "offset": 227973900,
+        "length": 300,
+        "sha256": "2013296d1b1149e9515e96ca4f00a3e4927a6e3f0c8087ec4c68dcf52a6078a1"
+      },
+      {
+        "label": "reported_usage_accounting",
+        "offset": 226096046,
+        "length": 600,
+        "sha256": "13558b5941a6d263a789ca969be6b7b648c6fd914106d4e56e664b1350f2d110"
+      },
+      {
+        "label": "api_retry_limit",
+        "offset": 227902455,
+        "length": 350,
+        "sha256": "6724e4cfa6da8a12c17c99070bfa2a30599d3ddaef2d097b8814775f46086983"
+      },
+      {
+        "label": "structured_output_attempts",
+        "offset": 254125560,
+        "length": 1000,
+        "sha256": "bfd14d35578f4cffc2eb3bd420eda3079b99c951f0a9dc2dfca5fba18fd99df7"
+      },
+      {
+        "label": "nonstreaming_fallback_switch",
+        "offset": 228040330,
+        "length": 480,
+        "sha256": "6ceb22bdd9a77255437a58146222e0ec39ab6c087a88aec4665324cf8cddda16"
+      },
+      {
+        "label": "separate_stream_recovery",
+        "offset": 227904400,
+        "length": 900,
+        "sha256": "1cc13e754b65101c22b74d36d72bf60307c734f7b50457dfdb8ed4431148174d"
+      },
+      {
+        "label": "request_retry_entry",
+        "offset": 227882920,
+        "length": 3100,
+        "sha256": "b5245a1ea134b0dbdcbcae6c4c70bccca16e04b2c17b1f47f5c72026ba392079"
+      },
+      {
+        "label": "request_error_repair",
+        "offset": 227886500,
+        "length": 1800,
+        "sha256": "14c7355097c2957bc4b56c10a64d4144f5d8ff75ba2e64b0a18857a3cf87684b"
+      },
+      {
+        "label": "credential_retry_guard",
+        "offset": 227891150,
+        "length": 850,
+        "sha256": "6e8ea4d0aec57598b2b6ef8d5ef15d1a200a6e2e77eb2c5b95763b3332e63a0b"
+      },
+      {
+        "label": "stream_recovery_policy",
+        "offset": 227903000,
+        "length": 3250,
+        "sha256": "674e5be1f08b40075302bb8a6055a400b34f2e8591b0b3b655adff23304761fa"
+      },
+      {
+        "label": "retry_ledger",
+        "offset": 227906500,
+        "length": 1800,
+        "sha256": "243eba77301b8bf55f4c7e15dcb54a4dee0bfbe776256a45fd70113cd250dba9"
+      },
+      {
+        "label": "retry_budget_options",
+        "offset": 227975995,
+        "length": 530,
+        "sha256": "533158e59d54e2ca708d8ae3fa1a026b78303057b7598786fd3ba84896d73504"
+      },
+      {
+        "label": "stream_request_send",
+        "offset": 228010950,
+        "length": 650,
+        "sha256": "99fe4b7b2ac787d15f15dbd0fd601140f7211a6d68a77aa68b621526e28681f9"
+      },
+      {
+        "label": "stream_retry_options",
+        "offset": 228011850,
+        "length": 1050,
+        "sha256": "7dc46caba215d43f0be0be1975dd610bf1f3fe8a9d7f81aac152fb054c0e5d02"
+      },
+      {
+        "label": "thinking_stream_reentry",
+        "offset": 228041000,
+        "length": 2200,
+        "sha256": "a1e4d72cd9951c41908db1755eb4ca0a15588dbc1b1aee6e857d562fc1549644"
+      },
+      {
+        "label": "stream_error_repair",
+        "offset": 228048570,
+        "length": 350,
+        "sha256": "c05321de18c4e2a676fb45eb14dd8c31645dcfd9c6e135ec1babec39fce083e7"
+      },
+      {
+        "label": "nonstreaming_404_entry",
+        "offset": 228052500,
+        "length": 1200,
+        "sha256": "3d2e5426c3bf1b47f651245cfef610f8008f9690ccd9e733ce92b1296d2ef16e"
+      },
+      {
+        "label": "output_recovery_configuration",
+        "offset": 234376300,
+        "length": 1100,
+        "sha256": "9443f4fdba2dd5aa7004483158c6fed07e076e105d757d1ff0e406dab569abc2"
+      },
+      {
+        "label": "output_recovery_transition",
+        "offset": 234449050,
+        "length": 1550,
+        "sha256": "f0e683dad743e159a96ae49d18e376bce54af979a247bf7acbee54923c77b4b1"
+      },
+      {
+        "label": "output_cap_parse",
+        "offset": 219022829,
+        "length": 418,
+        "sha256": "0d137ed928ebc2e6263d6856bfd632fae2a25a114e2bd9f2d2c2af958ffae521"
+      },
+      {
+        "label": "output_cap_dynamic_default",
+        "offset": 219158822,
+        "length": 271,
+        "sha256": "a060132b617be85cd525e15340bd90f28f7029250501b6dce553a94f38de0cca"
+      },
+      {
+        "label": "output_cap_model_metadata",
+        "offset": 219153917,
+        "length": 240,
+        "sha256": "b608d887bffd087c9566bb2ec85c28c42cc9abebdc5fd2b48d3e22449d596250"
+      },
+      {
+        "label": "model_facts_output_cap",
+        "offset": 226088817,
+        "length": 650,
+        "sha256": "5f3c42d10b559f8027a107e5dd480a2adb59af23c3c134218c766ba8ae293345"
+      },
+      {
+        "label": "request_model_facts_choice",
+        "offset": 227936195,
+        "length": 330,
+        "sha256": "2adcea8490f2d3ea88e8f0c28c04b2c4f76e16f1125bef1d37092cbe14ae00a3"
+      },
+      {
+        "label": "request_extra_body",
+        "offset": 227912447,
+        "length": 1240,
+        "sha256": "84fafca215b0f2c6717aa5f09898324b2cc08d45e5d4c29b3a6353b3e93c2f15"
+      },
+      {
+        "label": "request_body_builder",
+        "offset": 227966733,
+        "length": 850,
+        "sha256": "49ad952e0ce68efc83ea4a4897e5b6f4bfebafd52a94494e4b4228a1dc25722a"
+      },
+      {
+        "label": "request_body_merge",
+        "offset": 227973700,
+        "length": 1300,
+        "sha256": "f4204b0010a7381110ab1ac1e101d0bf079c8e83da28a69180e937d1ed4405d1"
+      },
+      {
+        "label": "request_wire_transform",
+        "offset": 224584773,
+        "length": 395,
+        "sha256": "8c537e2b9309f9adb48955a59a60de7ec0de162639d4e2e9f86c391c0a67c5d6"
+      },
+      {
+        "label": "nonstreaming_cap_send",
+        "offset": 227920396,
+        "length": 1100,
+        "sha256": "6a830f0e82c4a4c9aa696b1e4cc57ed86677575d54f39499c923077a04a84f04"
+      },
+      {
+        "label": "nonstreaming_cap_clamp",
+        "offset": 228066485,
+        "length": 245,
+        "sha256": "f96fd08601b56f4e2e2c6669c09cb7ed3ce68d2e5d779be1384296bea015e025"
+      },
+      {
+        "label": "nonstreaming_shared_builder",
+        "offset": 228004054,
+        "length": 2115,
+        "sha256": "dd525cf34b4c4968389a5e7f45e00cb7a661495222bb6f21feb2d3264b389602"
+      },
+      {
+        "label": "upper_recovery_cap_reset",
+        "offset": 234396600,
+        "length": 500,
+        "sha256": "beea073f1a3e9ae4111685bcddbca30112610e57ff61780e9f415a9915e37061"
+      },
+      {
+        "label": "upper_recovery_cap_argument",
+        "offset": 234419850,
+        "length": 550,
+        "sha256": "966335b807de54de991700236c8b0f6fc6bd2c9242f9242175678f9897c67962"
+      },
+      {
+        "label": "usage_model_accumulator",
+        "offset": 226095918,
+        "length": 1150,
+        "sha256": "107399805e5fb956060fe84d2ab34b7d45dd3a3c4a1529faa48aae12e120a6e2"
+      },
+      {
+        "label": "usage_message_delta_credit",
+        "offset": 228029330,
+        "length": 2350,
+        "sha256": "c6dd4fb37c8f747af3e4f44b44893db66778ce952fce8b312fffb487e8651103"
+      },
+      {
+        "label": "usage_snapshot_merge",
+        "offset": 228058608,
+        "length": 2067,
+        "sha256": "60510b70cb1977042b59c22993fd05294f31fe5f7e208834bda6fd92828edb53"
+      },
+      {
+        "label": "usage_sum",
+        "offset": 228060675,
+        "length": 1020,
+        "sha256": "04cd1741b8c36f97278c88640079238190cd26c9676cb290585a1586133cf6d8"
+      },
+      {
+        "label": "usage_unstreamed_dedup",
+        "offset": 254073208,
+        "length": 225,
+        "sha256": "446de569ee30b9d6585159d0bb1eb77ccf4be5ebefc7167c1a2f672a55f73cd3"
+      },
+      {
+        "label": "usage_assistant_accumulation",
+        "offset": 254115600,
+        "length": 500,
+        "sha256": "3b46758fa009ea4229d1fc3e342d0d7e60d7af93b8b2c19a7325fda15c5fe81e"
+      },
+      {
+        "label": "usage_print_stream",
+        "offset": 254117400,
+        "length": 1000,
+        "sha256": "58c1d5dcc2a3360c7c53f328cdbe50bf5d26acc250ce5c8f530d697437c311d3"
+      },
+      {
+        "label": "usage_result_projection",
+        "offset": 254121300,
+        "length": 750,
+        "sha256": "d8e089e0b3017ab21e14c33f76be2a902f6d6af814765ce76d62aa86ee275c41"
+      },
+      {
+        "label": "usage_error_projection",
+        "offset": 254125700,
+        "length": 800,
+        "sha256": "488a8dbdbcfb31784e8bd1062588020fac63c38e9fd958bb38006afd87d5965b"
+      },
+      {
+        "label": "usage_nonstream_credit",
+        "offset": 228055500,
+        "length": 1000,
+        "sha256": "4d528b9f701c1826d19b52f5a83d254164665c5541ddf24a368732e506cc8173"
+      }
+    ]
+  },
+  "readiness_basis": "Issue #285/#299: reviewed configuration and offline guards; provider unknowns remain limitations, not prerequisites. Actual evaluation is not authorized."
+}

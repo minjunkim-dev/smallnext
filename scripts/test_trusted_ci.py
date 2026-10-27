@@ -20,12 +20,12 @@ MERGE = "d" * 40
 class AggregationTests(unittest.TestCase):
     def setUp(self):
         self.run = {
-            "id": 10, "run_attempt": 1, "workflow_id": 20,
+            "id": 10, "run_number": 2, "run_attempt": 1, "workflow_id": 20,
             "path": ".github/workflows/project-checks.yml", "event": "pull_request",
             "head_sha": HEAD, "head_branch": "ci/83-example",
             "repository": {"full_name": REPO}, "head_repository": {"full_name": REPO},
             "status": "completed", "conclusion": "success", "pull_requests": [],
-            "run_started_at": "2026-10-09T10:12:38Z",
+            "created_at": "2026-10-09T10:12:38Z", "run_started_at": "2026-10-09T10:12:38Z",
             "referenced_workflows": [
                 {"path": f"{REPO}/.github/workflows/{file}@{MERGE}", "sha": MERGE, "ref": "refs/pull/30/merge"}
                 for file in ("api-checks.yml", "api-container.yml", "ios-checks.yml", "android-checks.yml")],
@@ -48,7 +48,7 @@ class AggregationTests(unittest.TestCase):
             "pulls/30/files?per_page=100&page=1": [{"filename": "docs/CI.md", "status": "modified"}],
             "branches/main": {"commit": {"sha": BASE}},
             "git/commits/" + MERGE: {"sha": MERGE, "parents": [{"sha": BASE}, {"sha": HEAD}]},
-            "actions/workflows/20/runs?event=pull_request&branch=ci%2F83-example&head_sha=" + HEAD + "&per_page=1": {"workflow_runs": [self.run]},
+            "actions/workflows/20/runs?event=pull_request&branch=ci%2F83-example&head_sha=" + HEAD + "&per_page=100&page=1": {"total_count": 1, "workflow_runs": [self.run]},
             "actions/runs/10/attempts/1/jobs?per_page=100&page=1": {"total_count": 6, "jobs": self.jobs},
         }
 
@@ -208,16 +208,49 @@ class AggregationTests(unittest.TestCase):
 
     def test_newer_run_and_incomplete_diff_or_job_page_are_rejected(self):
         latest = next(key for key in self.data if key.startswith("actions/workflows/20/runs?"))
-        self.data[latest] = {"workflow_runs": [{"id": 11}]}
+        self.data[latest] = {"total_count": 1, "workflow_runs": [dict(self.run, id=11, run_number=3)]}
         with self.assertRaisesRegex(ValueError, "newer source run"):
             aggregate(self.event, REPO, self.get)
-        self.data[latest] = {"workflow_runs": [self.run]}
+        self.data[latest] = {"total_count": 1, "workflow_runs": [self.run]}
         self.pr["changed_files"] = 2
         with self.assertRaisesRegex(ValueError, "Incomplete PR diff"):
             aggregate(self.event, REPO, self.get)
         self.pr["changed_files"] = 1
         self.data["actions/runs/10/attempts/1/jobs?per_page=100&page=1"]["total_count"] = 7
         with self.assertRaisesRegex(ValueError, "Incomplete API list"):
+            aggregate(self.event, REPO, self.get)
+
+    def test_same_second_runs_select_latest_independently_of_list_order(self):
+        latest = next(key for key in self.data if key.startswith("actions/workflows/20/runs?"))
+        older = dict(self.run, id=9, run_number=1, conclusion="cancelled")
+        for runs in ([older, self.run], [self.run, older]):
+            with self.subTest(order=[run["id"] for run in runs]):
+                self.data[latest] = {"total_count": 2, "workflow_runs": runs}
+                self.assertEqual(aggregate(self.event, REPO, self.get)["verdict"], "accepted")
+
+    def test_newer_failed_cancelled_or_pending_run_blocks_older_success_in_any_order(self):
+        latest = next(key for key in self.data if key.startswith("actions/workflows/20/runs?"))
+        for status, conclusion in (("completed", "failure"), ("completed", "cancelled"),
+                                   ("queued", None), ("in_progress", None)):
+            newer = dict(self.run, id=11, run_number=3, status=status, conclusion=conclusion)
+            for runs in ([self.run, newer], [newer, self.run]):
+                with self.subTest(status=status, conclusion=conclusion, order=[run["id"] for run in runs]):
+                    self.data[latest] = {"total_count": 2, "workflow_runs": runs}
+                    with self.assertRaisesRegex(ValueError, "newer source run"):
+                        aggregate(self.event, REPO, self.get)
+
+    def test_latest_run_on_later_page_requires_complete_listing(self):
+        latest = next(key for key in self.data if key.startswith("actions/workflows/20/runs?"))
+        self.data[latest] = {"total_count": 101, "workflow_runs": [
+            dict(self.run, id=100 + n, run_number=1, conclusion="cancelled") for n in range(100)]}
+        second_page = latest.replace("&page=1", "&page=2")
+        self.data[second_page] = {"total_count": 101, "workflow_runs": [self.run]}
+        self.assertEqual(aggregate(self.event, REPO, self.get)["verdict"], "accepted")
+        self.data[second_page]["total_count"] = 102
+        with self.assertRaisesRegex(ValueError, "Incomplete API list"):
+            aggregate(self.event, REPO, self.get)
+        self.data[latest] = {"total_count": 0, "workflow_runs": []}
+        with self.assertRaisesRegex(ValueError, "newer source run"):
             aggregate(self.event, REPO, self.get)
 
     def test_partial_attempt_never_reuses_previous_attempt_jobs(self):

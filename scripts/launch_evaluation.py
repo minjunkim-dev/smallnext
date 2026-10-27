@@ -22,10 +22,19 @@ from time import monotonic
 import uuid
 
 import oauth_quality as qa
+import supplemental_evaluation as supplemental
+import supplemental_review
 
 
-LIMITS = {'requests': 81, 'calls': 162, 'seconds': 5400,
-          'initial_micro_usd': 3_000_000, 'monthly_micro_usd': 10_000_000}
+# #251: subscription runs have no µUSD limit; the 3/10 USD budget is for the server API key only.
+LIMITS = {'requests': 81, 'calls': 162, 'seconds': 5400}
+SUPPLEMENTAL_LIMITS = {'requests': 75, 'generate': 48, 'check': 75, 'calls': 123, 'seconds': 5400}
+ONCE_LIMITS = {'requests': 25, 'generate': 16, 'check': 25, 'calls': 41, 'seconds': 5400}
+ONCE_CONTRACT = 'https://github.com/minjunkim-dev/smallnext/issues/304'
+SUPPLEMENTAL_CONTRACT = 'https://github.com/minjunkim-dev/smallnext/issues/111#issuecomment-6385071594'
+# #261: grounding lengthened role output, so QA may allow 180 s per request; the server stays at 120 s.
+PIPELINE_SECONDS = (120, 180)
+COST_BASIS = 'transport estimate if provided (subscription CLI provides none); not a run limit or billing'
 # Two 4 MiB role streams plus record metadata and JSON encoding overhead.
 REPORT_JSON_LIMIT = 16 * 1024 * 1024
 MARKER_JSON_LIMIT = 4096
@@ -162,18 +171,25 @@ def private_root(repo=qa.REPO):
     return (Path(common).parent / 'work').resolve()
 
 
-def freeze(directory, *, owner, ends_at, delete_method, role_reservation_micro_usd=20_000,
-           monthly_spent_micro_usd=0, flow_id=None, max_smaller=None):
+def freeze(directory, *, owner, ends_at, delete_method, flow_id=None, max_smaller=None, pipeline_seconds=120,
+           plan_kind='launch', flows=None, approved_once=False):
+    if approved_once is not False and (approved_once is not True or plan_kind != 'supplemental-once'):
+        raise ValueError('approval is only for a single-repeat supplemental plan')
+    if approved_once is True and flows is None:
+        flows = supplemental.fixed_flows(once=True)
     directory = Path(directory).resolve()
     end = datetime.fromisoformat(ends_at)
     if not owner.strip() or not delete_method.strip() or end.tzinfo is None or end <= datetime.now(timezone.utc):
         raise ValueError('retention owner, future end time and deletion method required')
-    if (type(role_reservation_micro_usd) is not int or role_reservation_micro_usd <= 0
-            or type(monthly_spent_micro_usd) is not int or monthly_spent_micro_usd < 0):
-        raise ValueError('nonnegative integer planning cost required')
     if (flow_id is None) != (max_smaller is None) or max_smaller is not None and (
             type(max_smaller) is not int or max_smaller < 0):
         raise ValueError('a single flow needs a nonnegative smaller count')
+    if pipeline_seconds not in PIPELINE_SECONDS:
+        raise ValueError('unsupported request time limit')
+    if plan_kind not in ('launch', 'supplemental', 'supplemental-fixed', 'supplemental-once') or plan_kind == 'launch' and flows is not None:
+        raise ValueError('unsupported evaluation plan')
+    if plan_kind != 'launch' and (not flows or flow_id is not None or max_smaller is not None):
+        raise ValueError('supplemental preparation incomplete; offline synthetic flows required')
     root = private_root()
     if directory == root or not directory.is_relative_to(root):
         raise ValueError(f'raw bundles must be inside the main checkout work directory: {root}')
@@ -182,10 +198,11 @@ def freeze(directory, *, owner, ends_at, delete_method, role_reservation_micro_u
     regression = qa.load(directory / 'regression')
     sources = deepcopy(regression['sources'])
     for name in ['scripts/launch_evaluation.py', 'services/api/src/suggestion.rs',
-                 'services/api/src/suggestion/compact.rs']:
+                 'services/api/src/suggestion/compact.rs'] + (list(supplemental.SOURCE_PATHS)
+                                                           if plan_kind in ('supplemental-fixed', 'supplemental-once') else []):
         raw = (qa.REPO / name).read_bytes()
         sources[name] = {'sha256': qa.digest(raw), 'utf8': raw.decode()}
-    flows, limits = launch_flows(regression), LIMITS
+    flows, limits = (deepcopy(flows), SUPPLEMENTAL_LIMITS) if plan_kind != 'launch' else (launch_flows(regression), LIMITS)
     if flow_id is not None:
         # #154: one fixed flow, with request and role caps derived from its planned steps.
         flows = [f for f in flows if f['id'] == flow_id]
@@ -199,80 +216,185 @@ def freeze(directory, *, owner, ends_at, delete_method, role_reservation_micro_u
     manifest = {'version': 1, 'suite': 'launch', 'model': qa.MODEL, 'effort': qa.EFFORT,
         'sources': sources, 'prompts': regression['prompts'], 'schemas': regression['schemas'],
         'flows': flows, 'limits': limits, 'measurement': MEASUREMENT,
-        'pipeline_seconds': 120, 'output_mode': 'text-json', 'parallelism': 1,
-        'cost_policy': {'role_reservation_micro_usd': role_reservation_micro_usd,
-                        'monthly_spent_micro_usd': monthly_spent_micro_usd,
-                        'basis': 'offline planning assumption; not provider pricing or billing'},
+        'pipeline_seconds': pipeline_seconds, 'output_mode': 'text-json', 'parallelism': 1,
+        'cost_basis': COST_BASIS,
         'regression': {'cases': 47, 'manifest_sha256': qa.digest(private_bytes(directory, 'regression/manifest.json'))},
         'preserved_evidence': evidence, 'paid_transport': 'unavailable',
         'retention': {'location': str(directory), 'owner': owner, 'evaluation_ends_at': end.isoformat(),
                       'delete_by': (end + timedelta(days=30)).isoformat(), 'delete_method': delete_method},
         'boundary': 'subscription OAuth QA; paid billing, actual action and device validation unknown'}
+    if plan_kind != 'launch':
+        manifest.update(version=2, plan_kind=plan_kind, contract=SUPPLEMENTAL_CONTRACT,
+                        pipeline_seconds=180, check_seconds=120,
+                        boundary='offline preparation only; actual evaluation remains blocked')
+        if plan_kind in ('supplemental-fixed', 'supplemental-once'):
+            manifest.update(version=4 if plan_kind == 'supplemental-once' else 3,
+                            plan_id=supplemental.ONCE_PLAN_ID if plan_kind == 'supplemental-once' else supplemental.PLAN_ID,
+                            output_token_limit=qa.OUTPUT_TOKENS)
+            if plan_kind == 'supplemental-once':
+                manifest.update(limits=ONCE_LIMITS, contract=ONCE_CONTRACT)
+                if approved_once is True:
+                    manifest['boundary'] = 'user-approved single evaluation; direct human review pending'
+            manifest['plan_sha256'] = supplemental.binding(manifest)
+        validate_supplemental(manifest)
     qa.save(directory / 'manifest.json', manifest)
     qa.save(directory / 'integrity.json', {'manifest_sha256': qa.digest(private_bytes(directory, 'manifest.json'))})
 
 
-def load(directory, *, descriptor=None):
+def load(directory, *, descriptor=None, for_report=False):
     directory = Path(directory)
     source = directory if descriptor is None else descriptor
-    manifest = qa.load(directory, read_bytes=lambda path: private_bytes(source, path.relative_to(directory)))
+    manifest = qa.load(directory, read_bytes=lambda path: private_bytes(source, path.relative_to(directory)),
+                       allowed_runner_sha256=tuple(sources['scripts/oauth_quality.py'] for sources in
+                           (supplemental.LEGACY_REPORT_SOURCES, supplemental.ONCE_REPORT_SOURCES,
+                            supplemental.REVISED_ONCE_REPORT_SOURCES, supplemental.ALIGNED_ONCE_REPORT_SOURCES))
+                                             if for_report else ())
     if manifest.get('suite') != 'launch' or manifest.get('parallelism') != 1:
         raise ValueError('wrong launch manifest')
-    if qa.digest(Path(__file__).read_bytes()) != manifest['sources']['scripts/launch_evaluation.py']['sha256']:
+    if manifest.get('version') in (2, 3, 4) or 'plan_kind' in manifest:
+        validate_supplemental(manifest, for_report=for_report)
+    elif (manifest.get('version') != 1
+          or any(key in manifest for key in ('contract', 'check_seconds', 'plan_id', 'plan_sha256', 'output_token_limit'))
+          or any(path in manifest['sources'] for path in supplemental.SOURCE_PATHS)
+          or any(any(key in flow for key in ('kind', 'candidate', 'repeat', 'rerequest',
+                                            'synthetic_start', 'case_id', 'reference')) for flow in manifest['flows'])):
+        raise ValueError('unsupported launch version')
+    if (qa.digest(Path(__file__).read_bytes()) != manifest['sources']['scripts/launch_evaluation.py']['sha256']
+            and not (for_report and supplemental.legacy_report_sources(manifest))):
         raise ValueError('launch runner differs from frozen version')
     if qa.digest(private_bytes(source, 'regression/manifest.json')) != manifest['regression']['manifest_sha256']:
         raise ValueError('regression changed')
     return manifest
 
 
+def roles_for(flow):
+    return ('check',) if flow.get('kind') == 'check' else ('generate', 'check')
+
+
+def validate_supplemental(manifest, *, for_report=False):
+    once = manifest.get('plan_kind') == 'supplemental-once'
+    fixed = manifest.get('plan_kind') in ('supplemental-fixed', 'supplemental-once')
+    if (manifest.get('version') != (4 if once else 3 if fixed else 2)
+            or manifest.get('plan_kind') not in ('supplemental', 'supplemental-fixed', 'supplemental-once')
+            or manifest.get('contract') != (ONCE_CONTRACT if once else SUPPLEMENTAL_CONTRACT)
+            or manifest.get('limits') != (ONCE_LIMITS if once else SUPPLEMENTAL_LIMITS)
+            or any(type(value) is not int for value in manifest['limits'].values())
+            or manifest.get('pipeline_seconds') != 180 or manifest.get('check_seconds') != 120
+            or type(manifest.get('pipeline_seconds')) is not int or type(manifest.get('check_seconds')) is not int
+            or manifest.get('output_mode') != 'text-json'):
+        raise ValueError('unsupported supplemental contract or limits')
+    if fixed:
+        supplemental.validate(manifest, for_report=for_report)
+        if manifest.get('measurement') != MEASUREMENT or manifest.get('cost_basis') != COST_BASIS:
+            raise ValueError('unsupported fixed measurement')
+    elif (any(key in manifest for key in ('plan_id', 'plan_sha256'))
+          or any(path in manifest['sources'] for path in supplemental.SOURCE_PATHS)):
+        raise ValueError('fixed plan cannot be downgraded')
+    flows = manifest.get('flows')
+    if type(flows) is not list or not 1 <= len(flows) <= 75:
+        raise ValueError('supplemental unit limit')
+    counts, seen = Counter(), set()
+    for flow in flows:
+        if (type(flow) is not dict or type(flow.get('id')) is not str or not flow['id']
+                or any(c not in 'abcdefghijklmnopqrstuvwxyz0123456789-' for c in flow['id'])
+                or flow['id'] in seen or flow.get('kind') not in ('check', 'generate_check')
+                or type(flow.get('repeat')) is not int or not 1 <= flow['repeat'] <= 3
+                or type(flow.get('max_smaller')) is not int or flow['max_smaller'] != 0):
+            raise ValueError('invalid supplemental unit')
+        seen.add(flow['id'])
+        data, expected = flow.get('input'), flow.get('expected')
+        if (type(data) is not dict or data.get('request_kind') not in
+                ('first_action', 'next_action', 'smaller', 'replacement')
+                or type(data.get('available_minutes')) not in (int, float)
+                or qa.numeric(data['available_minutes']) is None
+                or any(type(data.get(key)) is not str for key in
+                       ('goal', 'current_blocker', 'user_request', 'knowledge', 'energy'))
+                or any(type(data.get(key)) is not list for key in
+                       ('available', 'unknown', 'remaining_work', 'completed_ids', 'previous_proposals'))
+                or any(type(value) is not str for key in ('available', 'unknown', 'remaining_work', 'completed_ids')
+                       for value in data[key])
+                or any(type(value) is not dict for value in data['previous_proposals'])
+                or type(expected) is not dict or type(expected.get('meaning')) is not str
+                or not expected['meaning'].strip()
+                or type(expected.get('verdicts')) is not list or not expected['verdicts']
+                or any(v not in ('accept', 'reject', 'uncertain') for v in expected['verdicts'])
+                or type(expected.get('statuses')) is not list or not expected['statuses']
+                or any(s not in qa.schema_for(manifest, data)['properties']['status']['enum']
+                       for s in expected['statuses'])):
+            raise ValueError('invalid supplemental input or expectation')
+        if flow['kind'] == 'check':
+            qa.validate(flow.get('candidate'), qa.schema_for(manifest, data))
+        elif 'candidate' in flow:
+            raise ValueError('generated unit cannot supply a fixed candidate')
+        if not fixed and any(key in flow for key in ('rerequest', 'synthetic_start', 'case_id', 'reference')):
+            raise ValueError('fixed flow requires its versioned plan')
+        for _ in range(supplemental.steps(flow)):
+            counts.update(roles_for(flow))
+    limits = ONCE_LIMITS if once else SUPPLEMENTAL_LIMITS
+    if (counts['generate'] > limits['generate'] or counts['check'] > limits['check']
+            or counts.total() > limits['calls']):
+        raise ValueError('supplemental role limit')
+    return dict(units=sum(supplemental.steps(flow) for flow in flows),
+                generate=counts['generate'], check=counts['check'], roles=counts.total())
+
+
 class Budget:
     def __init__(self, manifest, clock):
-        self.limits, self.policy, self.clock = manifest['limits'], manifest['cost_policy'], clock
+        self.limits, self.clock = manifest['limits'], clock
         self.started = None
-        self.requests = self.calls = self.charged = self.conservative = 0
+        self.requests = self.calls = self.estimated = self.unknown = 0
+        self.roles = Counter()
 
-    def admit(self):
+    def remaining(self, roles):
         if self.started is not None and self.clock() - self.started >= self.limits['seconds']:
             return 'time_limit'
-        if self.requests >= self.limits['requests']:
-            return 'request_limit'
-        if self.calls + 2 > self.limits['calls']:
+        if self.calls + len(roles) > self.limits['calls']:
             return 'call_limit'
-        reserve = self.policy['role_reservation_micro_usd'] * 2
-        if self.charged + reserve > self.limits['initial_micro_usd']:
-            return 'initial_budget_limit'
-        if self.charged + reserve + self.policy['monthly_spent_micro_usd'] > self.limits['monthly_micro_usd']:
-            return 'monthly_budget_limit'
+        if any(self.roles[role] + roles.count(role) > self.limits.get(role, self.limits['calls']) for role in roles):
+            return 'call_limit'
+        return None
+
+    def admit(self, roles=('generate', 'check')):
         if self.started is None:
             self.started = self.clock()
+        limit = self.remaining(roles)
+        if limit:
+            return limit
+        if self.requests >= self.limits['requests']:
+            return 'request_limit'
         self.requests += 1
         return None
 
-    def start_role(self):
+    def start_role(self, role):
+        limit = self.remaining((role,))
+        if limit:
+            return limit
         self.calls += 1
-        self.charged += self.policy['role_reservation_micro_usd']
+        self.roles[role] += 1
+        return None
 
     def settle(self, result):
         usage = result.get('usage', {})
         known = all(type(usage.get(key)) in (int, float) and qa.numeric(usage[key]) is not None
                     for key in ('input_tokens', 'output_tokens'))
         cost = result.get('cost_estimate_micro_usd')
-        if not known or cost is None:
-            self.conservative += 1
-            result['cost_state'] = 'conservative_reservation'
-            return None if known else 'usage_unknown'
-        if type(cost) is not int or cost < 0:
-            self.conservative += 1
-            result['cost_state'] = 'conservative_reservation'
-            return 'invalid_settlement'
-        self.charged += cost - self.policy['role_reservation_micro_usd']
-        result['cost_state'] = 'estimated'
-        return 'cost_overrun' if cost > self.policy['role_reservation_micro_usd'] else None
+        if type(cost) is int and cost >= 0:
+            self.estimated += cost
+            result['cost_state'] = 'estimated'
+        else:
+            self.unknown += 1
+            result['cost_state'] = 'unknown'
+        return None if known else 'usage_unknown'
 
     def snapshot(self):
-        return {'charged_micro_usd': self.charged, 'conservative_roles': self.conservative,
-                'monthly_spent_micro_usd': self.policy['monthly_spent_micro_usd'],
-                'basis': self.policy['basis'], 'actual_billing': None}
+        return {'estimated_micro_usd': self.estimated, 'unknown_cost_roles': self.unknown,
+                'basis': COST_BASIS, 'actual_billing': None,
+                'elapsed_seconds': 0 if self.started is None else self.clock() - self.started}
+
+
+def previous(candidate):
+    # #259: the app keeps only the 9 proposal fields, so a later request never carries grounding.
+    return {k: deepcopy(v) for k, v in candidate.items() if k not in ('facts', 'reduction')}
 
 
 def transition(data, candidate, verdict, expected, max_smaller, step):
@@ -286,10 +408,16 @@ def transition(data, candidate, verdict, expected, max_smaller, step):
     if step == max_smaller:
         return True, 'planned_limit', None
     next_input = deepcopy(data)
-    next_input['previous_proposals'].append(deepcopy(candidate))
+    next_input['previous_proposals'].append(previous(candidate))
     next_input['request_kind'] = 'smaller'
     next_input['user_request'] = '현재 행동을 실질적으로 줄인다. 반복 막힘이면 첫 막힘 한 가지를 확인한다.'
     return True, None, next_input
+
+
+def flow_transition(flow, data, candidate, verdict, step):
+    if 'rerequest' in flow:
+        return supplemental.transition(flow, candidate, verdict, step)
+    return transition(data, candidate, verdict, flow['expected'], flow['max_smaller'], step)
 
 
 def metrics(values, measurement):
@@ -396,7 +524,7 @@ def private_exists(directory, path):
         return False
 
 
-def report(directory, *, observations=()):
+def report(directory, *, observations=(), review=None, comparisons=False):
     try:
         with ExitStack() as opened:
             descriptor = opened.enter_context(private_directory(directory))
@@ -437,14 +565,14 @@ def report(directory, *, observations=()):
                         snapshot[name] = opened.enter_context(private_source(descriptor, name))
                 except (OSError, KeyError, TypeError, ValueError):
                     raise ValueError('private screen evidence unavailable') from None
-            return report_bundle(Path(directory), snapshot, observations)
+            return report_bundle(Path(directory), snapshot, observations, review, comparisons=comparisons)
     except OSError:
         raise ValueError('private report bundle unavailable') from None
 
 
-def report_bundle(directory, descriptor, observations):
+def report_bundle(directory, descriptor, observations, review=None, *, comparisons=False):
     directory = Path(directory)
-    manifest = load(directory, descriptor=descriptor)
+    manifest = load(directory, descriptor=descriptor, for_report=True)
     claim = private_json(descriptor, 'run-started.json')
     if claim.get('manifest_sha256') != qa.digest(private_bytes(descriptor, 'manifest.json')):
         raise ValueError('run manifest binding mismatch')
@@ -469,11 +597,13 @@ def report_bundle(directory, descriptor, observations):
                 raise ValueError('duplicate result identity')
             if qa.numeric(row.get('seconds')) is None or type(row.get('calls')) is not list:
                 raise ValueError('invalid result structure')
-            if row['flow'] not in {f['id'] for f in manifest['flows']} or row['request_kind'] not in ('first_action', 'smaller', 'next_action'):
+            if row['flow'] not in flows or row['request_kind'] not in ('first_action', 'smaller', 'next_action', 'replacement'):
                 raise ValueError('unrelated result flow')
             if any(key in row and type(row[key]) is not str for key in ('error', 'verdict', 'termination')):
                 raise ValueError('invalid result outcome')
             data = states[row['flow']]
+            flow = flows[row['flow']]
+            roles = roles_for(flow)
             ident = f"{claim['run_id']}-{row['flow']}-{steps[row['flow']]}"
             if (row['request_id'] != ident or row.get('step') != steps[row['flow']]
                     or row['request_kind'] != data['request_kind']):
@@ -492,6 +622,9 @@ def report_bundle(directory, descriptor, observations):
             for index, call in enumerate(row['calls']):
                 if type(call) is not dict or call.get('role') not in ('generate', 'check'):
                     raise ValueError('invalid role record')
+                if ('started' in call and type(call['started']) is not bool
+                        or call.get('started') is False and ('output' in call or not call.get('error'))):
+                    raise ValueError('invalid role start state')
                 if type(call.get('provider_messages', 0)) is not int or call.get('provider_messages', 0) < 0:
                     raise ValueError('invalid role message count')
                 usage = call.get('usage', {})
@@ -504,9 +637,10 @@ def report_bundle(directory, descriptor, observations):
                 if ('error' in call and type(call['error']) is not str
                         or 'output' in call and type(call['output']) is not dict):
                     raise ValueError('invalid role outcome')
-                if index >= 2 or call['role'] != ('generate', 'check')[index]:
+                if index >= len(roles) or call['role'] != roles[index]:
                     raise ValueError('role sequence mismatch')
-                sent = data if index == 0 else {'original_request': data, 'candidate': row['calls'][0].get('output')}
+                sent = data if call['role'] == 'generate' else {'original_request': data,
+                    'candidate': flow['candidate'] if roles == ('check',) else row['calls'][0].get('output')}
                 binding = dict(run_id=claim['run_id'], request_id=ident, role=call['role'],
                     input_sha256=qa.digest(qa.encoded(sent)), manifest_sha256=claim['manifest_sha256'])
                 marker = private_json(descriptor, f"calls/{ident}-{call['role']}.json")
@@ -518,13 +652,13 @@ def report_bundle(directory, descriptor, observations):
                     if (any(receipt.get(key) != value for key, value in binding.items())
                             or receipt.get('record_sha256') != qa.digest(qa.encoded(call))):
                         raise ValueError('role receipt mismatch')
-                elif not call.get('error'):
+                elif not call.get('error') or call.get('started') is False:
                     raise ValueError('completed role receipt missing')
             if 'verdict' in row:
-                flow = flows[row['flow']]
-                if [call['role'] for call in row['calls']] != ['generate', 'check']:
+                if tuple(call['role'] for call in row['calls']) != roles:
                     raise ValueError('decision roles missing')
-                candidate, checked = [call['output'] for call in row['calls']]
+                candidate = flow['candidate'] if roles == ('check',) else row['calls'][0]['output']
+                checked = row['calls'][-1]['output']
                 qa.validate(candidate, qa.schema_for(manifest, row))
                 qa.validate(checked, manifest['schemas']['check'])
                 if any(call.get('actual_models') != [manifest['model']]
@@ -536,13 +670,12 @@ def report_bundle(directory, descriptor, observations):
                        or call.get('cli_pid') and (not call.get('process_reaped') or call.get('process_group_alive'))
                        for call in row['calls']):
                     raise ValueError('inconsistent successful role')
-                matched, termination, next_input = transition(data, candidate, checked['verdict'],
-                    flow['expected'], flow['max_smaller'], row['step'])
-                if (not qa.proposal_valid(flow['input'], candidate) or not qa.check_valid(checked)
+                matched, termination, next_input = flow_transition(flow, data, candidate, checked['verdict'], row['step'])
+                if (roles != ('check',) and not qa.proposal_valid(data, candidate) or not qa.check_valid(checked)
                         or row['verdict'] != checked['verdict']
                         or row.get('criteria') != checked['criteria'] or row.get('status') != candidate['status']
                         or row.get('reference_matched') is not matched or row.get('structure_valid') is not True
-                        or type(row.get('step')) is not int or not 0 <= row['step'] <= flow['max_smaller']
+                        or type(row.get('step')) is not int or not 0 <= row['step'] < supplemental.steps(flow)
                         or any(call.get('error') for call in row['calls'])):
                     raise ValueError('inconsistent decision record')
                 if row.get('termination') != termination:
@@ -584,7 +717,7 @@ def report_bundle(directory, descriptor, observations):
         except (OSError, KeyError, TypeError, ValueError):
             raise ValueError('private screen evidence missing or mismatched') from None
         screens[ident] = seconds
-    calls = [c for r in records for c in r['calls']]
+    calls = [c for r in records for c in r['calls'] if c.get('started', True)]
     normal = [r for r in records if r.get('verdict') == 'accept' and r.get('reference_matched') and not r.get('error')]
     timings = {}
     for kind in ('first_action', 'smaller', 'other'):
@@ -596,37 +729,36 @@ def report_bundle(directory, descriptor, observations):
     request_names = private_names(descriptor, 'requests')
     started = {flow for flow in flows if f"{claim['run_id']}-{flow}-0.json" in request_names}
     started_requests = len(request_names)
-    started_roles = len(private_names(descriptor, 'calls'))
+    started_roles = len(private_names(descriptor, 'calls')) - sum(
+        c.get('started') is False for r in records for c in r['calls'])
     if private_exists(descriptor, 'run-ended.json'):
         budget = end.get('budget')
         if (type(end.get('reason')) is not str or not end['reason'] or type(budget) is not dict
                 or any(type(budget.get(key)) is not int or budget[key] < 0
-                       for key in ('charged_micro_usd', 'conservative_roles', 'monthly_spent_micro_usd'))
-                or budget['conservative_roles'] > started_roles
-                or budget['monthly_spent_micro_usd'] != manifest['cost_policy']['monthly_spent_micro_usd']
-                or budget.get('basis') != manifest['cost_policy']['basis']
+                       for key in ('estimated_micro_usd', 'unknown_cost_roles'))
+                or budget['unknown_cost_roles'] > started_roles
+                or budget.get('basis') != manifest['cost_basis']
                 or 'actual_billing' not in budget or budget['actual_billing'] is not None):
             raise ValueError('invalid end budget')
+        if manifest.get('plan_kind') in ('supplemental', 'supplemental-fixed', 'supplemental-once') and qa.numeric(budget.get('elapsed_seconds')) is None:
+            raise ValueError('supplemental elapsed time missing or invalid')
         if end['reason'] == 'completed' and (
-                budget['charged_micro_usd'] > manifest['limits']['initial_micro_usd']
-                or budget['charged_micro_usd'] + budget['monthly_spent_micro_usd'] > manifest['limits']['monthly_micro_usd']
-                or started_requests > manifest['limits']['requests'] or started_roles > manifest['limits']['calls']):
+                started_requests > manifest['limits']['requests'] or started_roles > manifest['limits']['calls']):
             raise ValueError('completed execution exceeds limits')
         if (end['reason'] == 'completed' and not unreadable and started_roles == len(calls)
-                and all(not row.get('error') for row in records)):
-            charged = conservative = 0
+                and all(row.get('error') in (None, 'unexpected_quality') for row in records)):
+            estimated = unknown = 0
             for call in calls:
                 cost = call.get('cost_estimate_micro_usd')
                 if call.get('cost_state') == 'estimated':
-                    if type(cost) is not int or not 0 <= cost <= manifest['cost_policy']['role_reservation_micro_usd']:
+                    if type(cost) is not int or cost < 0:
                         raise ValueError('invalid completed role cost')
-                    charged += cost
-                elif call.get('cost_state') == 'conservative_reservation':
-                    charged += manifest['cost_policy']['role_reservation_micro_usd']
-                    conservative += 1
+                    estimated += cost
+                elif call.get('cost_state') == 'unknown':
+                    unknown += 1
                 else:
                     raise ValueError('completed role cost state missing')
-            if charged != budget['charged_micro_usd'] or conservative != budget['conservative_roles']:
+            if estimated != budget['estimated_micro_usd'] or unknown != budget['unknown_cost_roles']:
                 raise ValueError('completed cost ledger mismatch')
     errors = Counter(r['error'] for r in records if r.get('error'))
     for row in records:
@@ -639,7 +771,7 @@ def report_bundle(directory, descriptor, observations):
         if r['flow'].rsplit('-', 1)[0] == condition and r['request_kind'] == kind and r['request_id'] in screens],
         manifest['measurement']) for kind in ('first_action', 'smaller', 'next_action')}
         for condition in sorted({f['id'].rsplit('-', 1)[0] for f in manifest['flows']})}
-    return {'run_id': claim['run_id'], 'manifest_sha256': claim['manifest_sha256'],
+    summary = {'run_id': claim['run_id'], 'manifest_sha256': claim['manifest_sha256'],
         'scheduled_flows': len(manifest['flows']), 'completed_flows': len(completed),
         'incomplete_flows': [f['id'] for f in manifest['flows'] if f['id'] in started - completed],
         'unexecuted_flows': [f['id'] for f in manifest['flows'] if f['id'] not in started],
@@ -671,9 +803,8 @@ def report_bundle(directory, descriptor, observations):
                             and started_roles == len(calls) and started_requests == len(records)
                             and sum(r['seconds'] for r in records) <= manifest['limits']['seconds']
                             and all(r.get('reference_matched') is True for r in records),
-        'costs': end.get('budget', {'actual_billing': None,
-            'charged_micro_usd': started_roles * manifest['cost_policy']['role_reservation_micro_usd'],
-            'conservative_roles': started_roles, 'basis': 'interrupted run conservative reservation'}),
+        'costs': end.get('budget', {'actual_billing': None, 'estimated_micro_usd': None,
+            'unknown_cost_roles': started_roles, 'basis': 'interrupted run; cost not settled'}),
         'role_usage': {role: {key: {'known_total': usage_totals[role, key],
                                   'unknown_calls': sum(c.get('usage', {}).get(key) is None
                                for c in calls if c['role'] == role)}
@@ -681,14 +812,92 @@ def report_bundle(directory, descriptor, observations):
                                      'cache_read_input_tokens', 'cache_creation_input_tokens')}
                        for role in ('generate', 'check')},
         'paid_budget_verified': False, 'model': manifest['model'], 'requested_effort': manifest['effort']}
+    if manifest.get('plan_kind') in ('supplemental', 'supplemental-fixed', 'supplemental-once'):
+        summary.update(supplemental_report(manifest, records, end, claim['run_id'], request_names,
+                                          private_names(descriptor, 'calls')))
+        for state in ('completed', 'failed', 'cancelled', 'not_executed'):
+            summary['roles'][state] = sum(counts[state] for counts in summary['role_counts'].values())
+            summary['requests'][state] = sum(unit['state'] == state for unit in summary['units'])
+        summary['automatic_passed'] &= (not summary['requests']['failed']
+            and all(unit['state'] == 'completed' for unit in summary['units'])
+            and qa.numeric(summary['elapsed_seconds']) is not None
+            and summary['elapsed_seconds'] < manifest['limits']['seconds'])
+    if manifest.get('plan_kind') in ('supplemental-fixed', 'supplemental-once'):
+        record_hashes = {row['request_id']: qa.digest(private_bytes(descriptor, 'results/' + row['result_file']))
+                         for row in records}
+        summary.update(supplemental_review.report(manifest, records, end, summary, review, record_hashes,
+                                                  comparisons=comparisons))
+        summary['preparation']['actual_execution_authorized'] = claim.get('approved_once') is True
+    elif review is not None or comparisons:
+        raise ValueError('output review requires a fixed supplemental plan')
+    return summary
+
+
+def supplemental_report(manifest, records, end, run_id, request_names, call_names):
+    by_step = {(row['flow'], row['step']): row for row in records}
+    units, states = [], Counter()
+    stop = end.get('reason', 'interrupted')
+    for flow in manifest['flows']:
+        for step in range(supplemental.steps(flow)):
+            row = by_step.get((flow['id'], step), {})
+            ident = f"{run_id}-{flow['id']}-{step}"
+            started = f'{ident}.json' in request_names
+            error = row.get('error')
+            prior = by_step.get((flow['id'], 0), {})
+            skipped = 'initial_semantic_failure' if step and prior.get('error') == 'unexpected_quality' else stop
+            reason = error or (None if row else 'unrecorded_request' if started else skipped)
+            calls = {call['role']: call for call in row.get('calls', [])}
+            roles = []
+            for role in roles_for(flow):
+                call = calls.get(role)
+                role_started = f'{ident}-{role}.json' in call_names and (call or {}).get('started', True)
+                failure = call.get('error') if call else None
+                if call and role == next(reversed(calls)) and error != 'unexpected_quality':
+                    failure = failure or error
+                if role_started and not call:
+                    failure = 'unrecorded_role'
+                state = ('not_executed' if not role_started else
+                         'cancelled' if failure in ('cancelled', 'ownership_lost', 'timed_out') else
+                         'failed' if failure else 'completed')
+                roles.append(dict(role=role, state=state, reason=failure if role_started else failure or reason or 'not_started'))
+                states[role, state] += 1
+            state = ('not_executed' if not started else 'failed' if not row else 'cancelled' if error in
+                     ('cancelled', 'ownership_lost', 'timed_out') else 'failed' if error else 'completed')
+            unit = dict(id=flow['id'], kind=flow['kind'], repeat=flow['repeat'],
+                        request_kind=flow['input']['request_kind'], state=state, reason=reason, roles=roles)
+            if manifest['plan_kind'] in ('supplemental-fixed', 'supplemental-once'):
+                expected = flow['expected'] if step == 0 else flow['rerequest']['expected']
+                unit.update(unit_id=f"{flow['id']}-{step}", request_id=ident,
+                            step=step, phase='fixed_check' if flow['kind'] == 'check' else
+                            'initial' if step == 0 else 'explicit_rerequest',
+                            case_id=flow['case_id'], synthetic_start=flow.get('synthetic_start', False),
+                            branch=flow.get('branch'), status=row.get('status'), verdict=row.get('verdict'),
+                            reference_matched=row.get('reference_matched'), termination=row.get('termination'),
+                            expected_statuses=expected['statuses'], expected_verdicts=expected['verdicts'],
+                            expected_meaning_sha256=qa.digest(qa.encoded(expected['meaning'])),
+                            input_sha256=qa.digest(qa.encoded(flow['input'] if step == 0 else flow['rerequest']['input'])))
+            units.append(unit)
+    counts = {role: dict(started=sum(states[role, s] for s in ('completed', 'failed', 'cancelled')),
+                        **{s: states[role, s] for s in ('completed', 'failed', 'cancelled', 'not_executed')})
+              for role in ('generate', 'check')}
+    return {'plan_kind': manifest['plan_kind'], 'contract': manifest['contract'],
+            'planned': validate_supplemental(manifest, for_report=True), 'units': units, 'role_counts': counts,
+            'elapsed_seconds': end.get('budget', {}).get('elapsed_seconds'),
+            'provider_observations': {key: sum(c.get(key, 0) for r in records for c in r['calls'] if c.get('started', True))
+                for key in ('provider_messages', 'provider_retries', 'additional_provider_requests')}}
 
 
 def run(directory, *, claude='claude', invoke=None, cancelled=None, clock=monotonic, lock_path=None,
-        mode='subscription'):
+        mode='subscription', approved_once=False):
     if mode != 'subscription':
         raise ValueError('paid transport unavailable; separate-server preconditions required')
     directory = Path(directory)
     manifest = load(directory)
+    if approved_once is not False and (approved_once is not True or manifest.get('plan_kind') != 'supplemental-once'):
+        raise ValueError('approval is only for a single-repeat supplemental plan')
+    if (manifest.get('plan_kind') in ('supplemental', 'supplemental-fixed', 'supplemental-once')
+            and invoke is None and approved_once is not True):
+        raise ValueError('supplemental execution not authorized; actual evaluation remains blocked')
     if datetime.now(timezone.utc) >= datetime.fromisoformat(manifest['retention']['evaluation_ends_at']):
         raise ValueError('frozen evaluation end time reached')
     lock_path = Path(lock_path or private_root()/'launch-model.lock')
@@ -699,7 +908,7 @@ def run(directory, *, claude='claude', invoke=None, cancelled=None, clock=monoto
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
             raise ValueError('another launch evaluation owns the model') from None
-        claim = {'run_id': uuid.uuid4().hex, 'manifest_sha256': qa.digest(private_bytes(directory, 'manifest.json')),
+        claim = {'run_id': uuid.uuid4().hex, 'approved_once': approved_once, 'manifest_sha256': qa.digest(private_bytes(directory, 'manifest.json')),
                  'controller_pid': os.getpid(), 'controller_birth': qa.process_birth(os.getpid())}
         qa.save(directory/'run-started.json', claim)
         for name in ('results', 'requests', 'calls'):
@@ -714,10 +923,18 @@ def run(directory, *, claude='claude', invoke=None, cancelled=None, clock=monoto
             except (OSError, ValueError):
                 return False
 
+        budget = Budget(manifest, clock)
+        active_deadline, expired = [None], threading.Event()
+
         def monitor():
             while not done.wait(.05):
                 if not owned():
                     lost.set()
+                    cancelled.set()
+                if budget.started is not None and clock() >= min(
+                        active_deadline[0] if active_deadline[0] is not None else float('inf'),
+                        budget.started + manifest['limits']['seconds']):
+                    expired.set()
                     cancelled.set()
 
         watcher = threading.Thread(target=monitor, daemon=True)
@@ -726,7 +943,6 @@ def run(directory, *, claude='claude', invoke=None, cancelled=None, clock=monoto
         if threading.current_thread() is threading.main_thread():
             previous = {sig: signal.signal(sig, lambda *_: cancelled.set()) for sig in (signal.SIGINT, signal.SIGTERM)}
         reason = 'completed'
-        budget = Budget(manifest, clock)
         try:
             if invoke is None:
                 account = subscription_account(claude, cancelled)
@@ -734,44 +950,59 @@ def run(directory, *, claude='claude', invoke=None, cancelled=None, clock=monoto
                         and account.get('apiProvider') == 'firstParty'):
                     raise ValueError('subscription OAuth login required')
                 invoke = lambda role, prompt, schema, data, deadline, cancel: qa.call(
-                    claude, prompt, schema, data, deadline, cancel, output_mode=manifest['output_mode'])
+                    claude, prompt, schema, data, deadline, cancel, output_mode=manifest['output_mode'],
+                    approved_once=approved_once)
             for flow in manifest['flows']:
                 data = deepcopy(flow['input'])
-                for step in range(flow['max_smaller'] + 1):
+                roles = roles_for(flow)
+                for step in range(supplemental.steps(flow)):
                     if not owned() or lost.is_set():
                         reason = 'ownership_lost'
                         cancelled.set()
                         break
                     if cancelled.is_set():
-                        reason = 'cancelled'
+                        reason = 'time_limit' if expired.is_set() else 'cancelled'
                         break
-                    limit = budget.admit()
+                    limit = budget.admit(roles)
                     if limit:
                         reason = limit
                         break
                     started = clock()
-                    deadline = min(started + manifest['pipeline_seconds'], budget.started + manifest['limits']['seconds'])
+                    seconds = manifest['check_seconds'] if roles == ('check',) else manifest['pipeline_seconds']
+                    deadline = min(started + seconds, budget.started + manifest['limits']['seconds'])
+                    active_deadline[0] = deadline
                     ident = f"{claim['run_id']}-{flow['id']}-{step}"
                     row = dict(run_id=claim['run_id'], manifest_sha256=claim['manifest_sha256'],
                                request_id=ident, flow=flow['id'], step=step, request_kind=data['request_kind'],
                                result_file=f'{budget.requests - 1:03d}.json', calls=[])
                     qa.save(directory/'requests'/f'{ident}.json', dict(row, input_sha256=qa.digest(qa.encoded(data))))
-                    candidate = None
+                    candidate = deepcopy(flow['candidate']) if roles == ('check',) else None
+                    if roles == ('check',):
+                        row['structure_valid'] = True
                     try:
-                        for role in ('generate', 'check'):
+                        for role in roles:
                             if cancelled.is_set() or not owned() or clock() >= deadline:
                                 row['error'] = ('ownership_lost' if not owned() else
-                                                'cancelled' if cancelled.is_set() else 'timed_out')
+                                                'timed_out' if expired.is_set() or clock() >= deadline else 'cancelled')
                                 break
                             schema = qa.schema_for(manifest, data) if role == 'generate' else manifest['schemas']['check']
                             sent = deepcopy(data) if role == 'generate' else {'original_request': deepcopy(data), 'candidate': candidate}
-                            budget.start_role()
                             binding = dict(request_id=ident, role=role, run_id=claim['run_id'],
                                 manifest_sha256=claim['manifest_sha256'], input_sha256=qa.digest(qa.encoded(sent)))
                             qa.save(directory/'calls'/f'{ident}-{role}.json',
                                     binding)
-                            row['calls'].append({**binding, 'requested_effort': manifest['effort'],
+                            row['calls'].append({**binding, 'requested_effort': manifest['effort'], 'started': False,
                                                  'error': 'runner_failed'})
+                            # Recording may block: recheck after fsync, immediately before invoking.
+                            blocked = ('ownership_lost' if not owned() or lost.is_set() else
+                                       'timed_out' if expired.is_set() or clock() >= deadline else
+                                       'cancelled' if cancelled.is_set() else budget.start_role(role))
+                            if blocked:
+                                row['error'] = row['calls'][-1]['error'] = blocked
+                                qa.save(directory/'calls'/f'{ident}-{role}.receipt',
+                                    {**binding, 'record_sha256': qa.digest(qa.encoded(row['calls'][-1]))})
+                                break
+                            row['calls'][-1]['started'] = True
                             result = invoke(role, manifest['prompts'][role], schema, sent, deadline, cancelled)
                             row['calls'][-1].pop('error')
                             row['calls'][-1].update(result)
@@ -784,6 +1015,12 @@ def run(directory, *, claude='claude', invoke=None, cancelled=None, clock=monoto
                             if settlement or clock() >= deadline:
                                 row['error'] = settlement or 'timed_out'
                                 break
+                            if manifest.get('plan_kind') in ('supplemental-fixed', 'supplemental-once'):
+                                tokens = result['usage']['output_tokens']
+                                if tokens > qa.OUTPUT_TOKENS or tokens % 1:
+                                    row['error'] = ('output_tokens_exceeded' if tokens > qa.OUTPUT_TOKENS
+                                                    else 'unverified_output_usage')
+                                    break
                             if result.get('actual_models') != [manifest['model']] or result.get('provider_messages') != 1:
                                 row['error'] = 'model_or_call_count'
                                 break
@@ -806,8 +1043,7 @@ def run(directory, *, claude='claude', invoke=None, cancelled=None, clock=monoto
                                     row['error'] = 'invalid_check'
                                     break
                                 row.update(verdict=output['verdict'], criteria=output['criteria'], status=candidate['status'])
-                                matched, termination, next_input = transition(data, candidate, output['verdict'],
-                                    flow['expected'], flow['max_smaller'], step)
+                                matched, termination, next_input = flow_transition(flow, data, candidate, output['verdict'], step)
                                 row['reference_matched'] = matched
                                 if not matched:
                                     row['error'] = 'unexpected_quality'
@@ -822,11 +1058,16 @@ def run(directory, *, claude='claude', invoke=None, cancelled=None, clock=monoto
                             budget.settle(row['calls'][-1])
                     row['seconds'] = clock() - started
                     if cancelled.is_set() or not owned():
-                        row['error'] = 'ownership_lost' if lost.is_set() or not owned() else 'cancelled'
+                        row['error'] = ('ownership_lost' if lost.is_set() or not owned() else
+                                        'timed_out' if expired.is_set() else 'cancelled')
                     qa.save(directory/'results'/row['result_file'], row)
                     qa.save(directory/'requests'/f'{ident}.receipt',
                         {key: row[key] for key in ('run_id', 'manifest_sha256', 'request_id', 'result_file')}
                         | {'record_sha256': qa.digest(qa.encoded(row))})
+                    active_deadline[0] = None
+                    # #236: a reference mismatch ends only its flow so one run shows the whole distribution.
+                    if row.get('error') == 'unexpected_quality':
+                        break
                     if row.get('error'):
                         reason = ('time_limit' if row['error'] == 'timed_out'
                                   and clock() - budget.started >= manifest['limits']['seconds'] else row['error'])
@@ -852,6 +1093,21 @@ def run(directory, *, claude='claude', invoke=None, cancelled=None, clock=monoto
         return summary
 
 
+
+def save_comparisons(directory, filename, bundle):
+    raw = supplemental_review.comparison_markdown(bundle).encode('utf-8')
+    with private_directory(directory) as descriptor:
+        temporary = 'comparison-' + uuid.uuid4().hex + '.tmp'
+        stream = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600, dir_fd=descriptor)
+        try:
+            with os.fdopen(stream, 'wb') as output:
+                output.write(raw)
+                output.flush()
+                os.fsync(output.fileno())
+            os.link(temporary, filename, src_dir_fd=descriptor, dst_dir_fd=descriptor, follow_symlinks=False)
+        finally:
+            os.unlink(temporary, dir_fd=descriptor)
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest='command', required=True)
@@ -860,18 +1116,22 @@ def main():
     frozen.add_argument('--owner', required=True)
     frozen.add_argument('--ends-at', required=True, help='timezone-qualified evaluation cutoff')
     frozen.add_argument('--delete-method', required=True)
-    frozen.add_argument('--role-reservation-micro-usd', type=int, required=True,
-                        help='offline planning assumption; not actual pricing or billing')
-    frozen.add_argument('--monthly-spent-micro-usd', type=int, required=True)
     frozen.add_argument('--flow', help='freeze only this launch flow id')
     frozen.add_argument('--max-smaller', type=int, help='smaller steps allowed in --flow')
+    frozen.add_argument('--pipeline-seconds', type=int, choices=PIPELINE_SECONDS, default=120,
+                        help='per-request generate+check limit')
+    frozen.add_argument('--plan-kind', choices=('launch', 'supplemental', 'supplemental-fixed', 'supplemental-once'), default='launch')
+    frozen.add_argument('--approved-once', action='store_true', help='사용자가 명시 승인한 새1회 계획만 고정')
     running = commands.add_parser('run')
     running.add_argument('directory', type=Path)
     running.add_argument('--claude', default='claude')
+    running.add_argument('--approved-once', action='store_true', help='명시 승인한 새1회 계획의 구독 호출 시작')
     reporting = commands.add_parser('report')
     reporting.add_argument('directory', type=Path)
     reporting.add_argument('--observations', type=Path)
+    reporting.add_argument('--review', type=Path, help='고정 계획의 비공개 출력별 판정 JSON')
     reporting.add_argument('--output', default='report.json')
+    reporting.add_argument('--comparisons', help='새1회 계획의 비공개 전후 비교 Markdown 파일명')
     preflight = commands.add_parser('paid-preflight')
     preflight.add_argument('--stage', choices=('preparation', 'before_separate_server'), required=True)
     preflight.add_argument('--conditions', type=Path, required=True)
@@ -879,18 +1139,24 @@ def main():
     try:
         if args.command == 'freeze':
             freeze(args.directory, owner=args.owner, ends_at=args.ends_at, delete_method=args.delete_method,
-                   role_reservation_micro_usd=args.role_reservation_micro_usd,
-                   monthly_spent_micro_usd=args.monthly_spent_micro_usd,
-                   flow_id=args.flow, max_smaller=args.max_smaller)
+                   flow_id=args.flow, max_smaller=args.max_smaller, pipeline_seconds=args.pipeline_seconds,
+                   plan_kind=args.plan_kind, approved_once=args.approved_once)
             print(json.dumps({'frozen': True, 'model_calls': 0}))
             return 0
         if args.command == 'run':
-            summary = run(args.directory, claude=args.claude)
+            summary = run(args.directory, claude=args.claude, approved_once=args.approved_once)
         elif args.command == 'report':
             if Path(args.output).name != args.output or args.output in {'manifest.json', 'integrity.json'}:
                 raise ValueError('report filename required')
             observations = private_json(args.observations.parent, args.observations.name, expected_type=list) if args.observations else []
-            summary = report(args.directory, observations=observations)
+            review = private_json(args.review.parent, args.review.name) if args.review else None
+            if args.comparisons and (Path(args.comparisons).name != args.comparisons
+                    or args.comparisons in {args.output, 'manifest.json', 'integrity.json'}):
+                raise ValueError('private comparison filename required')
+            summary = report(args.directory, observations=observations, review=review,
+                             comparisons=bool(args.comparisons))
+            if args.comparisons:
+                save_comparisons(args.directory, args.comparisons, summary.pop('private_comparisons'))
             qa.save(args.directory/args.output, summary)
         else:
             summary = paid_preflight(args.stage, private_json(args.conditions.parent, args.conditions.name))

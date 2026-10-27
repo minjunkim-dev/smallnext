@@ -28,6 +28,7 @@ targets:
       Release: Config/Release.xcconfig
     sources:
       - Sources
+      - Resources
       - path: ../../config/feature-flags.json
         buildPhase: resources
     settings:

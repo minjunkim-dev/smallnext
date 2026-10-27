@@ -25,7 +25,7 @@ class HumanReviewTests(unittest.TestCase):
 
         def invoke(role, prompt, schema, data, deadline, cancelled):
             if role == 'generate':
-                output = dict(status='action', action='PRIVATE_SENTINEL',
+                output = dict(status='action', facts=[], reduction='해당 없음', action='PRIVATE_SENTINEL',
                               completion_condition='PRIVATE_SENTINEL', estimated_minutes=2,
                               reason='PRIVATE_SENTINEL', remaining_work=data['remaining_work'],
                               preserved_completed_ids=data['completed_ids'],

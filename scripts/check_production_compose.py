@@ -122,6 +122,7 @@ def check(image, check_purge, check_deploy=False):
     volumes:
       - "CADDY_FILE:/etc/caddy/Caddyfile:ro"
       - "CAPTCHA_DIRECTORY:/srv/smallnext-captcha:ro"
+      - "SITE_DIRECTORY:/srv/smallnext-site:ro"
   postgres:
     image: postgres:18-alpine@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873
     environment:
@@ -134,7 +135,8 @@ def check(image, check_purge, check_deploy=False):
       timeout: 3s
       retries: 60
 '''.replace("CADDY_FILE", str(ROOT / "infra/production/Caddyfile"))
-           .replace("CAPTCHA_DIRECTORY", str(ROOT / "infra/production/captcha")))
+           .replace("CAPTCHA_DIRECTORY", str(ROOT / "infra/production/captcha"))
+           .replace("SITE_DIRECTORY", str(ROOT / "infra/production/site")))
         compose = ["docker", "compose", "--project-name", project, "--env-file", str(empty_env),
                    "-f", str(ROOT / "infra/production/compose.yaml"), "-f", str(override)]
         cleanup_images = []
@@ -170,6 +172,10 @@ def check(image, check_purge, check_deploy=False):
                 if status(f"http://{address}{path}", method) != expected:
                     raise RuntimeError(f"AI OFF response mismatch: {path}")
             print("PASS production Caddy to AI OFF API: health=200 ready=200 suggestions=404")
+            for path in ("/privacy/", "/support/", "/style.css"):
+                if status(f"http://{address}{path}") != 200:
+                    raise RuntimeError(f"static page missing: {path}")
+            print("PASS production Caddy static pages: privacy=200 support=200 style=200")
             volumes = configured["services"]["api"].get("volumes", [])
             if (len(volumes) != 1 or volumes[0].get("target") != "/etc/smallnext/tls"
                     or not volumes[0].get("read_only") or actual.get("API_AUTO_MIGRATE") != "0"):

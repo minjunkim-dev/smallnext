@@ -9,7 +9,7 @@ import Security
 final class UserServerAITests: XCTestCase {
     func testAppBundleIncludesServerConfigurationKeys() {
         for key in ["SmallnextAPIBaseURL", "SmallnextSupabaseURL", "SmallnextSupabasePublishableKey",
-                    "SmallnextAuthCaptchaURL", "SmallnextTurnstileSiteKey"] {
+                    "SmallnextAuthCaptchaURL", "SmallnextTurnstileSiteKey", "SmallnextPrivacyPolicyURL"] {
             XCTAssertNotNil(Bundle.main.object(forInfoDictionaryKey: key) as? String, key)
         }
     }
@@ -24,7 +24,8 @@ final class UserServerAITests: XCTestCase {
         let defaults = try XCTUnwrap(UserDefaults(suiteName: UUID().uuidString))
         let valid = ["SmallnextAPIBaseURL": "https://api.example.invalid",
                      "SmallnextSupabaseURL": "https://project.example.invalid",
-                     "SmallnextSupabasePublishableKey": "sb_publishable_synthetic"]
+                     "SmallnextSupabasePublishableKey": "sb_publishable_synthetic",
+                     "SmallnextPrivacyPolicyURL": "https://example.invalid/privacy"]
         var cases = [[String: String]]()
         for key in valid.keys {
             for value in [nil, "", "$(UNRESOLVED)", " "] as [String?] {
@@ -40,6 +41,9 @@ final class UserServerAITests: XCTestCase {
                 cases.append(info)
             }
         }
+        var plainPolicy = valid
+        plainPolicy["SmallnextPrivacyPolicyURL"] = "http://example.invalid/privacy"
+        cases.append(plainPolicy)
         var secret = valid
         secret["SmallnextSupabasePublishableKey"] = "sb_secret_invalid"
         cases.append(secret)
@@ -69,10 +73,10 @@ final class UserServerAITests: XCTestCase {
         })
         XCTAssertEqual(creations, 0)
         UserDefaults.standard.set(true, forKey: "user_server_ai")
-        XCTAssertNotNil(UserServerAI.configured(bundle: try settingsBundle(valid), defaults: defaults) { _, _, _ in
+        XCTAssertTrue(UserServerAI.configured(bundle: try settingsBundle(valid), defaults: defaults) { _, _, _ in
             creations += 1
             return self.fixture().identity
-        })
+        } is ConsentGatedProvider)
         XCTAssertEqual(creations, 1)
         var captchaSettings = valid
         captchaSettings["SmallnextAuthCaptchaURL"] = "https://captcha.example.invalid"

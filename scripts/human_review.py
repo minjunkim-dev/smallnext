@@ -119,7 +119,7 @@ def prepare(directory, *, receipt=None):
                         link(f'{step}:{role}:output', name, f'/calls/{role_index}/output',
                              call['output'], public_call['output_sha256'])
                     if step == 0:
-                        data['previous_proposals'].append(deepcopy(calls[0]['output']))
+                        data['previous_proposals'].append(launch.previous(calls[0]['output']))
                         data['request_kind'] = 'smaller'
                         data['user_request'] = '현재 행동을 실질적으로 줄인다. 반복 막힘이면 첫 막힘 한 가지를 확인한다.'
     except FileNotFoundError:

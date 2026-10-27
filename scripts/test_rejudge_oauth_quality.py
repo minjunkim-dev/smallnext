@@ -225,6 +225,8 @@ class RejudgmentTests(unittest.TestCase):
         copied.write_bytes(COMMAND.read_bytes() + b"\n# trusted policy changed\n")
         (trusted / "oauth_quality.py").write_bytes(Path(qa.__file__).read_bytes())
         (trusted / "launch_evaluation.py").write_bytes(COMMAND.with_name("launch_evaluation.py").read_bytes())
+        (trusted / "supplemental_evaluation.py").write_bytes(COMMAND.with_name("supplemental_evaluation.py").read_bytes())
+        (trusted / "supplemental_review.py").write_bytes(COMMAND.with_name("supplemental_review.py").read_bytes())
         self.assertEqual(self.command(script=copied).returncode, 2)
         self.assertEqual(original, report.read_bytes())
         report.write_bytes(b"corrupt")
@@ -321,7 +323,7 @@ class RejudgmentTests(unittest.TestCase):
             manifest["schedule"] = [{"case": case["id"], "variant": "baseline", "repeat": 0}]
 
         self.row["case"] = case["id"]
-        generated = dict(self.row["calls"][0], role="generate", output=candidate)
+        generated = dict(self.row["calls"][0], role="generate", output=dict(candidate, facts=[], reduction="해당 없음"))
         self.row["calls"].insert(0, generated)
         self.change_manifest(change)
         result = self.command()
