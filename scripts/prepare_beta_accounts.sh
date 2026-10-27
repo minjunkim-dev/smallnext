@@ -376,6 +376,10 @@ if [[ -z "$API_HOST" ]]; then
     done
   else
     SKIPPED+=("도메인 구매와 Turnstile 위젯: 도메인을 정한 뒤 이 wizard를 다시 실행")
+    if [[ -f "$ENV_FILE" ]] && grep -aqE "^[[:space:]]*${PRIVACY_KEY}[[:space:]]*=" "$ENV_FILE"; then
+      warn "$ENV_FILE에 기존 $PRIVACY_KEY 줄이 그대로 남아 Release 빌드에 들어갑니다."
+      SKIPPED+=("$ENV_FILE의 기존 $PRIVACY_KEY 줄 확인 또는 삭제")
+    fi
   fi
 fi
 if [[ -n "$API_HOST" ]]; then
