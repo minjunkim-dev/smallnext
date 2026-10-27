@@ -1,4 +1,4 @@
-FROM rust:1.99.0-bookworm@sha256:114c7a4425406451c2866b6aafe69fe29b1b298832db1277d411ac73c82d04d6 AS builder
+FROM rust:1.99.1-bookworm@sha256:48b7f435b8fc6378ce43b44f15e3a47fd8919b2825f835c39bd4bd3da50af5b8 AS builder
 WORKDIR /workspace/services/api
 COPY services/api/Cargo.toml services/api/Cargo.lock ./
 # Build dependencies in their own layer so source edits reuse the cached layer.
