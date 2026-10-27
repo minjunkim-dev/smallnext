@@ -212,15 +212,32 @@ TOTAL_STAGES=7
 cd "$(dirname "$0")/.."
 ENV_FILE="apps/ios/Config/Local.Release.xcconfig"
 BUNDLE_ID="dev.smallnext.app"
+PRIVACY_KEY="SMALLNEXT_PRIVACY_POLICY_URL"
+HOST_PATTERN='^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+([a-z]{2,63}|xn--[a-z0-9-]{1,59})$'
+# xcconfig treats // as a comment, so URLs use /$()/ in place of //.
+# shellcheck disable=SC2016
+XC_SCHEME='https:/$()/'
 
 if [[ ! -t 0 ]]; then
   printf 'FAIL: 대화형 터미널에서 실행하십시오.\n'
+  exit 1
+fi
+if [[ ! -d apps/ios/Config || ! -f scripts/prepare_production.py ]]; then
+  printf 'FAIL: 저장소의 scripts/prepare_beta_accounts.sh를 직접 실행하십시오.\n'
+  exit 1
+fi
+if [[ -t 1 ]] && command -v tput >/dev/null 2>&1 && ! tput clear >/dev/null 2>&1; then
+  printf 'FAIL: 화면 지우기를 지원하는 터미널(TERM=%s 아님)에서 실행하십시오.\n' "${TERM:-}"
   exit 1
 fi
 if [[ -L "$ENV_FILE" ]]; then
   printf 'FAIL: %s의 symlink를 제거하십시오.\n' "$ENV_FILE"
   exit 1
 fi
+
+# The temp file sits beside the real one and is not git-ignored, so remove it on any exit.
+PRIVACY_TMP=""
+trap 'if [[ -n "$PRIVACY_TMP" ]]; then rm -f "$PRIVACY_TMP"; fi' EXIT
 
 # already_done "질문" returns success when the human says this stage was finished on an earlier run.
 already_done() {
@@ -232,23 +249,69 @@ already_done() {
   return 1
 }
 
+# saved_privacy_host prints the host of the saved privacy URL, accepting KEY=value and KEY = value.
+saved_privacy_host() {
+  [[ -f "$ENV_FILE" ]] || return 1
+  local line value host
+  line=$(grep -E "^[[:space:]]*${PRIVACY_KEY}[[:space:]]*=" "$ENV_FILE" | tail -n1) || return 1
+  value=${line#*=}
+  value=${value#"${value%%[![:space:]]*}"}
+  [[ "$value" == "$XC_SCHEME"*/privacy/ ]] || return 1
+  host=${value#"$XC_SCHEME"}
+  host=${host%/privacy/}
+  [[ "$host" =~ $HOST_PATTERN ]] || return 1
+  printf '%s' "$host"
+}
+
+# write_privacy_url HOST replaces every form of the privacy line, keeping other lines, as a 0600 file.
+write_privacy_url() {
+  local status=0
+  if [[ -L "$ENV_FILE" ]]; then
+    printf 'FAIL: %s의 symlink를 제거하십시오.\n' "$ENV_FILE"
+    exit 1
+  fi
+  PRIVACY_TMP=$(mktemp "${ENV_FILE}.XXXXXX")
+  if [[ -f "$ENV_FILE" ]]; then
+    grep -vE "^[[:space:]]*${PRIVACY_KEY}[[:space:]]*=" "$ENV_FILE" > "$PRIVACY_TMP" || status=$?
+    if (( status > 1 )); then
+      printf 'FAIL: %s를 읽지 못했습니다. 기존 파일을 유지합니다.\n' "$ENV_FILE"
+      exit 1
+    fi
+  fi
+  printf '%s=%s%s/privacy/\n' "$PRIVACY_KEY" "$XC_SCHEME" "$1" >> "$PRIVACY_TMP"
+  chmod 600 "$PRIVACY_TMP"
+  mv "$PRIVACY_TMP" "$ENV_FILE"
+  PRIVACY_TMP=""
+  WRITTEN_ENV+=("$PRIVACY_KEY")
+  printf '  %s✓ wrote%s %s → %s\n' "$GREEN" "$RESET" "$PRIVACY_KEY" "$ENV_FILE"
+}
+
 banner "Smallnext 베타 계정 준비 (#241)"
 
+APPLE_READY=0
 stage "Apple Developer Program 가입"
-if ! already_done "이미 가입 승인을 받았습니까?"; then
+if already_done "이미 가입 승인을 받았습니까?"; then
+  APPLE_READY=1
+else
   say "TestFlight 공개에는 유료 Apple Developer Program(연 99 USD)이 필요합니다."
   open_url "https://developer.apple.com/programs/enroll/"
   step "이중 인증을 켠 Apple 계정으로 로그인합니다."
   step "개인 또는 조직으로 가입을 신청하고 연회비를 결제합니다."
   step "승인 메일을 기다립니다. 며칠 걸릴 수 있습니다."
-  if ! confirm "가입 승인을 받았습니까?"; then
-    note "승인 메일을 받은 뒤 다시 실행하고 이 단계에서 y를 입력하십시오."
-    exit 0
+  if confirm "가입 승인을 받았습니까?"; then
+    APPLE_READY=1
+  else
+    note "번들 ID와 App Store Connect 단계는 건너뛰고 나머지를 진행합니다."
+    SKIPPED+=("Apple 승인 후 이 wizard를 다시 실행해 번들 ID와 App Store Connect 단계를 진행")
+    pause "Enter를 누르면 다음 단계로 갑니다."
   fi
 fi
 
 stage "번들 ID 등록"
-if ! already_done "$BUNDLE_ID 번들 ID를 이미 등록했습니까?"; then
+if (( APPLE_READY == 0 )); then
+  note "Apple 승인 전이라 건너뜁니다."
+  pause "Enter를 누르면 다음 단계로 갑니다."
+elif ! already_done "$BUNDLE_ID 번들 ID를 이미 등록했습니까?"; then
   open_url "https://developer.apple.com/account/resources/identifiers/list"
   step "Identifiers 옆의 +를 누르고 App IDs → App을 선택합니다."
   step "Description에 Smallnext, Bundle ID는 Explicit으로 $BUNDLE_ID 를 입력합니다."
@@ -257,7 +320,10 @@ if ! already_done "$BUNDLE_ID 번들 ID를 이미 등록했습니까?"; then
 fi
 
 stage "App Store Connect 앱 레코드"
-if ! already_done "App Store Connect에 앱 레코드를 이미 만들었습니까?"; then
+if (( APPLE_READY == 0 )); then
+  note "Apple 승인 전이라 건너뜁니다."
+  pause "Enter를 누르면 다음 단계로 갑니다."
+elif ! already_done "App Store Connect에 앱 레코드를 이미 만들었습니까?"; then
   open_url "https://appstoreconnect.apple.com/apps"
   step "앱 옆의 +를 누르고 신규 앱을 선택합니다."
   step "플랫폼 iOS, 기본 언어 한국어, 번들 ID $BUNDLE_ID, SKU는 smallnext-ios 로 입력합니다."
@@ -271,54 +337,62 @@ if ! already_done "결제 수단과 월 40 USD 지출 한도를 이미 설정했
   say "#237 결정: Console 지출 한도 40 USD, 서버 월 상한 30 USD."
   open_url "https://platform.claude.com/settings/billing"
   step "Settings → Billing에서 결제 수단을 등록합니다."
+  step "선불 크레딧이 필요한 계정이면 잔액을 확인합니다. 자동 충전은 조건을 확인한 뒤 직접 결정합니다."
   open_url "https://platform.claude.com/settings/limits"
   step "Settings → Limits의 Spend limits에서 Set spend limit(또는 Change Limit)을 누릅니다."
   step "월 한도를 40 USD로 저장합니다."
-  warn "API 키는 지금 만들지 않습니다. 서버를 준비한 뒤 #164 배포 직전에 만들어 서버에만 넣습니다."
+  note "메뉴 이름이 다르면 Settings 안에서 Billing과 Limits를 찾으십시오."
+  warn "이 wizard는 API 키를 만들지 않습니다."
+  note "키는 서버 AI를 켜는 별도 승인 단계에서 만들어 서버에만 넣습니다(docs/PRODUCTION.md)."
   pause "설정을 마쳤으면 Enter를 누르십시오."
 fi
 
+API_HOST=""
 stage "도메인 구매"
 say "API, 처리방침, CAPTCHA 페이지가 같은 호스트를 사용합니다."
-existing_url=$(_existing SMALLNEXT_PRIVACY_POLICY_URL || true)
-API_HOST=""
-if [[ -n "$existing_url" ]]; then
-  # shellcheck disable=SC2016 # literal xcconfig escape, not an expansion
-  API_HOST=${existing_url#'https:/$()/'}
-  API_HOST=${API_HOST%/privacy/}
-  note "저장된 호스트: $API_HOST"
-  confirm "이 호스트를 유지합니까?" || API_HOST=""
+saved_host=$(saved_privacy_host || true)
+if [[ -n "$saved_host" ]]; then
+  note "저장된 호스트: $saved_host"
+  if confirm "이 호스트를 유지합니까?"; then
+    API_HOST="$saved_host"
+  fi
 fi
 if [[ -z "$API_HOST" ]]; then
-  open_url "https://dash.cloudflare.com/?to=/:account/domains/register"
-  step "Cloudflare의 Domain Registration → Register Domains에서 도메인을 구매합니다."
-  step "DNS 레코드는 아직 만들지 않습니다. 서버를 만든 뒤 prepare_production.py가 안내합니다."
-  while :; do
-    ask API_HOST "API 호스트 이름 (예: api.example.com, https:// 없이):"
-    API_HOST=$(printf '%s' "$API_HOST" | tr '[:upper:]' '[:lower:]')
-    if [[ "$API_HOST" =~ ^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$ ]]; then
-      break
-    fi
-    warn "호스트 이름만 입력하십시오. scheme·경로·포트는 넣지 않습니다."
-  done
+  if confirm "지금 도메인을 구매합니까(또는 이미 구매했습니까)?"; then
+    open_url "https://dash.cloudflare.com/?to=/:account/domains/register"
+    step "Cloudflare의 Domain Registration → Register Domains에서 도메인을 구매합니다."
+    step "DNS 레코드는 아직 만들지 않습니다. 서버를 만든 뒤 prepare_production.py가 안내합니다."
+    while :; do
+      ask API_HOST "API 호스트 이름 (예: api.example.com, https:// 없이):"
+      API_HOST=$(printf '%s' "$API_HOST" | tr '[:upper:]' '[:lower:]')
+      if [[ "$API_HOST" =~ $HOST_PATTERN ]]; then
+        break
+      fi
+      warn "호스트 이름만 입력하십시오. scheme·경로·포트는 넣지 않습니다."
+    done
+  else
+    SKIPPED+=("도메인 구매와 Turnstile 위젯: 도메인을 정한 뒤 이 wizard를 다시 실행")
+  fi
 fi
-# xcconfig treats // as a comment, so the URL uses /$()/ in place of //.
-# shellcheck disable=SC2016
-write_env SMALLNEXT_PRIVACY_POLICY_URL 'https:/$()/'"$API_HOST"'/privacy/'
-chmod 600 "$ENV_FILE"
-note "App Store Connect의 앱 정보에도 https://$API_HOST/privacy/ 를 처리방침 URL로 입력합니다."
-note "prepare_production.py가 API 도메인을 물으면 같은 호스트를 입력하십시오."
-pause
+if [[ -n "$API_HOST" ]]; then
+  write_privacy_url "$API_HOST"
+  note "prepare_production.py가 API 도메인을 물으면 같은 호스트를 입력하십시오."
+  SKIPPED+=("App Store Connect → 앱 개인정보 보호의 개인정보 처리방침 URL에 https://$API_HOST/privacy/ 입력")
+fi
+pause "Enter를 누르면 다음 단계로 갑니다."
 
 stage "Cloudflare Turnstile 위젯"
-if ! already_done "Turnstile 위젯을 이미 만들었습니까?"; then
+if [[ -z "$API_HOST" ]]; then
+  note "도메인이 없어 건너뜁니다."
+  pause "Enter를 누르면 다음 단계로 갑니다."
+elif ! already_done "Turnstile 위젯을 이미 만들었습니까?"; then
   open_url "https://dash.cloudflare.com/?to=/:account/turnstile"
   step "Add widget을 누르고 이름에 Smallnext를 입력합니다."
   step "Hostname에 $API_HOST 를 추가합니다."
   step "Widget mode는 Managed를 선택하고 Create를 누릅니다."
   step "Site Key와 Secret Key를 비밀번호 관리자에 보관합니다. 둘 다 Issue·채팅·Git에 붙이지 않습니다."
-  warn "Supabase CAPTCHA와 iOS CAPTCHA 값은 아직 켜지 않습니다."
-  note "서버가 /auth/captcha/를 제공한 뒤 iOS 가입을 검증하고 함께 켭니다(docs/PRODUCTION.md)."
+  warn "Secret Key는 Supabase CAPTCHA 설정에만 넣습니다. 앱과 xcconfig에는 넣지 않습니다."
+  note "Supabase CAPTCHA와 iOS CAPTCHA 값은 아직 켜지 않습니다(#170, docs/PRODUCTION.md)."
   pause "보관을 마쳤으면 Enter를 누르십시오."
 fi
 
@@ -326,17 +400,23 @@ stage "서버 공급자와 VPS"
 say "#237 결정에 따라 서버는 마지막 단계입니다."
 if confirm "서버 공급자를 정하고 Linux VPS를 만들었습니까?"; then
   step "공급자 이름과 지역을 #162에 기록합니다. IP·비밀번호·키는 기록하지 않습니다."
+  note "prepare_production.py는 #162 준비 wizard입니다. 실행 범위는 docs/PRODUCTION.md를 따릅니다."
+  note "Local.Release.xcconfig를 덮어쓸지 물으면 y를 답해도 처리방침 URL 줄은 유지됩니다."
   if confirm "지금 서버·DNS·DB 준비 wizard(prepare_production.py)를 실행합니까?"; then
-    python3 scripts/prepare_production.py || warn "prepare_production.py가 중단됐습니다. 나중에 다시 실행하십시오."
+    if ! python3 scripts/prepare_production.py; then
+      warn "prepare_production.py가 중단됐습니다."
+      SKIPPED+=("서버·DNS·DB 준비가 중단됨: python3 scripts/prepare_production.py 다시 실행")
+    fi
+    pause "위 안내를 확인했으면 Enter를 누르십시오."
   else
-    SKIPPED+=("서버·DNS·DB 준비: python3 scripts/prepare_production.py")
+    SKIPPED+=("서버·DNS·DB 준비(#162): python3 scripts/prepare_production.py")
   fi
 else
-  SKIPPED+=("서버 공급자 선택과 VPS 생성 후 이 wizard를 다시 실행하거나 python3 scripts/prepare_production.py")
+  SKIPPED+=("서버 공급자 선택과 VPS 생성 뒤 python3 scripts/prepare_production.py(#162)")
 fi
 
-SKIPPED+=("Anthropic 서버 전용 API 키: #164 배포 직전에 생성")
-SKIPPED+=("Supabase CAPTCHA와 iOS CAPTCHA 값: 서버 기동과 iOS 가입 검증 뒤")
+SKIPPED+=("Anthropic 서버 전용 API 키: 서버 AI를 켜는 승인 단계에서 생성(docs/PRODUCTION.md)")
+SKIPPED+=("Supabase CAPTCHA와 iOS CAPTCHA 값: 서버 기동과 iOS 가입 검증 뒤(#170)")
 SKIPPED+=("처리방침 [확정 필요] 항목과 앱 아이콘 확정")
-SKIPPED+=("#241에 완료 항목만 체크하고 비밀 값은 기록하지 않기")
+SKIPPED+=("#241: 끝난 항목만 체크하고, 일부만 끝난 항목은 남은 부분과 넘긴 Issue를 댓글로 기록. 비밀 값은 기록하지 않음")
 finish
