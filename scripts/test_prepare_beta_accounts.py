@@ -26,8 +26,8 @@ class BetaAccountsWizardTests(unittest.TestCase):
         (self.root / "scripts/prepare_production.py").write_text("raise SystemExit(1)\n")
         stubs = self.root / "stubs"
         stubs.mkdir()
-        # Keep open_url from launching a real browser on a developer machine.
-        for name in ("xdg-open", "open"):
+        # Keep open_url from launching a real browser on a developer machine, WSL included.
+        for name in ("wslview", "explorer.exe", "xdg-open", "open"):
             (stubs / name).write_text("#!/bin/sh\nexit 0\n")
             (stubs / name).chmod(0o755)
         self.env = {"PATH": f"{stubs}{os.pathsep}{os.environ.get('PATH', os.defpath)}",
@@ -36,10 +36,15 @@ class BetaAccountsWizardTests(unittest.TestCase):
 
     def run_wizard(self, answers):
         primary, secondary = os.openpty()
-        process = subprocess.Popen(["bash", str(self.root / "scripts/prepare_beta_accounts.sh")],
-                                   stdin=secondary, stdout=secondary, stderr=secondary,
-                                   env=self.env, cwd=self.root, close_fds=True)
-        os.close(secondary)
+        try:
+            process = subprocess.Popen(["bash", str(self.root / "scripts/prepare_beta_accounts.sh")],
+                                       stdin=secondary, stdout=secondary, stderr=secondary,
+                                       env=self.env, cwd=self.root, close_fds=True)
+        except BaseException:
+            os.close(primary)
+            raise
+        finally:
+            os.close(secondary)
         os.write(primary, ("\n".join(answers) + "\n").encode())
         output = b""
         deadline = time.monotonic() + 30
@@ -104,6 +109,18 @@ class BetaAccountsWizardTests(unittest.TestCase):
         self.assertEqual(code, 1, output)
         self.assertIn("FAIL".encode(), output)
         self.assertEqual(list(self.config.iterdir()), [])
+        self.assertEqual(self.leftovers(), [])
+
+    @unittest.skipIf(hasattr(os, "geteuid") and os.geteuid() == 0, "root can write a read-only file")
+    def test_refuses_read_only_target_without_leaving_temp_files(self):
+        original = "X = 1\n"
+        self.config.write_text(original)
+        self.config.chmod(0o444)
+        self.addCleanup(self.config.chmod, 0o600)
+        code, output = self.run_wizard(DONE_THROUGH_ANTHROPIC + ["y", "new.example.com"])
+        self.assertEqual(code, 1, output)
+        self.assertIn("FAIL".encode(), output)
+        self.assertEqual(self.config.read_text(), original)
         self.assertEqual(self.leftovers(), [])
 
     def test_reports_rejected_line_left_in_release_config(self):
