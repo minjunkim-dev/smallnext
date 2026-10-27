@@ -209,7 +209,7 @@ finish() {
 
 TOTAL_STAGES=7
 
-cd "$(dirname "$0")/.."
+CDPATH='' cd -- "$(dirname -- "$0")/.."
 ENV_FILE="apps/ios/Config/Local.Release.xcconfig"
 BUNDLE_ID="dev.smallnext.app"
 PRIVACY_KEY="SMALLNEXT_PRIVACY_POLICY_URL"
@@ -235,7 +235,7 @@ if [[ -L "$ENV_FILE" ]]; then
   exit 1
 fi
 
-# The temp file sits beside the real one and is not git-ignored, so remove it on any exit.
+# The temp file sits beside the real one under the git-ignored .env.* name; still remove it on any exit.
 PRIVACY_TMP=""
 trap 'if [[ -n "$PRIVACY_TMP" ]]; then rm -f "$PRIVACY_TMP"; fi' EXIT
 
@@ -253,7 +253,7 @@ already_done() {
 saved_privacy_host() {
   [[ -f "$ENV_FILE" ]] || return 1
   local line value host
-  line=$(grep -E "^[[:space:]]*${PRIVACY_KEY}[[:space:]]*=" "$ENV_FILE" | tail -n1) || return 1
+  line=$(grep -aE "^[[:space:]]*${PRIVACY_KEY}[[:space:]]*=" "$ENV_FILE" | tail -n1) || return 1
   value=${line#*=}
   value=${value#"${value%%[![:space:]]*}"}
   [[ "$value" == "$XC_SCHEME"*/privacy/ ]] || return 1
@@ -270,9 +270,13 @@ write_privacy_url() {
     printf 'FAIL: %s의 symlink를 제거하십시오.\n' "$ENV_FILE"
     exit 1
   fi
-  PRIVACY_TMP=$(mktemp "${ENV_FILE}.XXXXXX")
+  if [[ -e "$ENV_FILE" && ( ! -f "$ENV_FILE" || ! -w "$ENV_FILE" ) ]]; then
+    printf 'FAIL: %s가 쓸 수 있는 일반 파일이 아닙니다. 소유자와 권한을 확인하십시오.\n' "$ENV_FILE"
+    exit 1
+  fi
+  PRIVACY_TMP=$(mktemp "$(dirname -- "$ENV_FILE")/.env.prepare-XXXXXX")
   if [[ -f "$ENV_FILE" ]]; then
-    grep -vE "^[[:space:]]*${PRIVACY_KEY}[[:space:]]*=" "$ENV_FILE" > "$PRIVACY_TMP" || status=$?
+    grep -avE "^[[:space:]]*${PRIVACY_KEY}[[:space:]]*=" "$ENV_FILE" > "$PRIVACY_TMP" || status=$?
     if (( status > 1 )); then
       printf 'FAIL: %s를 읽지 못했습니다. 기존 파일을 유지합니다.\n' "$ENV_FILE"
       exit 1
@@ -280,7 +284,7 @@ write_privacy_url() {
   fi
   printf '%s=%s%s/privacy/\n' "$PRIVACY_KEY" "$XC_SCHEME" "$1" >> "$PRIVACY_TMP"
   chmod 600 "$PRIVACY_TMP"
-  mv "$PRIVACY_TMP" "$ENV_FILE"
+  mv -f "$PRIVACY_TMP" "$ENV_FILE"
   PRIVACY_TMP=""
   WRITTEN_ENV+=("$PRIVACY_KEY")
   printf '  %s✓ wrote%s %s → %s\n' "$GREEN" "$RESET" "$PRIVACY_KEY" "$ENV_FILE"
@@ -400,7 +404,7 @@ stage "서버 공급자와 VPS"
 say "#237 결정에 따라 서버는 마지막 단계입니다."
 if confirm "서버 공급자를 정하고 Linux VPS를 만들었습니까?"; then
   step "공급자 이름과 지역을 #162에 기록합니다. IP·비밀번호·키는 기록하지 않습니다."
-  note "prepare_production.py는 #162 준비 wizard입니다. 실행 범위는 docs/PRODUCTION.md를 따릅니다."
+  note "prepare_production.py는 #162 준비 wizard입니다. #162 실행을 승인한 경우에만 실행합니다(docs/PRODUCTION.md)."
   note "Local.Release.xcconfig를 덮어쓸지 물으면 y를 답해도 처리방침 URL 줄은 유지됩니다."
   if confirm "지금 서버·DNS·DB 준비 wizard(prepare_production.py)를 실행합니까?"; then
     if ! python3 scripts/prepare_production.py; then
