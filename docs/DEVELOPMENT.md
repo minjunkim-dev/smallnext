@@ -23,7 +23,7 @@ Supabase DB·인증의 로컬 연결은 확인했습니다. 실제 앱·서버 �
 ## 필요한 도구
 
 - iOS: Xcode 27.1 (27A9275), simulator SDK 27.1, iOS runtime 27.0.
-- Android: Temurin JDK (설치 선택값 17.0.20+1, 실제 runtime 17.0.20.1+1), Android SDK 37, Build Tools 36.0.0, 에뮬레이터.
+- Android: Temurin JDK (설치 선택값 17.0.20+101, 실제 runtime 17.0.20.1+1), Android SDK 37, Build Tools 36.0.0, 에뮬레이터.
 - API: rustup, Rust 1.99.1, Docker Compose v2, Python 3, make.
 
 Rust 기준은 `rust-toolchain.toml`입니다. 다른 도구의 기준은 `.ci/toolchains.json`입니다.
