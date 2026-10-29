@@ -1,5 +1,5 @@
 //! Anonymous operating metrics for the open beta (#238). No UID, goal, response or token.
-use hmac::{Hmac, Mac};
+use hmac::{Hmac, KeyInit, Mac};
 use sqlx::PgPool;
 
 pub(super) fn user_hash(key: &[u8], uid: &str) -> [u8; 32] {
