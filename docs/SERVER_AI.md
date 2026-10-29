@@ -104,8 +104,8 @@ API가 멈춰 있으면 매월 1일 timer만 삭제하므로 보관 기간을 �
 2. `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`와 실제 허용 UID 목록을 설정합니다. `AI_ALLOWED_SUPABASE_UIDS`는 쉼표로 구분합니다.
 3. 비대칭 JWT 서명 키, 익명 인증과 서버 전용 DB 권한을 확인합니다. Data API는 OFF로 유지합니다. DB 비밀번호와 제공사 키를 앱·이미지·Git에 넣지 마십시오.
 4. `AI_USAGE_HASH_KEY`에 32자 이상의 임의 값을 넣습니다. 공개 베타에서만 `AI_PUBLIC_ACCESS=1`을 설정합니다.
-5. #47에서 `claude-haiku-5-5 / xhigh`의 계정 API 접근, 현재 단가와 전송·보관 조건을 확인합니다. `ANTHROPIC_API_KEY`는 서버에만 설정합니다.
-6. 확인 근거를 남긴 뒤 `AI_MODEL_CONFIRMED=1`과 `USER_SERVER_AI=1`을 설정합니다. 첫 평가 합계는 3 USD 이하로 유지합니다.
+5. #242의 유료 smoke 승인 때 `claude-haiku-5-5 / xhigh`의 계정 API 접근, 현재 단가와 전송·보관 조건을 확인합니다. `ANTHROPIC_API_KEY`는 서버에만 설정합니다.
+6. 확인 근거를 남긴 뒤 `AI_MODEL_CONFIRMED=1`과 `USER_SERVER_AI=1`을 설정하고, 허용 UID만으로 #242의 유료 smoke를 수행합니다. 누적 비용은 3 USD 이하로 유지합니다. smoke 결과와 누적 비용을 #242에 기록한 뒤에만 `AI_PUBLIC_ACCESS=1`을 설정합니다.
 
 `AI_INPUT_MICRO_USD_PER_MILLION`은 캐시 쓰기를 포함한 입력의 최대 단가를 사용합니다.
 캐시 읽기 할인으로 예산을 줄이지 않습니다. 출력 단가는 reasoning 토큰을 포함합니다.
@@ -122,7 +122,7 @@ TLS·서버 주소·허용 사용자·DB 최소 권한·삭제 스케줄러를 �
 제공사 요청은 Anthropic Messages의 단일 user message와 JSON schema 출력입니다.
 `tools=[]`, `stream=false`, `service_tier=standard_only`를 지정합니다. cache_control과 사용자 식별 메타데이터를 보내지 않습니다.
 OpenAI 전용 `store`·`background` 필드는 보내지 않습니다. 제공사의 보관을 끄는 요청 옵션으로 보고하지 마십시오.
-제공사의 실제 보관·학습 사용·전송 조건은 #47에서 확인합니다.
+제공사의 실제 보관·학습 사용·전송 조건은 #242의 유료 smoke 승인 때 확인합니다.
 응답은 확정 모델·end_turn·assistant text 1개만 허용합니다. thinking 내용은 사용량 외 응답·DB·로그에 남기지 않습니다.
 출력 중단·거부·도구 호출은 적용하지 않습니다. 모델 불일치와 캐시 포함 context 초과는 해당 월을 차단합니다.
 

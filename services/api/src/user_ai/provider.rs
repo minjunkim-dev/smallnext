@@ -46,7 +46,7 @@ pub(super) struct Evaluation {
 
 impl Provider {
     pub(super) fn from_environment() -> Result<Self, &'static str> {
-        // This gate does not prove availability. #47 records the operator's evidence.
+        // This gate does not prove availability. #242 records the operator's evidence.
         if required("AI_MODEL_CONFIRMED")? != "1" {
             return Err(
                 "verify API model availability, context limit and pricing before enabling user AI",

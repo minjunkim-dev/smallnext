@@ -94,7 +94,7 @@ def prepare(root=ROOT, prompt=getpass.getpass, confirm=input, open_page=webbrows
     if not re.fullmatch(r"sb_publishable_[A-Za-z0-9_-]+", client_key):
         raise ValueError("sb_publishable_로 시작하는 공개 client 키를 입력하십시오.")
     print("5. 앱 테이블·인증 확인 함수의 client 접근 차단과 서버 전용 DB 역할을 확인하십시오.")
-    uids = ask("AI_ALLOWED_SUPABASE_UIDS (이미 확인한 본인 익명 UID만 입력; 없으면 비워 두고 #47에서 준비)", optional=True)
+    uids = ask("AI_ALLOWED_SUPABASE_UIDS (이미 확인한 본인 익명 UID만 입력; 없으면 비워 두고 #242에서 준비)", optional=True)
     if confirm("DB 최소 권한과 파일 보호를 확인했습니까? [y/N] ").lower() != "y":
         return False
 
@@ -120,7 +120,7 @@ def prepare(root=ROOT, prompt=getpass.getpass, confirm=input, open_page=webbrows
     print("runtime 환경 파일·migration 환경 파일·Release iOS 설정 파일을 각각 권한 0600으로 저장했습니다.")
     print("API에는 runtime 환경 파일만 전달하십시오. API_AUTO_MIGRATE=0은 운영 Compose가 고정합니다.")
     print("#162에 공급자·지역·백업 조건·DB 권한만 기록하십시오. UID·키·토큰은 기록하지 마십시오.")
-    print("실제 배포는 #164에서 수행하십시오. 서버 AI 활성화와 제공사 키 생성은 #47에서 수행하십시오.")
+    print("실제 배포는 #164에서 수행하십시오. 서버 AI 활성화와 제공사 키 생성은 #242에서 수행하십시오.")
     return True
 
 
