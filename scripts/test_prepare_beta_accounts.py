@@ -99,9 +99,10 @@ class BetaAccountsWizardTests(unittest.TestCase):
 
     def test_conditional_assignment_is_replaced_or_reported(self):
         conditional = f"{KEY}[config=Release] = {SCHEME}old.example.com/privacy/\n"
-        self.config.write_text(f"A = 1\n{conditional}")
+        self.config.write_text(f"A = 1\n{KEY} = {SCHEME}plain.example.com/privacy/\n{conditional}")
         code, output = self.run_wizard(DONE_THROUGH_ANTHROPIC + ["y", "new.example.com", "", "y", "", "n"])
         self.assertEqual(code, 0, output)
+        self.assertNotIn(b"plain.example.com", output)
         self.assertEqual(self.config.read_text(), f"A = 1\n{KEY}={SCHEME}new.example.com/privacy/\n")
         self.config.write_text(conditional)
         code, output = self.run_wizard(DONE_THROUGH_ANTHROPIC + ["n", "", "", "n"])

@@ -253,6 +253,8 @@ already_done() {
 saved_privacy_host() {
   [[ -f "$ENV_FILE" ]] || return 1
   local line value host
+  # A conditional KEY[...] line may override the plain one in Release, so ask again instead of offering a stale host.
+  grep -aqE "^[[:space:]]*${PRIVACY_KEY}\[" "$ENV_FILE" && return 1
   line=$(grep -aE "^[[:space:]]*${PRIVACY_KEY}[[:space:]]*=" "$ENV_FILE" | tail -n1) || return 1
   value=${line#*=}
   value=${value#"${value%%[![:space:]]*}"}
@@ -424,7 +426,7 @@ else
   SKIPPED+=("서버 공급자 선택과 VPS 생성 뒤, #162 실행 승인 후 python3 scripts/prepare_production.py")
 fi
 
-SKIPPED+=("Anthropic 서버 전용 API 키: #242 유료 smoke 승인 때 생성")
+SKIPPED+=("Anthropic 서버 전용 API 키: 서버 AI를 켜는 승인 단계에서 생성(docs/PRODUCTION.md)")
 SKIPPED+=("Supabase CAPTCHA와 iOS CAPTCHA 값: 서버 기동과 iOS 가입 검증 뒤(#170)")
 SKIPPED+=("처리방침 [확정 필요] 항목과 앱 아이콘 확정")
 SKIPPED+=("#241: 끝난 항목만 체크하고, 일부만 끝난 항목은 남은 부분과 넘긴 Issue를 댓글로 기록. 비밀 값은 기록하지 않음")
