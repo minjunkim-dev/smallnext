@@ -276,7 +276,7 @@ write_privacy_url() {
   fi
   PRIVACY_TMP=$(mktemp "$(dirname -- "$ENV_FILE")/.env.prepare-XXXXXX")
   if [[ -f "$ENV_FILE" ]]; then
-    grep -avE "^[[:space:]]*${PRIVACY_KEY}[[:space:]]*=" "$ENV_FILE" > "$PRIVACY_TMP" || status=$?
+    grep -avE "^[[:space:]]*${PRIVACY_KEY}(\[[^]]*\])*[[:space:]]*=" "$ENV_FILE" > "$PRIVACY_TMP" || status=$?
     if (( status > 1 )); then
       printf 'FAIL: %s를 읽지 못했습니다. 기존 파일을 유지합니다.\n' "$ENV_FILE"
       exit 1
@@ -377,9 +377,9 @@ if [[ -z "$API_HOST" ]]; then
   else
     SKIPPED+=("도메인 구매와 Turnstile 위젯: 도메인을 정한 뒤 이 wizard를 다시 실행")
     # The example file's empty assignment adds no URL to the build, so only a non-empty value counts.
-    if [[ -f "$ENV_FILE" ]] && grep -aqE "^[[:space:]]*${PRIVACY_KEY}[[:space:]]*=[[:space:]]*[^[:space:]]" "$ENV_FILE"; then
-      warn "$ENV_FILE에 기존 $PRIVACY_KEY 줄이 그대로 남아 Release 빌드에 들어갑니다."
-      SKIPPED+=("$ENV_FILE의 기존 $PRIVACY_KEY 줄 확인 또는 삭제")
+    if [[ -f "$ENV_FILE" ]] && grep -aqE "^[[:space:]]*${PRIVACY_KEY}(\[[^]]*\])*[[:space:]]*=[[:space:]]*[^[:space:]]" "$ENV_FILE"; then
+      warn "${ENV_FILE}에 기존 $PRIVACY_KEY 줄이 그대로 남아 Release 빌드에 들어갑니다."
+      SKIPPED+=("${ENV_FILE}의 기존 $PRIVACY_KEY 줄 확인 또는 삭제")
     fi
   fi
 fi
@@ -424,7 +424,7 @@ else
   SKIPPED+=("서버 공급자 선택과 VPS 생성 뒤, #162 실행 승인 후 python3 scripts/prepare_production.py")
 fi
 
-SKIPPED+=("Anthropic 서버 전용 API 키: 서버 AI를 켜는 승인 단계에서 생성(docs/PRODUCTION.md)")
+SKIPPED+=("Anthropic 서버 전용 API 키: #242 유료 smoke 승인 때 생성")
 SKIPPED+=("Supabase CAPTCHA와 iOS CAPTCHA 값: 서버 기동과 iOS 가입 검증 뒤(#170)")
 SKIPPED+=("처리방침 [확정 필요] 항목과 앱 아이콘 확정")
 SKIPPED+=("#241: 끝난 항목만 체크하고, 일부만 끝난 항목은 남은 부분과 넘긴 Issue를 댓글로 기록. 비밀 값은 기록하지 않음")

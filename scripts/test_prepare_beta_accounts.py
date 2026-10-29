@@ -1,5 +1,6 @@
 import os
 from pathlib import Path
+import re
 import select
 import shutil
 import stat
@@ -96,12 +97,39 @@ class BetaAccountsWizardTests(unittest.TestCase):
         self.assertNotIn(b"\x1b]0;pwn", output)
         self.assertEqual(self.config.read_text(), f"B = 2\n{KEY}={SCHEME}api.example.com/privacy/\n")
 
+    def test_conditional_assignment_is_replaced_or_reported(self):
+        conditional = f"{KEY}[config=Release] = {SCHEME}old.example.com/privacy/\n"
+        self.config.write_text(f"A = 1\n{conditional}")
+        code, output = self.run_wizard(DONE_THROUGH_ANTHROPIC + ["y", "new.example.com", "", "y", "", "n"])
+        self.assertEqual(code, 0, output)
+        self.assertEqual(self.config.read_text(), f"A = 1\n{KEY}={SCHEME}new.example.com/privacy/\n")
+        self.config.write_text(conditional)
+        code, output = self.run_wizard(DONE_THROUGH_ANTHROPIC + ["n", "", "", "n"])
+        self.assertEqual(code, 0, output)
+        self.assertIn(f"기존 {KEY} 줄 확인 또는 삭제".encode(), output)
+
     def test_preserves_lines_with_invalid_text_bytes(self):
         self.config.write_bytes(b"BAD = \xff\xfe\nNUL = a\x00b\n")
         code, output = self.run_wizard(DONE_THROUGH_ANTHROPIC + ["y", "new.example.com", "", "y", "", "n"])
         self.assertEqual(code, 0, output)
         self.assertEqual(self.config.read_bytes(),
                          b"BAD = \xff\xfe\nNUL = a\x00b\n" + f"{KEY}={SCHEME}new.example.com/privacy/\n".encode())
+
+    def test_variables_before_non_ascii_text_are_braced(self):
+        # macOS bash 3.2 reads a following UTF-8 lead byte as part of the name and stops under set -u.
+        unbraced = re.compile(rb"\$[A-Za-z_][A-Za-z0-9_]*[\x80-\xff]")
+        lines = SCRIPT.read_bytes().splitlines()
+        self.assertEqual([n for n, line in enumerate(lines, 1) if unbraced.search(line)], [])
+
+    def test_refuses_symlinked_target(self):
+        real = self.root / "real.xcconfig"
+        real.write_text("X = 1\n")
+        self.config.symlink_to(real)
+        code, output = self.run_wizard([""])
+        self.assertEqual(code, 1, output)
+        self.assertIn("symlink".encode(), output)
+        self.assertEqual(real.read_text(), "X = 1\n")
+        self.assertEqual(self.leftovers(), [])
 
     def test_refuses_target_that_is_not_a_regular_file(self):
         self.config.mkdir()
