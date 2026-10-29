@@ -1722,3 +1722,13 @@ async fn confirmed_supplemental_actions_preserve_input_and_independent_decisions
     assert!(fixture.remote.calls.lock().unwrap().is_empty());
     fixture.close().await;
 }
+
+#[test]
+fn user_hash_matches_rfc_4231_so_stored_daily_counts_survive_crate_upgrades() {
+    let hash = super::metrics::user_hash(b"Jefe", "what do ya want for nothing?");
+    let hex: String = hash.iter().map(|byte| format!("{byte:02x}")).collect();
+    assert_eq!(
+        hex,
+        "5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3843"
+    );
+}

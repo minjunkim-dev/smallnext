@@ -3,13 +3,13 @@
 자체 코드의 권리 방침은 [COPYRIGHT](COPYRIGHT.md)에 있습니다.
 아래 구성 요소에는 해당 권리자의 라이선스가 적용됩니다. 이 목록은 그 조건을 변경하지 않습니다.
 
-확인 기준: 2026-10-18의 소스와 잠금 파일. 출시 패키지의 전체 고지를 완료했다는 뜻은 아닙니다.
+확인 기준: 2026-10-29의 소스와 잠금 파일. 출시 패키지의 전체 고지를 완료했다는 뜻은 아닙니다.
 
 ## 저장소에 포함된 도구
 
 | 구성 요소 | 버전·위치 | 조건과 출처 |
 | --- | --- | --- |
-| Gradle Wrapper | 9.8.1, `apps/android/gradle/wrapper/gradle-wrapper.jar`, `gradlew`, `gradlew.bat` | Apache-2.0. JAR의 `META-INF/LICENSE`와 스크립트의 원래 고지를 유지합니다. [Gradle 라이선스](https://github.com/gradle/gradle/blob/v9.8.1/LICENSE) |
+| Gradle Wrapper | 9.8.2, `apps/android/gradle/wrapper/gradle-wrapper.jar`, `gradlew`, `gradlew.bat` | Apache-2.0. JAR의 `META-INF/LICENSE`와 스크립트의 원래 고지를 유지합니다. [Gradle 라이선스](https://github.com/gradle/gradle/blob/v9.8.2/LICENSE) |
 | mattpocock/skills wizard 라이브러리 | plugin 1.2.3, `scripts/prepare_beta_accounts.sh`의 STAGES 위 부분 | MIT. Copyright (c) 2026 Matt Pocock. 파일 머리말에 고지 전문을 유지합니다. [mattpocock/skills](https://github.com/mattpocock/skills) |
 
 ## iOS 의존성
@@ -31,13 +31,15 @@ Cargo.lock과 `cargo metadata --locked`의 패키지 메타데이터를 확인�
 | 구성 요소 | 잠금 버전 | 라이선스 | 출처 |
 | --- | --- | --- | --- |
 | axum | 0.8.9 | MIT | [tokio-rs/axum](https://github.com/tokio-rs/axum) |
+| hmac | 0.13.0 | MIT OR Apache-2.0 | [RustCrypto/MACs](https://github.com/RustCrypto/MACs) |
 | http-body | 1.1.0 | MIT | [hyperium/http-body](https://github.com/hyperium/http-body) |
 | jsonwebtoken | 11.1.0 | MIT | [Keats/jsonwebtoken](https://github.com/Keats/jsonwebtoken) |
 | reqwest | 0.13.5 | MIT OR Apache-2.0 | [seanmonstar/reqwest](https://github.com/seanmonstar/reqwest) |
 | serde | 1.0.229 | MIT OR Apache-2.0 | [serde-rs/serde](https://github.com/serde-rs/serde) |
 | serde_json | 1.0.154 | MIT OR Apache-2.0 | [serde-rs/json](https://github.com/serde-rs/json) |
+| sha2 | 0.11.1 | MIT OR Apache-2.0 | [RustCrypto/hashes](https://github.com/RustCrypto/hashes) |
 | sqlx | 0.8.6 | MIT OR Apache-2.0 | [launchbadge/sqlx](https://github.com/launchbadge/sqlx) |
-| tokio | 1.53.3 | MIT | [tokio-rs/tokio](https://github.com/tokio-rs/tokio) |
+| tokio | 1.54.1 | MIT | [tokio-rs/tokio](https://github.com/tokio-rs/tokio) |
 | tracing / tracing-subscriber | 0.1.44 / 0.3.23 | MIT | [tokio-rs/tracing](https://github.com/tokio-rs/tracing) |
 | utoipa | 6.0.0 | MIT OR Apache-2.0 | [juhaku/utoipa](https://github.com/juhaku/utoipa) |
 | http-body-util / tower (개발용) | 0.1.5 / 0.5.3 | MIT | [hyperium/http-body](https://github.com/hyperium/http-body), [tower-rs/tower](https://github.com/tower-rs/tower) |
@@ -51,7 +53,7 @@ Cargo.lock과 `cargo metadata --locked`의 패키지 메타데이터를 확인�
 | --- | --- | --- |
 | AndroidX Activity / Compose / Room / Test | Activity 1.12.4, Compose BOM 2026.09.00, Room 2.8.5, Test JUnit 1.3.0 / Runner 1.7.0 | Apache-2.0. [AndroidX 고지](https://android.googlesource.com/platform/frameworks/support/+/androidx-main/LICENSE.txt) |
 | Retrofit / Gson converter | 3.0.0 | Apache-2.0. [Retrofit LICENSE](https://github.com/square/retrofit/blob/trunk/LICENSE.txt) |
-| OkHttp | 5.5.0 | Apache-2.0. [OkHttp LICENSE](https://github.com/square/okhttp/blob/parent-5.5.0/LICENSE.txt) |
+| OkHttp | 5.5.1 | Apache-2.0. [OkHttp LICENSE](https://github.com/square/okhttp/blob/parent-5.5.1/LICENSE.txt) |
 | Kotlin | 2.4.21 | Apache-2.0. [Kotlin 라이선스](https://github.com/JetBrains/kotlin/blob/v2.4.21/license/LICENSE.txt) |
 | KSP | 2.3.12 | Apache-2.0. [KSP LICENSE](https://github.com/google/ksp/blob/main/LICENSE) |
 | Android Gradle Plugin | 9.4.1 | Apache-2.0. [Android 빌드 도구 고지](https://android.googlesource.com/platform/tools/base/+/refs/heads/mirror-goog-studio-main/NOTICE) |
