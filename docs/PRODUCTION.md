@@ -6,7 +6,7 @@
 서버 공급자는 사람이 선택한다. 레지스트리와 CI 자동 배포는 사용하지 않는다.
 
 이 절차는 서버 AI를 켜지 않는다. `USER_SERVER_AI`는 설정하지 않는다.
-제공사 API 키 생성·모델 확인·단가·예산 설정·AI 활성화·유료 smoke는 [#242](https://github.com/minjunkim-dev/smallnext/issues/242)의 별도 승인 범위다. 실제 품질·비용·지연의 출시 검증은 [#47](https://github.com/minjunkim-dev/smallnext/issues/47)에서 병행한다.
+제공사 API 키 생성·모델 API 접근 확인·단가·예산 설정·AI 활성화·유료 smoke는 [#242](https://github.com/minjunkim-dev/smallnext/issues/242)의 별도 승인 범위다. 실제 품질·비용·지연의 출시 검증은 [#47](https://github.com/minjunkim-dev/smallnext/issues/47)에서 병행한다.
 Supabase 프로젝트 생성·연결은 [#168](https://github.com/minjunkim-dev/smallnext/issues/168)에서 별도로 확인했다.
 [#162](https://github.com/minjunkim-dev/smallnext/issues/162)의 전체 wizard 실행과 [#164](https://github.com/minjunkim-dev/smallnext/issues/164)의 실제 서버 실행은 보류한다.
 아래 절차는 해당 실행을 승인한 뒤에 따른다. 로컬 연결의 확인 범위는 [서버 AI](SERVER_AI.md#supabase-free-연결-확인과-남은-조건)를 따른다.

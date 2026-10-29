@@ -122,7 +122,7 @@ TLS·서버 주소·허용 사용자·DB 최소 권한·삭제 스케줄러를 �
 제공사 요청은 Anthropic Messages의 단일 user message와 JSON schema 출력입니다.
 `tools=[]`, `stream=false`, `service_tier=standard_only`를 지정합니다. cache_control과 사용자 식별 메타데이터를 보내지 않습니다.
 OpenAI 전용 `store`·`background` 필드는 보내지 않습니다. 제공사의 보관을 끄는 요청 옵션으로 보고하지 마십시오.
-제공사의 실제 보관·학습 사용·전송 조건은 #47에서 확인합니다.
+제공사의 실제 보관·학습 사용·전송 조건은 #242의 유료 smoke 승인 때 확인합니다.
 응답은 확정 모델·end_turn·assistant text 1개만 허용합니다. thinking 내용은 사용량 외 응답·DB·로그에 남기지 않습니다.
 출력 중단·거부·도구 호출은 적용하지 않습니다. 모델 불일치와 캐시 포함 context 초과는 해당 월을 차단합니다.
 
