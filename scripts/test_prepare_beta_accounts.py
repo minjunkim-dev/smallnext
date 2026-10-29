@@ -169,6 +169,15 @@ class BetaAccountsWizardTests(unittest.TestCase):
                 self.assertNotIn(f"기존 {KEY} 줄".encode(), output)
                 self.assertEqual(self.config.read_text(), content)
 
+    def test_empty_host_answer_skips_the_domain(self):
+        original = f"{KEY}={SCHEME}old.example.com/privacy/\n"
+        self.config.write_text(original)
+        code, output = self.run_wizard(DONE_THROUGH_ANTHROPIC + ["n", "y", "", "", "", "n"])
+        self.assertEqual(code, 0, output)
+        self.assertIn("도메인 구매와 Turnstile 위젯".encode(), output)
+        self.assertIn(f"기존 {KEY} 줄 확인 또는 삭제".encode(), output)
+        self.assertEqual(self.config.read_text(), original)
+
     def test_lists_failed_server_wizard_as_remaining_work(self):
         code, output = self.run_wizard(DONE_THROUGH_ANTHROPIC + ["n", "", "", "y", "y", ""])
         self.assertEqual(code, 0, output)

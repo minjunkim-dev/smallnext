@@ -19,10 +19,10 @@ Supabase 프로젝트 생성·연결은 [#168](https://github.com/minjunkim-dev/
 scripts/prepare_beta_accounts.sh
 ```
 
-wizard는 계정 생성·결제·구매를 대신하지 않는다. 처리방침 URL만 Git 밖 `Local.Release.xcconfig`에 기록한다.
+wizard는 계정 생성·결제·구매를 대신하지 않는다. wizard 자체는 처리방침 URL만 Git 밖 `Local.Release.xcconfig`에 기록한다. 서버 단계에서 실행하는 아래 준비 wizard는 자기 값을 같은 파일에 기록한다.
 이 wizard의 실행은 아래 #162·#164 실행 승인과 별개다. 서버 단계는 아래 준비 wizard로 넘긴다.
 wizard는 #241의 Console 결제 수단 등록과 #237에서 정한 월 지출 한도 40 USD 설정을 안내한다. 서버 예산 값과 제공사 API 키 생성은 위의 별도 승인 범위를 따른다.
-Turnstile 위젯은 만들지만 Supabase CAPTCHA와 iOS CAPTCHA 값은 켜지 않는다. [CAPTCHA 조건](#captcha와-접근-제한의-배포-전-조건)을 따른다.
+Turnstile 위젯은 wizard의 안내에 따라 사람이 만든다. Supabase CAPTCHA와 iOS CAPTCHA 값은 켜지 않는다. [CAPTCHA 조건](#captcha와-접근-제한의-배포-전-조건)을 따른다.
 
 ## 1. 준비 wizard를 실행한다
 
@@ -257,7 +257,7 @@ Caddy는 `/auth/captcha/`에서 정적 Turnstile 페이지를 제공한다.
 iOS에는 HTTPS 원점인 `SMALLNEXT_AUTH_CAPTCHA_URL`과 공개 `SMALLNEXT_TURNSTILE_SITE_KEY`를 함께 지정한다.
 앱은 정확한 원점·main frame·nonce를 검증하고 신규 익명 가입에만 CAPTCHA 토큰을 전달한다.
 기존 세션 갱신은 CAPTCHA를 요구하지 않는다. 토큰·페이지 query·UID를 로그에 남기지 않는다.
-Turnstile widget은 도메인을 정한 뒤 [베타 계정 준비 wizard](#베타-계정을-준비한다)로 만든다. Supabase CAPTCHA 활성화는 보류한다.
+Turnstile widget은 도메인을 정한 뒤 [베타 계정 준비 wizard](#베타-계정을-준비한다)의 안내에 따라 사람이 만든다. Supabase CAPTCHA 활성화는 보류한다.
 도메인 준비 후 실제 iOS 가입·취소·실패를 검증하고 활성화한다.
 운영 서버의 고정 egress IP와 승인한 관리 접속 경로가 정해지면 #164 전에 DB IP 제한을 적용한다.
 익명 가입 제한은 IP당 시간당 30회다. 부하 근거 없이 연결 수와 제한 값을 조정하지 않는다.

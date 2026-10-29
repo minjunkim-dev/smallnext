@@ -369,14 +369,16 @@ if [[ -z "$API_HOST" ]]; then
     step "Cloudflare의 Domain Registration → Register Domains에서 도메인을 구매합니다."
     step "DNS 레코드는 아직 만들지 않습니다. 서버를 만든 뒤 prepare_production.py가 안내합니다."
     while :; do
-      ask API_HOST "API 호스트 이름 (예: api.example.com, https:// 없이):"
+      ask API_HOST "API 호스트 이름 (예: api.example.com, https:// 없이, 비우면 건너뜀):"
       API_HOST=$(printf '%s' "$API_HOST" | tr '[:upper:]' '[:lower:]')
-      if [[ "$API_HOST" =~ $HOST_PATTERN ]]; then
+      # An empty answer, Ctrl-D included, skips the domain instead of asking again.
+      if [[ -z "$API_HOST" || "$API_HOST" =~ $HOST_PATTERN ]]; then
         break
       fi
       warn "호스트 이름만 입력하십시오. scheme·경로·포트는 넣지 않습니다."
     done
-  else
+  fi
+  if [[ -z "$API_HOST" ]]; then
     SKIPPED+=("도메인 구매와 Turnstile 위젯: 도메인을 정한 뒤 이 wizard를 다시 실행")
     # The example file's empty assignment adds no URL to the build, so only a non-empty value counts.
     if [[ -f "$ENV_FILE" ]] && grep -aqE "^[[:space:]]*${PRIVACY_KEY}(\[[^]]*\])*[[:space:]]*=[[:space:]]*[^[:space:]]" "$ENV_FILE"; then
