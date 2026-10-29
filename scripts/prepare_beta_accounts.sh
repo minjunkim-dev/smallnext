@@ -349,7 +349,7 @@ if ! already_done "결제 수단과 월 40 USD 지출 한도를 이미 설정했
   step "월 한도를 40 USD로 저장합니다."
   note "메뉴 이름이 다르면 Settings 안에서 Billing과 Limits를 찾으십시오."
   warn "이 wizard는 API 키를 만들지 않습니다."
-  note "키는 서버 AI를 켜는 별도 승인 단계에서 만들어 서버에만 넣습니다(docs/PRODUCTION.md)."
+  note "키는 #242의 유료 smoke 승인 때 만들어 서버에만 넣습니다(docs/PRODUCTION.md)."
   pause "설정을 마쳤으면 Enter를 누르십시오."
 fi
 
@@ -428,7 +428,7 @@ else
   SKIPPED+=("서버 공급자 선택과 VPS 생성 뒤, #162 실행 승인 후 python3 scripts/prepare_production.py")
 fi
 
-SKIPPED+=("Anthropic 서버 전용 API 키: 서버 AI를 켜는 승인 단계에서 생성(docs/PRODUCTION.md)")
+SKIPPED+=("Anthropic 서버 전용 API 키: #242의 유료 smoke 승인 때 생성(docs/PRODUCTION.md)")
 SKIPPED+=("Supabase CAPTCHA와 iOS CAPTCHA 값: 서버 기동과 iOS 가입 검증 뒤(#170)")
 SKIPPED+=("처리방침 [확정 필요] 항목과 앱 아이콘 확정")
 SKIPPED+=("#241: 끝난 항목만 체크하고, 일부만 끝난 항목은 남은 부분과 넘긴 Issue를 댓글로 기록. 비밀 값은 기록하지 않음")

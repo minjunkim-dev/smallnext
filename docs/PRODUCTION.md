@@ -6,7 +6,7 @@
 서버 공급자는 사람이 선택한다. 레지스트리와 CI 자동 배포는 사용하지 않는다.
 
 이 절차는 서버 AI를 켜지 않는다. `USER_SERVER_AI`는 설정하지 않는다.
-제공사 API 키 생성·모델 확인·단가·예산 설정·AI 활성화·유료 호출은 [#47](https://github.com/minjunkim-dev/smallnext/issues/47)의 별도 승인 범위다.
+제공사 API 키 생성·모델 확인·단가·예산 설정·AI 활성화·유료 smoke는 [#242](https://github.com/minjunkim-dev/smallnext/issues/242)의 별도 승인 범위다. 실제 품질·비용·지연의 출시 검증은 [#47](https://github.com/minjunkim-dev/smallnext/issues/47)에서 병행한다.
 Supabase 프로젝트 생성·연결은 [#168](https://github.com/minjunkim-dev/smallnext/issues/168)에서 별도로 확인했다.
 [#162](https://github.com/minjunkim-dev/smallnext/issues/162)의 전체 wizard 실행과 [#164](https://github.com/minjunkim-dev/smallnext/issues/164)의 실제 서버 실행은 보류한다.
 아래 절차는 해당 실행을 승인한 뒤에 따른다. 로컬 연결의 확인 범위는 [서버 AI](SERVER_AI.md#supabase-free-연결-확인과-남은-조건)를 따른다.
@@ -118,7 +118,7 @@ python3 scripts/deploy_production.py \
 묶음의 checksum·metadata와 적재한 이미지의 ID·source label을 대조한다.
 Compose는 지정 이미지를 `--no-build --pull never`로 실행한다.
 배포한 이미지 ID는 비밀 값 없는 `infra/production/.env.image`에 저장한다. 월 삭제도 이 이미지 ID를 사용한다.
-스크립트가 서버 AI OFF 준비 범위를 벗어난 환경 설정을 거부하면 #47의 기존 활성화 계획을 확인한다. 이 절차에서 설정을 켜지 않는다.
+스크립트가 서버 AI OFF 준비 범위를 벗어난 환경 설정을 거부하면 #242의 활성화 계획을 확인한다. 이 절차에서 설정을 켜지 않는다.
 
 이전 Draft의 `smallnext-api:ci` 태그가 다른 이미지 ID를 가리키면 적재를 보류한다.
 이 경우 현재 이미지 ID·`.env.image`·직전 묶음을 먼저 보존한다.

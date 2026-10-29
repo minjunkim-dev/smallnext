@@ -141,7 +141,7 @@ def apply(args, directory, metadata, tags):
         compose += ["-f", str(Path(args.compose_override).resolve())]
     configured = json.loads(command(compose + ["config", "--format", "json"], env=env).stdout)
     if configured["services"]["api"]["environment"].get("USER_SERVER_AI") == "1":
-        raise ValueError("this deployment step requires server AI OFF; activation belongs to #47")
+        raise ValueError("this deployment step requires server AI OFF; activation belongs to #242")
     for tag in tags:
         existing = command(["docker", "image", "inspect", tag], check=False)
         if existing.returncode == 0 and json.loads(existing.stdout)[0]["Id"] != metadata["image_id"]:

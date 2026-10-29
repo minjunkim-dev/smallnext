@@ -104,7 +104,7 @@ API가 멈춰 있으면 매월 1일 timer만 삭제하므로 보관 기간을 �
 2. `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`와 실제 허용 UID 목록을 설정합니다. `AI_ALLOWED_SUPABASE_UIDS`는 쉼표로 구분합니다.
 3. 비대칭 JWT 서명 키, 익명 인증과 서버 전용 DB 권한을 확인합니다. Data API는 OFF로 유지합니다. DB 비밀번호와 제공사 키를 앱·이미지·Git에 넣지 마십시오.
 4. `AI_USAGE_HASH_KEY`에 32자 이상의 임의 값을 넣습니다. 공개 베타에서만 `AI_PUBLIC_ACCESS=1`을 설정합니다.
-5. #47에서 `claude-haiku-5-5 / xhigh`의 계정 API 접근, 현재 단가와 전송·보관 조건을 확인합니다. `ANTHROPIC_API_KEY`는 서버에만 설정합니다.
+5. #242의 유료 smoke 승인 때 `claude-haiku-5-5 / xhigh`의 계정 API 접근, 현재 단가와 전송·보관 조건을 확인합니다. `ANTHROPIC_API_KEY`는 서버에만 설정합니다.
 6. 확인 근거를 남긴 뒤 `AI_MODEL_CONFIRMED=1`과 `USER_SERVER_AI=1`을 설정합니다. 첫 평가 합계는 3 USD 이하로 유지합니다.
 
 `AI_INPUT_MICRO_USD_PER_MILLION`은 캐시 쓰기를 포함한 입력의 최대 단가를 사용합니다.
