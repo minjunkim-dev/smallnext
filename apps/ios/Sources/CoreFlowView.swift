@@ -39,7 +39,13 @@ struct CoreFlowView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
-    private let accent = Color(red: 0.18, green: 0.27, blue: 0.16)
+    // Same hue in both modes; the dark variant keeps text and filled-button labels above 4.5:1 (#61).
+    private let accent = Color(UIColor { traits in
+        traits.userInterfaceStyle == .dark
+            ? UIColor(red: 0.55, green: 0.78, blue: 0.50, alpha: 1)
+            : UIColor(red: 0.18, green: 0.27, blue: 0.16, alpha: 1)
+    })
+    private let onAccent = Color(UIColor { $0.userInterfaceStyle == .dark ? .black : .white })
 
     private var trimmedGoal: String {
         goalInputDraft.statement.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -312,6 +318,7 @@ struct CoreFlowView: View {
                 }
             }
             .buttonStyle(.borderedProminent)
+            .foregroundStyle(onAccent)
             .frame(minHeight: 44)
         }
         .onAppear {
@@ -817,7 +824,7 @@ struct CoreFlowView: View {
         }
 
         if prominent {
-            button.buttonStyle(.borderedProminent)
+            button.buttonStyle(.borderedProminent).foregroundStyle(onAccent)
         } else {
             button.buttonStyle(.bordered)
         }
