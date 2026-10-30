@@ -39,13 +39,12 @@ struct CoreFlowView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
-    // Same hue in both modes; the dark variant keeps text and filled-button labels above 4.5:1 (#61).
+    // 두 모드 모두 같은 색상이다. 다크 모드 값은 글자와 채운 버튼 글자의 대비를 4.5:1 이상으로 둔다(#61).
     private let accent = Color(UIColor { traits in
         traits.userInterfaceStyle == .dark
             ? UIColor(red: 0.55, green: 0.78, blue: 0.50, alpha: 1)
             : UIColor(red: 0.18, green: 0.27, blue: 0.16, alpha: 1)
     })
-    private let onAccent = Color(UIColor { $0.userInterfaceStyle == .dark ? .black : .white })
 
     private var trimmedGoal: String {
         goalInputDraft.statement.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -318,7 +317,7 @@ struct CoreFlowView: View {
                 }
             }
             .buttonStyle(.borderedProminent)
-            .foregroundStyle(onAccent)
+            .modifier(OnAccentLabel())
             .frame(minHeight: 44)
         }
         .onAppear {
@@ -824,7 +823,7 @@ struct CoreFlowView: View {
         }
 
         if prominent {
-            button.buttonStyle(.borderedProminent).foregroundStyle(onAccent)
+            button.buttonStyle(.borderedProminent).modifier(OnAccentLabel())
         } else {
             button.buttonStyle(.bordered)
         }
@@ -963,5 +962,18 @@ private struct SplitGhostView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 18))
             .overlay { RoundedRectangle(cornerRadius: 18).strokeBorder(Color(.separator), lineWidth: 1) }
+    }
+}
+
+/// 채운 버튼 글자를 강조색 위에서 읽히게 한다. 비활성일 때는 시스템의 비활성 색을 그대로 둔다.
+private struct OnAccentLabel: ViewModifier {
+    @Environment(\.isEnabled) private var isEnabled
+
+    func body(content: Content) -> some View {
+        if isEnabled {
+            content.foregroundStyle(Color(UIColor { $0.userInterfaceStyle == .dark ? .black : .white }))
+        } else {
+            content
+        }
     }
 }
