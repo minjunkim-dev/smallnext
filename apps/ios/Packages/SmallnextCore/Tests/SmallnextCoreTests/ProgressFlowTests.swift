@@ -2284,6 +2284,9 @@ final class ProgressFlowTests: XCTestCase {
         XCTAssertEqual(flow.goalDetails?.deferredActions.map(\.id), [replacement.id])
         XCTAssertEqual(try count("SELECT COUNT(*) FROM completion"), 0)
         XCTAssertThrowsError(try flow.resume(deferred.id))
+        // 재개할 행동이 없으면 현재 행동을 보류한 쓰기도 되돌린다.
+        XCTAssertThrowsError(try flow.resume(Int64.max))
+        XCTAssertEqual(try status(ofTask: first.task), "current")
         let reopened = try makeFlow(SuspendedProvider())
         guard case .currentAction(let restored, nil) = reopened.screen else { return XCTFail("\(reopened.screen)") }
         XCTAssertEqual(restored.id, deferred.id)
