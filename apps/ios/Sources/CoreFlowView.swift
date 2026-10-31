@@ -39,12 +39,7 @@ struct CoreFlowView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
-    // 두 모드 모두 같은 색상이다. 다크 모드 값은 글자와 채운 버튼 글자의 대비를 4.5:1 이상으로 둔다(#61).
-    private let accent = Color(UIColor { traits in
-        traits.userInterfaceStyle == .dark
-            ? UIColor(red: 0.55, green: 0.78, blue: 0.50, alpha: 1)
-            : UIColor(red: 0.18, green: 0.27, blue: 0.16, alpha: 1)
-    })
+    private let accent = Color.smallnextAccent
 
     private var trimmedGoal: String {
         goalInputDraft.statement.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -99,6 +94,20 @@ struct CoreFlowView: View {
             .frame(maxWidth: .infinity)
         }
         .background(Color(.systemGroupedBackground))
+        // 스크롤한 내용이 상태 표시줄 글자와 겹치지 않게 가린다.
+        .safeAreaInset(edge: .top, spacing: 0) {
+            Color.clear.frame(height: 0).background(Color(.systemGroupedBackground))
+        }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            if case .currentAction(_, let smaller) = flow.screen, pinsCommands(smaller) {
+                actionCommands(smaller)
+                    .padding(.horizontal, 24)
+                    .padding(.vertical, 12)
+                    .frame(maxWidth: 560)
+                    .frame(maxWidth: .infinity)
+                    .background(.bar)
+            }
+        }
         .tint(accent)
         .sheet(isPresented: $showingGoal) { goalView }
         .sheet(isPresented: $showingGoals) { goalsView }
@@ -643,6 +652,22 @@ struct CoreFlowView: View {
                 }
             }
 
+            if !pinsCommands(smaller) {
+                actionCommands(smaller)
+            }
+        }
+    }
+
+    /// 카드 길이와 관계없이 '완료'와 '더 작게'를 화면 아래에 둔다(#61).
+    /// 답 입력은 높아서, 접근성 글자 크기는 막대가 화면을 가려서 본문에 둔다.
+    private func pinsCommands(_ smaller: SmallerStatus?) -> Bool {
+        if dynamicTypeSize.isAccessibilitySize { return false }
+        if case .question = smaller { return false }
+        return true
+    }
+
+    private func actionCommands(_ smaller: SmallerStatus?) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
             // '완료'의 위치는 더 작게 상태와 관계없이 고정한다.
             commandButton("완료") {
                 try flow.complete()
@@ -965,8 +990,17 @@ private struct SplitGhostView: View {
     }
 }
 
+extension Color {
+    // 두 모드 모두 같은 색상이다. 다크 모드 값은 글자와 채운 버튼 글자의 대비를 4.5:1 이상으로 둔다(#61).
+    static let smallnextAccent = Color(UIColor { traits in
+        traits.userInterfaceStyle == .dark
+            ? UIColor(red: 0.55, green: 0.78, blue: 0.50, alpha: 1)
+            : UIColor(red: 0.18, green: 0.27, blue: 0.16, alpha: 1)
+    })
+}
+
 /// 채운 버튼 글자를 강조색 위에서 읽히게 한다. 비활성일 때는 시스템의 비활성 색을 그대로 둔다.
-private struct OnAccentLabel: ViewModifier {
+struct OnAccentLabel: ViewModifier {
     @Environment(\.isEnabled) private var isEnabled
 
     func body(content: Content) -> some View {
