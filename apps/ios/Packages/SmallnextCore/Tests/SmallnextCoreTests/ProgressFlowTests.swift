@@ -2284,6 +2284,30 @@ final class ProgressFlowTests: XCTestCase {
         XCTAssertEqual(flow.goalDetails?.deferredActions.map(\.id), [replacement.id])
         XCTAssertEqual(try count("SELECT COUNT(*) FROM completion"), 0)
         XCTAssertThrowsError(try flow.resume(deferred.id))
+        let reopened = try makeFlow(SuspendedProvider())
+        guard case .currentAction(let restored, nil) = reopened.screen else { return XCTFail("\(reopened.screen)") }
+        XCTAssertEqual(restored.id, deferred.id)
+        XCTAssertEqual(reopened.goalDetails?.deferredActions.map(\.id), [replacement.id])
+    }
+
+    func testResumeWhileSmallerWaitsEndsTheRequest() async throws {
+        let deferredID: Int64
+        do {
+            let flow = try makeFlow(ScriptedProvider([.action(first), .action(second)]))
+            deferredID = try await firstCard(flow).id
+            try flow.deferAction()
+            await flow.waitForSuggestion()
+        }
+        let provider = SuspendedProvider()
+        let flow = try makeFlow(provider)
+        try flow.makeSmaller()
+        try flow.resume(deferredID)
+        await flow.waitForSuggestion()
+        let cancelled = await provider.cancelled
+        XCTAssertTrue(cancelled)
+        guard case .currentAction(let resumed, nil) = flow.screen else { return XCTFail("\(flow.screen)") }
+        XCTAssertEqual(resumed.id, deferredID)
+        XCTAssertEqual(try count("SELECT COUNT(*) FROM suggestion_request WHERE status = 'pending'"), 0)
     }
 
     func testOnHoldSurvivesReopenAndPendingReplacementCanBeRetried() async throws {

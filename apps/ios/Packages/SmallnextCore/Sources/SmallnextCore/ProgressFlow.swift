@@ -92,7 +92,7 @@ public struct GoalDetails: Equatable, Sendable {
     public let statement: String
     public let completionCriteria: String?
     public var context = GoalContext()
-    /// 보류한 행동이다. 현재 행동이 있어도 목표 보기에서 재개할 수 있다.
+    /// 보류한 행동이다. 현재 행동이 있어도 재개할 수 있다.
     public var deferredActions: [ActionCard] = []
 }
 
@@ -664,12 +664,16 @@ public final class ProgressFlow {
         }
         try perform { db in
             guard let goalID = try Self.selectedGoalID(db) else { return nil }
-            guard try Bool.fetchOne(
-                db, sql: "SELECT EXISTS(SELECT 1 FROM action WHERE id = ? AND goal_id = ? AND status = 'deferred')",
+            // 현재 행동이 하나뿐이어야 하므로 먼저 보류한다. 재개할 행동이 없으면 던져서 되돌린다.
+            try db.execute(
+                sql: "UPDATE action SET status = 'deferred' WHERE goal_id = ? AND status = 'current' AND id != ?",
+                arguments: [goalID, actionID]
+            )
+            try db.execute(
+                sql: "UPDATE action SET status = 'current' WHERE id = ? AND goal_id = ? AND status = 'deferred'",
                 arguments: [actionID, goalID]
-            ) == true else { throw ProgressFlowError.deferredActionNotFound }
-            try db.execute(sql: "UPDATE action SET status = 'deferred' WHERE goal_id = ? AND status = 'current'", arguments: [goalID])
-            try db.execute(sql: "UPDATE action SET status = 'current' WHERE id = ?", arguments: [actionID])
+            )
+            guard db.changesCount == 1 else { throw ProgressFlowError.deferredActionNotFound }
             try Self.bumpRevision(db, goalID: goalID)
             try Self.endPendingRequests(db, goalID: goalID, status: "interrupted")
             return nil

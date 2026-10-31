@@ -159,6 +159,8 @@ struct CoreFlowView: View {
             if newScreen == .goalInput { goalInputDraft = flow.goalInput }
             // 답 입력은 지금 보이는 질문에만 쓴다.
             restoreSuggestionDraft()
+            // 되돌린 원래 행동을 벗어나면 보류 안내를 지운다.
+            if case .currentAction(let card, _) = newScreen, card.id == undoneActionID {} else { undoneActionID = nil }
             startSplitMotion(from: oldScreen, to: newScreen)
             announceChange(from: oldScreen, to: newScreen)
         }
@@ -482,8 +484,7 @@ struct CoreFlowView: View {
                         Text("완료 조건").font(.headline).accessibilityAddTraits(.isHeader)
                         Text(goal.completionCriteria ?? "아직 확인하지 않았어요.")
                             .fixedSize(horizontal: false, vertical: true)
-                        // 중단한 목표는 재개할 수 없다.
-                        if !goal.deferredActions.isEmpty, !flow.goals.contains(where: { $0.id == goal.id && $0.isStopped }) {
+                        if !goal.deferredActions.isEmpty, canResumeFromGoal {
                             heldActions(goal.deferredActions)
                         }
                         if !flow.goals.contains(where: { $0.id == goal.id && $0.isStopped }) {
@@ -522,12 +523,20 @@ struct CoreFlowView: View {
         }
     }
 
+    /// 재개는 현재 행동이나 보류 중 화면에서만 한다. 중단한 목표·질문·안내 화면에서는 목록을 숨긴다.
+    private var canResumeFromGoal: Bool {
+        switch flow.screen {
+        case .currentAction, .onHold: true
+        default: false
+        }
+    }
+
     /// 목표 보기의 보류 목록이다. 현재 행동이 있으면 재개할 때 그 행동이 보류로 간다.
     private func heldActions(_ deferred: [ActionCard]) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("보류한 행동").font(.headline).accessibilityAddTraits(.isHeader)
             if case .currentAction = flow.screen {
-                Text("재개하면 지금 할 행동은 보류로 옮겨요.")
+                Text("재개하면 하던 행동은 보류로 옮겨요.")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -535,6 +544,10 @@ struct CoreFlowView: View {
             ForEach(deferred) { action in
                 VStack(alignment: .leading, spacing: 8) {
                     Text(action.task).fixedSize(horizontal: false, vertical: true)
+                    Text("완료 조건: \(action.doneWhen)")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                     commandButton("재개", prominent: false) {
                         try flow.resume(action.id)
                         showingGoal = false
