@@ -137,6 +137,7 @@ FirebaseCore와 FirebaseCrashlytics는 Crashlytics에만 유지합니다. Analyt
 서버 401 뒤에는 같은 AI 요청을 자동 재전송하지 않습니다.
 `user_server_ai`가 ON이면 앱은 첫 화면 전에 목표·자료가 Anthropic으로 전송된다는 동의를 받습니다(App Review 5.1.2(i)).
 동의가 없으면 공급자가 요청마다 전송을 막습니다. 목표 목록에서 동의를 철회하면 동의 화면으로 돌아갑니다.
+동의 화면에서는 기기에 목표나 작성 중인 입력이 있을 때 '이 기기의 목표와 기록 삭제'로 모두 지울 수 있습니다. 서버의 익명 계정은 지우지 않습니다.
 목표 목록과 동의 화면은 `SMALLNEXT_PRIVACY_POLICY_URL`의 처리방침을 엽니다.
 `apps/ios/Resources`의 AppIcon은 직접 그린 임시 자산입니다. 최종 아이콘은 사람이 확정합니다. `PrivacyInfo.xcprivacy`와 앱 개인정보 라벨은 처리방침과 함께 사람이 확인합니다.
 `apps/ios/Config/Local.xcconfig.example`을 운영 준비에는 `Local.Release.xcconfig`로 복사합니다.

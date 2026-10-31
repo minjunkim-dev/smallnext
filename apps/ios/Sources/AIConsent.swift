@@ -28,8 +28,10 @@ struct AIConsentView: View {
     let agree: () -> Void
     /// 동의 없이도 기기의 목표와 기록을 지울 수 있게 한다.
     let deleteLocalData: () throws -> Void
+    let hasLocalData: Bool
     @State private var confirmingDeletion = false
     @State private var deletionMessage: String?
+    @AccessibilityFocusState private var deletionMessageFocused: Bool
 
     var body: some View {
         ScrollView {
@@ -48,10 +50,14 @@ struct AIConsentView: View {
                     .modifier(OnAccentLabel())
                     .controlSize(.large)
                     .accessibilityHint("목표와 자료를 Anthropic으로 보내는 데 동의합니다.")
-                Button("이 기기의 목표와 기록 삭제", role: .destructive) { confirmingDeletion = true }
-                    .frame(minHeight: 44)
+                if hasLocalData {
+                    Button("이 기기의 목표와 기록 삭제", role: .destructive) { confirmingDeletion = true }
+                        .frame(minHeight: 44)
+                }
                 if let deletionMessage {
-                    Text(deletionMessage).fixedSize(horizontal: false, vertical: true)
+                    Text(deletionMessage)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityFocused($deletionMessageFocused)
                 }
             }
             .padding(24)
@@ -71,7 +77,8 @@ struct AIConsentView: View {
                 } catch {
                     deletionMessage = "삭제하지 못했어요. 다시 시도해 주세요."
                 }
-                AccessibilityNotification.Announcement(deletionMessage ?? "").post()
+                // 알림이 닫히는 동안의 안내는 VoiceOver가 놓칠 수 있어 결과 문구로 초점을 옮긴다.
+                deletionMessageFocused = true
             }
             Button("취소", role: .cancel) { }
         } message: {

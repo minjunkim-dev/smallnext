@@ -1662,23 +1662,56 @@ final class ProgressFlowTests: XCTestCase {
     }
 
     func testDeleteAllGoalsClearsGoalsRecordsAndDrafts() async throws {
-        let flow = try makeFlow(ScriptedProvider([.action(first)]))
+        let provider = ScriptedProvider([.action(first), .action(second)])
+        let flow = try makeFlow(provider)
         let card = try await firstCard(flow)
         try flow.updateDraft("작성 중", for: card.id)
+        try await startGoal(flow, "두 번째 목표")
+        await flow.waitForSuggestion()
+        XCTAssertEqual(flow.goals.count, 2)
+        let ids = flow.goals.map(\.id)
+        try await AppDatabase(path: path).writer.write { db in
+            for id in ids {
+                for prefix in ["goal_input", "suggestion_input", "supplemental_context"] {
+                    try db.execute(sql: "INSERT OR REPLACE INTO app_metadata (key, value) VALUES (?, '남은 입력')", arguments: ["\(prefix):\(id)"])
+                }
+            }
+        }
+        let requestsBefore = await provider.requests.count
         XCTAssertThrowsError(try flow.deleteAllGoals())
 
         try flow.deleteAllGoals(confirmed: true)
         XCTAssertEqual(flow.screen, .goalInput)
         XCTAssertTrue(flow.goals.isEmpty)
-        XCTAssertEqual(try count("SELECT COUNT(*) FROM goal"), 0)
-        XCTAssertEqual(try count("SELECT COUNT(*) FROM action"), 0)
+        for table in ["goal", "action", "action_note", "suggestion_request"] {
+            XCTAssertEqual(try count("SELECT COUNT(*) FROM \(table)"), 0, table)
+        }
+        XCTAssertEqual(try count("SELECT COUNT(*) FROM app_metadata WHERE key != 'schema_version'"), 0)
 
         var input = GoalInput()
         input.statement = "제출하지 않은 목표"
         try flow.updateGoalInput(input)
         try flow.deleteAllGoals(confirmed: true)
-        XCTAssertEqual(try count("SELECT COUNT(*) FROM app_metadata WHERE key = 'goal_input' OR key LIKE '%:%'"), 0)
+        XCTAssertEqual(try count("SELECT COUNT(*) FROM app_metadata WHERE key != 'schema_version'"), 0)
         XCTAssertEqual(try makeFlow(SuspendedProvider()).goalInput, GoalInput())
+        let requestsAfter = await provider.requests.count
+        XCTAssertEqual(requestsAfter, requestsBefore)
+    }
+
+    func testDeleteAllGoalsWhileWaitingCancelsAndIgnoresTheLateResult() async throws {
+        do {
+            let flow = try makeFlow(ScriptedProvider([.action(first)]))
+            _ = try await firstCard(flow)
+        }
+        let provider = SuspendedProvider()
+        let flow = try makeFlow(provider)
+        try flow.makeSmaller()
+        try flow.deleteAllGoals(confirmed: true)
+        await flow.waitForSuggestion()
+        let cancelled = await provider.cancelled
+        XCTAssertTrue(cancelled)
+        XCTAssertEqual(flow.screen, .goalInput)
+        XCTAssertEqual(try count("SELECT COUNT(*) FROM action"), 0)
     }
 
     func testSharedHTTPNoticeAndMetadataStayIsolatedAndDeleteAtomically() async throws {
