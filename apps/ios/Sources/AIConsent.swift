@@ -41,6 +41,7 @@ struct AIConsentView: View {
                 }
                 Button("동의하고 계속", action: agree)
                     .buttonStyle(.borderedProminent)
+                    .modifier(OnAccentLabel())
                     .controlSize(.large)
                     .accessibilityHint("목표와 자료를 Anthropic으로 보내는 데 동의합니다.")
             }
@@ -49,5 +50,9 @@ struct AIConsentView: View {
             .frame(maxWidth: .infinity)
         }
         .background(Color(.systemGroupedBackground))
+        .safeAreaInset(edge: .top, spacing: 0) {
+            Color.clear.frame(height: 0).background(Color(.systemGroupedBackground))
+        }
+        .tint(.smallnextAccent)
     }
 }

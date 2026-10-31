@@ -33,18 +33,15 @@ struct CoreFlowView: View {
     @AccessibilityFocusState private var supplementalInputFocused: Bool
     @AccessibilityFocusState private var supplementalFeedbackFocused: Bool
     @FocusState private var supplementalKeyboardFocused: Bool
+    @FocusState private var resultFieldFocused: Bool
     /// 분할 직전 행동의 할 일이다. 값이 있는 동안 나뉘는 움직임을 보여준다.
     @State private var splitGhost: SplitGhost?
     @AppStorage(AIConsent.key) private var aiConsent = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
 
-    // 두 모드 모두 같은 색상이다. 다크 모드 값은 글자와 채운 버튼 글자의 대비를 4.5:1 이상으로 둔다(#61).
-    private let accent = Color(UIColor { traits in
-        traits.userInterfaceStyle == .dark
-            ? UIColor(red: 0.55, green: 0.78, blue: 0.50, alpha: 1)
-            : UIColor(red: 0.18, green: 0.27, blue: 0.16, alpha: 1)
-    })
+    private let accent = Color.smallnextAccent
 
     private var trimmedGoal: String {
         goalInputDraft.statement.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -57,48 +54,80 @@ struct CoreFlowView: View {
     }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
-                headerLayout {
-                    Text("Smallnext")
-                        .font(.headline)
-                        .accessibilityAddTraits(.isHeader)
-                    if !dynamicTypeSize.isAccessibilitySize { Spacer() }
-                    Button("목표 목록") { showingGoals = true }
-                        .frame(minHeight: 44)
-                    if flow.goalDetails != nil {
-                        Button("목표 보기") {
-                            editingGoal = false
-                            goalStatement = flow.goalDetails?.statement ?? ""
-                            showingGoal = true
-                        }
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 24) {
+                    headerLayout {
+                        Text("Smallnext")
+                            .font(.headline)
+                            .accessibilityAddTraits(.isHeader)
+                        if !dynamicTypeSize.isAccessibilitySize { Spacer() }
+                        Button("목표 목록") { showingGoals = true }
                             .frame(minHeight: 44)
+                        if flow.goalDetails != nil {
+                            Button("목표 보기") {
+                                editingGoal = false
+                                goalStatement = flow.goalDetails?.statement ?? ""
+                                showingGoal = true
+                            }
+                                .frame(minHeight: 44)
+                        }
+                    }
+
+                    // 상태별 뷰를 위쪽에 맞춰 교체한다. 이동 없이 투명도 전환만 쓴다.
+                    ZStack(alignment: .topLeading) {
+                        screenContent
+                            .modifier(SuggestionTimingMarker(sample: flow.timingSample))
+                            .id(screenIdentity)
+                            .transition(.opacity)
+                    }
+                    .animation(.easeInOut(duration: Motion.nextCard), value: screenIdentity)
+
+                    if storageFailed && !commandsPinned {
+                        storageFailureText
+                    }
+                    if let goalInputProblem {
+                        Text(goalInputProblem).fixedSize(horizontal: false, vertical: true)
                     }
                 }
-
-                // 상태별 뷰를 위쪽에 맞춰 교체한다. 이동 없이 투명도 전환만 쓴다.
-                ZStack(alignment: .topLeading) {
-                    screenContent
-                        .modifier(SuggestionTimingMarker(sample: flow.timingSample))
-                        .id(screenIdentity)
-                        .transition(.opacity)
-                }
-                .animation(.easeInOut(duration: Motion.nextCard), value: screenIdentity)
-
-                if storageFailed {
-                    Text("저장하지 못했어요. 다시 시도해 주세요.")
-                        .font(.body)
-                        .foregroundStyle(.primary)
-                }
-                if let goalInputProblem {
-                    Text(goalInputProblem).fixedSize(horizontal: false, vertical: true)
+                .padding(24)
+                .frame(maxWidth: 560, alignment: .leading)
+                .frame(maxWidth: .infinity)
+            }
+            // 질문이 오거나 다시 열 때 막대가 사라지므로, 카드 아래의 질문을 보이게 한다.
+            .onChange(of: smallerQuestionShown, initial: true) { _, shown in
+                guard shown else { return }
+                // 질문 뷰가 배치된 다음에 스크롤해야 위치를 찾는다.
+                DispatchQueue.main.async {
+                    withAnimation(reduceMotion ? nil : .easeInOut(duration: Motion.nextCard)) {
+                        proxy.scrollTo(Self.smallerQuestionID, anchor: .bottom)
+                    }
                 }
             }
-            .padding(24)
-            .frame(maxWidth: 560, alignment: .leading)
-            .frame(maxWidth: .infinity)
         }
         .background(Color(.systemGroupedBackground))
+        // 스크롤한 내용이 상태 표시줄 글자와 겹치지 않게 가린다.
+        .safeAreaInset(edge: .top, spacing: 0) {
+            Color.clear.frame(height: 0).background(Color(.systemGroupedBackground))
+        }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            if case .currentAction(_, let smaller) = flow.screen, pinsCommands(smaller) {
+                VStack(alignment: .leading, spacing: 12) {
+                    // 누른 버튼 가까이에 실패를 보여준다.
+                    if storageFailed { storageFailureText }
+                    // 대기 상태의 높이를 미리 잡아 '더 작게'를 눌러도 '완료'가 움직이지 않고 '취소'가 같은 자리에 오지 않게 한다(#64).
+                    ZStack(alignment: .top) {
+                        actionCommands(.waiting).hidden()
+                        actionCommands(smaller)
+                    }
+                }
+                .padding(.horizontal, 24)
+                .padding(.vertical, 12)
+                .frame(maxWidth: 560)
+                .frame(maxWidth: .infinity)
+                .background(.bar)
+            }
+        }
         .tint(accent)
         .sheet(isPresented: $showingGoal) { goalView }
         .sheet(isPresented: $showingGoals) { goalsView }
@@ -609,6 +638,7 @@ struct CoreFlowView: View {
                         set: { saveDraft($0, for: card.id) }
                     ), axis: .vertical)
                         .lineLimit(3...8)
+                        .focused($resultFieldFocused)
                         .padding(12)
                         .background(Color(.tertiarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 10))
                         .accessibilityLabel("행동 결과 입력")
@@ -643,7 +673,41 @@ struct CoreFlowView: View {
                 }
             }
 
-            // '완료'의 위치는 더 작게 상태와 관계없이 고정한다.
+            if !pinsCommands(smaller) {
+                actionCommands(smaller)
+            }
+        }
+    }
+
+    /// 카드 길이와 관계없이 '완료'와 '더 작게'를 화면 아래에 둔다(#61).
+    /// 답 입력은 높아서, 접근성 글자 크기와 가로 화면은 막대가 화면을 가려서, 결과를 적는 동안은 키보드 위 공간이 좁아서 본문에 둔다.
+    private func pinsCommands(_ smaller: SmallerStatus?) -> Bool {
+        if dynamicTypeSize.isAccessibilitySize || verticalSizeClass == .compact || resultFieldFocused { return false }
+        if case .question = smaller { return false }
+        return true
+    }
+
+    private static let smallerQuestionID = "smallerQuestion"
+
+    private var smallerQuestionShown: Bool {
+        if case .currentAction(_, .question) = flow.screen { return true }
+        return false
+    }
+
+    private var commandsPinned: Bool {
+        if case .currentAction(_, let smaller) = flow.screen { return pinsCommands(smaller) }
+        return false
+    }
+
+    private var storageFailureText: some View {
+        Text("저장하지 못했어요. 다시 시도해 주세요.")
+            .font(.body)
+            .foregroundStyle(.primary)
+    }
+
+    private func actionCommands(_ smaller: SmallerStatus?) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            // '완료'를 더 작게 상태 위에 둔다(#64).
             commandButton("완료") {
                 try flow.complete()
             }
@@ -670,6 +734,7 @@ struct CoreFlowView: View {
             }
         case .question(let question):
             questionAnswer(question, prompt: "가장 먼저 막히는 지점")
+                .id(Self.smallerQuestionID)
         case .problem(let problem):
             Text(reason(for: problem))
                 .font(.body)
@@ -965,8 +1030,17 @@ private struct SplitGhostView: View {
     }
 }
 
+extension Color {
+    // 두 모드 모두 같은 색상이다. 다크 모드 값은 글자와 채운 버튼 글자의 대비를 4.5:1 이상으로 둔다(#61).
+    static let smallnextAccent = Color(UIColor { traits in
+        traits.userInterfaceStyle == .dark
+            ? UIColor(red: 0.55, green: 0.78, blue: 0.50, alpha: 1)
+            : UIColor(red: 0.18, green: 0.27, blue: 0.16, alpha: 1)
+    })
+}
+
 /// 채운 버튼 글자를 강조색 위에서 읽히게 한다. 비활성일 때는 시스템의 비활성 색을 그대로 둔다.
-private struct OnAccentLabel: ViewModifier {
+struct OnAccentLabel: ViewModifier {
     @Environment(\.isEnabled) private var isEnabled
 
     func body(content: Content) -> some View {
