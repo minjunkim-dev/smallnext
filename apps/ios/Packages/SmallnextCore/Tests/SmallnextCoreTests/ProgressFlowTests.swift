@@ -1714,6 +1714,24 @@ final class ProgressFlowTests: XCTestCase {
         XCTAssertEqual(try count("SELECT COUNT(*) FROM action"), 0)
     }
 
+    func testDeleteAllGoalsIgnoresALateSuccess() async throws {
+        do {
+            let flow = try makeFlow(ScriptedProvider([.action(first)]))
+            _ = try await firstCard(flow)
+        }
+        let held = HeldProvider(.action(smaller))
+        let flow = try makeFlow(held)
+        try flow.makeSmaller()
+        await held.waitForRequest()
+        try flow.deleteAllGoals(confirmed: true)
+        await held.release()
+        await flow.waitForSuggestion()
+        XCTAssertEqual(flow.screen, .goalInput)
+        XCTAssertTrue(flow.goals.isEmpty)
+        XCTAssertEqual(try count("SELECT COUNT(*) FROM action"), 0)
+        XCTAssertEqual(try count("SELECT COUNT(*) FROM suggestion_request"), 0)
+    }
+
     func testSharedHTTPNoticeAndMetadataStayIsolatedAndDeleteAtomically() async throws {
         let response = try InsufficientInfoFixture.response()
         DevelopmentTransport.store.reset()
@@ -2683,6 +2701,12 @@ private actor HeldProvider: ActionSuggestionProvider {
         requests += 1
         await withCheckedContinuation { gate = $0 }
         return candidate
+    }
+
+    /// 공급자가 요청을 받을 때까지 기다린다. 요청 중에 상태를 바꾸는 테스트에 쓴다.
+    func waitForRequest() async {
+        for _ in 0..<10_000 where gate == nil { await Task.yield() }
+        precondition(gate != nil, "suggest가 호출되지 않았다")
     }
 
     func release() async {
