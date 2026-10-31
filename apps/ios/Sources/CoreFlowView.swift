@@ -54,44 +54,56 @@ struct CoreFlowView: View {
     }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
-                headerLayout {
-                    Text("Smallnext")
-                        .font(.headline)
-                        .accessibilityAddTraits(.isHeader)
-                    if !dynamicTypeSize.isAccessibilitySize { Spacer() }
-                    Button("목표 목록") { showingGoals = true }
-                        .frame(minHeight: 44)
-                    if flow.goalDetails != nil {
-                        Button("목표 보기") {
-                            editingGoal = false
-                            goalStatement = flow.goalDetails?.statement ?? ""
-                            showingGoal = true
-                        }
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 24) {
+                    headerLayout {
+                        Text("Smallnext")
+                            .font(.headline)
+                            .accessibilityAddTraits(.isHeader)
+                        if !dynamicTypeSize.isAccessibilitySize { Spacer() }
+                        Button("목표 목록") { showingGoals = true }
                             .frame(minHeight: 44)
+                        if flow.goalDetails != nil {
+                            Button("목표 보기") {
+                                editingGoal = false
+                                goalStatement = flow.goalDetails?.statement ?? ""
+                                showingGoal = true
+                            }
+                                .frame(minHeight: 44)
+                        }
+                    }
+
+                    // 상태별 뷰를 위쪽에 맞춰 교체한다. 이동 없이 투명도 전환만 쓴다.
+                    ZStack(alignment: .topLeading) {
+                        screenContent
+                            .modifier(SuggestionTimingMarker(sample: flow.timingSample))
+                            .id(screenIdentity)
+                            .transition(.opacity)
+                    }
+                    .animation(.easeInOut(duration: Motion.nextCard), value: screenIdentity)
+
+                    if storageFailed && !commandsPinned {
+                        storageFailureText
+                    }
+                    if let goalInputProblem {
+                        Text(goalInputProblem).fixedSize(horizontal: false, vertical: true)
                     }
                 }
-
-                // 상태별 뷰를 위쪽에 맞춰 교체한다. 이동 없이 투명도 전환만 쓴다.
-                ZStack(alignment: .topLeading) {
-                    screenContent
-                        .modifier(SuggestionTimingMarker(sample: flow.timingSample))
-                        .id(screenIdentity)
-                        .transition(.opacity)
-                }
-                .animation(.easeInOut(duration: Motion.nextCard), value: screenIdentity)
-
-                if storageFailed && !commandsPinned {
-                    storageFailureText
-                }
-                if let goalInputProblem {
-                    Text(goalInputProblem).fixedSize(horizontal: false, vertical: true)
+                .padding(24)
+                .frame(maxWidth: 560, alignment: .leading)
+                .frame(maxWidth: .infinity)
+            }
+            // 질문이 오거나 다시 열 때 막대가 사라지므로, 카드 아래의 질문을 보이게 한다.
+            .onChange(of: smallerQuestionShown, initial: true) { _, shown in
+                guard shown else { return }
+                // 질문 뷰가 배치된 다음에 스크롤해야 위치를 찾는다.
+                DispatchQueue.main.async {
+                    withAnimation(reduceMotion ? nil : .easeInOut(duration: Motion.nextCard)) {
+                        proxy.scrollTo(Self.smallerQuestionID, anchor: .bottom)
+                    }
                 }
             }
-            .padding(24)
-            .frame(maxWidth: 560, alignment: .leading)
-            .frame(maxWidth: .infinity)
         }
         .background(Color(.systemGroupedBackground))
         // 스크롤한 내용이 상태 표시줄 글자와 겹치지 않게 가린다.
@@ -675,6 +687,13 @@ struct CoreFlowView: View {
         return true
     }
 
+    private static let smallerQuestionID = "smallerQuestion"
+
+    private var smallerQuestionShown: Bool {
+        if case .currentAction(_, .question) = flow.screen { return true }
+        return false
+    }
+
     private var commandsPinned: Bool {
         if case .currentAction(_, let smaller) = flow.screen { return pinsCommands(smaller) }
         return false
@@ -715,6 +734,7 @@ struct CoreFlowView: View {
             }
         case .question(let question):
             questionAnswer(question, prompt: "가장 먼저 막히는 지점")
+                .id(Self.smallerQuestionID)
         case .problem(let problem):
             Text(reason(for: problem))
                 .font(.body)
