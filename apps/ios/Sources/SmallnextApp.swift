@@ -18,7 +18,8 @@ struct SmallnextApp: App {
             Group {
                 if let flow {
                     if FeatureFlags.userServerAI && !aiConsent {
-                        AIConsentView { aiConsent = true }
+                        AIConsentView(agree: { aiConsent = true },
+                                      deleteLocalData: { try flow.deleteAllGoals(confirmed: true) })
                     } else {
                         CoreFlowView(flow: flow)
                     }

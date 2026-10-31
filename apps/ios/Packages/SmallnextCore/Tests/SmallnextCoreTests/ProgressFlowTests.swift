@@ -1661,6 +1661,26 @@ final class ProgressFlowTests: XCTestCase {
         }
     }
 
+    func testDeleteAllGoalsClearsGoalsRecordsAndDrafts() async throws {
+        let flow = try makeFlow(ScriptedProvider([.action(first)]))
+        let card = try await firstCard(flow)
+        try flow.updateDraft("작성 중", for: card.id)
+        XCTAssertThrowsError(try flow.deleteAllGoals())
+
+        try flow.deleteAllGoals(confirmed: true)
+        XCTAssertEqual(flow.screen, .goalInput)
+        XCTAssertTrue(flow.goals.isEmpty)
+        XCTAssertEqual(try count("SELECT COUNT(*) FROM goal"), 0)
+        XCTAssertEqual(try count("SELECT COUNT(*) FROM action"), 0)
+
+        var input = GoalInput()
+        input.statement = "제출하지 않은 목표"
+        try flow.updateGoalInput(input)
+        try flow.deleteAllGoals(confirmed: true)
+        XCTAssertEqual(try count("SELECT COUNT(*) FROM app_metadata WHERE key = 'goal_input' OR key LIKE '%:%'"), 0)
+        XCTAssertEqual(try makeFlow(SuspendedProvider()).goalInput, GoalInput())
+    }
+
     func testSharedHTTPNoticeAndMetadataStayIsolatedAndDeleteAtomically() async throws {
         let response = try InsufficientInfoFixture.response()
         DevelopmentTransport.store.reset()

@@ -404,6 +404,20 @@ public final class ProgressFlow {
         if deletingSelected { suggestionTask?.cancel() }
     }
 
+    /// 기기의 모든 목표와 그 기록, 제출하지 않은 입력 초안을 한 번에 지운다. AI 동의 없이도 쓸 수 있다.
+    public func deleteAllGoals(confirmed: Bool = false) throws {
+        guard confirmed else { throw ProgressFlowError.deletionNotConfirmed }
+        try perform { db in
+            try db.execute(sql: "DELETE FROM goal")
+            try db.execute(sql: """
+                DELETE FROM app_metadata WHERE key IN ('selected_goal_id', 'goal_input')
+                   OR key LIKE 'goal_input:%' OR key LIKE 'suggestion_input:%' OR key LIKE 'supplemental_context:%'
+                """)
+            return nil
+        }
+        suggestionTask?.cancel()
+    }
+
     /// 제출하기 전의 입력도 그대로 저장한다. 입력 초안은 확인한 목표가 아니다.
     public func updateGoalInput(_ input: GoalInput) throws {
         guard screen == .goalInput else { throw ProgressFlowError.goalInputNotActive }
