@@ -92,6 +92,8 @@ public struct GoalDetails: Equatable, Sendable {
     public let statement: String
     public let completionCriteria: String?
     public var context = GoalContext()
+    /// 보류한 행동이다. 현재 행동이 있어도 재개할 수 있다.
+    public var deferredActions: [ActionCard] = []
 }
 
 public struct ActionCard: Equatable, Identifiable, Sendable {
@@ -428,7 +430,8 @@ public final class ProgressFlow {
         guard let goalID = try selectedGoalID(db),
               let row = try Row.fetchOne(db, sql: "SELECT * FROM goal WHERE id = ?", arguments: [goalID]) else { return nil }
         return GoalDetails(id: goalID, statement: row["statement"], completionCriteria: row["completion_criteria"],
-                           context: try loadGoalContext(db, row: row, goalID: goalID))
+                           context: try loadGoalContext(db, row: row, goalID: goalID),
+                           deferredActions: try deferredCards(db, goalID: goalID))
     }
 
     /// 선택 입력을 검사해 저장한다. 확인용 요약만 요청한다.
@@ -648,16 +651,24 @@ public final class ProgressFlow {
         }
     }
 
-    /// 보류 중 화면에서 보류한 행동 하나를 현재 행동으로 되돌린다.
+    /// 보류한 행동 하나를 현재 행동으로 되돌린다. 현재 행동이 있으면 그 행동을 보류한다.
     /// 재개를 선행 조건 해결로 기록하지 않는다.
     public func resume(_ actionID: Int64) throws {
-        guard case .onHold = screen else { return }
+        switch screen {
+        case .onHold, .currentAction: break
+        default: return
+        }
         defer {
             // 재개한 뒤 결과를 버릴 대체 요청 작업은 취소한다.
             if case .currentAction(let current, _) = screen, current.id == actionID { suggestionTask?.cancel() }
         }
         try perform { db in
             guard let goalID = try Self.selectedGoalID(db) else { return nil }
+            // 현재 행동이 하나뿐이어야 하므로 먼저 보류한다. 재개할 행동이 없으면 던져서 되돌린다.
+            try db.execute(
+                sql: "UPDATE action SET status = 'deferred' WHERE goal_id = ? AND status = 'current' AND id != ?",
+                arguments: [goalID, actionID]
+            )
             try db.execute(
                 sql: "UPDATE action SET status = 'current' WHERE id = ? AND goal_id = ? AND status = 'deferred'",
                 arguments: [actionID, goalID]

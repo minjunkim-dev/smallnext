@@ -2269,6 +2269,50 @@ final class ProgressFlowTests: XCTestCase {
         XCTAssertEqual(try count("SELECT COUNT(*) FROM completion"), 0)
     }
 
+    func testResumeFromCurrentActionDefersTheCurrentOne() async throws {
+        let flow = try makeFlow(ScriptedProvider([.action(first), .action(second)]))
+        let deferred = try await firstCard(flow)
+        try flow.deferAction()
+        await flow.waitForSuggestion()
+        guard case .currentAction(let replacement, nil) = flow.screen else { return XCTFail("\(flow.screen)") }
+        XCTAssertEqual(flow.goalDetails?.deferredActions.map(\.id), [deferred.id])
+
+        try flow.resume(deferred.id)
+        guard case .currentAction(let resumed, nil) = flow.screen else { return XCTFail("\(flow.screen)") }
+        XCTAssertEqual(resumed.id, deferred.id)
+        XCTAssertEqual(try status(ofTask: second.task), "deferred")
+        XCTAssertEqual(flow.goalDetails?.deferredActions.map(\.id), [replacement.id])
+        XCTAssertEqual(try count("SELECT COUNT(*) FROM completion"), 0)
+        XCTAssertThrowsError(try flow.resume(deferred.id))
+        // 재개할 행동이 없으면 현재 행동을 보류한 쓰기도 되돌린다.
+        XCTAssertThrowsError(try flow.resume(Int64.max))
+        XCTAssertEqual(try status(ofTask: first.task), "current")
+        let reopened = try makeFlow(SuspendedProvider())
+        guard case .currentAction(let restored, nil) = reopened.screen else { return XCTFail("\(reopened.screen)") }
+        XCTAssertEqual(restored.id, deferred.id)
+        XCTAssertEqual(reopened.goalDetails?.deferredActions.map(\.id), [replacement.id])
+    }
+
+    func testResumeWhileSmallerWaitsEndsTheRequest() async throws {
+        let deferredID: Int64
+        do {
+            let flow = try makeFlow(ScriptedProvider([.action(first), .action(second)]))
+            deferredID = try await firstCard(flow).id
+            try flow.deferAction()
+            await flow.waitForSuggestion()
+        }
+        let provider = SuspendedProvider()
+        let flow = try makeFlow(provider)
+        try flow.makeSmaller()
+        try flow.resume(deferredID)
+        await flow.waitForSuggestion()
+        let cancelled = await provider.cancelled
+        XCTAssertTrue(cancelled)
+        guard case .currentAction(let resumed, nil) = flow.screen else { return XCTFail("\(flow.screen)") }
+        XCTAssertEqual(resumed.id, deferredID)
+        XCTAssertEqual(try count("SELECT COUNT(*) FROM suggestion_request WHERE status = 'pending'"), 0)
+    }
+
     func testOnHoldSurvivesReopenAndPendingReplacementCanBeRetried() async throws {
         let deferred: ActionCard
         do {
