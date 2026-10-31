@@ -2269,6 +2269,23 @@ final class ProgressFlowTests: XCTestCase {
         XCTAssertEqual(try count("SELECT COUNT(*) FROM completion"), 0)
     }
 
+    func testResumeFromCurrentActionDefersTheCurrentOne() async throws {
+        let flow = try makeFlow(ScriptedProvider([.action(first), .action(second)]))
+        let deferred = try await firstCard(flow)
+        try flow.deferAction()
+        await flow.waitForSuggestion()
+        guard case .currentAction(let replacement, nil) = flow.screen else { return XCTFail("\(flow.screen)") }
+        XCTAssertEqual(flow.goalDetails?.deferredActions.map(\.id), [deferred.id])
+
+        try flow.resume(deferred.id)
+        guard case .currentAction(let resumed, nil) = flow.screen else { return XCTFail("\(flow.screen)") }
+        XCTAssertEqual(resumed.id, deferred.id)
+        XCTAssertEqual(try status(ofTask: second.task), "deferred")
+        XCTAssertEqual(flow.goalDetails?.deferredActions.map(\.id), [replacement.id])
+        XCTAssertEqual(try count("SELECT COUNT(*) FROM completion"), 0)
+        XCTAssertThrowsError(try flow.resume(deferred.id))
+    }
+
     func testOnHoldSurvivesReopenAndPendingReplacementCanBeRetried() async throws {
         let deferred: ActionCard
         do {

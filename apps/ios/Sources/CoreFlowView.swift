@@ -36,6 +36,8 @@ struct CoreFlowView: View {
     @FocusState private var resultFieldFocused: Bool
     /// 분할 직전 행동의 할 일이다. 값이 있는 동안 나뉘는 움직임을 보여준다.
     @State private var splitGhost: SplitGhost?
+    /// 되돌린 원래 행동이다. 이 행동이 현재 행동인 동안 작은 행동이 보류로 간 것을 알린다.
+    @State private var undoneActionID: Int64?
     @AppStorage(AIConsent.key) private var aiConsent = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -129,8 +131,8 @@ struct CoreFlowView: View {
             }
         }
         .tint(accent)
-        .sheet(isPresented: $showingGoal) { goalView }
-        .sheet(isPresented: $showingGoals) { goalsView }
+        .sheet(isPresented: $showingGoal) { goalView.tint(accent) }
+        .sheet(isPresented: $showingGoals) { goalsView.tint(accent) }
         .onAppear {
             restoreSupplementalDraft()
             restoreDraft()
@@ -480,6 +482,10 @@ struct CoreFlowView: View {
                         Text("완료 조건").font(.headline).accessibilityAddTraits(.isHeader)
                         Text(goal.completionCriteria ?? "아직 확인하지 않았어요.")
                             .fixedSize(horizontal: false, vertical: true)
+                        // 중단한 목표는 재개할 수 없다.
+                        if !goal.deferredActions.isEmpty, !flow.goals.contains(where: { $0.id == goal.id && $0.isStopped }) {
+                            heldActions(goal.deferredActions)
+                        }
                         if !flow.goals.contains(where: { $0.id == goal.id && $0.isStopped }) {
                             Button("목표 중단") {
                                 if run({ try flow.stopGoal() }) { showingGoal = false }
@@ -512,6 +518,29 @@ struct CoreFlowView: View {
                 Button("취소", role: .cancel) { }
             } message: { goal in
                 Text("‘\(goal.statement)’의 행동·결과·입력·완료 기록을 지워요. 삭제 후에는 복구할 수 없어요.")
+            }
+        }
+    }
+
+    /// 목표 보기의 보류 목록이다. 현재 행동이 있으면 재개할 때 그 행동이 보류로 간다.
+    private func heldActions(_ deferred: [ActionCard]) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("보류한 행동").font(.headline).accessibilityAddTraits(.isHeader)
+            if case .currentAction = flow.screen {
+                Text("재개하면 지금 할 행동은 보류로 옮겨요.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            ForEach(deferred) { action in
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(action.task).fixedSize(horizontal: false, vertical: true)
+                    commandButton("재개", prominent: false) {
+                        try flow.resume(action.id)
+                        showingGoal = false
+                    }
+                    .accessibilityLabel("재개: \(action.task)")
+                }
             }
         }
     }
@@ -570,7 +599,7 @@ struct CoreFlowView: View {
                 Menu {
                     if card.origin != nil {
                         Button("되돌리기") {
-                            run { try flow.undoSplit() }
+                            if run({ try flow.undoSplit() }) { undoneActionID = card.origin?.id }
                         }
                     }
                     Button("나중에") {
@@ -584,6 +613,12 @@ struct CoreFlowView: View {
                 }
             }
 
+            if undoneActionID == card.id {
+                Text("나눴던 작은 행동은 보류에 남겼어요. 목표 보기에서 재개할 수 있어요.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             if let origin = card.origin {
                 Text("‘\(origin.task)’의 일부예요. 같은 작업의 남은 범위는 그대로 두었어요.")
                     .font(.subheadline)
@@ -953,9 +988,11 @@ struct CoreFlowView: View {
             if let oldCard, card.origin?.id == oldCard.id {
                 messages.append("더 쉬운 행동으로 나눴어요. ‘\(oldCard.task)’의 일부예요.")
             } else if oldCard?.origin?.id == card.id {
-                messages.append("나누기 전 행동으로 되돌렸어요.")
+                messages.append("나누기 전 행동으로 되돌렸어요. 작은 행동은 보류에 남겼어요.")
             } else if case .onHold(let deferred, _) = oldScreen, deferred.contains(where: { $0.id == card.id }) {
                 messages.append("보류한 행동을 재개했어요.")
+            } else if let oldCard, flow.goalDetails?.deferredActions.contains(where: { $0.id == oldCard.id }) == true {
+                messages.append("보류한 행동을 재개했어요. 하던 행동은 보류로 옮겼어요.")
             }
             messages.append("지금 할 행동: \(card.task)")
         case .awaitingFirstAction(_, let problem):
