@@ -50,6 +50,9 @@ struct AIConsentView: View {
             .frame(maxWidth: .infinity)
         }
         .background(Color(.systemGroupedBackground))
+        .safeAreaInset(edge: .top, spacing: 0) {
+            Color.clear.frame(height: 0).background(Color(.systemGroupedBackground))
+        }
         .tint(.smallnextAccent)
     }
 }

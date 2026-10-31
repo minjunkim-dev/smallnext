@@ -33,11 +33,13 @@ struct CoreFlowView: View {
     @AccessibilityFocusState private var supplementalInputFocused: Bool
     @AccessibilityFocusState private var supplementalFeedbackFocused: Bool
     @FocusState private var supplementalKeyboardFocused: Bool
+    @FocusState private var resultFieldFocused: Bool
     /// 분할 직전 행동의 할 일이다. 값이 있는 동안 나뉘는 움직임을 보여준다.
     @State private var splitGhost: SplitGhost?
     @AppStorage(AIConsent.key) private var aiConsent = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
 
     private let accent = Color.smallnextAccent
 
@@ -80,10 +82,8 @@ struct CoreFlowView: View {
                 }
                 .animation(.easeInOut(duration: Motion.nextCard), value: screenIdentity)
 
-                if storageFailed {
-                    Text("저장하지 못했어요. 다시 시도해 주세요.")
-                        .font(.body)
-                        .foregroundStyle(.primary)
+                if storageFailed && !commandsPinned {
+                    storageFailureText
                 }
                 if let goalInputProblem {
                     Text(goalInputProblem).fixedSize(horizontal: false, vertical: true)
@@ -100,12 +100,20 @@ struct CoreFlowView: View {
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             if case .currentAction(_, let smaller) = flow.screen, pinsCommands(smaller) {
-                actionCommands(smaller)
-                    .padding(.horizontal, 24)
-                    .padding(.vertical, 12)
-                    .frame(maxWidth: 560)
-                    .frame(maxWidth: .infinity)
-                    .background(.bar)
+                VStack(alignment: .leading, spacing: 12) {
+                    // 누른 버튼 가까이에 실패를 보여준다.
+                    if storageFailed { storageFailureText }
+                    // 대기 상태의 높이를 미리 잡아 '더 작게'를 눌러도 '완료'가 움직이지 않고 '취소'가 같은 자리에 오지 않게 한다(#64).
+                    ZStack(alignment: .top) {
+                        actionCommands(.waiting).hidden()
+                        actionCommands(smaller)
+                    }
+                }
+                .padding(.horizontal, 24)
+                .padding(.vertical, 12)
+                .frame(maxWidth: 560)
+                .frame(maxWidth: .infinity)
+                .background(.bar)
             }
         }
         .tint(accent)
@@ -618,6 +626,7 @@ struct CoreFlowView: View {
                         set: { saveDraft($0, for: card.id) }
                     ), axis: .vertical)
                         .lineLimit(3...8)
+                        .focused($resultFieldFocused)
                         .padding(12)
                         .background(Color(.tertiarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 10))
                         .accessibilityLabel("행동 결과 입력")
@@ -659,16 +668,27 @@ struct CoreFlowView: View {
     }
 
     /// 카드 길이와 관계없이 '완료'와 '더 작게'를 화면 아래에 둔다(#61).
-    /// 답 입력은 높아서, 접근성 글자 크기는 막대가 화면을 가려서 본문에 둔다.
+    /// 답 입력은 높아서, 접근성 글자 크기와 가로 화면은 막대가 화면을 가려서, 결과를 적는 동안은 키보드 위 공간이 좁아서 본문에 둔다.
     private func pinsCommands(_ smaller: SmallerStatus?) -> Bool {
-        if dynamicTypeSize.isAccessibilitySize { return false }
+        if dynamicTypeSize.isAccessibilitySize || verticalSizeClass == .compact || resultFieldFocused { return false }
         if case .question = smaller { return false }
         return true
     }
 
+    private var commandsPinned: Bool {
+        if case .currentAction(_, let smaller) = flow.screen { return pinsCommands(smaller) }
+        return false
+    }
+
+    private var storageFailureText: some View {
+        Text("저장하지 못했어요. 다시 시도해 주세요.")
+            .font(.body)
+            .foregroundStyle(.primary)
+    }
+
     private func actionCommands(_ smaller: SmallerStatus?) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            // '완료'의 위치는 더 작게 상태와 관계없이 고정한다.
+            // '완료'를 더 작게 상태 위에 둔다(#64).
             commandButton("완료") {
                 try flow.complete()
             }
