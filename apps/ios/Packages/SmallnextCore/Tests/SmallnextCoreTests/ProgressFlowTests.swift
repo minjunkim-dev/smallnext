@@ -1661,6 +1661,81 @@ final class ProgressFlowTests: XCTestCase {
         }
     }
 
+    func testDeleteAllGoalsClearsGoalsRecordsAndDrafts() async throws {
+        let provider = ScriptedProvider([.action(first), .action(second), .action(third)])
+        let flow = try makeFlow(provider)
+        _ = try await firstCard(flow)
+        try flow.complete()
+        await flow.waitForSuggestion()
+        guard case .currentAction(let card, nil) = flow.screen else { return XCTFail("\(flow.screen)") }
+        try flow.updateDraft("작성 중", for: card.id)
+        XCTAssertEqual(try count("SELECT COUNT(*) FROM completion"), 1)
+        try await startGoal(flow, "두 번째 목표")
+        await flow.waitForSuggestion()
+        XCTAssertEqual(flow.goals.count, 2)
+        let ids = flow.goals.map(\.id)
+        try await AppDatabase(path: path).writer.write { db in
+            for id in ids {
+                for prefix in ["goal_input", "suggestion_input", "supplemental_context"] {
+                    try db.execute(sql: "INSERT OR REPLACE INTO app_metadata (key, value) VALUES (?, '남은 입력')", arguments: ["\(prefix):\(id)"])
+                }
+            }
+        }
+        let requestsBefore = await provider.requests.count
+        XCTAssertThrowsError(try flow.deleteAllGoals())
+
+        try flow.deleteAllGoals(confirmed: true)
+        XCTAssertEqual(flow.screen, .goalInput)
+        XCTAssertTrue(flow.goals.isEmpty)
+        for table in ["goal", "action", "action_note", "completion", "suggestion_request"] {
+            XCTAssertEqual(try count("SELECT COUNT(*) FROM \(table)"), 0, table)
+        }
+        XCTAssertEqual(try count("SELECT COUNT(*) FROM app_metadata WHERE key != 'schema_version'"), 0)
+
+        var input = GoalInput()
+        input.statement = "제출하지 않은 목표"
+        try flow.updateGoalInput(input)
+        try flow.deleteAllGoals(confirmed: true)
+        XCTAssertEqual(try count("SELECT COUNT(*) FROM app_metadata WHERE key != 'schema_version'"), 0)
+        XCTAssertEqual(try makeFlow(SuspendedProvider()).goalInput, GoalInput())
+        let requestsAfter = await provider.requests.count
+        XCTAssertEqual(requestsAfter, requestsBefore)
+    }
+
+    func testDeleteAllGoalsWhileWaitingCancelsAndIgnoresTheLateResult() async throws {
+        do {
+            let flow = try makeFlow(ScriptedProvider([.action(first)]))
+            _ = try await firstCard(flow)
+        }
+        let provider = SuspendedProvider()
+        let flow = try makeFlow(provider)
+        try flow.makeSmaller()
+        try flow.deleteAllGoals(confirmed: true)
+        await flow.waitForSuggestion()
+        let cancelled = await provider.cancelled
+        XCTAssertTrue(cancelled)
+        XCTAssertEqual(flow.screen, .goalInput)
+        XCTAssertEqual(try count("SELECT COUNT(*) FROM action"), 0)
+    }
+
+    func testDeleteAllGoalsIgnoresALateSuccess() async throws {
+        do {
+            let flow = try makeFlow(ScriptedProvider([.action(first)]))
+            _ = try await firstCard(flow)
+        }
+        let held = HeldProvider(.action(smaller))
+        let flow = try makeFlow(held)
+        try flow.makeSmaller()
+        await held.waitForRequest()
+        try flow.deleteAllGoals(confirmed: true)
+        await held.release()
+        await flow.waitForSuggestion()
+        XCTAssertEqual(flow.screen, .goalInput)
+        XCTAssertTrue(flow.goals.isEmpty)
+        XCTAssertEqual(try count("SELECT COUNT(*) FROM action"), 0)
+        XCTAssertEqual(try count("SELECT COUNT(*) FROM suggestion_request"), 0)
+    }
+
     func testSharedHTTPNoticeAndMetadataStayIsolatedAndDeleteAtomically() async throws {
         let response = try InsufficientInfoFixture.response()
         DevelopmentTransport.store.reset()
@@ -2620,6 +2695,7 @@ private actor ScriptedProvider: ActionSuggestionProvider {
 private actor HeldProvider: ActionSuggestionProvider {
     private let candidate: SuggestionCandidate
     private var gate: CheckedContinuation<Void, Never>?
+    private var requestWaiter: CheckedContinuation<Void, Never>?
     private(set) var requests = 0
 
     init(_ candidate: SuggestionCandidate) {
@@ -2628,8 +2704,18 @@ private actor HeldProvider: ActionSuggestionProvider {
 
     func suggest(_ request: SuggestionRequest) async throws -> SuggestionCandidate {
         requests += 1
-        await withCheckedContinuation { gate = $0 }
+        await withCheckedContinuation {
+            gate = $0
+            requestWaiter?.resume()
+            requestWaiter = nil
+        }
         return candidate
+    }
+
+    /// 공급자가 요청을 받을 때까지 기다린다. 요청 중에 상태를 바꾸는 테스트에 쓴다.
+    func waitForRequest() async {
+        if gate != nil { return }
+        await withCheckedContinuation { requestWaiter = $0 }
     }
 
     func release() async {

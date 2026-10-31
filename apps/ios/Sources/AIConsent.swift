@@ -26,6 +26,12 @@ struct ConsentGatedProvider: ActionSuggestionProvider {
 
 struct AIConsentView: View {
     let agree: () -> Void
+    /// 동의 없이도 기기의 목표와 기록을 지울 수 있게 한다.
+    let deleteLocalData: () throws -> Void
+    let hasLocalData: Bool
+    @State private var confirmingDeletion = false
+    @State private var deletionMessage: String?
+    @AccessibilityFocusState private var deletionMessageFocused: Bool
 
     var body: some View {
         ScrollView {
@@ -44,6 +50,15 @@ struct AIConsentView: View {
                     .modifier(OnAccentLabel())
                     .controlSize(.large)
                     .accessibilityHint("목표와 자료를 Anthropic으로 보내는 데 동의합니다.")
+                if hasLocalData {
+                    Button("이 기기의 목표와 기록 삭제", role: .destructive) { confirmingDeletion = true }
+                        .frame(minHeight: 44)
+                }
+                if let deletionMessage {
+                    Text(deletionMessage)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityFocused($deletionMessageFocused)
+                }
             }
             .padding(24)
             .frame(maxWidth: 560, alignment: .leading)
@@ -54,5 +69,21 @@ struct AIConsentView: View {
             Color.clear.frame(height: 0).background(Color(.systemGroupedBackground))
         }
         .tint(.smallnextAccent)
+        .alert("이 기기의 목표와 기록을 삭제할까요?", isPresented: $confirmingDeletion) {
+            Button("삭제", role: .destructive) {
+                deletionMessageFocused = false
+                do {
+                    try deleteLocalData()
+                    deletionMessage = "이 기기의 목표와 기록을 삭제했어요."
+                } catch {
+                    deletionMessage = "삭제하지 못했어요. 다시 시도해 주세요."
+                }
+                // 알림이 닫히는 동안의 안내는 VoiceOver가 놓칠 수 있어 결과 문구로 초점을 옮긴다.
+                DispatchQueue.main.async { deletionMessageFocused = true }
+            }
+            Button("취소", role: .cancel) { }
+        } message: {
+            Text("모든 목표의 행동·결과·입력·완료 기록과 작성 중인 목표를 지워요. 삭제 후에는 복구할 수 없어요. 서버의 익명 계정은 지워지지 않아요.")
+        }
     }
 }
