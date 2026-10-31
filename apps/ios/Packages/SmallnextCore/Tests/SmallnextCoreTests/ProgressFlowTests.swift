@@ -2691,6 +2691,7 @@ private actor ScriptedProvider: ActionSuggestionProvider {
 private actor HeldProvider: ActionSuggestionProvider {
     private let candidate: SuggestionCandidate
     private var gate: CheckedContinuation<Void, Never>?
+    private var requestWaiter: CheckedContinuation<Void, Never>?
     private(set) var requests = 0
 
     init(_ candidate: SuggestionCandidate) {
@@ -2699,14 +2700,18 @@ private actor HeldProvider: ActionSuggestionProvider {
 
     func suggest(_ request: SuggestionRequest) async throws -> SuggestionCandidate {
         requests += 1
-        await withCheckedContinuation { gate = $0 }
+        await withCheckedContinuation {
+            gate = $0
+            requestWaiter?.resume()
+            requestWaiter = nil
+        }
         return candidate
     }
 
     /// 공급자가 요청을 받을 때까지 기다린다. 요청 중에 상태를 바꾸는 테스트에 쓴다.
     func waitForRequest() async {
-        for _ in 0..<10_000 where gate == nil { await Task.yield() }
-        precondition(gate != nil, "suggest가 호출되지 않았다")
+        if gate != nil { return }
+        await withCheckedContinuation { requestWaiter = $0 }
     }
 
     func release() async {
