@@ -71,6 +71,7 @@ struct AIConsentView: View {
         .tint(.smallnextAccent)
         .alert("이 기기의 목표와 기록을 삭제할까요?", isPresented: $confirmingDeletion) {
             Button("삭제", role: .destructive) {
+                deletionMessageFocused = false
                 do {
                     try deleteLocalData()
                     deletionMessage = "이 기기의 목표와 기록을 삭제했어요."
@@ -78,7 +79,7 @@ struct AIConsentView: View {
                     deletionMessage = "삭제하지 못했어요. 다시 시도해 주세요."
                 }
                 // 알림이 닫히는 동안의 안내는 VoiceOver가 놓칠 수 있어 결과 문구로 초점을 옮긴다.
-                deletionMessageFocused = true
+                DispatchQueue.main.async { deletionMessageFocused = true }
             }
             Button("취소", role: .cancel) { }
         } message: {
