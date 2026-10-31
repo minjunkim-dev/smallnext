@@ -1662,10 +1662,14 @@ final class ProgressFlowTests: XCTestCase {
     }
 
     func testDeleteAllGoalsClearsGoalsRecordsAndDrafts() async throws {
-        let provider = ScriptedProvider([.action(first), .action(second)])
+        let provider = ScriptedProvider([.action(first), .action(second), .action(third)])
         let flow = try makeFlow(provider)
-        let card = try await firstCard(flow)
+        _ = try await firstCard(flow)
+        try flow.complete()
+        await flow.waitForSuggestion()
+        guard case .currentAction(let card, nil) = flow.screen else { return XCTFail("\(flow.screen)") }
         try flow.updateDraft("작성 중", for: card.id)
+        XCTAssertEqual(try count("SELECT COUNT(*) FROM completion"), 1)
         try await startGoal(flow, "두 번째 목표")
         await flow.waitForSuggestion()
         XCTAssertEqual(flow.goals.count, 2)
@@ -1683,7 +1687,7 @@ final class ProgressFlowTests: XCTestCase {
         try flow.deleteAllGoals(confirmed: true)
         XCTAssertEqual(flow.screen, .goalInput)
         XCTAssertTrue(flow.goals.isEmpty)
-        for table in ["goal", "action", "action_note", "suggestion_request"] {
+        for table in ["goal", "action", "action_note", "completion", "suggestion_request"] {
             XCTAssertEqual(try count("SELECT COUNT(*) FROM \(table)"), 0, table)
         }
         XCTAssertEqual(try count("SELECT COUNT(*) FROM app_metadata WHERE key != 'schema_version'"), 0)
