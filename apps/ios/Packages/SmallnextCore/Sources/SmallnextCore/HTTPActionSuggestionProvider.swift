@@ -32,6 +32,18 @@ public struct HTTPActionSuggestionProvider: ActionSuggestionProvider {
         }, session: session, timeout: 160)
     }
 
+    /// 서버의 익명 계정과 사용 기록을 지운다(App Review 5.1.1(v)). 204만 성공으로 본다.
+    public static func deleteAccount(baseURL: URL, token: String, session: URLSession = .shared) async throws {
+        guard endpoint(baseURL, schemes: ["https"]), !token.isEmpty, token.utf8.count <= 16 * 1024,
+              !token.contains(where: { $0.isWhitespace || $0.isNewline }) else { throw SuggestionFailure.unavailable }
+        var http = URLRequest(url: baseURL.appendingPathComponent("v1/account"))
+        http.httpMethod = "DELETE"
+        http.timeoutInterval = 40
+        http.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        let (_, response) = try await session.data(for: http, delegate: NoRedirect())
+        guard (response as? HTTPURLResponse)?.statusCode == 204 else { throw SuggestionFailure.unavailable }
+    }
+
     /// 경로·자격 증명·query 없는 서버 주소만 받는다.
     public static func endpoint(_ url: URL, schemes: Set<String>) -> Bool {
         schemes.contains(url.scheme?.lowercased() ?? "") && url.host?.isEmpty == false

@@ -10,7 +10,7 @@ enum UserServerAI {
         identityFactory: (URL, String, TurnstileConfiguration?) -> SupabaseAnonymousIdentity = { url, key, captcha in
             SupabaseAnonymousIdentity(projectURL: url, publishableKey: key, captcha: captcha)
         }
-    ) -> (any ActionSuggestionProvider)? {
+    ) -> (provider: any ActionSuggestionProvider, account: AnonymousAccount?)? {
         guard FeatureFlags.userServerAI else { return nil }
         func value(_ key: String) -> String? {
             guard let value = bundle.object(forInfoDictionaryKey: key) as? String,
@@ -30,13 +30,27 @@ enum UserServerAI {
               HTTPActionSuggestionProvider.endpoint(projectURL, schemes: ["https"]),
               // The consent screen must be able to open the privacy policy before anything is sent.
               AIConsent.privacyPolicyURL(info: bundle.infoDictionary ?? [:]) != nil
-        else { return UnavailableSuggestionProvider() }
+        else { return (UnavailableSuggestionProvider(), nil) }
         // Validate both endpoints before initializing an Auth client or reading its Keychain.
         let captcha: TurnstileConfiguration?
         do { captcha = try TurnstileConfiguration.load(info: bundle.infoDictionary ?? [:]) }
-        catch { return UnavailableSuggestionProvider() }
+        catch { return (UnavailableSuggestionProvider(), nil) }
         let identity = identityFactory(projectURL, key, captcha)
-        return ConsentGatedProvider(base: HTTPActionSuggestionProvider.server(baseURL: url, token: { try await identity.idToken() }))
+        return (ConsentGatedProvider(base: HTTPActionSuggestionProvider.server(baseURL: url, token: { try await identity.idToken() })),
+                AnonymousAccount(baseURL: url, identity: identity))
+    }
+}
+
+/// 동의를 철회한 뒤에도 서버의 익명 계정을 지울 수 있게 한다(App Review 5.1.1(v)).
+@MainActor
+struct AnonymousAccount {
+    let baseURL: URL
+    let identity: SupabaseAnonymousIdentity
+
+    var exists: Bool { identity.hasSession }
+
+    func delete() async throws {
+        try await identity.deleteAccount { try await HTTPActionSuggestionProvider.deleteAccount(baseURL: baseURL, token: $0) }
     }
 }
 
@@ -71,6 +85,26 @@ final class SupabaseAnonymousIdentity {
         self.storage = storage
         self.storageKey = storageKey
         self.captchaToken = captchaToken
+    }
+
+    /// Keychain을 읽지 못하면 세션이 있다고 본다. 삭제 버튼을 숨기지 않기 위해서다.
+    var hasSession: Bool {
+        do { return try storage.retrieve(key: storageKey) != nil } catch { return true }
+    }
+
+    /// 세션이 없으면 계정을 만들지 않고 끝낸다. 서버에서 지운 뒤에만 이 기기의 세션을 지운다.
+    func deleteAccount(_ send: (String) async throws -> Void) async throws {
+        do {
+            guard try storage.retrieve(key: storageKey) != nil, auth.currentSession != nil else { return }
+            let session = try await auth.session
+            guard session.user.isAnonymous else { throw SuggestionFailure.rejected }
+            try await send(session.accessToken)
+        } catch {
+            if Task.isCancelled || error is CancellationError { throw CancellationError() }
+            throw SuggestionFailure.unavailable
+        }
+        // The SDK removes the stored session before its logout request, which the deleted account rejects.
+        try? await auth.signOut(scope: .local)
     }
 
     func idToken() async throws -> String {

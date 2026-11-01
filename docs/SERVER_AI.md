@@ -23,6 +23,9 @@ DB·인증의 선택 이유와 대안·제약은 [Supabase 선택 ADR](adr/0002-
 `role=authenticated`, `is_anonymous=true`와 유효한 `session_id`를 요구합니다. HS256 토큰은 허용하지 않습니다.
 서버는 UID 허용 목록을 확인합니다. `AI_PUBLIC_ACCESS=1`일 때만 허용 목록 없이 인증된 익명 사용자를 받습니다([#237](https://github.com/minjunkim-dev/smallnext/issues/237) 공개 베타). 각 요청에서 Auth의 `/auth/v1/user`와 DB의 `smallnext_session_active`를 함께 조회합니다.
 계정 삭제·차단, 세션 로그아웃·만료 또는 조회 실패에서는 AI를 호출하지 않습니다.
+`DELETE /v1/account`도 같은 플래그와 인증 검사를 따릅니다. 허용 UID 목록만 적용하지 않아 모든 익명 사용자가 자기 계정을 지울 수 있습니다(App Review 5.1.1(v)).
+그 계정의 일일 사용 횟수와 Supabase 익명 계정을 한 transaction에서 지우고 204로 답합니다. 계정을 지우지 못하면 사용 횟수도 남기고 503으로 답합니다.
+DB 함수 `smallnext_delete_anonymous_user`는 익명 계정만 지우고 `smallnext_api`만 실행합니다. 세션은 Supabase Auth의 외래 키로 함께 지워집니다. 실제 Supabase 프로젝트에서는 아직 확인하지 않았습니다.
 공개 JWKS만 응답의 유효기간 내 최대 10분 동안 메모리에 캐시합니다. 계정·세션 판정은 캐시하지 않습니다.
 서버는 공개 publishable key를 사용합니다. Firebase 서비스 계정·Supabase secret key·개인 Codex OAuth를 사용하지 않습니다.
 DB는 기존 Rust 서버가 TLS PostgreSQL로 직접 연결합니다. Data API와 Storage는 사용하지 않습니다.
@@ -137,7 +140,9 @@ FirebaseCore와 FirebaseCrashlytics는 Crashlytics에만 유지합니다. Analyt
 서버 401 뒤에는 같은 AI 요청을 자동 재전송하지 않습니다.
 `user_server_ai`가 ON이면 앱은 첫 화면 전에 목표·자료가 Anthropic으로 전송된다는 동의를 받습니다(App Review 5.1.2(i)).
 동의가 없으면 공급자가 요청마다 전송을 막습니다. 목표 목록에서 동의를 철회하면 동의 화면으로 돌아갑니다.
-동의 화면에서는 기기에 목표나 작성 중인 입력이 있을 때 '이 기기의 목표와 기록 삭제'로 모두 지울 수 있습니다. 서버의 익명 계정은 지우지 않습니다.
+동의 화면에서는 기기에 목표나 작성 중인 입력이 있을 때 '이 기기의 목표와 기록 삭제'로 모두 지울 수 있습니다.
+Keychain에 익명 세션이 있으면 같은 버튼이 '목표·기록과 익명 계정 삭제'가 되어 기기 기록을 먼저 지운 뒤 `DELETE /v1/account`를 보냅니다. 세션이 없으면 계정을 새로 만들지 않습니다.
+서버 삭제가 성공한 뒤에만 기기의 세션을 지웁니다. 실패하면 버튼이 남아 다시 시도할 수 있습니다.
 목표 목록과 동의 화면은 `SMALLNEXT_PRIVACY_POLICY_URL`의 처리방침을 엽니다.
 `apps/ios/Resources`의 AppIcon은 직접 그린 임시 자산입니다. 최종 아이콘은 사람이 확정합니다. `PrivacyInfo.xcprivacy`와 앱 개인정보 라벨은 처리방침과 함께 사람이 확인합니다.
 `apps/ios/Config/Local.xcconfig.example`을 운영 준비에는 `Local.Release.xcconfig`로 복사합니다.

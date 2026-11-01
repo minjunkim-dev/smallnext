@@ -133,7 +133,7 @@ docker image rm smallnext-api:ci
 `PREVIOUS_DIGEST_SUFFIX`는 앞에서 확인한 기존 이미지 digest로 바꾼다. 보관 태그가 충돌하면 다른 새 이름을 사용한다.
 `--force`를 사용하지 않는다. 보관을 확인한 뒤 같은 배포 명령을 다시 실행한다.
 
-기동 뒤 `/health` 200, `/ready` 200, `POST /v1/suggestions` 404를 확인한다.
+기동 뒤 `/health` 200, `/ready` 200, `POST /v1/suggestions`·`DELETE /v1/account` 404를 확인한다.
 성공 출력에는 응답 코드만 남긴다. HTTP 본문·인증 토큰·환경 값은 출력하지 않는다.
 실패하면 서버의 상태를 확인한다. 스크립트는 운영 DB나 데이터를 자동으로 되돌리지 않는다.
 

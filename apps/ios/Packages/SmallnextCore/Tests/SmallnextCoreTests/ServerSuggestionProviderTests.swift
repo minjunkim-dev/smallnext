@@ -33,6 +33,36 @@ final class ServerSuggestionProviderTests: XCTestCase {
             "preserved_completed_ids":input["completed_ids"]!,"goal_completed":complete,"current_action_completed":complete]])
     }
 
+    func testAccountDeletionSucceedsOnlyOnNoContent() async throws {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [DevelopmentTransport.self]
+        let session = URLSession(configuration: configuration)
+        let base = URL(string: "https://api.example.invalid")!
+        for status in [204, 200, 401, 404, 503, 302] {
+            DevelopmentTransport.store.reset()
+            DevelopmentTransport.store.handler = { _ in (status, Data()) }
+            do {
+                try await HTTPActionSuggestionProvider.deleteAccount(baseURL: base, token: "access", session: session)
+                XCTAssertEqual(status, 204)
+            } catch {
+                XCTAssertNotEqual(status, 204)
+                XCTAssertEqual(error as? SuggestionFailure, .unavailable)
+            }
+            let sent = try XCTUnwrap(DevelopmentTransport.store.requests.first)
+            XCTAssertEqual(sent.httpMethod, "DELETE")
+            XCTAssertEqual(sent.url?.path, "/v1/account")
+            XCTAssertEqual(sent.value(forHTTPHeaderField: "Authorization"), "Bearer access")
+        }
+        DevelopmentTransport.store.reset()
+        for (address, token) in [("http://api.example.invalid", "access"), ("https://api.example.invalid", "a b")] {
+            do {
+                try await HTTPActionSuggestionProvider.deleteAccount(baseURL: URL(string: address)!, token: token, session: session)
+                XCTFail("must reject")
+            } catch { XCTAssertEqual(error as? SuggestionFailure, .unavailable) }
+        }
+        XCTAssertTrue(DevelopmentTransport.store.requests.isEmpty)
+    }
+
     func testAuthTokenAndServerPathPreserveAllCandidateTypes() async throws {
         for (kind,status,expected) in [
             (SuggestionKind.firstAction,"action",SuggestionCandidate.action(ProposedAction(task:"펜 하나 옮기기",doneWhen:"펜이 펜꽂이에 있다",estimatedMinutes:1,marksGoalComplete:false))),

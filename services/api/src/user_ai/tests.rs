@@ -253,6 +253,8 @@ impl Fixture {
         }
         sqlx::query(&format!("CREATE OR REPLACE FUNCTION smallnext_session_active(user_id TEXT,session_id TEXT) RETURNS BOOLEAN LANGUAGE SQL SECURITY INVOKER SET search_path = '' AS 'SELECT EXISTS(SELECT 1 FROM {schema}.fixture_sessions WHERE user_id = $1 AND active AND $2 = ''{SESSION}'')'"))
             .execute(&database).await.unwrap();
+        sqlx::query(&format!("CREATE OR REPLACE FUNCTION smallnext_delete_anonymous_user(user_id TEXT) RETURNS BOOLEAN LANGUAGE SQL SECURITY INVOKER SET search_path = '' AS 'WITH removed AS (DELETE FROM {schema}.fixture_sessions WHERE user_id = $1 RETURNING 1) SELECT EXISTS(SELECT 1 FROM removed)'"))
+            .execute(&database).await.unwrap();
         let upstream = Router::new()
             .route(
                 "/keys",
@@ -334,6 +336,26 @@ impl Fixture {
                     ))
                     .unwrap(),
             )
+            .await
+            .unwrap()
+    }
+    async fn delete_account(&self, uid: &str, origin: bool) -> StatusCode {
+        let mut request = Request::delete("/v1/account")
+            .header("Authorization", format!("Bearer {}", token(uid)));
+        if origin {
+            request = request.header("Origin", "https://example.invalid");
+        }
+        self.app
+            .clone()
+            .oneshot(request.body(Body::empty()).unwrap())
+            .await
+            .unwrap()
+            .status()
+    }
+    async fn usage_rows(&self, uid: &str) -> i64 {
+        sqlx::query_scalar("SELECT count(*) FROM ai_daily_usage WHERE user_hash=$1")
+            .bind(super::metrics::user_hash(&self.config.usage_key, &identity(uid)).as_slice())
+            .fetch_one(&self.database)
             .await
             .unwrap()
     }
@@ -1731,4 +1753,71 @@ fn user_hash_matches_rfc_4231_so_stored_daily_counts_survive_crate_upgrades() {
         hex,
         "5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3843"
     );
+}
+
+#[tokio::test]
+#[ignore = "requires TEST_DATABASE_URL; HTTP against real isolated PostgreSQL"]
+async fn account_deletion_removes_only_that_users_account_and_usage() {
+    let fixture = Fixture::new().await;
+    // Outside the allowlist a user can still delete its own account.
+    sqlx::query("INSERT INTO fixture_sessions VALUES ($1, TRUE)")
+        .bind(identity("stranger"))
+        .execute(&fixture.database)
+        .await
+        .unwrap();
+    for uid in ["allowed", "other"] {
+        assert_eq!(
+            result(fixture.request(uid, uid).await).await["disposition"],
+            "accepted"
+        );
+    }
+    assert_eq!(
+        fixture.delete_account("allowed", true).await,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(fixture.usage_rows("allowed").await, 1);
+    assert_eq!(
+        fixture
+            .app
+            .clone()
+            .oneshot(Request::delete("/v1/account").body(Body::empty()).unwrap())
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(
+        fixture.delete_account("allowed", false).await,
+        StatusCode::NO_CONTENT
+    );
+    assert_eq!(fixture.usage_rows("allowed").await, 0);
+    assert_eq!(fixture.usage_rows("other").await, 1);
+    assert_eq!(
+        fixture.request("allowed", "after-deletion").await.status(),
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(
+        fixture.delete_account("allowed", false).await,
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(
+        fixture.request("stranger", "outside").await.status(),
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        fixture.delete_account("stranger", false).await,
+        StatusCode::NO_CONTENT
+    );
+    // A failed account deletion keeps the usage rows that belong to it.
+    sqlx::query("CREATE OR REPLACE FUNCTION smallnext_delete_anonymous_user(user_id TEXT) RETURNS BOOLEAN LANGUAGE SQL AS 'SELECT FALSE'")
+        .execute(&fixture.database)
+        .await
+        .unwrap();
+    assert_eq!(
+        fixture.delete_account("other", false).await,
+        StatusCode::SERVICE_UNAVAILABLE
+    );
+    assert_eq!(fixture.usage_rows("other").await, 1);
+    assert_eq!(fixture.remote.calls.lock().unwrap().len(), 4);
+    fixture.close().await;
 }
