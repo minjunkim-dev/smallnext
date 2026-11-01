@@ -27,7 +27,7 @@ DB·인증의 선택 이유와 대안·제약은 [Supabase 선택 ADR](adr/0002-
 그 계정의 일일 사용 횟수와 Supabase 익명 계정을 한 transaction에서 지우고 204로 답합니다. 계정을 지우지 못하면 사용 횟수도 남기고 503으로 답합니다.
 DB 함수 `smallnext_delete_anonymous_user`는 익명 계정만 지우고 `smallnext_api`만 실행합니다. 세션은 Supabase Auth의 외래 키로 함께 지워집니다.
 이 함수는 migrate용 schema owner의 권한으로 `auth.users`의 행을 지웁니다. 실제 Supabase 프로젝트에서 이 권한과 세션 cascade는 아직 확인하지 않았습니다. 권한이 없으면 삭제가 모두 503이 되고 사용 횟수도 남습니다.
-삭제 직전에 인증을 통과한 AI 요청이 진행 중이면 그 요청이 그날의 사용 횟수 행을 다시 만들 수 있습니다. 이 행은 다른 사용 횟수처럼 30일 기한에 삭제됩니다.
+삭제 직전에 인증을 통과한 AI 요청이 진행 중이면 그 요청이 그날의 사용 횟수 행을 다시 만들 수 있습니다. 이 행은 다른 사용 횟수처럼 30일 기한에 삭제됩니다. `AI_USAGE_HASH_KEY`를 바꾸면 이전 키의 행은 계정 삭제로 찾지 못하고 30일 기한에 삭제됩니다.
 공개 JWKS만 응답의 유효기간 내 최대 10분 동안 메모리에 캐시합니다. 계정·세션 판정은 캐시하지 않습니다.
 서버는 공개 publishable key를 사용합니다. Firebase 서비스 계정·Supabase secret key·개인 Codex OAuth를 사용하지 않습니다.
 DB는 기존 Rust 서버가 TLS PostgreSQL로 직접 연결합니다. Data API와 Storage는 사용하지 않습니다.
@@ -110,7 +110,7 @@ API가 멈춰 있으면 매월 1일 timer만 삭제하므로 보관 기간을 �
 3. 비대칭 JWT 서명 키, 익명 인증과 서버 전용 DB 권한을 확인합니다. Data API는 OFF로 유지합니다. DB 비밀번호와 제공사 키를 앱·이미지·Git에 넣지 마십시오.
 4. `AI_USAGE_HASH_KEY`에 32자 이상의 임의 값을 넣습니다. 공개 베타에서만 `AI_PUBLIC_ACCESS=1`을 설정합니다.
 5. #242의 유료 smoke 승인 때 `claude-haiku-5-5 / xhigh`의 계정 API 접근, 현재 단가와 전송·보관 조건을 확인합니다. `ANTHROPIC_API_KEY`는 서버에만 설정합니다.
-6. 확인 근거를 남긴 뒤 `AI_MODEL_CONFIRMED=1`과 `USER_SERVER_AI=1`을 설정하고, 허용 UID만으로 #242의 유료 smoke를 수행합니다. 누적 비용은 3 USD 이하로 유지합니다. smoke 결과와 누적 비용을 #242에 기록한 뒤에만 `AI_PUBLIC_ACCESS=1`을 설정합니다.
+6. 확인 근거를 남긴 뒤 `AI_MODEL_CONFIRMED=1`과 `USER_SERVER_AI=1`을 설정하고, 허용 UID만으로 #242의 유료 smoke를 수행합니다. 시험 익명 계정으로 `DELETE /v1/account`가 204이고 `auth.users`·`auth.sessions`에서 행이 사라지는지, 삭제 뒤 재시도가 `user_not_found`로 끝나는지, `auth.audit_log_entries`에 무엇이 남는지 확인합니다. 누적 비용은 3 USD 이하로 유지합니다. smoke 결과와 누적 비용을 #242에 기록한 뒤에만 `AI_PUBLIC_ACCESS=1`을 설정합니다.
 
 `AI_INPUT_MICRO_USD_PER_MILLION`은 캐시 쓰기를 포함한 입력의 최대 단가를 사용합니다.
 캐시 읽기 할인으로 예산을 줄이지 않습니다. 출력 단가는 reasoning 토큰을 포함합니다.

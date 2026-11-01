@@ -443,7 +443,7 @@ struct CoreFlowView: View {
                             aiConsent = false
                         }
                         .frame(minHeight: 44)
-                        .accessibilityHint("이후 목표와 자료를 AI로 보내지 않습니다.")
+                        .accessibilityHint("이후 목표와 자료를 AI로 보내지 않습니다. 동의 화면에서 기록과 익명 계정을 삭제할 수 있습니다.")
                     }
                 }
             }

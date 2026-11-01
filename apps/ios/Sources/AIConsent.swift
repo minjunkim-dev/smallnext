@@ -113,7 +113,7 @@ struct AIConsentView: View {
             accountDeleted = true
             deletionMessage = "목표·기록과 익명 계정을 삭제했어요."
         } catch {
-            deletionMessage = "이 기기의 목표와 기록은 삭제했지만 서버의 익명 계정은 삭제하지 못했어요. 인터넷 연결을 확인하고 다시 시도해 주세요."
+            deletionMessage = "이 기기의 목표와 기록은 삭제했지만 서버의 익명 계정은 삭제하지 못했어요. 잠시 후 다시 시도해 주세요."
         }
     }
 }
