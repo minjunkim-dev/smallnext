@@ -245,10 +245,12 @@ impl Supabase {
         })
     }
 
+    /// `allowlist` is false only for account deletion: any anonymous user may delete itself.
     pub(super) async fn authorize(
         &self,
         headers: &HeaderMap,
         database: &PgPool,
+        allowlist: bool,
     ) -> Result<String, StatusCode> {
         let token = headers
             .get(header::AUTHORIZATION)
@@ -289,10 +291,11 @@ impl Supabase {
         {
             return Err(StatusCode::UNAUTHORIZED);
         }
-        if self
-            .allowed
-            .as_ref()
-            .is_some_and(|a| !a.contains(&claims.sub))
+        if allowlist
+            && self
+                .allowed
+                .as_ref()
+                .is_some_and(|a| !a.contains(&claims.sub))
         {
             return Err(StatusCode::FORBIDDEN);
         }

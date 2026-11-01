@@ -183,7 +183,7 @@ def apply(args, directory, metadata, tags):
             raise RuntimeError("deployed API readiness check failed")
         time.sleep(0.5)
     for path, method, expected in (("/health", "GET", 200), ("/ready", "GET", 200),
-                                   ("/v1/suggestions", "POST", 404)):
+                                   ("/v1/suggestions", "POST", 404), ("/v1/account", "DELETE", 404)):
         if response_status(args.url + path, method) != expected:
             raise RuntimeError("deployed API status check failed")
         print(f"PASS {method} {path} = {expected}")

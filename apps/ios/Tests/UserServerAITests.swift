@@ -56,10 +56,12 @@ final class UserServerAITests: XCTestCase {
         var creations = 0
         for info in cases {
             let bundle = try settingsBundle(info)
-            let provider = try XCTUnwrap(UserServerAI.configured(bundle: bundle, defaults: defaults) { _, _, _ in
+            let setup = try XCTUnwrap(UserServerAI.configured(bundle: bundle, defaults: defaults) { _, _, _ in
                 creations += 1
                 return self.fixture().identity
             })
+            XCTAssertNil(setup.account)
+            let provider = setup.provider
             do {
                 _ = try await provider.suggest(SuggestionRequest(kind: .firstAction, goal: "정리", currentAction: nil, completedTasks: []))
                 XCTFail("invalid settings must stay unavailable")
@@ -76,7 +78,7 @@ final class UserServerAITests: XCTestCase {
         XCTAssertTrue(UserServerAI.configured(bundle: try settingsBundle(valid), defaults: defaults) { _, _, _ in
             creations += 1
             return self.fixture().identity
-        } is ConsentGatedProvider)
+        }?.provider is ConsentGatedProvider)
         XCTAssertEqual(creations, 1)
         var captchaSettings = valid
         captchaSettings["SmallnextAuthCaptchaURL"] = "https://captcha.example.invalid"
@@ -285,6 +287,60 @@ final class UserServerAITests: XCTestCase {
         return try XCTUnwrap(Bundle(url: directory))
     }
 
+    func testAccountDeletionNeverSignsUpAndKeepsTheSessionUntilTheServerDeletes() async throws {
+        let empty = fixture()
+        XCTAssertFalse(empty.identity.hasSession)
+        try await empty.identity.deleteAccount { _ in XCTFail("no session means no account to delete") }
+        let emptyPaths = await empty.transport.paths
+        XCTAssertEqual(emptyPaths, [])
+
+        let failing = fixture()
+        try failing.storage.store(key: "test-session", value: JSONEncoder().encode(session()))
+        do {
+            try await failing.identity.deleteAccount { _ in throw URLError(.notConnectedToInternet) }
+            XCTFail("must fail")
+        } catch { XCTAssertEqual(error as? SuggestionFailure, .unavailable) }
+        XCTAssertTrue(failing.identity.hasSession)
+
+        let f = fixture()
+        try f.storage.store(key: "test-session", value: JSONEncoder().encode(session()))
+        var sent: [String] = []
+        try await f.identity.deleteAccount { sent.append($0) }
+        XCTAssertEqual(sent, ["synthetic-old"])
+        XCTAssertFalse(f.identity.hasSession)
+        let paths = await f.transport.paths
+        XCTAssertFalse(paths.contains("/auth/v1/signup"))
+
+        // A lost 204: the retry is rejected, and Auth confirms the account is gone.
+        let lost = fixture()
+        try lost.storage.store(key: "test-session", value: JSONEncoder().encode(session()))
+        do {
+            try await lost.identity.deleteAccount { _ in throw SuggestionFailure.rejected }
+            XCTFail("an existing account must not count as deleted")
+        } catch { XCTAssertEqual(error as? SuggestionFailure, .unavailable) }
+        XCTAssertTrue(lost.identity.hasSession)
+        await lost.transport.removeUser()
+        try await lost.identity.deleteAccount { _ in throw SuggestionFailure.rejected }
+        XCTAssertFalse(lost.identity.hasSession)
+
+        let unreadable = fixture()
+        try unreadable.storage.store(key: "test-session", value: Data("not a session".utf8))
+        XCTAssertTrue(unreadable.identity.hasSession)
+        do {
+            try await unreadable.identity.deleteAccount { _ in XCTFail("an unreadable session must not send") }
+            XCTFail("an unreadable session must not count as deleted")
+        } catch { XCTAssertEqual(error as? SuggestionFailure, .unavailable) }
+
+        let locked = fixture()
+        try locked.storage.store(key: "test-session", value: JSONEncoder().encode(session()))
+        locked.storage.failReads = true
+        XCTAssertTrue(locked.identity.hasSession, "an unreadable Keychain must not hide the delete button")
+        do {
+            try await locked.identity.deleteAccount { _ in XCTFail("locked Keychain must not send") }
+            XCTFail("must fail")
+        } catch { XCTAssertEqual(error as? SuggestionFailure, .unavailable) }
+    }
+
     private func session(expired: Bool = false, anonymous: Bool = true) -> Session {
         Session(accessToken: "synthetic-old", tokenType: "bearer", expiresIn: 3600,
                 expiresAt: Date().timeIntervalSince1970 + (expired ? -60 : 3600), refreshToken: "synthetic-refresh",
@@ -309,9 +365,21 @@ private actor AuthTransport {
     let delay: Bool
     var paths: [String] = []
     var captchaTokens: [String?] = []
+    var missingUser = false
     init(status: Int, delay: Bool) { self.status = status; self.delay = delay }
+    func removeUser() { missingUser = true }
     func fetch(_ request: URLRequest) async throws -> (Data, URLResponse) {
         paths.append(request.url!.path)
+        if request.url!.path == "/auth/v1/user" {
+            let body: [String: Any] = missingUser
+                ? ["code": "user_not_found", "message": "User from sub claim in JWT does not exist"]
+                : ["id": "00000000-0000-0000-0000-000000000001", "aud": "authenticated", "app_metadata": [:],
+                   "user_metadata": [:], "is_anonymous": true,
+                   "created_at": "2026-01-01T00:00:00Z", "updated_at": "2026-01-01T00:00:00Z"]
+            return (try JSONSerialization.data(withJSONObject: body),
+                    HTTPURLResponse(url: request.url!, statusCode: missingUser ? 403 : 200, httpVersion: "HTTP/1.1",
+                                    headerFields: ["X-Supabase-Api-Version": "2024-01-01"])!)
+        }
         if let body = request.httpBody,
            let value = try JSONSerialization.jsonObject(with: body) as? [String: Any] {
             captchaTokens.append((value["gotrue_meta_security"] as? [String: Any])?["captcha_token"] as? String)

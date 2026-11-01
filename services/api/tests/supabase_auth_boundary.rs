@@ -1,5 +1,12 @@
 use sqlx::{PgPool, postgres::PgPoolOptions};
 
+async fn delete(pool: &PgPool, user: &str) -> Result<bool, sqlx::Error> {
+    sqlx::query_scalar("SELECT smallnext_delete_anonymous_user($1)")
+        .bind(user)
+        .fetch_one(pool)
+        .await
+}
+
 async fn active(pool: &PgPool, user: &str, session: &str) -> bool {
     sqlx::query_scalar("SELECT smallnext_session_active($1,$2)")
         .bind(user)
@@ -67,6 +74,7 @@ async fn session_and_client_privileges_fail_closed_without_changing_auth_schema(
     let user = "11111111-1111-4111-8111-111111111111";
     let session = "33333333-3333-4333-8333-333333333333";
     assert!(!active(&pool, user, session).await);
+    assert!(!delete(&pool, user).await.unwrap());
     for role in ["anon", "authenticated", "service_role"] {
         for table in [
             "ai_budget",
@@ -93,6 +101,14 @@ async fn session_and_client_privileges_fail_closed_without_changing_auth_schema(
                 .await
                 .unwrap();
         assert!(!permission, "client role must not inspect sessions");
+        let permission: bool =
+            sqlx::query_scalar("SELECT has_function_privilege($1, $2, 'EXECUTE')")
+                .bind(role)
+                .bind(format!("{schema}.smallnext_delete_anonymous_user(text)"))
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert!(!permission, "client role must not delete accounts");
     }
     for table in ["ai_daily_usage", "ai_request_metrics"] {
         let permission: bool = sqlx::query_scalar(
@@ -147,6 +163,7 @@ async fn session_and_client_privileges_fail_closed_without_changing_auth_schema(
         if role == "smallnext_api" {
             assert!(active(&restricted, user, session).await);
         } else {
+            assert!(delete(&restricted, user).await.is_err());
             assert!(
                 sqlx::query("SELECT smallnext_session_active($1,$2)")
                     .bind(user)
@@ -159,6 +176,42 @@ async fn session_and_client_privileges_fail_closed_without_changing_auth_schema(
         restricted.close().await;
     }
     assert!(!active(&pool, "22222222-2222-4222-8222-222222222222", session).await);
+    // Only an anonymous account is deleted, and only through the API capability.
+    let permanent = "44444444-4444-4444-8444-444444444444";
+    sqlx::query("INSERT INTO auth.users VALUES($1::text::uuid,NULL,NULL,FALSE)")
+        .bind(permanent)
+        .execute(&admin)
+        .await
+        .unwrap();
+    let options: sqlx::postgres::PgConnectOptions = url.parse().unwrap();
+    let api = PgPoolOptions::new()
+        .connect_with(
+            options.options([("search_path", schema.as_str()), ("role", "smallnext_api")]),
+        )
+        .await
+        .unwrap();
+    assert!(!delete(&api, permanent).await.unwrap());
+    assert!(
+        !delete(&api, "22222222-2222-4222-8222-222222222222")
+            .await
+            .unwrap()
+    );
+    sqlx::query("INSERT INTO auth.users VALUES($1::text::uuid,NULL,NULL,TRUE)")
+        .bind("22222222-2222-4222-8222-222222222222")
+        .execute(&admin)
+        .await
+        .unwrap();
+    assert!(
+        delete(&api, "22222222-2222-4222-8222-222222222222")
+            .await
+            .unwrap()
+    );
+    let remaining: i64 = sqlx::query_scalar("SELECT count(*) FROM auth.users")
+        .fetch_one(&admin)
+        .await
+        .unwrap();
+    assert_eq!(remaining, 2);
+    api.close().await;
     for mutation in [
         "UPDATE auth.sessions SET not_after=now()-interval '1 second'",
         "UPDATE auth.users SET banned_until=now()+interval '1 hour'",

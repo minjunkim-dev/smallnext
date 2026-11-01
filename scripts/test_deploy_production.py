@@ -90,7 +90,7 @@ class DeployTests(unittest.TestCase):
             directory = Path(temporary)
             metadata = self.prepared(directory)
             with patch.object(deploy, "command", side_effect=self.runner(metadata)) as run, \
-                 patch.object(deploy, "response_status", side_effect=[200, 200, 200, 404]) as status, \
+                 patch.object(deploy, "response_status", side_effect=[200, 200, 200, 404, 404]) as status, \
                  patch("sys.stdout", new_callable=io.StringIO):
                 deploy.apply(self.args(directory), directory, metadata, ["smallnext-api:fixture"])
             up = next(call for call in run.call_args_list if "up" in call.args[0])
@@ -102,7 +102,8 @@ class DeployTests(unittest.TestCase):
             migrate = next(call for call in run.call_args_list if "migrate" in call.args[0])
             self.assertLess(run.call_args_list.index(migrate), run.call_args_list.index(up))
             self.assertEqual(migrate.args[0][-4:], ["--rm", "-T", "--no-deps", "migrate"])
-            self.assertEqual(status.call_args_list[-1].args, ("http://127.0.0.1:8080/v1/suggestions", "POST"))
+            self.assertEqual(status.call_args_list[-2].args, ("http://127.0.0.1:8080/v1/suggestions", "POST"))
+            self.assertEqual(status.call_args_list[-1].args, ("http://127.0.0.1:8080/v1/account", "DELETE"))
 
     def test_migration_failure_keeps_previous_pointer_and_stops_startup(self):
         with tempfile.TemporaryDirectory() as temporary:

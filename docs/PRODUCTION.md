@@ -67,12 +67,12 @@ SSH 접근과 파일 전송 권한은 로컬 운영 계정에서만 사용한다
 1. 서버에 `/opt/smallnext/infra/production`을 만든다.
 2. 보호한 파일 전송 경로로 세 환경 파일을 같은 서버 경로에 배치한다. 운영 계정 소유와 권한 `0600`을 유지한다.
 3. 공식 CA를 `tls/supabase-ca.crt`로 배치한다. DB URL에 `sslmode=verify-full&sslrootcert=/etc/smallnext/tls/supabase-ca.crt`를 지정한다. 서버 비밀번호를 앱에 넣지 않는다.
-4. 운영용 LOGIN 역할·마이그레이션 권한·실행 권한을 #164 전에 사람이 검토한다. 관리용 DB 연결의 성공은 이 승인을 대신하지 않는다.
+4. 운영용 LOGIN 역할·마이그레이션 권한·실행 권한을 #164 전에 사람이 검토한다. 관리용 DB 연결의 성공은 이 승인을 대신하지 않는다. 마이그레이션 0007의 owner는 `auth.users` 행 삭제 권한이 필요하다.
 5. DNS A/AAAA가 이 서버를 가리키는지 확인한다. Caddy가 80/443으로 인증서를 발급할 수 있게 한다.
 
 마이그레이션 0004는 앱 테이블의 RLS를 켜고 client 역할의 테이블 접근과 인증 함수 실행을 차단한다.
 마이그레이션 0005는 `smallnext_api`와 `smallnext_backup` NOLOGIN capability를 만든다.
-runtime은 예산 CRUD와 `smallnext_session_active` 실행만 허용한다. backup은 예산의 명시한 네 열만 읽는다.
+runtime은 예산·사용 횟수 CRUD와 `smallnext_session_active`·`smallnext_delete_anonymous_user` 실행만 허용한다. 뒤의 함수는 owner 권한으로 익명 Auth 계정을 지운다. backup은 예산의 명시한 네 열만 읽는다.
 별도 LOGIN에는 해당 capability만 부여한다. owner·BYPASSRLS·앱 schema CREATE 권한을 부여하지 않는다.
 API는 `API_AUTO_MIGRATE=0`으로 실행한다. 배포 스크립트가 별도 migrate 서비스로 먼저 마이그레이션한다.
 Firebase 서비스 계정과 credential JSON mount는 사용하지 않는다.
@@ -133,7 +133,7 @@ docker image rm smallnext-api:ci
 `PREVIOUS_DIGEST_SUFFIX`는 앞에서 확인한 기존 이미지 digest로 바꾼다. 보관 태그가 충돌하면 다른 새 이름을 사용한다.
 `--force`를 사용하지 않는다. 보관을 확인한 뒤 같은 배포 명령을 다시 실행한다.
 
-기동 뒤 `/health` 200, `/ready` 200, `POST /v1/suggestions` 404를 확인한다.
+기동 뒤 `/health` 200, `/ready` 200, `POST /v1/suggestions`·`DELETE /v1/account` 404를 확인한다.
 성공 출력에는 응답 코드만 남긴다. HTTP 본문·인증 토큰·환경 값은 출력하지 않는다.
 실패하면 서버의 상태를 확인한다. 스크립트는 운영 DB나 데이터를 자동으로 되돌리지 않는다.
 

@@ -59,7 +59,7 @@ async fn ready(State(state): State<AppState>) -> (StatusCode, Json<HealthRespons
 #[derive(OpenApi)]
 #[openapi(
     info(title = "Smallnext API", version = "0.1.0"),
-    paths(health, ready, user_ai::suggest),
+    paths(health, ready, user_ai::suggest, user_ai::delete_account),
     components(schemas(
         HealthResponse,
         user_ai::SuggestionRequest,

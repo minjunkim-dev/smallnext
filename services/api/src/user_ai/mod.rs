@@ -10,7 +10,7 @@ use axum::{
     extract::{DefaultBodyLimit, State},
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
-    routing::post,
+    routing::{delete, post},
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -131,6 +131,7 @@ pub fn router(config: Option<Config>, database: PgPool) -> Router {
     };
     Router::new()
         .route("/v1/suggestions", post(suggest))
+        .route("/v1/account", delete(delete_account))
         .layer(DefaultBodyLimit::max(32 * 1024))
         .with_state(Arc::new(Server {
             config,
@@ -161,7 +162,10 @@ pub(crate) async fn suggest(
     }
     let uid = match tokio::time::timeout(
         Duration::from_secs(20),
-        server.config.supabase.authorize(&headers, &server.database),
+        server
+            .config
+            .supabase
+            .authorize(&headers, &server.database, true),
     )
     .await
     {
@@ -267,6 +271,68 @@ pub(crate) async fn suggest(
         Bytes::from(serde_json::to_vec(&response).expect("finite checked response"))
     };
     crate::transport::deferred_response(crate::timing::response(timing_id, started, future))
+}
+
+#[utoipa::path(delete, path="/v1/account", security(("supabaseAccessToken"=[])),
+    responses((status=204,description="The anonymous account, its sessions and its daily usage rows are deleted"),
+        (status=401,description="Invalid or revoked identity"),(status=403,description="Browser origin"),
+        (status=404,description="Feature is OFF"),
+        (status=503,description="Authentication or database unavailable"),
+        (status=504,description="Authentication deadline exceeded"))) ]
+pub(crate) async fn delete_account(
+    State(server): State<Arc<Server>>,
+    headers: HeaderMap,
+) -> StatusCode {
+    if headers.contains_key(axum::http::header::ORIGIN) {
+        return StatusCode::FORBIDDEN;
+    }
+    let uid = match tokio::time::timeout(
+        Duration::from_secs(20),
+        server
+            .config
+            .supabase
+            .authorize(&headers, &server.database, false),
+    )
+    .await
+    {
+        Ok(Ok(uid)) => uid,
+        Ok(Err(status)) => {
+            tracing::warn!(
+                status = status.as_u16(),
+                "account deletion rejected: authentication"
+            );
+            return status;
+        }
+        Err(_) => {
+            tracing::warn!(status = 504, "account deletion rejected: authentication");
+            return StatusCode::GATEWAY_TIMEOUT;
+        }
+    };
+    let user_hash = metrics::user_hash(&server.config.usage_key, &uid);
+    // Usage rows and the account go together; a failed account deletion keeps both.
+    let deleted = async {
+        let mut transaction = server.database.begin().await?;
+        sqlx::query("DELETE FROM ai_daily_usage WHERE user_hash = $1")
+            .bind(&user_hash[..])
+            .execute(&mut *transaction)
+            .await?;
+        let deleted: bool = sqlx::query_scalar("SELECT smallnext_delete_anonymous_user($1)")
+            .bind(&uid)
+            .fetch_one(&mut *transaction)
+            .await?;
+        if deleted {
+            transaction.commit().await?;
+        }
+        Ok::<_, sqlx::Error>(deleted)
+    }
+    .await;
+    if matches!(deleted, Ok(true)) {
+        tracing::info!("anonymous account deleted");
+        StatusCode::NO_CONTENT
+    } else {
+        tracing::warn!("account deletion failed");
+        StatusCode::SERVICE_UNAVAILABLE
+    }
 }
 
 fn required(name: &str) -> Result<String, &'static str> {

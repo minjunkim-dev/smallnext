@@ -52,6 +52,39 @@
         }
       }
     },
+    "/v1/account": {
+      "delete": {
+        "tags": [
+          "user_ai"
+        ],
+        "operationId": "delete_account",
+        "responses": {
+          "204": {
+            "description": "The anonymous account, its sessions and its daily usage rows are deleted"
+          },
+          "401": {
+            "description": "Invalid or revoked identity"
+          },
+          "403": {
+            "description": "Browser origin"
+          },
+          "404": {
+            "description": "Feature is OFF"
+          },
+          "503": {
+            "description": "Authentication or database unavailable"
+          },
+          "504": {
+            "description": "Authentication deadline exceeded"
+          }
+        },
+        "security": [
+          {
+            "supabaseAccessToken": []
+          }
+        ]
+      }
+    },
     "/v1/suggestions": {
       "post": {
         "tags": [

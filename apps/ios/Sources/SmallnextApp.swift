@@ -8,6 +8,7 @@ struct SmallnextApp: App {
 
     @State private var database: AppDatabase?
     @State private var flow: ProgressFlow?
+    @State private var account: AnonymousAccount?
     @State private var storageFailed = false
     @State private var captcha = TurnstileChallenge.shared
     @AppStorage(AIConsent.key) private var aiConsent = false
@@ -20,6 +21,9 @@ struct SmallnextApp: App {
                     if FeatureFlags.userServerAI && !aiConsent {
                         AIConsentView(agree: { aiConsent = true },
                                       deleteLocalData: { try flow.deleteAllGoals(confirmed: true) },
+                                      deleteAccount: account.flatMap { account in
+                                          account.exists ? { try await account.delete() } : nil
+                                      },
                                       hasLocalData: !flow.goals.isEmpty || flow.goalInput != GoalInput())
                     } else {
                         CoreFlowView(flow: flow)
@@ -41,7 +45,9 @@ struct SmallnextApp: App {
                     let opened = try AppDatabase.openDefault()
                     database = opened
                     if FeatureFlags.iosCoreFlow {
-                        flow = try ProgressFlow(database: opened, provider: Self.suggestionProvider)
+                        let setup = Self.suggestionSetup
+                        flow = try ProgressFlow(database: opened, provider: setup.provider)
+                        account = setup.account
                     }
                 } catch {
                     logger.error("Storage initialization failed: \(String(describing: type(of: error)), privacy: .public)")
@@ -51,14 +57,15 @@ struct SmallnextApp: App {
         }
     }
 
-    private static var suggestionProvider: any ActionSuggestionProvider {
+    @MainActor
+    private static var suggestionSetup: (provider: any ActionSuggestionProvider, account: AnonymousAccount?) {
         if FeatureFlags.userServerAI {
-            return UserServerAI.configured() ?? UnavailableSuggestionProvider()
+            return UserServerAI.configured() ?? (UnavailableSuggestionProvider(), nil)
         }
         #if DEBUG
-        return DevelopmentAI.configured() ?? DebugActionSuggestionProvider()
+        return (DevelopmentAI.configured() ?? DebugActionSuggestionProvider(), nil)
         #else
-        return UnavailableSuggestionProvider()
+        return (UnavailableSuggestionProvider(), nil)
         #endif
     }
 }
