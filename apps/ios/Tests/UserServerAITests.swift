@@ -311,6 +311,26 @@ final class UserServerAITests: XCTestCase {
         let paths = await f.transport.paths
         XCTAssertFalse(paths.contains("/auth/v1/signup"))
 
+        // A lost 204: the retry is rejected, and Auth confirms the account is gone.
+        let lost = fixture()
+        try lost.storage.store(key: "test-session", value: JSONEncoder().encode(session()))
+        do {
+            try await lost.identity.deleteAccount { _ in throw SuggestionFailure.rejected }
+            XCTFail("an existing account must not count as deleted")
+        } catch { XCTAssertEqual(error as? SuggestionFailure, .unavailable) }
+        XCTAssertTrue(lost.identity.hasSession)
+        await lost.transport.removeUser()
+        try await lost.identity.deleteAccount { _ in throw SuggestionFailure.rejected }
+        XCTAssertFalse(lost.identity.hasSession)
+
+        let unreadable = fixture()
+        try unreadable.storage.store(key: "test-session", value: Data("not a session".utf8))
+        XCTAssertTrue(unreadable.identity.hasSession)
+        do {
+            try await unreadable.identity.deleteAccount { _ in XCTFail("an unreadable session must not send") }
+            XCTFail("an unreadable session must not count as deleted")
+        } catch { XCTAssertEqual(error as? SuggestionFailure, .unavailable) }
+
         let locked = fixture()
         try locked.storage.store(key: "test-session", value: JSONEncoder().encode(session()))
         locked.storage.failReads = true
@@ -345,9 +365,21 @@ private actor AuthTransport {
     let delay: Bool
     var paths: [String] = []
     var captchaTokens: [String?] = []
+    var missingUser = false
     init(status: Int, delay: Bool) { self.status = status; self.delay = delay }
+    func removeUser() { missingUser = true }
     func fetch(_ request: URLRequest) async throws -> (Data, URLResponse) {
         paths.append(request.url!.path)
+        if request.url!.path == "/auth/v1/user" {
+            let body: [String: Any] = missingUser
+                ? ["code": "user_not_found", "message": "User from sub claim in JWT does not exist"]
+                : ["id": "00000000-0000-0000-0000-000000000001", "aud": "authenticated", "app_metadata": [:],
+                   "user_metadata": [:], "is_anonymous": true,
+                   "created_at": "2026-01-01T00:00:00Z", "updated_at": "2026-01-01T00:00:00Z"]
+            return (try JSONSerialization.data(withJSONObject: body),
+                    HTTPURLResponse(url: request.url!, statusCode: missingUser ? 403 : 200, httpVersion: "HTTP/1.1",
+                                    headerFields: ["X-Supabase-Api-Version": "2024-01-01"])!)
+        }
         if let body = request.httpBody,
            let value = try JSONSerialization.jsonObject(with: body) as? [String: Any] {
             captchaTokens.append((value["gotrue_meta_security"] as? [String: Any])?["captcha_token"] as? String)

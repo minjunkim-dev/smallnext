@@ -95,16 +95,32 @@ final class SupabaseAnonymousIdentity {
     /// 세션이 없으면 계정을 만들지 않고 끝낸다. 서버에서 지운 뒤에만 이 기기의 세션을 지운다.
     func deleteAccount(_ send: (String) async throws -> Void) async throws {
         do {
-            guard try storage.retrieve(key: storageKey) != nil, auth.currentSession != nil else { return }
+            guard try storage.retrieve(key: storageKey) != nil else { return }
+            // A stored value the SDK cannot read must not be reported as a deleted account.
+            guard auth.currentSession != nil else { throw SuggestionFailure.unavailable }
             let session = try await auth.session
-            guard session.user.isAnonymous else { throw SuggestionFailure.rejected }
-            try await send(session.accessToken)
+            guard session.user.isAnonymous else { throw SuggestionFailure.unavailable }
+            do { try await send(session.accessToken) } catch SuggestionFailure.rejected {
+                // A lost 204 leaves this session behind. Auth then reports that the account no longer exists.
+                guard await accountIsGone(session.accessToken) else { throw SuggestionFailure.unavailable }
+            }
         } catch {
             if Task.isCancelled || error is CancellationError { throw CancellationError() }
             throw SuggestionFailure.unavailable
         }
         // The SDK removes the stored session before its logout request, which the deleted account rejects.
         try? await auth.signOut(scope: .local)
+    }
+
+    private func accountIsGone(_ token: String) async -> Bool {
+        do {
+            _ = try await auth.user(jwt: token)
+            return false
+        } catch let AuthError.api(_, code, _, _) {
+            return code == .userNotFound
+        } catch {
+            return false
+        }
     }
 
     func idToken() async throws -> String {

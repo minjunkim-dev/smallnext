@@ -25,7 +25,9 @@ DB·인증의 선택 이유와 대안·제약은 [Supabase 선택 ADR](adr/0002-
 계정 삭제·차단, 세션 로그아웃·만료 또는 조회 실패에서는 AI를 호출하지 않습니다.
 `DELETE /v1/account`도 같은 플래그와 인증 검사를 따릅니다. 허용 UID 목록만 적용하지 않아 모든 익명 사용자가 자기 계정을 지울 수 있습니다(App Review 5.1.1(v)).
 그 계정의 일일 사용 횟수와 Supabase 익명 계정을 한 transaction에서 지우고 204로 답합니다. 계정을 지우지 못하면 사용 횟수도 남기고 503으로 답합니다.
-DB 함수 `smallnext_delete_anonymous_user`는 익명 계정만 지우고 `smallnext_api`만 실행합니다. 세션은 Supabase Auth의 외래 키로 함께 지워집니다. 실제 Supabase 프로젝트에서는 아직 확인하지 않았습니다.
+DB 함수 `smallnext_delete_anonymous_user`는 익명 계정만 지우고 `smallnext_api`만 실행합니다. 세션은 Supabase Auth의 외래 키로 함께 지워집니다.
+이 함수는 migrate용 schema owner의 권한으로 `auth.users`의 행을 지웁니다. 실제 Supabase 프로젝트에서 이 권한과 세션 cascade는 아직 확인하지 않았습니다. 권한이 없으면 삭제가 모두 503이 되고 사용 횟수도 남습니다.
+삭제 직전에 인증을 통과한 AI 요청이 진행 중이면 그 요청이 그날의 사용 횟수 행을 다시 만들 수 있습니다. 이 행은 다른 사용 횟수처럼 30일 기한에 삭제됩니다.
 공개 JWKS만 응답의 유효기간 내 최대 10분 동안 메모리에 캐시합니다. 계정·세션 판정은 캐시하지 않습니다.
 서버는 공개 publishable key를 사용합니다. Firebase 서비스 계정·Supabase secret key·개인 Codex OAuth를 사용하지 않습니다.
 DB는 기존 Rust 서버가 TLS PostgreSQL로 직접 연결합니다. Data API와 Storage는 사용하지 않습니다.
@@ -143,6 +145,8 @@ FirebaseCore와 FirebaseCrashlytics는 Crashlytics에만 유지합니다. Analyt
 동의 화면에서는 기기에 목표나 작성 중인 입력이 있을 때 '이 기기의 목표와 기록 삭제'로 모두 지울 수 있습니다.
 Keychain에 익명 세션이 있으면 같은 버튼이 '목표·기록과 익명 계정 삭제'가 되어 기기 기록을 먼저 지운 뒤 `DELETE /v1/account`를 보냅니다. 세션이 없으면 계정을 새로 만들지 않습니다.
 서버 삭제가 성공한 뒤에만 기기의 세션을 지웁니다. 실패하면 버튼이 남아 다시 시도할 수 있습니다.
+204 응답을 잃은 뒤 다시 시도하면 서버가 401로 답합니다. 앱은 Auth가 `user_not_found`로 계정이 없다고 확인할 때만 삭제된 것으로 봅니다.
+Keychain의 세션을 읽지 못하면 삭제를 실패로 알립니다. 계정을 지우지 않고 성공으로 표시하지 않습니다.
 목표 목록과 동의 화면은 `SMALLNEXT_PRIVACY_POLICY_URL`의 처리방침을 엽니다.
 `apps/ios/Resources`의 AppIcon은 직접 그린 임시 자산입니다. 최종 아이콘은 사람이 확정합니다. `PrivacyInfo.xcprivacy`와 앱 개인정보 라벨은 처리방침과 함께 사람이 확인합니다.
 `apps/ios/Config/Local.xcconfig.example`을 운영 준비에는 `Local.Release.xcconfig`로 복사합니다.

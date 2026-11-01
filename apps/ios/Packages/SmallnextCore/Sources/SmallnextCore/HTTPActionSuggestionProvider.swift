@@ -25,23 +25,28 @@ public struct HTTPActionSuggestionProvider: ActionSuggestionProvider {
         guard endpoint(baseURL, schemes: ["https"]) else { return UnavailableSuggestionProvider() }
         return Self(baseURL: baseURL, path: "v1/suggestions", token: {
             let value = try await token()
-            guard !value.isEmpty, value.utf8.count <= 16 * 1024,
-                  !value.contains(where: { $0.isWhitespace || $0.isNewline })
-            else { throw SuggestionFailure.rejected }
+            guard validToken(value) else { throw SuggestionFailure.rejected }
             return value
         }, session: session, timeout: 160)
     }
 
-    /// 서버의 익명 계정과 사용 기록을 지운다(App Review 5.1.1(v)). 204만 성공으로 본다.
+    /// 서버의 익명 계정과 사용 기록을 지운다(App Review 5.1.1(v)). 204만 성공이고 401은 `.rejected`다.
     public static func deleteAccount(baseURL: URL, token: String, session: URLSession = .shared) async throws {
-        guard endpoint(baseURL, schemes: ["https"]), !token.isEmpty, token.utf8.count <= 16 * 1024,
-              !token.contains(where: { $0.isWhitespace || $0.isNewline }) else { throw SuggestionFailure.unavailable }
+        guard endpoint(baseURL, schemes: ["https"]), validToken(token) else { throw SuggestionFailure.unavailable }
         var http = URLRequest(url: baseURL.appendingPathComponent("v1/account"))
         http.httpMethod = "DELETE"
         http.timeoutInterval = 40
         http.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         let (_, response) = try await session.data(for: http, delegate: NoRedirect())
-        guard (response as? HTTPURLResponse)?.statusCode == 204 else { throw SuggestionFailure.unavailable }
+        switch (response as? HTTPURLResponse)?.statusCode {
+        case 204: return
+        case 401: throw SuggestionFailure.rejected
+        default: throw SuggestionFailure.unavailable
+        }
+    }
+
+    private static func validToken(_ value: String) -> Bool {
+        !value.isEmpty && value.utf8.count <= 16 * 1024 && !value.contains(where: { $0.isWhitespace || $0.isNewline })
     }
 
     /// 경로·자격 증명·query 없는 서버 주소만 받는다.

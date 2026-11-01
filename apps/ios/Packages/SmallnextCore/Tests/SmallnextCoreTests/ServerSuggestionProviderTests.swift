@@ -46,7 +46,7 @@ final class ServerSuggestionProviderTests: XCTestCase {
                 XCTAssertEqual(status, 204)
             } catch {
                 XCTAssertNotEqual(status, 204)
-                XCTAssertEqual(error as? SuggestionFailure, .unavailable)
+                XCTAssertEqual(error as? SuggestionFailure, status == 401 ? .rejected : .unavailable)
             }
             let sent = try XCTUnwrap(DevelopmentTransport.store.requests.first)
             XCTAssertEqual(sent.httpMethod, "DELETE")
