@@ -51,7 +51,8 @@ data class FeatureFlags(val coreFlow: Boolean, val serverAI: Boolean, val crashR
             } catch (_: IOException) {
                 null
             }
-            val overrides = intent?.let { launch ->
+            // Release는 외부 앱이 넣은 extra Bundle을 풀지도 않는다.
+            val overrides = intent?.takeIf { BuildConfig.DEBUG }?.let { launch ->
                 keys.filter(launch::hasExtra).associateWith { launch.getBooleanExtra(it, false) }
             }.orEmpty()
             return resolve(registry, overrides, BuildConfig.DEBUG)

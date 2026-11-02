@@ -96,6 +96,8 @@ data class SuggestionRequestEntity(
 /**
  * iOS의 CHECK와 부분 유일 인덱스는 Room 엔티티로 표현할 수 없고, 추가 인덱스는 Room 스키마 검증에 걸린다.
  * 그래서 Room이 검사하지 않는 트리거로 같은 규칙을 둔다. 새로 만든 DB와 v1에서 올린 DB 모두에 적용한다.
+ * 트리거는 `ON CONFLICT`·`OnConflictStrategy`의 대상이 아니므로 iOS의 upsert는 조회 후 UPDATE/INSERT로 옮긴다.
+ * 테이블을 다시 만드는 이후 마이그레이션은 트리거를 지우므로 이 함수를 다시 호출한다.
  */
 internal fun createProgressIntegrity(db: SupportSQLiteDatabase) {
     listOf(
@@ -109,16 +111,16 @@ internal fun createProgressIntegrity(db: SupportSQLiteDatabase) {
 }
 
 private fun statusIn(table: String, allowed: String) = listOf("INSERT", "UPDATE OF status").map { event ->
-    "CREATE TRIGGER ${table}_status_${event.substringBefore(' ').lowercase()} BEFORE $event ON `$table` " +
+    "CREATE TRIGGER IF NOT EXISTS ${table}_status_${event.substringBefore(' ').lowercase()} BEFORE $event ON `$table` " +
         "WHEN NEW.status NOT IN ($allowed) BEGIN SELECT RAISE(ABORT, '${table}_status'); END"
 }
 
 /** `parent`마다 `condition`을 만족하는 행을 하나만 허용한다. 조건 열 이름에 `NEW.`를 붙여 새 행을 검사한다. */
 private fun onlyOne(name: String, table: String, parent: String, condition: String) = listOf(
     "INSERT" to "",
-    "UPDATE" to " AND id != NEW.id",
+    "UPDATE" to " AND id != OLD.id",
 ).map { (event, notSelf) ->
-    "CREATE TRIGGER ${name}_${event.lowercase()} BEFORE $event ON `$table` " +
+    "CREATE TRIGGER IF NOT EXISTS ${name}_${event.lowercase()} BEFORE $event ON `$table` " +
         "WHEN NEW.$condition AND EXISTS (SELECT 1 FROM `$table` WHERE $parent = NEW.$parent AND $condition$notSelf) " +
         "BEGIN SELECT RAISE(ABORT, '$name'); END"
 }

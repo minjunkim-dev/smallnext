@@ -64,6 +64,7 @@ class ProgressSchemaTest {
         db.rejects(action(goal = 1, status = "todo"))
         db.execSQL(action(goal = 1, status = "deferred", splitFrom = 1))
         db.rejects("UPDATE action SET status = 'current' WHERE id = 2")
+        db.rejects("UPDATE action SET status = 'todo' WHERE id = 2")
         db.execSQL("UPDATE action SET task = '고친 행동' WHERE id = 1")
 
         db.execSQL(request("pending"))
@@ -71,6 +72,7 @@ class ProgressSchemaTest {
         db.rejects(request("waiting"))
         db.execSQL(request("failed"))
         db.rejects("UPDATE suggestion_request SET status = 'pending' WHERE id = 2")
+        db.rejects("UPDATE suggestion_request SET status = 'waiting' WHERE id = 2")
 
         db.execSQL(note(action = 1, draft = true))
         db.rejects(note(action = 1, draft = true))

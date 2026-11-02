@@ -11,6 +11,7 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class AppDatabaseTest {
+    // iOS testBootstrapSurvivesReopeningTheDatabase 대응
     @Test
     fun bootstrapAndWritesSurviveReopening() = runBlocking {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
