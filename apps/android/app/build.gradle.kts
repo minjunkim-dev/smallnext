@@ -28,7 +28,33 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
     buildFeatures {
+        buildConfig = true
         compose = true
+    }
+}
+
+// The app bundles the repository's single flag registry; no copy is committed.
+abstract class BundleFeatureFlags : DefaultTask() {
+    @get:InputFile
+    @get:PathSensitive(PathSensitivity.NONE)
+    abstract val registry: RegularFileProperty
+
+    @get:OutputDirectory
+    abstract val assets: DirectoryProperty
+
+    @TaskAction
+    fun copy() {
+        registry.get().asFile.copyTo(assets.file("feature-flags.json").get().asFile, overwrite = true)
+    }
+}
+
+val bundleFeatureFlags = tasks.register<BundleFeatureFlags>("bundleFeatureFlags") {
+    registry.set(rootProject.layout.projectDirectory.file("../../config/feature-flags.json"))
+}
+
+androidComponents {
+    onVariants { variant ->
+        variant.sources.assets?.addGeneratedSourceDirectory(bundleFeatureFlags, BundleFeatureFlags::assets)
     }
 }
 

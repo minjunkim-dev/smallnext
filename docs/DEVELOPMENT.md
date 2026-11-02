@@ -256,6 +256,13 @@ Room 테스트는 별도 테스트 DB 파일을 생성하고 삭제합니다.
 평문 HTTP는 Debug 빌드에서만 허용합니다.
 현재 앱 화면에서 API 요청을 실행하지는 않습니다.
 
+Android 기능은 `android_` 플래그 뒤에 있습니다. 앱은 빌드 때 asset으로 넣은 같은 [등록 파일](../config/feature-flags.json)을 읽고 iOS 플래그는 읽지 않습니다.
+Debug 빌드에서만 실행 인텐트 extra로 로컬 확인용 ON을 지정할 수 있습니다. Release 빌드는 extra를 읽지 않습니다.
+
+```sh
+adb shell am start -n dev.smallnext.app/.MainActivity --ez android_core_flow true
+```
+
 ## 검사와 계약
 
 ```sh

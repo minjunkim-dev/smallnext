@@ -34,7 +34,8 @@ class MainActivity : ComponentActivity() {
                 try {
                     (application as SmallnextApplication).database.metadata().initialize()
                 } catch (error: Exception) {
-                    Log.e("Smallnext", "Storage initialization failed", error)
+                    // 예외 메시지·스택에는 원문이 담길 수 있어 클래스 이름만 남긴다.
+                    Log.e("Smallnext", "Storage initialization failed: ${error.javaClass.simpleName}")
                     storageFailed = true
                 }
             }
