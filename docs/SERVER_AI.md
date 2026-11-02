@@ -26,7 +26,7 @@ DB·인증의 선택 이유와 대안·제약은 [Supabase 선택 ADR](adr/0002-
 `DELETE /v1/account`도 같은 플래그와 인증 검사를 따릅니다. 허용 UID 목록만 적용하지 않아 모든 익명 사용자가 자기 계정을 지울 수 있습니다(App Review 5.1.1(v)).
 그 계정의 일일 사용 횟수와 Supabase 익명 계정을 한 transaction에서 지우고 204로 답합니다. 계정을 지우지 못하면 사용 횟수도 남기고 503으로 답합니다.
 DB 함수 `smallnext_delete_anonymous_user`는 익명 계정만 지우고 `smallnext_api`만 실행합니다. 세션은 Supabase Auth의 외래 키로 함께 지워집니다.
-이 함수는 migrate용 schema owner의 권한으로 `auth.users`의 행을 지웁니다. 실제 Supabase 프로젝트에서 이 권한과 세션 cascade는 아직 확인하지 않았습니다. 권한이 없으면 삭제가 모두 503이 되고 사용 횟수도 남습니다.
+이 함수는 migrate용 schema owner(`postgres`)의 권한으로 `auth.users`의 행을 지웁니다. 권한이 없으면 삭제가 모두 503이 되고 사용 횟수도 남습니다. 실제 프로젝트의 확인 결과는 [Supabase Free 연결 확인](#supabase-free-연결-확인과-남은-조건)에 있습니다.
 삭제 직전에 인증을 통과한 AI 요청이 진행 중이면 그 요청이 그날의 사용 횟수 행을 다시 만들 수 있습니다. 이 행은 다른 사용 횟수처럼 30일 기한에 삭제됩니다. `AI_USAGE_HASH_KEY`를 바꾸면 이전 키의 행은 계정 삭제로 찾지 못하고 30일 기한에 삭제됩니다.
 공개 JWKS만 응답의 유효기간 내 최대 10분 동안 메모리에 캐시합니다. 계정·세션 판정은 캐시하지 않습니다.
 서버는 공개 publishable key를 사용합니다. Firebase 서비스 계정·Supabase secret key·개인 Codex OAuth를 사용하지 않습니다.
@@ -110,7 +110,7 @@ API가 멈춰 있으면 매월 1일 timer만 삭제하므로 보관 기간을 �
 3. 비대칭 JWT 서명 키, 익명 인증과 서버 전용 DB 권한을 확인합니다. Data API는 OFF로 유지합니다. DB 비밀번호와 제공사 키를 앱·이미지·Git에 넣지 마십시오.
 4. `AI_USAGE_HASH_KEY`에 32자 이상의 임의 값을 넣습니다. 공개 베타에서만 `AI_PUBLIC_ACCESS=1`을 설정합니다.
 5. #242의 유료 smoke 승인 때 `claude-haiku-5-5 / xhigh`의 계정 API 접근, 현재 단가와 전송·보관 조건을 확인합니다. `ANTHROPIC_API_KEY`는 서버에만 설정합니다.
-6. 확인 근거를 남긴 뒤 `AI_MODEL_CONFIRMED=1`과 `USER_SERVER_AI=1`을 설정하고, 허용 UID만으로 #242의 유료 smoke를 수행합니다. 시험 익명 계정으로 `DELETE /v1/account`가 204이고 `auth.users`·`auth.sessions`에서 행이 사라지는지, 삭제 뒤 재시도가 `user_not_found`로 끝나는지, `auth.audit_log_entries`에 무엇이 남는지 확인합니다. 누적 비용은 3 USD 이하로 유지합니다. smoke 결과와 누적 비용을 #242에 기록한 뒤에만 `AI_PUBLIC_ACCESS=1`을 설정합니다.
+6. 확인 근거를 남긴 뒤 `AI_MODEL_CONFIRMED=1`과 `USER_SERVER_AI=1`을 설정하고, 허용 UID만으로 #242의 유료 smoke를 수행합니다. 시험 익명 계정으로 `DELETE /v1/account`가 204로 답하는지, 삭제 뒤 재시도가 `user_not_found`로 끝나는지 확인합니다. 삭제 뒤 Auth 로그에 계정 식별자·IP가 얼마나 남는지도 확인해 처리방침의 `[확정 필요]`를 채웁니다. 누적 비용은 3 USD 이하로 유지합니다. smoke 결과와 누적 비용을 #242에 기록한 뒤에만 `AI_PUBLIC_ACCESS=1`을 설정합니다.
 
 `AI_INPUT_MICRO_USD_PER_MILLION`은 캐시 쓰기를 포함한 입력의 최대 단가를 사용합니다.
 캐시 읽기 할인으로 예산을 줄이지 않습니다. 출력 단가는 reasoning 토큰을 포함합니다.
@@ -219,6 +219,13 @@ runtime과 backup의 허용 권한 및 auth 테이블 직접 접근 차단을 �
 자동 백업·만료·실패 알림·RPO/RTO의 실제 운영 검증은 아직 수행하지 않았습니다.
 도메인 준비 후 CAPTCHA를 실제 검증하고 켭니다. 운영 IP 제한은 #164 전에 적용합니다.
 확정한 백업 조건과 역할별 파일 경로는 [운영 runbook](PRODUCTION.md)을 따릅니다.
+2026-11-02에 마이그레이션 0007의 함수를 실제 DB의 transaction 안에서 만들고 남은 시험 익명 계정에 실행한 뒤 ROLLBACK했습니다.
+schema owner `postgres`는 `auth.users` 삭제 권한이 있습니다. 함수는 TRUE를 반환했고, 계정과 이 시험에서 넣은 세션이 함께 지워졌습니다.
+존재하지 않는 계정에는 FALSE를 반환했습니다. 영구 계정을 지우지 않는 조건은 실제 DB에 영구 계정이 없어 합성 DB 테스트로만 확인했습니다. `authenticated`는 실행 권한이 없고 `smallnext_api`는 있습니다.
+`postgres`가 `smallnext_api`로 전환할 수 없어 함수 호출은 owner로 했습니다. 실제 API 연결로 호출하는 확인은 활성화 smoke에 남깁니다.
+ROLLBACK 뒤 익명 계정 수(1)·마이그레이션 기록(0005까지)은 그대로이고 함수는 남지 않았습니다. `_sqlx_migrations`의 owner도 `postgres`입니다.
+`auth.audit_log_entries`는 비어 있었습니다. Auth 감사 기록이 표가 아닌 로그에 남는지는 확인하지 않았습니다.
+[Supabase Auth 소스](https://github.com/supabase/auth/blob/a7e97d665b9ea03853edb66d014bcde323f7894b/internal/api/auth.go)는 JWT의 사용자를 세션보다 먼저 조회하므로, 지운 계정의 토큰에는 `user_not_found`(403)로 답합니다. [Auth 마이그레이션](https://github.com/supabase/auth/tree/a7e97d665b9ea03853edb66d014bcde323f7894b/migrations)의 외래 키로 세션·refresh token·identity·MFA·일회용 토큰이 함께 지워집니다. 이 두 가지는 2026-11-02의 소스에서 읽었고, 운영 프로젝트의 Auth 버전에 요청해 확인하지 않았습니다.
 
 ## 공식 계약
 
