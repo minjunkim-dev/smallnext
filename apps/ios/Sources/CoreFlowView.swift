@@ -52,7 +52,7 @@ struct CoreFlowView: View {
     private var headerLayout: AnyLayout {
         dynamicTypeSize.isAccessibilitySize
             ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8))
-            // The buttons are 44pt tall, so align on text baselines rather than frame tops.
+            // 버튼 높이가 44pt라서 틀 위쪽이 아니라 글자 기준선에 맞춘다.
             : AnyLayout(HStackLayout(alignment: .firstTextBaseline))
     }
 
