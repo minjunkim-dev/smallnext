@@ -110,7 +110,7 @@ API가 멈춰 있으면 매월 1일 timer만 삭제하므로 보관 기간을 �
 3. 비대칭 JWT 서명 키, 익명 인증과 서버 전용 DB 권한을 확인합니다. Data API는 OFF로 유지합니다. DB 비밀번호와 제공사 키를 앱·이미지·Git에 넣지 마십시오.
 4. `AI_USAGE_HASH_KEY`에 32자 이상의 임의 값을 넣습니다. 공개 베타에서만 `AI_PUBLIC_ACCESS=1`을 설정합니다.
 5. #242의 유료 smoke 승인 때 `claude-haiku-5-5 / xhigh`의 계정 API 접근, 현재 단가와 전송·보관 조건을 확인합니다. `ANTHROPIC_API_KEY`는 서버에만 설정합니다.
-6. 확인 근거를 남긴 뒤 `AI_MODEL_CONFIRMED=1`과 `USER_SERVER_AI=1`을 설정하고, 허용 UID만으로 #242의 유료 smoke를 수행합니다. 시험 익명 계정으로 `DELETE /v1/account`가 HTTP로 204인지, 삭제 뒤 재시도가 `user_not_found`로 끝나는지 확인합니다. 누적 비용은 3 USD 이하로 유지합니다. smoke 결과와 누적 비용을 #242에 기록한 뒤에만 `AI_PUBLIC_ACCESS=1`을 설정합니다.
+6. 확인 근거를 남긴 뒤 `AI_MODEL_CONFIRMED=1`과 `USER_SERVER_AI=1`을 설정하고, 허용 UID만으로 #242의 유료 smoke를 수행합니다. 시험 익명 계정으로 `DELETE /v1/account`가 204로 답하는지, 삭제 뒤 재시도가 `user_not_found`로 끝나는지 확인합니다. 누적 비용은 3 USD 이하로 유지합니다. smoke 결과와 누적 비용을 #242에 기록한 뒤에만 `AI_PUBLIC_ACCESS=1`을 설정합니다.
 
 `AI_INPUT_MICRO_USD_PER_MILLION`은 캐시 쓰기를 포함한 입력의 최대 단가를 사용합니다.
 캐시 읽기 할인으로 예산을 줄이지 않습니다. 출력 단가는 reasoning 토큰을 포함합니다.
@@ -214,12 +214,12 @@ DB 검사는 `TEST_DATABASE_URL`의 격리 schema에서 HTTP 경계를 검증합
 Email 인증은 OFF로 저장했습니다. 익명 인증과 IP당 시간당 30회 제한은 유지했습니다.
 관리자 MFA 등록을 확인했습니다. 마이그레이션 0005와 runtime·backup의 별도 LOGIN을 적용했습니다.
 2026-11-02에 마이그레이션 0007의 함수를 실제 DB의 transaction 안에서 만들고 남은 시험 익명 계정에 실행한 뒤 ROLLBACK했습니다.
-- schema owner `postgres`는 `auth.users` 삭제 권한이 있습니다. 함수는 TRUE를 반환했고, 계정과 시험 세션·identity가 함께 지워졌습니다.
-- 존재하지 않는 계정에는 FALSE를 반환했습니다. `authenticated`는 실행 권한이 없고 `smallnext_api`는 있습니다.
-- `postgres`가 `smallnext_api`로 전환할 수 없어 함수 호출은 owner로 했습니다. 실제 API 연결로 호출하는 확인은 활성화 smoke에 남깁니다.
-- ROLLBACK 뒤 시험 계정·마이그레이션 기록(0005까지)은 그대로이고 함수는 남지 않았습니다.
-- `auth.audit_log_entries`는 비어 있었습니다. Auth 감사 기록이 표가 아닌 로그에 남는지는 확인하지 않았습니다.
-Supabase Auth 소스는 JWT의 사용자를 세션보다 먼저 조회하므로, 지운 계정의 토큰에는 `user_not_found`(403)로 답합니다. Auth 마이그레이션의 외래 키로 세션·refresh token·identity·MFA·일회용 토큰이 함께 지워집니다.
+schema owner `postgres`는 `auth.users` 삭제 권한이 있습니다. 함수는 TRUE를 반환했고, 계정과 이 시험에서 넣은 세션이 함께 지워졌습니다.
+존재하지 않는 계정에는 FALSE를 반환했습니다. `authenticated`는 실행 권한이 없고 `smallnext_api`는 있습니다.
+`postgres`가 `smallnext_api`로 전환할 수 없어 함수 호출은 owner로 했습니다. 실제 API 연결로 호출하는 확인은 활성화 smoke에 남깁니다.
+ROLLBACK 뒤 시험 계정·마이그레이션 기록(0005까지)은 그대로이고 함수는 남지 않았습니다.
+`auth.audit_log_entries`는 비어 있었습니다. Auth 감사 기록이 표가 아닌 로그에 남는지는 확인하지 않았습니다.
+[Supabase Auth 소스](https://github.com/supabase/auth/blob/master/internal/api/auth.go)는 JWT의 사용자를 세션보다 먼저 조회하므로, 지운 계정의 토큰에는 `user_not_found`(403)로 답합니다. [Auth 마이그레이션](https://github.com/supabase/auth/tree/master/migrations)의 외래 키로 세션·refresh token·identity·MFA·일회용 토큰이 함께 지워집니다. 이 두 가지는 소스에서 읽었고 실제 프로젝트에 요청해 확인하지 않았습니다.
 runtime과 backup의 허용 권한 및 auth 테이블 직접 접근 차단을 확인했습니다.
 읽기 전용 예산 백업을 Mac의 Git 밖 폴더에 암호화했습니다. 격리한 로컬 PostgreSQL에서 복원을 검사했습니다.
 복원 뒤 현재 UTC 월은 차단 상태를 유지합니다. 복구 키의 별도 안전한 복사본은 사람이 보관해야 합니다.
