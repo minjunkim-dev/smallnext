@@ -32,6 +32,30 @@
       "owner": "minjunkim-dev",
       "issue": 53,
       "remove_by": "2026-12-31"
+    },
+    {
+      "key": "android_core_flow",
+      "default": false,
+      "phase": "development",
+      "owner": "minjunkim-dev",
+      "issue": 346,
+      "remove_by": "2027-03-31"
+    },
+    {
+      "key": "android_server_ai",
+      "default": false,
+      "phase": "development",
+      "owner": "minjunkim-dev",
+      "issue": 346,
+      "remove_by": "2027-03-31"
+    },
+    {
+      "key": "android_crash_reporting",
+      "default": false,
+      "phase": "development",
+      "owner": "minjunkim-dev",
+      "issue": 346,
+      "remove_by": "2027-03-31"
     }
   ]
 }
