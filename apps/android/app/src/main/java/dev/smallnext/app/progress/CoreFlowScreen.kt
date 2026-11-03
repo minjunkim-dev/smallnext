@@ -75,6 +75,7 @@ import androidx.compose.ui.unit.dp
 import dev.smallnext.app.R
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
 /** 모션 값은 여기서만 조정한다. iOS `Motion`과 같은 값이다. 분할(0.34초)은 #353에서 더한다. */
@@ -179,7 +180,6 @@ internal fun CoreFlowScreen(flow: ProgressFlow) {
                 storageFailed = true
             }
         }
-        Unit
     }
     var resultFocused by remember { mutableStateOf(false) }
     val density = LocalDensity.current
@@ -366,7 +366,7 @@ private fun ActionCardContent(
     storageFailed: Boolean,
     flow: ProgressFlow,
     run: (suspend () -> Unit) -> Unit,
-    saveDraft: (String, Long) -> Unit,
+    saveDraft: (String, Long) -> Job,
     onResultFocus: (Boolean) -> Unit,
     complete: () -> Unit,
 ) {
@@ -374,6 +374,8 @@ private fun ActionCardContent(
     var detailsExpanded by rememberSaveable(card.id) { mutableStateOf(false) }
     // 기록하는 동안 버튼을 꺼 연타로 같은 결과가 두 번 기록되지 않게 한다.
     var recording by remember(card.id) { mutableStateOf(false) }
+    // 마지막 자동 저장이다. 결과를 기록하기 전에 끝나기를 기다려, 늦은 초안 저장이 기록한 결과를 초안으로 되살리지 않게 한다.
+    val lastSave = remember(card.id) { arrayOfNulls<Job>(1) }
     val uriHandler = LocalUriHandler.current
     Column(verticalArrangement = Arrangement.spacedBy(24.dp)) {
         Heading(R.string.current_action_title, MaterialTheme.typography.titleLarge)
@@ -423,7 +425,7 @@ private fun ActionCardContent(
                             // 사라지는 카드에 늦게 들어온 입력은 받지 않는다.
                             if ((flow.state.value.screen as? ProgressScreen.CurrentAction)?.card?.id == card.id) {
                                 draftText = text
-                                saveDraft(text, card.id)
+                                lastSave[0] = saveDraft(text, card.id)
                             }
                         },
                         Modifier.fillMaxWidth().onFocusChanged { onResultFocus(it.isFocused) },
@@ -445,6 +447,7 @@ private fun ActionCardContent(
                         recording = true
                         run {
                             try {
+                                lastSave[0]?.join()
                                 flow.recordResult(text, card.id)
                                 // 기록하는 동안 더 적은 내용은 초안으로 남긴다.
                                 if (draftText == text) draftText = ""
@@ -453,7 +456,7 @@ private fun ActionCardContent(
                             }
                         }
                     }
-                    if (storageFailed && draftText != card.draft) SecondaryButton(R.string.save_draft_again) { saveDraft(draftText, card.id) }
+                    if (storageFailed && draftText != card.draft) SecondaryButton(R.string.save_draft_again) { lastSave[0] = saveDraft(draftText, card.id) }
                 }
             }
         }

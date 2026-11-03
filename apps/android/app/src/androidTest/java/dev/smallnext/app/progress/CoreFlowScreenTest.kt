@@ -328,7 +328,8 @@ class CoreFlowScreenTest {
         resultField.performScrollTo().performTextInput("가")
         assertAnnounced("저장하지 못했어요. 다시 시도해 주세요.")
         resultField.performTextReplacement("가나")
-        // 명령은 차례로 실행된다. 뒤에 넣은 저장이 끝나면 화면의 두 번째 저장 시도도 끝났다.
+        // 화면의 두 번째 저장이 차례 대기열에 들어간 뒤, 뒤에 넣은 저장이 끝나면 그 시도도 끝났다.
+        compose.waitForIdle()
         runBlocking { runCatching { flow.updateDraft("가나", (flow.state.value.screen as ProgressScreen.CurrentAction).card.id) } }
         compose.waitForIdle()
         // 같은 안내를 다시 보내면 끝에 보이지 않는 문자가 붙는다. 붙지 않았으면 한 번만 알린 것이다.
