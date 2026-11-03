@@ -7,9 +7,11 @@ import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.hasContentDescription
@@ -23,6 +25,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performSemanticsAction
+import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.unit.Density
@@ -33,6 +36,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import dev.smallnext.app.data.AppDatabase
 import dev.smallnext.app.progress.SuggestionCandidate.Action
 import dev.smallnext.app.progress.SuggestionCandidate.GoalSummary
+import dev.smallnext.app.progress.SuggestionCandidate.Question
 import java.util.UUID
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -161,6 +165,62 @@ class CoreFlowScreenTest {
         provider.release()
         waitForText(second.task)
         assertAnnounced("지금 할 행동: ${second.task}")
+    }
+
+    // 선택 입력(최대 글꼴): 펼친 입력란 레이블·자료 안내·자동 저장, 잘못된 입력은 요청 없이 같은 안내를 보이고 읽힌다.
+    @Test
+    fun optionalInputsAutosaveAndInvalidInputShowsGuidanceWithoutRequest() {
+        val provider = ScriptedProvider(GoalSummary("화분이 새 자리에 있다"))
+        val flow = flow(provider)
+        show(flow, fontScale = 2f)
+        assertEquals(1, compose.onAllNodes(hasSetTextAction()).fetchSemanticsNodes().size)
+        compose.onNodeWithText("아는 맥락 보태기 (선택)").assertHeightIsAtLeast(48.dp).performScrollTo().performClick()
+        val labels = listOf(
+            "기한 (선택)", "현재 상태 (선택)", "막힌 점 (선택)", "자료 링크 (선택, 한 줄에 하나)", "고른 발췌·요약 (선택)", "지금 쓸 수 있는 시간 (선택, 분)",
+        )
+        for (label in labels) compose.onNode(hasSetTextAction() and hasText(label)).assertExists()
+        val notice = "자료는 링크와 직접 고른 발췌·요약만 보내요. 링크의 내용은 자동으로 읽지 않아요."
+        compose.onNodeWithText(notice).performScrollTo()
+        assertFullyLaidOut(notice)
+
+        compose.onNode(hasSetTextAction() and hasText("목표 한 문장")).performTextInput("화분 옮기기")
+        compose.onNode(hasSetTextAction() and hasText("자료 링크 (선택, 한 줄에 하나)")).performScrollTo().performTextInput("file:///tmp/plant")
+        compose.waitUntil(5_000) { flow.state.value.goalInput == GoalInput("화분 옮기기", materialLinks = "file:///tmp/plant") }
+        compose.onNodeWithText("목표 정리").performScrollTo().performClick()
+        val problem = "자료 링크는 http:// 또는 https://로 입력해 주세요. 시간은 1 이상의 정수로 입력해 주세요."
+        assertAnnounced(problem)
+        compose.onNodeWithText(problem).performScrollTo().assertIsDisplayed()
+        assertFullyLaidOut(problem)
+        assertEquals(ProgressScreen.GoalInput, flow.state.value.screen)
+        assertTrue(provider.requests.isEmpty())
+
+        // 고쳐 입력하면 안내가 사라지고 요청한다.
+        compose.onNode(hasSetTextAction() and hasText("자료 링크 (선택, 한 줄에 하나)")).performScrollTo().performTextClearance()
+        compose.onAllNodes(hasText(problem)).assertCountEquals(0)
+        compose.onNodeWithText("목표 정리").performScrollTo().performClick()
+        waitForText("확인하고 시작")
+        assertEquals(listOf(SuggestionKind.GOAL_PREPARATION), provider.requests.map { it.kind })
+    }
+
+    // 목표 확인 질문(최대 글꼴): 질문으로 초점이 옮겨지고, 답 입력란 레이블과 답 초안 자동 저장을 확인한다.
+    @Test
+    fun goalQuestionTakesFocusAndAnswerDraftIsSaved() {
+        val question = "무엇을 정리하려고 하나요? 책상 위 서류인지 컴퓨터의 파일인지 알려 주세요."
+        val provider = ScriptedProvider(Question(question), GoalSummary("서류를 정리했다"))
+        val flow = flow(provider)
+        runBlocking {
+            flow.prepareGoal(GoalInput("정리하기"))
+            flow.awaitSuggestion()
+        }
+        show(flow, fontScale = 2f)
+        waitForText(question)
+        compose.onNodeWithText(question).assertIsFocused()
+        assertFullyLaidOut(question)
+        compose.onNode(hasSetTextAction() and hasContentDescription("목표 확인 질문 답")).performScrollTo().performTextInput("책상 위 서류")
+        compose.waitUntil(5_000) { flow.state.value.suggestionInput?.text == "책상 위 서류" }
+        compose.onNodeWithText("답 보내기").assertHeightIsAtLeast(48.dp).performScrollTo().performClick()
+        waitForText("확인하고 시작")
+        assertEquals(listOf(GoalAnswer(question, "책상 위 서류")), provider.requests[1].context.answers)
     }
 
     // 큰 글꼴: 머리 영역을 세로로 쌓고 하단 고정 버튼을 본문으로 옮긴다. 최대 배율에서 카드 글자가 잘리지 않는다.

@@ -8,6 +8,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -47,10 +48,13 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
@@ -59,7 +63,9 @@ import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.collapse
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.expand
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
@@ -140,22 +146,33 @@ internal fun CoreFlowScreen(flow: ProgressFlow) {
         shown = screen
     }
     val focusManager = LocalFocusManager.current
+    var goalInputProblem by remember { mutableStateOf<String?>(null) }
+    /** 입력 자동 저장이다. 명령은 [run]으로 실행한다. */
+    val save: (suspend () -> Unit) -> Unit = { command ->
+        goalInputProblem = null
+        scope.launch {
+            try {
+                command()
+                storageFailed = false
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: ProgressFlowException) {
+                if (error.reason == ProgressFlowException.Reason.INVALID_GOAL_CONTEXT) {
+                    goalInputProblem = resources.getString(R.string.goal_input_problem).also(announce)
+                }
+                // 그 밖에는 이미 바뀐 화면에 대한 늦은 입력이다(연타, 전환 중 사라지는 버튼). 저장은 앞 명령이 마쳤다.
+            } catch (_: Exception) {
+                // 자동 저장은 첫 실패만 알린다. 명령은 실패 표시를 지우고 시작하므로 매번 알린다.
+                if (!storageFailed) announce(resources.getString(R.string.storage_failed))
+                storageFailed = true
+            }
+        }
+    }
     val run: (suspend () -> Unit) -> Unit = { command ->
         // 입력을 마친 화면을 떠나므로 키보드를 닫는다. 남은 키보드가 고정 버튼과 다음 화면을 가리지 않게 한다.
         focusManager.clearFocus()
-        scope.launch {
-            storageFailed = false
-            try {
-                command()
-            } catch (error: CancellationException) {
-                throw error
-            } catch (_: ProgressFlowException) {
-                // 이미 바뀐 화면에 대한 늦은 입력이다(연타, 전환 중 사라지는 버튼). 저장은 앞 명령이 마쳤다.
-            } catch (_: Exception) {
-                storageFailed = true
-                announce(resources.getString(R.string.storage_failed))
-            }
-        }
+        storageFailed = false
+        save(command)
     }
     val density = LocalDensity.current
     val largeText = density.fontScale >= LARGE_FONT_SCALE
@@ -199,8 +216,10 @@ internal fun CoreFlowScreen(flow: ProgressFlow) {
                 contentKey = { it.key },
             ) { target ->
                 when (target) {
-                    ProgressScreen.GoalInput -> GoalInputContent(state.goalInput) { input -> run { flow.prepareGoal(input) } }
-                    is ProgressScreen.PreparingGoal -> PreparingGoalContent(target, state.goal, flow, run)
+                    ProgressScreen.GoalInput -> GoalInputContent(state.goalInput, { input -> save { flow.updateGoalInput(input) } }) { input ->
+                        run { flow.run(Drafts(goalInput = input)) { flow.prepareGoal() } }
+                    }
+                    is ProgressScreen.PreparingGoal -> PreparingGoalContent(target, state.goal, state.suggestionInput, flow, run, save)
                     is ProgressScreen.AwaitingFirstAction ->
                         SuggestionStatus(R.string.preparing_first_action, target.problem) { run(flow::retrySuggestion) }
                     is ProgressScreen.CurrentAction -> ActionCardContent(target.card, commandsInBody = !pinned) { run { flow.complete(target.card.id) } }
@@ -211,6 +230,7 @@ internal fun CoreFlowScreen(flow: ProgressFlow) {
                 }
             }
             if (storageFailed && !pinned) StorageFailure()
+            goalInputProblem?.let { Text(it, style = MaterialTheme.typography.bodyLarge) }
         }
     }
     val goal = state.goal
@@ -262,28 +282,60 @@ private fun Header(largeText: Boolean, hasGoal: Boolean, onShowGoal: () -> Unit)
     }
 }
 
+private val GoalInputSaver = listSaver<GoalInput, String>(
+    { listOf(it.statement, it.deadline, it.currentState, it.blocker, it.materialLinks, it.materialExcerpt, it.availableMinutes) },
+    { GoalInput(it[0], it[1], it[2], it[3], it[4], it[5], it[6]) },
+)
+
+/** 입력은 바뀔 때마다 [save]로 초안에 저장한다. 선택 입력은 펼쳤을 때만 보인다. */
 @Composable
-private fun GoalInputContent(saved: GoalInput, prepare: (GoalInput) -> Unit) {
-    var statement by rememberSaveable { mutableStateOf(saved.statement) }
+private fun GoalInputContent(saved: GoalInput, save: (GoalInput) -> Unit, prepare: (GoalInput) -> Unit) {
+    var input by rememberSaveable(stateSaver = GoalInputSaver) { mutableStateOf(saved) }
+    var expanded by rememberSaveable { mutableStateOf(false) }
+    val edit = { changed: GoalInput ->
+        input = changed
+        save(changed)
+    }
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Heading(R.string.goal_input_title, MaterialTheme.typography.titleLarge)
-        OutlinedTextField(
-            statement,
-            { statement = it },
-            Modifier.fillMaxWidth(),
-            label = { Text(stringResource(R.string.goal_input_label)) },
-        )
-        CommandButton(R.string.prepare_goal, enabled = statement.isNotBlank()) { prepare(saved.copy(statement = statement)) }
+        GoalField(R.string.goal_input_label, input.statement) { edit(input.copy(statement = it)) }
+        TextButton(
+            { expanded = !expanded },
+            Modifier.fillMaxWidth().heightIn(min = 48.dp).semantics {
+                if (expanded) collapse { expanded = false; true } else expand { expanded = true; true }
+            },
+        ) {
+            Text(stringResource(R.string.goal_context_toggle), Modifier.weight(1f))
+        }
+        if (expanded) {
+            GoalField(R.string.goal_deadline_label, input.deadline) { edit(input.copy(deadline = it)) }
+            GoalField(R.string.goal_current_state_label, input.currentState) { edit(input.copy(currentState = it)) }
+            GoalField(R.string.goal_blocker_label, input.blocker) { edit(input.copy(blocker = it)) }
+            GoalField(R.string.goal_material_links_label, input.materialLinks) { edit(input.copy(materialLinks = it)) }
+            GoalField(R.string.goal_material_excerpt_label, input.materialExcerpt) { edit(input.copy(materialExcerpt = it)) }
+            GoalField(R.string.goal_available_minutes_label, input.availableMinutes) { edit(input.copy(availableMinutes = it)) }
+            Text(stringResource(R.string.goal_material_notice), style = MaterialTheme.typography.bodySmall)
+        }
+        CommandButton(R.string.prepare_goal, enabled = input.statement.isNotBlank()) { prepare(input) }
     }
+}
+
+@Composable
+private fun GoalField(@StringRes label: Int, value: String, onValueChange: (String) -> Unit) {
+    OutlinedTextField(value, onValueChange, Modifier.fillMaxWidth(), label = { Text(stringResource(label)) })
 }
 
 @Composable
 private fun PreparingGoalContent(
     screen: ProgressScreen.PreparingGoal,
     goal: GoalDetails?,
+    input: SuggestionInput?,
     flow: ProgressFlow,
     run: (suspend () -> Unit) -> Unit,
+    save: (suspend () -> Unit) -> Unit,
 ) {
+    // 이전 요청의 초안은 받지 않는다. 진행 흐름도 요청 ID로 늦은 입력을 거부한다.
+    val autosave = { text: String -> input?.let { save { flow.updateSuggestionInput(text, it.requestId) } } }
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Heading(R.string.goal_review_title, MaterialTheme.typography.titleLarge)
         Text(goal?.statement.orEmpty())
@@ -291,29 +343,43 @@ private fun PreparingGoalContent(
         val criteria = screen.completionCriteria
         when {
             screen.problem == null && question != null -> {
-                var answer by rememberSaveable(question) { mutableStateOf("") }
-                Text(question, style = MaterialTheme.typography.titleMedium)
+                var answer by rememberSaveable(input?.requestId) { mutableStateOf(input?.text.orEmpty()) }
+                // 새로 나타난 질문으로 TalkBack 초점을 옮긴다. 초점을 받으면 질문이 보이도록 스크롤된다.
+                val focus = remember { FocusRequester() }
+                Text(question, Modifier.focusRequester(focus).focusable(), style = MaterialTheme.typography.titleMedium)
+                LaunchedEffect(question) { focus.requestFocus() }
+                val answerLabel = stringResource(R.string.goal_question_answer_label)
                 OutlinedTextField(
                     answer,
-                    { answer = it },
-                    Modifier.fillMaxWidth(),
+                    {
+                        answer = it
+                        autosave(it)
+                    },
+                    Modifier.fillMaxWidth().semantics { contentDescription = answerLabel },
                     label = { Text(stringResource(R.string.goal_question_prompt)) },
                 )
-                CommandButton(R.string.goal_question_send, enabled = answer.isNotBlank()) { run { flow.answerGoalQuestion(answer) } }
+                CommandButton(R.string.goal_question_send, enabled = answer.isNotBlank()) {
+                    run { flow.run(Drafts(answer = answer)) { flow.answerGoalQuestion(answer) } }
+                }
             }
             screen.problem == null && criteria != null -> {
-                var edited by rememberSaveable(criteria) { mutableStateOf(criteria) }
+                var edited by rememberSaveable(input?.requestId) { mutableStateOf(input?.text ?: criteria) }
                 Text(stringResource(R.string.completion_criteria), style = MaterialTheme.typography.titleMedium)
                 OutlinedTextField(
                     edited,
-                    { edited = it },
+                    {
+                        edited = it
+                        autosave(it)
+                    },
                     Modifier.fillMaxWidth(),
                     label = { Text(stringResource(R.string.completion_criteria_prompt)) },
                 )
                 Text(stringResource(R.string.current_state), style = MaterialTheme.typography.titleMedium)
                 Text(goal?.context?.currentState ?: stringResource(R.string.current_state_missing))
                 Text(stringResource(R.string.goal_review_guide))
-                CommandButton(R.string.confirm_goal, enabled = edited.isNotBlank()) { run { flow.confirmGoal(edited) } }
+                CommandButton(R.string.confirm_goal, enabled = edited.isNotBlank()) {
+                    run { flow.run(Drafts(completionCriteria = edited)) { flow.confirmGoal(edited) } }
+                }
             }
             else -> SuggestionStatus(R.string.preparing_goal, screen.problem) { run(flow::retrySuggestion) }
         }
@@ -409,9 +475,11 @@ private fun announcement(old: ProgressScreen, new: ProgressScreen, resources: Re
             }
             is ProgressScreen.AwaitingFirstAction -> add(resources.getString(new.problem?.reason ?: R.string.preparing_first_action))
             is ProgressScreen.AwaitingNextAction -> add(resources.getString(new.problem?.reason ?: R.string.preparing_next_action))
-            is ProgressScreen.PreparingGoal -> add(
-                new.problem?.let { resources.getString(it.reason) } ?: new.question
-                    ?: resources.getString(if (new.completionCriteria == null) R.string.preparing_goal else R.string.check_completion_criteria),
+            // 질문은 초점을 옮겨 읽힌다. iOS는 초점을 옮기지 않고 질문을 안내한다.
+            is ProgressScreen.PreparingGoal -> if (new.problem != null || new.question == null) add(
+                resources.getString(
+                    new.problem?.reason ?: if (new.completionCriteria == null) R.string.preparing_goal else R.string.check_completion_criteria,
+                ),
             )
             ProgressScreen.GoalInput -> Unit
         }
