@@ -7,13 +7,16 @@ import dev.smallnext.app.data.AppDatabase
 import dev.smallnext.app.progress.SuggestionCandidate.Action
 import dev.smallnext.app.progress.SuggestionCandidate.GoalSummary
 import java.util.UUID
+import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -65,6 +68,17 @@ class ProgressFlowTest {
     private fun count(sql: String) = probe.query(sql).use { it.moveToFirst(); it.getLong(0) }
 
     private suspend fun failure(command: suspend () -> Unit) = runCatching { command() }.exceptionOrNull()
+
+    /** iOS `startNewGoal`은 아직 Android에 없다. 선택한 목표만 풀고 새 흐름을 열어 목표 입력부터 시작한다. */
+    private suspend fun newGoalFlow(provider: ActionSuggestionProvider): ProgressFlow {
+        probe.execSQL("DELETE FROM app_metadata WHERE `key` = 'selected_goal_id'")
+        return makeFlow(provider)
+    }
+
+    /** 공급자가 요청을 받을 때까지 기다린다. 취소·늦은 응답이 실제로 공급자 안에서 일어나게 한다. */
+    private suspend fun awaitRequest(requests: AtomicInteger) = withTimeout(5_000) { while (requests.get() == 0) delay(10) }
+
+    private fun failures(vararg failures: SuggestionFailure) = failures.map { Result.failure<SuggestionCandidate>(SuggestionException(it)) }
 
     @Test
     fun testBlankGoalCannotStart() = runBlocking {
@@ -255,5 +269,148 @@ class ProgressFlowTest {
         assertEquals(second.task, flow.card().task)
         assertEquals(1L, count("SELECT COUNT(*) FROM completion"))
         assertEquals(1L, count("SELECT COUNT(*) FROM suggestion_request WHERE kind = 'smaller' AND status = 'interrupted'"))
+    }
+
+    @Test
+    fun testFirstActionFailureKeepsGoalWithoutAutomaticRetry() = runBlocking {
+        val all = SuggestionFailure.entries
+        val provider = ScriptedProvider(failures(*all.toTypedArray()))
+        for (failure in all) {
+            val goal = "목표 ${failure.raw}"
+            val flow = newGoalFlow(provider)
+            startGoal(flow, goal)
+            flow.awaitSuggestion()
+            assertEquals(ProgressScreen.AwaitingFirstAction(goal, SuggestionProblem.Failure(failure)), flow.state.value.screen)
+            assertEquals(goal, flow.state.value.goal?.statement)
+        }
+        delay(50)
+        assertEquals(all.size, provider.requests.size)
+        assertEquals(0L, count("SELECT COUNT(*) FROM action"))
+    }
+
+    @Test
+    fun testNextActionFailureKeepsCompletionOffline() = runBlocking {
+        val all = SuggestionFailure.entries
+        val provider = ScriptedProvider(all.flatMap { listOf(Result.success(Action(first))) + failures(it) }, gated = true)
+        for (failure in all) {
+            val flow = newGoalFlow(provider)
+            startGoal(flow, "목표 ${failure.raw}")
+            provider.release()
+            flow.awaitSuggestion()
+            flow.complete(flow.card().id)
+            assertEquals(ProgressScreen.AwaitingNextAction(null), flow.state.value.screen)
+            provider.release()
+            flow.awaitSuggestion()
+            assertEquals(ProgressScreen.AwaitingNextAction(SuggestionProblem.Failure(failure)), flow.state.value.screen)
+        }
+        delay(50)
+        assertEquals(all.size * 2, provider.requests.size)
+
+        val reopened = makeFlow(ScriptedProvider())
+        assertEquals(ProgressScreen.AwaitingNextAction(SuggestionProblem.Failure(all.last())), reopened.state.value.screen)
+        assertEquals(all.size.toLong(), count("SELECT COUNT(*) FROM completion"))
+    }
+
+    @Test
+    fun testCancelReachesProviderAndKeepsGoal() = runBlocking {
+        val provider = SuspendedProvider()
+        val flow = makeFlow(provider)
+        startGoal(flow, "통계 강의 1장 끝내기")
+        awaitRequest(provider.requests)
+        flow.cancelSuggestion()
+        val cancelled = ProgressScreen.AwaitingFirstAction("통계 강의 1장 끝내기", SuggestionProblem.Cancelled)
+        assertEquals(cancelled, flow.state.value.screen)
+        flow.awaitSuggestion()
+        assertTrue(provider.cancelled)
+        assertEquals(cancelled, flow.state.value.screen)
+        assertEquals(1L, count("SELECT COUNT(*) FROM suggestion_request WHERE status = 'cancelled'"))
+        // 취소한 뒤의 취소는 무시한다. 다시 시도는 같은 종류로 한 번만 요청한다.
+        flow.cancelSuggestion()
+        flow.retrySuggestion()
+        assertEquals(ProgressScreen.AwaitingFirstAction("통계 강의 1장 끝내기", null), flow.state.value.screen)
+        assertEquals(1L, count("SELECT COUNT(*) FROM suggestion_request WHERE status = 'cancelled'"))
+        withTimeout(5_000) { while (provider.requests.get() < 2) delay(10) }
+    }
+
+    @Test
+    fun testResultArrivingAfterCancelIsNotApplied() = runBlocking {
+        val provider = HeldProvider(Action(first))
+        val flow = makeFlow(provider)
+        startGoal(flow, "방 한 칸 정리하기")
+        awaitRequest(provider.requests)
+        flow.cancelSuggestion()
+        provider.release()
+        flow.awaitSuggestion()
+        assertEquals(ProgressScreen.AwaitingFirstAction("방 한 칸 정리하기", SuggestionProblem.Cancelled), flow.state.value.screen)
+        assertEquals(0L, count("SELECT COUNT(*) FROM action"))
+    }
+
+    @Test
+    fun testPendingSuggestionIsInterruptedAfterReopenAndCanBeRetried() = runBlocking {
+        val waiting = makeFlow(SuspendedProvider())
+        startGoal(waiting, "통계 강의 1장 끝내기")
+        assertEquals(ProgressScreen.AwaitingFirstAction("통계 강의 1장 끝내기", null), waiting.state.value.screen)
+        closeAll()
+
+        val provider = ScriptedProvider(Action(first))
+        val reopened = makeFlow(provider)
+        assertEquals(ProgressScreen.AwaitingFirstAction("통계 강의 1장 끝내기", SuggestionProblem.Interrupted), reopened.state.value.screen)
+        assertTrue(provider.requests.isEmpty())
+
+        reopened.retrySuggestion()
+        reopened.awaitSuggestion()
+        assertEquals(first.task, reopened.card().task)
+        assertEquals(listOf(SuggestionKind.FIRST_ACTION), provider.requests.map { it.kind })
+    }
+
+    @Test
+    fun testPendingNextActionIsInterruptedAfterReopenAndKeepsCompletion() = runBlocking {
+        val flow = makeFlow(ScriptedProvider(Action(first)))
+        startGoal(flow, "주간 업무 보고서 초안 쓰기")
+        flow.awaitSuggestion()
+        closeAll()
+        val waiting = makeFlow(SuspendedProvider())
+        waiting.complete(waiting.card().id)
+        assertEquals(ProgressScreen.AwaitingNextAction(null), waiting.state.value.screen)
+        closeAll()
+
+        val reopened = makeFlow(ScriptedProvider())
+        assertEquals(ProgressScreen.AwaitingNextAction(SuggestionProblem.Interrupted), reopened.state.value.screen)
+        assertEquals(1L, count("SELECT COUNT(*) FROM completion"))
+    }
+
+    @Test
+    fun testGoalPreparationInterruptedOnReopenKeepsInputAndCanRetry() = runBlocking {
+        val input = GoalInput(statement = "기초 단원 학습하기", availableMinutes = "10")
+        val held = HeldProvider(GoalSummary("기초 개념을 설명할 수 있다"))
+        val flow = makeFlow(held, preparing = false)
+        flow.prepareGoal(input)
+        assertTrue(flow.state.value.screen.isWaitingForSuggestion)
+        assertTrue(failure { flow.confirmGoal("아직 확인하지 않았다") } is ProgressFlowException)
+        val provider = ScriptedProvider(GoalSummary("학습한 내용을 설명할 수 있다"))
+        val reopened = makeFlow(provider, preparing = false)
+        assertEquals(input, reopened.state.value.goalInput)
+        assertEquals(ProgressScreen.PreparingGoal(null, null, SuggestionProblem.Interrupted), reopened.state.value.screen)
+        assertTrue(provider.requests.isEmpty())
+
+        held.release()
+        flow.awaitSuggestion()
+        assertEquals(reopened.state.value.screen, flow.state.value.screen)
+        reopened.retrySuggestion()
+        reopened.awaitSuggestion()
+        assertEquals(ProgressScreen.PreparingGoal(null, "학습한 내용을 설명할 수 있다", null), reopened.state.value.screen)
+        assertNull(reopened.state.value.goal?.context?.currentState)
+        assertNull(reopened.state.value.goal?.completionCriteria)
+    }
+
+    // JVM CandidatePolicyTest의 같은 이름 테스트가 규칙을, 이 테스트는 요청의 완료 목록이 채워지는 실제 경로를 확인한다.
+    @Test
+    fun testRepeatedCompletedActionIsNotApplied() = runBlocking {
+        val flow = makeFlow(ScriptedProvider(Action(first), Action(first.copy(task = "  ${first.task}\n"))))
+        startGoal(flow, "방 한 칸 정리하기")
+        flow.awaitSuggestion()
+        flow.complete(flow.card().id)
+        flow.awaitSuggestion()
+        assertEquals(ProgressScreen.AwaitingNextAction(SuggestionProblem.Unsuitable), flow.state.value.screen)
     }
 }

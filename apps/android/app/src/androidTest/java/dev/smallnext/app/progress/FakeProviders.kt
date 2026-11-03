@@ -4,6 +4,7 @@ import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.withContext
 
@@ -48,5 +49,21 @@ class HeldProvider(private val candidate: SuggestionCandidate) : ActionSuggestio
         requests.incrementAndGet()
         withContext(NonCancellable) { gate.await() }
         return candidate
+    }
+}
+
+/** 취소될 때까지 결과를 주지 않는다. 취소가 공급자 코루틴까지 닿았는지 기록한다. iOS `SuspendedProvider`와 같다. */
+class SuspendedProvider : ActionSuggestionProvider {
+    val requests = AtomicInteger()
+    @Volatile var cancelled = false
+        private set
+
+    override suspend fun suggest(request: SuggestionRequest): SuggestionCandidate {
+        requests.incrementAndGet()
+        try {
+            awaitCancellation()
+        } finally {
+            cancelled = true
+        }
     }
 }
