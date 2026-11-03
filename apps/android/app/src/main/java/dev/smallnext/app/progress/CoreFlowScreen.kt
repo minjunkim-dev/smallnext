@@ -229,7 +229,7 @@ internal fun CoreFlowScreen(flow: ProgressFlow) {
                     ProgressScreen.GoalInput -> GoalInputContent(state.goalInput) { input -> run { flow.prepareGoal(input) } }
                     is ProgressScreen.PreparingGoal -> PreparingGoalContent(target, state.goal, flow, run)
                     is ProgressScreen.AwaitingFirstAction ->
-                        SuggestionStatus(R.string.preparing_first_action, target.problem) { run(flow::retrySuggestion) }
+                        SuggestionStatus(R.string.preparing_first_action, target.problem, flow, run)
                     is ProgressScreen.CurrentAction -> ActionCardContent(
                         target.card,
                         commandsInBody = !pinned,
@@ -241,7 +241,7 @@ internal fun CoreFlowScreen(flow: ProgressFlow) {
                     ) { run { flow.complete(target.card.id) } }
                     is ProgressScreen.AwaitingNextAction -> Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
                         Heading(R.string.next_action_title, MaterialTheme.typography.titleLarge)
-                        SuggestionStatus(R.string.preparing_next_action, target.problem) { run(flow::retrySuggestion) }
+                        SuggestionStatus(R.string.preparing_next_action, target.problem, flow, run)
                     }
                 }
             }
@@ -350,7 +350,7 @@ private fun PreparingGoalContent(
                 Text(stringResource(R.string.goal_review_guide))
                 CommandButton(R.string.confirm_goal, enabled = edited.isNotBlank()) { run { flow.confirmGoal(edited) } }
             }
-            else -> SuggestionStatus(R.string.preparing_goal, screen.problem) { run(flow::retrySuggestion) }
+            else -> SuggestionStatus(R.string.preparing_goal, screen.problem, flow, run)
         }
     }
 }
@@ -470,16 +470,19 @@ private fun ResultSection(@StringRes title: Int, results: List<ActionResult>) {
     }
 }
 
-/** 기다리는 중이면 진행 표시를, 문제가 있으면 짧은 이유와 '다시 시도'를 보여준다. 취소는 #349에서 더한다. */
+/** 기다리는 중이면 진행 표시와 '취소'를, 문제가 있으면 짧은 이유와 '다시 시도'를 보여준다. */
 @Composable
-private fun SuggestionStatus(@StringRes waiting: Int, problem: SuggestionProblem?, retry: () -> Unit) {
+private fun SuggestionStatus(@StringRes waiting: Int, problem: SuggestionProblem?, flow: ProgressFlow, run: (suspend () -> Unit) -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
         if (problem != null) {
             Text(stringResource(problem.reason), style = MaterialTheme.typography.bodyLarge)
-            CommandButton(R.string.retry, onClick = retry)
+            CommandButton(R.string.retry) { run(flow::retrySuggestion) }
         } else {
-            CircularProgressIndicator()
-            Text(stringResource(waiting), style = MaterialTheme.typography.bodyLarge)
+            val message = stringResource(waiting)
+            // iOS처럼 진행 표시에도 대기 문장을 이름으로 붙인다.
+            CircularProgressIndicator(Modifier.semantics { contentDescription = message })
+            Text(message, style = MaterialTheme.typography.bodyLarge)
+            CommandButton(R.string.cancel, prominent = false) { run(flow::cancelSuggestion) }
         }
     }
 }
@@ -495,8 +498,13 @@ private fun StorageFailure() {
 }
 
 @Composable
-private fun CommandButton(@StringRes title: Int, enabled: Boolean = true, onClick: () -> Unit) {
-    Button(onClick, Modifier.fillMaxWidth().heightIn(min = 48.dp), enabled) { Text(stringResource(title)) }
+private fun CommandButton(@StringRes title: Int, enabled: Boolean = true, prominent: Boolean = true, onClick: () -> Unit) {
+    val modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
+    if (prominent) {
+        Button(onClick, modifier, enabled) { Text(stringResource(title)) }
+    } else {
+        OutlinedButton(onClick, modifier, enabled) { Text(stringResource(title)) }
+    }
 }
 
 @Composable
@@ -505,7 +513,7 @@ private fun SecondaryButton(@StringRes title: Int, enabled: Boolean = true, onCl
 }
 
 @get:StringRes
-private val SuggestionProblem.reason: Int
+internal val SuggestionProblem.reason: Int
     get() = when (this) {
         SuggestionProblem.Unsuitable -> R.string.problem_unsuitable
         SuggestionProblem.Interrupted -> R.string.problem_interrupted

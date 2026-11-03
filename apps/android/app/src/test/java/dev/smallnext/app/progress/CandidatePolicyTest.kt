@@ -74,4 +74,30 @@ class CandidatePolicyTest {
             assertNotNull("$kind", CandidatePolicy.accept(Action(action), request(kind)))
         }
     }
+
+    // iOS ProgressFlowTests의 같은 이름 테스트. 구조 검사는 [CandidatePolicy]가 하므로 DB 없이 확인한다.
+    @Test
+    fun testStructurallyInvalidCandidatesAreNotApplied() {
+        val invalid = listOf(
+            Action(action.copy(task = " \n")),
+            Action(action.copy(doneWhen = "")),
+            Action(action.copy(estimatedMinutes = 0)),
+            Action(action.copy(marksGoalComplete = true)),
+            MinimalAction(action.copy(marksCurrentActionComplete = true)),
+            Question(" \n"),
+        )
+        for (candidate in invalid) assertNull("$candidate", CandidatePolicy.accept(candidate, request(FIRST_ACTION)))
+    }
+
+    // iOS ProgressFlowTests의 같은 이름 테스트. 앞뒤 공백만 다른 완료한 행동도 다시 받지 않는다.
+    @Test
+    fun testRepeatedCompletedActionIsNotApplied() {
+        val next = SuggestionRequest(NEXT_ACTION, "방 한 칸 정리하기", completedTasks = listOf(action.task))
+        for (kind in listOf(FIRST_ACTION, NEXT_ACTION, SMALLER, REPLACEMENT)) {
+            val request = next.copy(kind = kind)
+            assertNull("$kind", CandidatePolicy.accept(Action(action.copy(task = "  ${action.task}\n")), request))
+            assertNull("$kind", CandidatePolicy.accept(MinimalAction(action), request))
+            assertNotNull("$kind", CandidatePolicy.accept(Action(action.copy(task = "새 일")), request))
+        }
+    }
 }
