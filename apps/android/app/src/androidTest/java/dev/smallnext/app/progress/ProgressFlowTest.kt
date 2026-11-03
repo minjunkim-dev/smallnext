@@ -178,6 +178,35 @@ class ProgressFlowTest {
         assertEquals(1L, count("SELECT COUNT(*) FROM completion"))
     }
 
+    // iOS testUnsavedSuggestionResultShowsFailureAndCanBeRetried. iOS는 DB 잠금으로, 여기서는 트리거로 결과 저장을 막는다.
+    @Test
+    fun testUnsavedSuggestionResultShowsFailureAndCanBeRetried() = runBlocking {
+        probe.execSQL("CREATE TRIGGER fail_action BEFORE INSERT ON action BEGIN SELECT RAISE(ABORT, 'test failure'); END")
+        val flow = makeFlow(ScriptedProvider(Action(first), Action(first)))
+        startGoal(flow, "주간 업무 보고서 초안 쓰기")
+        flow.awaitSuggestion()
+        val failed = ProgressScreen.AwaitingFirstAction("주간 업무 보고서 초안 쓰기", SuggestionProblem.Failure(SuggestionFailure.FAILED))
+        assertEquals(failed, flow.state.value.screen)
+        assertEquals(1L, count("SELECT COUNT(*) FROM suggestion_request WHERE status = 'pending'"))
+
+        probe.execSQL("DROP TRIGGER fail_action")
+        flow.retrySuggestion()
+        flow.awaitSuggestion()
+        assertEquals(first.task, flow.card().task)
+        assertEquals(0L, count("SELECT COUNT(*) FROM suggestion_request WHERE status = 'pending'"))
+    }
+
+    // 공급자가 자기 취소가 아닌 취소 예외(내부 시간 제한 등)를 던져도 요청이 pending으로 남지 않는다.
+    @Test
+    fun testProviderCancellationExceptionEndsRequestAsFailure() = runBlocking {
+        val flow = makeFlow(ActionSuggestionProvider { kotlinx.coroutines.withTimeout(1) { kotlinx.coroutines.awaitCancellation() } })
+        startGoal(flow, "방 한 칸 정리하기")
+        flow.awaitSuggestion()
+        val failed = ProgressScreen.AwaitingFirstAction("방 한 칸 정리하기", SuggestionProblem.Failure(SuggestionFailure.FAILED))
+        assertEquals(failed, flow.state.value.screen)
+        assertEquals(0L, count("SELECT COUNT(*) FROM suggestion_request WHERE status = 'pending'"))
+    }
+
     @Test
     fun testDelayedResultIsAppliedAndRetryWhileWaitingIsIgnored() = runBlocking {
         val provider = HeldProvider(Action(first))

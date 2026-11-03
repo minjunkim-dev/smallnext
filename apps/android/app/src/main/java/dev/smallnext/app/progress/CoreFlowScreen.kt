@@ -132,8 +132,10 @@ internal fun CoreFlowScreen(flow: ProgressFlow) {
     var announcement by remember { mutableStateOf("") }
     var shown by remember { mutableStateOf(state.screen) }
     val screen = state.screen
+    // 같은 문장이 이어져도 다시 읽히도록 보이지 않는 문자로 값을 바꾼다.
+    val announce = { message: String -> announcement = if (announcement == message) "$message\u200B" else message }
     LaunchedEffect(screen) {
-        if (shown != screen) announcement(shown, screen, resources)?.let { announcement = it }
+        if (shown != screen) announcement(shown, screen, resources)?.let(announce)
         shown = screen
     }
     val run: (suspend () -> Unit) -> Unit = { command ->
@@ -143,9 +145,11 @@ internal fun CoreFlowScreen(flow: ProgressFlow) {
                 command()
             } catch (error: CancellationException) {
                 throw error
+            } catch (_: ProgressFlowException) {
+                // 이미 바뀐 화면에 대한 늦은 입력이다(연타, 전환 중 사라지는 버튼). 저장은 앞 명령이 마쳤다.
             } catch (_: Exception) {
                 storageFailed = true
-                announcement = resources.getString(R.string.storage_failed)
+                announce(resources.getString(R.string.storage_failed))
             }
         }
     }
@@ -167,6 +171,15 @@ internal fun CoreFlowScreen(flow: ProgressFlow) {
             }
         },
     ) { padding ->
+        // TalkBack 상태 안내다. 초점을 옮기지 않고 라이브 영역으로 읽힌다. 스크롤과 관계없이 화면 안에 둔다.
+        Box(
+            Modifier.padding(padding).size(1.dp).testTag(ANNOUNCEMENT).semantics {
+                if (announcement.isNotEmpty()) {
+                    liveRegion = LiveRegionMode.Polite
+                    contentDescription = announcement
+                }
+            },
+        )
         Column(
             Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding).imePadding()
                 .verticalScroll(rememberScrollState()).padding(24.dp),
@@ -194,15 +207,6 @@ internal fun CoreFlowScreen(flow: ProgressFlow) {
                 }
             }
             if (storageFailed && !pinned) StorageFailure()
-            // TalkBack 상태 안내다. 초점을 옮기지 않고 라이브 영역으로 읽힌다.
-            Box(
-                Modifier.size(1.dp).testTag(ANNOUNCEMENT).semantics {
-                    if (announcement.isNotEmpty()) {
-                        liveRegion = LiveRegionMode.Polite
-                        contentDescription = announcement
-                    }
-                },
-            )
         }
     }
     val goal = state.goal

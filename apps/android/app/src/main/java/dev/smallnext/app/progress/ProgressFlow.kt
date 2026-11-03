@@ -11,6 +11,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -84,7 +85,10 @@ class ProgressFlow private constructor(
     /** 결과 저장 실패로 DB에 pending이 남은 요청이다. 다음 성공한 명령에서 실패 상태도 저장한다. */
     private var unsavedSuggestionId: Long? = null
 
-    /** 선택 입력을 검사해 저장한다. 확인용 요약만 요청한다. 입력은 검사 전에 초안으로 저장한다. */
+    /**
+     * 선택 입력을 검사해 저장한다. 확인용 요약만 요청한다.
+     * 입력은 검사 전에 초안으로 따로 저장한다(iOS `run(saving:)`). 검사에 실패해도 초안은 남는다.
+     */
     suspend fun prepareGoal(input: GoalInput) = serially {
         if (state.value.screen != ProgressScreen.GoalInput) fail(ProgressFlowException.Reason.GOAL_INPUT_NOT_ACTIVE)
         if (input != state.value.goalInput) {
@@ -223,7 +227,9 @@ class ProgressFlow private constructor(
             val outcome = try {
                 Result.success(provider.suggest(pending.request))
             } catch (error: CancellationException) {
-                throw error
+                // 공급자 안의 시간 제한 등 이 작업의 취소가 아닌 취소 예외는 실패로 끝내 요청이 pending으로 남지 않게 한다.
+                ensureActive()
+                Result.failure(SuggestionException(SuggestionFailure.FAILED))
             } catch (error: SuggestionException) {
                 Result.failure(error)
             } catch (_: Exception) {
@@ -376,7 +382,7 @@ class ProgressFlow private constructor(
                     "SELECT task FROM action WHERE goal_id = ? AND status IN ('current', 'split', 'deferred') ORDER BY sequence", goalId,
                 ),
                 completedActionIds = db.strings("SELECT a.id $completed", goalId),
-                actionAnswers = answers(db, goalId, "kind != ?"),
+                actionAnswers = answers(db, goalId, goalPreparation = false),
             )
         }
 
@@ -394,9 +400,10 @@ class ProgressFlow private constructor(
             ) { if (it.isNull(0)) null else ProposedAction(it.getString(0), it.getString(1), it.getInt(2)) }.firstOrNull()
         }
 
-        private fun answers(db: SupportSQLiteDatabase, goalId: Long, kindCondition: String) = db.query(
-            "SELECT question, answer FROM suggestion_request WHERE goal_id = ? AND $kindCondition AND answer IS NOT NULL ORDER BY id",
-            goalId, SuggestionKind.GOAL_PREPARATION.raw,
+        /** 목표 준비 질문의 답과 행동 요청 질문의 답을 나눠 읽는다. */
+        private fun answers(db: SupportSQLiteDatabase, goalId: Long, goalPreparation: Boolean) = db.query(
+            "SELECT question, answer FROM suggestion_request WHERE goal_id = ? AND (kind = ?) = ? AND answer IS NOT NULL ORDER BY id",
+            goalId, SuggestionKind.GOAL_PREPARATION.raw, goalPreparation,
         ) { GoalAnswer(it.getString(0), it.getString(1)) }
 
         // 화면 상태
@@ -432,7 +439,7 @@ class ProgressFlow private constructor(
                     availableMinutes = if (it.isNull(6)) null else it.getInt(6),
                 ),
             )
-        }.firstOrNull()?.let { it.copy(context = it.context.copy(answers = answers(db, goalId, "kind = ?"))) }
+        }.firstOrNull()?.let { it.copy(context = it.context.copy(answers = answers(db, goalId, goalPreparation = true))) }
 
         private fun hasCompletion(db: SupportSQLiteDatabase, goalId: Long) =
             db.long("SELECT EXISTS (SELECT 1 FROM action WHERE goal_id = ? AND status = 'done')", goalId) == 1L
