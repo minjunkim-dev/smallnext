@@ -6,6 +6,7 @@ import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertHeightIsAtLeast
@@ -95,6 +96,9 @@ class CoreFlowScreenTest {
     private fun assertHeading(text: String) =
         compose.onNodeWithText(text).assert(SemanticsMatcher.keyIsDefined(SemanticsProperties.Heading))
 
+    /** 입력 뒤 남은 소프트 키보드가 버튼을 가려도 누를 수 있게 터치 대신 클릭 동작을 보낸다(CI 320×640). */
+    private fun SemanticsNodeInteraction.clickAfterTyping() = performSemanticsAction(SemanticsActions.OnClick)
+
     private fun bounds(text: String) = compose.onNodeWithText(text).getUnclippedBoundsInRoot()
 
     /**
@@ -181,7 +185,9 @@ class CoreFlowScreenTest {
             "기한 (선택)", "현재 상태 (선택)", "막힌 점 (선택)", "자료 링크 (선택, 한 줄에 하나)", "고른 발췌·요약 (선택)", "지금 쓸 수 있는 시간 (선택, 분)",
         )
         for (label in labels) {
-            compose.onNode(hasSetTextAction() and hasText(label)).performScrollTo()
+            // 접근성 이름은 레이블로 붙는다. contentDescription은 입력한 글자를 가려 쓰지 않는다.
+            compose.onNode(hasSetTextAction() and hasText(label))
+                .assert(SemanticsMatcher.keyNotDefined(SemanticsProperties.ContentDescription)).performScrollTo()
             assertFullyLaidOut(label, unmerged = true)
         }
         val notice = "자료는 링크와 직접 고른 발췌·요약만 보내요. 링크의 내용은 자동으로 읽지 않아요."
@@ -191,7 +197,7 @@ class CoreFlowScreenTest {
         compose.onNode(hasSetTextAction() and hasText("목표 한 문장")).performTextInput("화분 옮기기")
         compose.onNode(hasSetTextAction() and hasText("자료 링크 (선택, 한 줄에 하나)")).performScrollTo().performTextInput("file:///tmp/plant")
         compose.waitUntil(5_000) { flow.state.value.goalInput == GoalInput("화분 옮기기", materialLinks = "file:///tmp/plant") }
-        compose.onNodeWithText("목표 정리").performScrollTo().performClick()
+        compose.onNodeWithText("목표 정리").performScrollTo().clickAfterTyping()
         val problem = "자료 링크는 http:// 또는 https://로 입력해 주세요. 시간은 1 이상의 정수로 입력해 주세요."
         assertAnnounced(problem)
         compose.onNodeWithText(problem).performScrollTo().assertIsDisplayed()
@@ -202,7 +208,7 @@ class CoreFlowScreenTest {
         // 고쳐 입력하면 안내가 사라지고 요청한다.
         compose.onNode(hasSetTextAction() and hasText("자료 링크 (선택, 한 줄에 하나)")).performScrollTo().performTextClearance()
         compose.onAllNodes(hasText(problem)).assertCountEquals(0)
-        compose.onNodeWithText("목표 정리").performScrollTo().performClick()
+        compose.onNodeWithText("목표 정리").performScrollTo().clickAfterTyping()
         waitForText("확인하고 시작")
         assertEquals(listOf(SuggestionKind.GOAL_PREPARATION), provider.requests.map { it.kind })
     }
@@ -233,7 +239,7 @@ class CoreFlowScreenTest {
         assertFullyLaidOut(question)
         compose.onNode(hasSetTextAction() and hasText("목표 확인 질문 답")).performScrollTo().performTextInput("책상 위 서류")
         compose.waitUntil(5_000) { flow.state.value.suggestionInput?.text == "책상 위 서류" }
-        compose.onNodeWithText("답 보내기").assertHeightIsAtLeast(48.dp).performScrollTo().performClick()
+        compose.onNodeWithText("답 보내기").assertHeightIsAtLeast(48.dp).performScrollTo().clickAfterTyping()
         waitForText("확인하고 시작")
         assertEquals(listOf(GoalAnswer(question, "책상 위 서류")), provider.requests[1].context.answers)
     }

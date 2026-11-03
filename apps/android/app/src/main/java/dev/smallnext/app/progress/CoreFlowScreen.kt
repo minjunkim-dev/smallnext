@@ -79,6 +79,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import dev.smallnext.app.R
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.launch
@@ -158,7 +159,8 @@ internal fun CoreFlowScreen(flow: ProgressFlow) {
     /** 입력 자동 저장이다. 명령은 [run]으로 실행한다. */
     val save: (suspend () -> Unit) -> Unit = { command ->
         goalInputProblem = null
-        scope.launch {
+        // 디스패치를 기다리지 않고 바로 시작한다. 시작 전에 화면이 다시 만들어져 저장이 취소되지 않게 한다.
+        scope.launch(start = CoroutineStart.UNDISPATCHED) {
             try {
                 // 화면을 다시 만들어도(회전 등) 시작한 저장과 명령은 끝까지 실행한다. 보이는 초안과 저장한 초안이 갈라지지 않게 한다.
                 withContext(NonCancellable) { command() }
@@ -344,9 +346,12 @@ private fun GoalField(@StringRes label: Int, value: String, onValueChange: (Stri
 @Composable
 private fun LabeledField(label: String, value: String, onValueChange: (String) -> Unit, placeholder: String? = null) {
     val state = rememberTextFieldState(value)
-    val current by rememberUpdatedState(value)
     val change by rememberUpdatedState(onValueChange)
-    LaunchedEffect(state) { snapshotFlow { state.text.toString() }.collect { if (it != current) change(it) } }
+    LaunchedEffect(state) {
+        // 마지막으로 알린 값과 비교한다. 한 프레임 안의 연속 변경도 빠지지 않는다.
+        var reported = state.text.toString()
+        snapshotFlow { state.text.toString() }.collect { if (it != reported) change(it.also { reported = it }) }
+    }
     OutlinedTextField(
         state,
         Modifier.fillMaxWidth(),
