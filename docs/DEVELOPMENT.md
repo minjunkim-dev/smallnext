@@ -258,7 +258,8 @@ Room 테스트는 별도 테스트 DB 파일을 생성하고 삭제합니다.
 
 Android 플래그(`android_`)는 빌드 때 asset으로 넣은 같은 [등록 파일](../config/feature-flags.json)에서 `FeatureFlags`가 읽습니다. iOS 플래그는 읽지 않습니다.
 Debug 빌드에서만 실행 인텐트 extra로 로컬 확인용 ON을 지정할 수 있습니다. Release 빌드는 extra를 열지 않습니다.
-아직 플래그를 읽는 화면은 없어 ON으로 실행해도 화면은 같습니다.
+`android_core_flow`를 켜면 목표 입력 → 완료 조건 확인 → 현재 행동 → 완료 → 다음 행동 경로가 보입니다. OFF는 기존 시작 화면 그대로입니다.
+제안은 Debug 고정 공급자(`src/debug`)가 만듭니다. Release에는 이 공급자가 없고 제안은 `사용 불가`입니다.
 
 ```sh
 adb shell am start -n dev.smallnext.app/.MainActivity --ez android_core_flow true

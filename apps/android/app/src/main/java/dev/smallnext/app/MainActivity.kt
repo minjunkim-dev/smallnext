@@ -23,13 +23,19 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import dev.smallnext.app.progress.CoreFlowApp
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        CrashReporting.start(this, FeatureFlags.forLaunch(this, intent).crashReporting, intent)
+        val flags = FeatureFlags.forLaunch(this, intent)
+        CrashReporting.start(this, flags.crashReporting, intent)
         enableEdgeToEdge()
         setContent {
+            if (flags.coreFlow) {
+                CoreFlowApp((application as SmallnextApplication).progressFlow)
+                return@setContent
+            }
             var storageFailed by remember { mutableStateOf(false) }
             LaunchedEffect(Unit) {
                 try {

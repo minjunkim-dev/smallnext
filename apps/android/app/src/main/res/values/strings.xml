@@ -2,4 +2,45 @@
     <string name="app_name">Smallnext</string>
     <string name="welcome">작은 다음 행동을 준비하고 있어요.</string>
     <string name="storage_error">저장 공간을 열 수 없습니다. 앱을 다시 실행해 주세요.</string>
+
+    <!-- 핵심 흐름(android_core_flow). iOS CoreFlowView와 같은 문구다. -->
+    <string name="goal_view">목표 보기</string>
+    <string name="goal_heading">목표</string>
+    <string name="goal_input_title">목표를 한 문장으로 적어 주세요.</string>
+    <string name="goal_input_label">목표 한 문장</string>
+    <string name="prepare_goal">목표 정리</string>
+    <string name="goal_review_title">목표 확인</string>
+    <string name="goal_question_prompt">알고 있는 답</string>
+    <string name="goal_question_send">답 보내기</string>
+    <string name="completion_criteria">완료 조건</string>
+    <string name="completion_criteria_prompt">이 목표가 끝난 기준</string>
+    <string name="completion_criteria_missing">아직 확인하지 않았어요.</string>
+    <string name="current_state">현재 상태</string>
+    <string name="current_state_missing">아직 알려주지 않았어요.</string>
+    <string name="goal_review_guide">완료 조건과 현재 상태를 확인해 주세요. 완료 조건은 직접 고칠 수 있어요.</string>
+    <string name="confirm_goal">확인하고 시작</string>
+    <string name="preparing_goal">목표를 정리하고 있어요.</string>
+    <string name="check_completion_criteria">완료 조건을 확인해 주세요.</string>
+    <string name="preparing_first_action">첫 행동을 준비하고 있어요.</string>
+    <string name="next_action_title">다음 행동 대기</string>
+    <string name="preparing_next_action">다음 행동을 준비하고 있어요.</string>
+    <string name="retry">다시 시도</string>
+    <string name="current_action_title">지금 할 행동</string>
+    <string name="estimated_minutes">약 %1$d분 · 예상</string>
+    <string name="complete">완료</string>
+    <string name="storage_failed">저장하지 못했어요. 다시 시도해 주세요.</string>
+    <string name="announce_completed">행동을 완료했어요.</string>
+    <string name="announce_current_action">지금 할 행동: %1$s</string>
+
+    <!-- 제안 문제 이유 7+3 -->
+    <string name="problem_unsuitable">알맞은 행동을 찾지 못했어요.</string>
+    <string name="problem_interrupted">행동 제안이 중단됐어요.</string>
+    <string name="problem_cancelled">행동 제안을 취소했어요.</string>
+    <string name="failure_connection_lost">연결이 끊겨 행동을 받지 못했어요.</string>
+    <string name="failure_rejected">행동 제안 요청이 거절됐어요.</string>
+    <string name="failure_undecidable">다음 행동을 정하지 못했어요.</string>
+    <string name="failure_failed">행동을 준비하지 못했어요.</string>
+    <string name="failure_timed_out">행동 제안 시간이 초과됐어요.</string>
+    <string name="failure_budget_limit">행동 제안 사용 한도에 도달했어요.</string>
+    <string name="failure_unavailable">지금은 행동 제안을 사용할 수 없어요.</string>
 </resources>
