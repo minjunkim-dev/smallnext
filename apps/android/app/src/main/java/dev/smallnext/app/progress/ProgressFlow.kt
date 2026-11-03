@@ -31,7 +31,21 @@ data class GoalInput(
 
 data class GoalDetails(val id: Long, val statement: String, val completionCriteria: String?, val context: GoalContext)
 
-data class ActionCard(val id: Long, val task: String, val doneWhen: String, val estimatedMinutes: Int)
+data class ActionCard(
+    val id: Long,
+    val task: String,
+    val doneWhen: String,
+    val estimatedMinutes: Int,
+    val draft: String = "",
+    val results: List<ActionResult> = emptyList(),
+    val targetName: String? = null,
+    val targetDescription: String? = null,
+    val materialLinks: List<String> = emptyList(),
+    /** 같은 목표에서 같은 대상에 남긴 다른 행동의 결과다. */
+    val previousResults: List<ActionResult> = emptyList(),
+)
+
+data class ActionResult(val id: Long, val body: String)
 
 sealed interface SuggestionProblem {
     data class Failure(val failure: SuggestionFailure) : SuggestionProblem
@@ -63,7 +77,7 @@ sealed interface ProgressScreen {
 data class ProgressState(val screen: ProgressScreen, val goalInput: GoalInput, val goal: GoalDetails?)
 
 class ProgressFlowException(val reason: Reason) : RuntimeException(reason.name) {
-    enum class Reason { EMPTY_GOAL, EMPTY_ANSWER, GOAL_INPUT_NOT_ACTIVE, INVALID_GOAL_CONTEXT, GOAL_NOT_READY, GOAL_NOT_FOUND }
+    enum class Reason { EMPTY_GOAL, EMPTY_ANSWER, GOAL_INPUT_NOT_ACTIVE, INVALID_GOAL_CONTEXT, GOAL_NOT_READY, GOAL_NOT_FOUND, EMPTY_RESULT, ACTION_NOT_CURRENT }
 }
 
 /**
@@ -158,6 +172,43 @@ class ProgressFlow private constructor(
             if (changed != 1) fail(ProgressFlowException.Reason.GOAL_NOT_READY)
             bumpRevision(db, goalId)
             insertRequest(db, goalId, SuggestionKind.GOAL_PREPARATION)
+        }
+    }
+
+    /** 입력 초안을 그대로 자동 저장한다. 결과나 완료 기록으로 바꾸지 않는다. 지금 보이는 현재 행동에만 저장한다. */
+    suspend fun updateDraft(text: String, actionId: Long) = serially {
+        perform { db ->
+            requireCurrentAction(db, actionId)
+            val draftId = db.long("SELECT id FROM action_note WHERE action_id = ? AND is_draft", actionId)
+            val now = System.currentTimeMillis()
+            // 행동당 초안 하나는 트리거로 지킨다. 트리거에는 UPSERT가 닿지 않아 읽은 뒤 고치거나 넣는다.
+            if (draftId == null) {
+                db.insert("INSERT INTO action_note (action_id, body, is_draft, updated_at) VALUES (?, ?, 1, ?)", actionId, text, now)
+            } else {
+                db.update("UPDATE action_note SET body = ?, updated_at = ? WHERE id = ?", text, now, draftId)
+            }
+            null
+        }
+    }
+
+    /** 사용자가 남긴 행동 결과를 기록하고 입력 초안을 비운다. 행동을 완료하지 않는다. */
+    suspend fun recordResult(text: String, actionId: Long) = serially {
+        if (text.isBlank()) fail(ProgressFlowException.Reason.EMPTY_RESULT)
+        perform { db ->
+            requireCurrentAction(db, actionId)
+            db.insert("INSERT INTO action_note (action_id, body, is_draft, updated_at) VALUES (?, ?, 0, ?)", actionId, text, System.currentTimeMillis())
+            db.update("DELETE FROM action_note WHERE action_id = ? AND is_draft", actionId)
+            null
+        }
+    }
+
+    /** 사라지는 카드에 늦게 들어온 입력이 다른 카드나 목표에 저장되지 않게 한다. */
+    private fun requireCurrentAction(db: SupportSQLiteDatabase, actionId: Long) {
+        val goalId = selectedGoalId(db)
+        if ((state.value.screen as? ProgressScreen.CurrentAction)?.card?.id != actionId || goalId == null ||
+            db.long("SELECT EXISTS (SELECT 1 FROM action WHERE id = ? AND goal_id = ? AND status = 'current')", actionId, goalId) != 1L
+        ) {
+            fail(ProgressFlowException.Reason.ACTION_NOT_CURRENT)
         }
     }
 
@@ -455,12 +506,35 @@ class ProgressFlow private constructor(
             // 요청이 없으면 이전 상태에 대한 요청처럼 다시 시도를 기다린다.
             val problem = if (latest == null) SuggestionProblem.Interrupted else requestProblem(latest.first, latest.second)
             if (!confirmed) return ProgressScreen.PreparingGoal(latest?.third, proposed, problem)
-            db.query(
-                "SELECT id, task, done_when, estimated_minutes FROM action WHERE goal_id = ? AND status = 'current'", goalId,
-            ) { ActionCard(it.getLong(0), it.getString(1), it.getString(2), it.getInt(3)) }.firstOrNull()
-                ?.let { return ProgressScreen.CurrentAction(it) }
+            loadCard(db, goalId)?.let { return ProgressScreen.CurrentAction(it) }
             if (hasCompletion(db, goalId)) return ProgressScreen.AwaitingNextAction(problem)
             return ProgressScreen.AwaitingFirstAction(statement, problem)
+        }
+
+        private fun loadCard(db: SupportSQLiteDatabase, goalId: Long): ActionCard? {
+            val card = db.query(
+                "SELECT id, task, done_when, estimated_minutes, target_name, target_description, material_links " +
+                    "FROM action WHERE goal_id = ? AND status = 'current'",
+                goalId,
+            ) {
+                ActionCard(
+                    it.getLong(0), it.getString(1), it.getString(2), it.getInt(3),
+                    targetName = it.optString(4),
+                    targetDescription = it.optString(5),
+                    materialLinks = gson.fromJson(it.getString(6), stringList),
+                )
+            }.firstOrNull() ?: return null
+            val notes = { sql: String, args: Array<Any?> -> db.query(sql, *args) { ActionResult(it.getLong(0), it.getString(1)) } }
+            return card.copy(
+                draft = db.string("SELECT body FROM action_note WHERE action_id = ? AND is_draft", card.id).orEmpty(),
+                results = notes("SELECT id, body FROM action_note WHERE action_id = ? AND NOT is_draft ORDER BY id", arrayOf(card.id)),
+                // 대상 이름이 없으면 비교하지 않는다(SQL `= NULL`은 참이 아니다). 다른 목표의 같은 이름은 섞지 않는다.
+                previousResults = notes(
+                    "SELECT n.id, n.body FROM action_note n JOIN action a ON a.id = n.action_id " +
+                        "WHERE a.goal_id = ? AND a.target_name = ? AND a.id != ? AND NOT n.is_draft ORDER BY n.id",
+                    arrayOf(goalId, card.targetName, card.id),
+                ),
+            )
         }
 
         /** 끝나지 않았거나 적용한 요청이면 null이다. */

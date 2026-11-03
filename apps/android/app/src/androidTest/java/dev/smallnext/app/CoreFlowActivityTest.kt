@@ -53,7 +53,7 @@ class CoreFlowActivityTest {
             waitFor("확인하고 시작")
             compose.onNodeWithText("확인하고 시작").performScrollTo().performClick()
             waitFor("이력서 파일 하나 열기")
-            compose.onNodeWithText("약 3분 · 예상").assertIsDisplayed()
+            compose.onNodeWithText("약 3분 · 예상").performScrollTo().assertIsDisplayed()
             compose.onNodeWithText("완료").performClick()
             waitFor("최근 경력 한 항목의 기간 확인하기")
 

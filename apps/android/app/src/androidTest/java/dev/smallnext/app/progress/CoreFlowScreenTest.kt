@@ -2,6 +2,9 @@ package dev.smallnext.app.progress
 
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.platform.UriHandler
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
@@ -13,6 +16,7 @@ import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.hasContentDescription
+import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
@@ -24,10 +28,14 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import android.view.KeyEvent
+import android.view.View
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import dev.smallnext.app.data.AppDatabase
@@ -70,10 +78,35 @@ class CoreFlowScreenTest {
 
     private fun flow(provider: ActionSuggestionProvider) = runBlocking { ProgressFlow.open(database, provider, scope) }
 
+    private val openedLinks = mutableListOf<String>()
+    private lateinit var view: View
+
     private fun show(flow: ProgressFlow, fontScale: Float? = null) = compose.setContent {
         val density = LocalDensity.current
-        CompositionLocalProvider(LocalDensity provides Density(density.density, fontScale ?: density.fontScale)) {
+        view = LocalView.current
+        val links = object : UriHandler {
+            override fun openUri(uri: String) {
+                openedLinks.add(uri)
+            }
+        }
+        CompositionLocalProvider(LocalDensity provides Density(density.density, fontScale ?: density.fontScale), LocalUriHandler provides links) {
             SmallnextTheme { CoreFlowScreen(flow) }
+        }
+    }
+
+    private fun sql(statement: String) = database.openHelper.writableDatabase.execSQL(statement)
+
+    private fun count(query: String) = database.openHelper.writableDatabase.query(query).use { it.moveToFirst(); it.getLong(0) }
+
+    private val resultField get() = compose.onNode(hasContentDescription("행동 결과 입력") and hasSetTextAction())
+
+    /** 목표를 확인하고 첫 행동을 받은 흐름이다. */
+    private fun flowWithCard(vararg actions: ProposedAction) = flow(goalPreparing(ScriptedProvider(*actions.map(::Action).toTypedArray()))).also {
+        runBlocking {
+            it.prepareGoal(GoalInput("분기 업무 보고서 초안 쓰기"))
+            it.awaitSuggestion()
+            it.confirmGoal("분기 업무 보고서 초안 쓰기")
+            it.awaitSuggestion()
         }
     }
 
@@ -147,7 +180,8 @@ class CoreFlowScreenTest {
         waitForText("보고서 초안이 저장돼 있다")
         assertHeading("목표")
         compose.onNodeWithText("분기 업무 보고서 초안 쓰기").assertIsDisplayed()
-        assertEquals(0, compose.onAllNodes(hasSetTextAction()).fetchSemanticsNodes().size)
+        // 시트는 읽기 전용이다. 입력란은 시트 뒤 카드의 결과 입력란뿐이다.
+        assertEquals(0, compose.onAllNodes(hasSetTextAction() and !hasContentDescription("행동 결과 입력")).fetchSemanticsNodes().size)
         // 시스템 뒤로 가기는 시트를 먼저 닫고 진행 상태를 바꾸지 않는다. 시트 창이 다 열려 초점을 받은 뒤에 누른다.
         compose.waitForIdle()
         InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
@@ -203,5 +237,136 @@ class CoreFlowScreenTest {
         provider.release()
         waitForText(first.task)
         assertEquals(1, provider.requests.get())
+    }
+
+    // 행동 결과·초안·카드 상세(#351): 대상·설명과 자료·앞선 결과, 링크 열기, 초안 자동 저장, '결과 남기기', 다음 카드의 빈 입력란
+    @Test
+    fun cardShowsDetailsSavesDraftAndRecordsResult() {
+        val initial = first.copy(targetName = "업무 보고서")
+        val next = second.copy(
+            targetName = "업무 보고서",
+            targetDescription = "이번 주 업무를 적은 문서",
+            materialLinks = listOf("https://example.com/report"),
+        )
+        val third = ProposedAction("보고서 제목 한 줄 정하기", "제목이 적혀 있다", 2)
+        val flow = flowWithCard(initial, next, third)
+        runBlocking {
+            val card = (flow.state.value.screen as ProgressScreen.CurrentAction).card
+            flow.recordResult("확인한 기간: 10월 첫째 주", card.id)
+            flow.complete(card.id)
+            flow.awaitSuggestion()
+        }
+        show(flow)
+        waitForText(next.task)
+        compose.onNodeWithText("대상: 업무 보고서").assertIsDisplayed()
+        compose.onNodeWithText("앞서 남긴 결과").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("확인한 기간: 10월 첫째 주").assertIsDisplayed()
+
+        // 설명과 자료는 필요할 때만 펼친다. 링크는 기기 브라우저로 연다.
+        compose.onNodeWithText("이번 주 업무를 적은 문서").assertDoesNotExist()
+        val details = compose.onNodeWithText("설명과 자료").performScrollTo().assertHeightIsAtLeast(48.dp)
+        details.assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "접힘")).performClick()
+        details.assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "펼침"))
+        compose.onNodeWithText("이번 주 업무를 적은 문서").assertIsDisplayed()
+        compose.onNodeWithText("https://example.com/report").performScrollTo().assertHeightIsAtLeast(48.dp).performClick()
+        assertEquals(listOf("https://example.com/report"), openedLinks)
+
+        // 입력 초안은 결과로 바뀌지 않고 저장된다.
+        compose.onNodeWithText("결과 남기기").performScrollTo().assertIsNotEnabled()
+        resultField.performScrollTo().performTextInput("보고서 첫 줄 작성")
+        compose.waitUntil(5_000) { count("SELECT COUNT(*) FROM action_note WHERE is_draft AND body = '보고서 첫 줄 작성'") == 1L }
+        assertEquals(0L, count("SELECT COUNT(*) FROM action_note WHERE NOT is_draft AND body = '보고서 첫 줄 작성'"))
+        compose.onNodeWithText("작성 중인 내용은 자동 저장돼요.").assertExists()
+
+        compose.onNodeWithText("결과 남기기").performScrollTo().assertIsEnabled().assertHeightIsAtLeast(48.dp).performClick()
+        compose.waitUntil(5_000) { compose.onAllNodes(hasText("이 행동에 남긴 결과")).fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithText("보고서 첫 줄 작성").assertExists()
+        resultField.assert(SemanticsMatcher.expectValue(SemanticsProperties.EditableText, AnnotatedString("")))
+        assertEquals(0L, count("SELECT COUNT(*) FROM action_note WHERE is_draft"))
+
+        // 남은 초안은 이 카드에 남고 다음 카드의 입력란에 섞이지 않는다.
+        resultField.performScrollTo().performTextInput("다음 카드에 섞이면 안 되는 초안")
+        compose.waitUntil(5_000) { count("SELECT COUNT(*) FROM action_note WHERE is_draft") == 1L }
+        // 키보드가 열려 있으면 '완료'는 본문 아래쪽에 있다. 터치 주입이 키보드에 떨어지지 않게 클릭 동작을 직접 실행한다.
+        compose.onNodeWithText("완료").performSemanticsAction(SemanticsActions.OnClick)
+        waitForText(third.task)
+        compose.waitUntil(5_000) { compose.onAllNodes(hasContentDescription("행동 결과 입력")).fetchSemanticsNodes().size == 1 }
+        resultField.assert(SemanticsMatcher.expectValue(SemanticsProperties.EditableText, AnnotatedString("")))
+        compose.onNodeWithText("앞서 남긴 결과").assertDoesNotExist()
+        assertEquals(1L, count("SELECT COUNT(*) FROM action_note WHERE is_draft"))
+    }
+
+    // 초안 저장 실패: 문구를 보이고 첫 실패만 알린다. 입력은 그대로 두고 '입력 다시 저장'으로 다시 저장한다.
+    @Test
+    fun draftSaveFailureIsShownAnnouncedOnceAndCanBeRetried() {
+        val flow = flowWithCard(first)
+        show(flow)
+        waitForText(first.task)
+        sql("CREATE TRIGGER reject_note BEFORE INSERT ON action_note BEGIN SELECT RAISE(ABORT, 'test failure'); END")
+        resultField.performScrollTo().performTextInput("가")
+        assertAnnounced("저장하지 못했어요. 다시 시도해 주세요.")
+        resultField.performTextReplacement("가나")
+        compose.waitUntil(5_000) { compose.onAllNodes(hasText("입력 다시 저장")).fetchSemanticsNodes().isNotEmpty() }
+        // 같은 안내를 다시 보내면 끝에 보이지 않는 문자가 붙는다. 붙지 않았으면 한 번만 알린 것이다.
+        compose.onNodeWithTag(ANNOUNCEMENT).assert(hasContentDescription("저장하지 못했어요. 다시 시도해 주세요."))
+        compose.onNodeWithText("저장하지 못했어요. 다시 시도해 주세요.").assertExists()
+        resultField.assert(SemanticsMatcher.expectValue(SemanticsProperties.EditableText, AnnotatedString("가나")))
+
+        sql("DROP TRIGGER reject_note")
+        compose.onNodeWithText("입력 다시 저장").performScrollTo().assertHeightIsAtLeast(48.dp).performClick()
+        compose.waitUntil(5_000) { count("SELECT COUNT(*) FROM action_note WHERE is_draft AND body = '가나'") == 1L }
+        compose.waitUntil(5_000) { compose.onAllNodes(hasText("저장하지 못했어요. 다시 시도해 주세요.")).fetchSemanticsNodes().isEmpty() }
+        compose.onNodeWithText("입력 다시 저장").assertDoesNotExist()
+    }
+
+    // 결과 입력란에 초점이 있고 키보드가 열리면 '완료'를 본문으로 옮긴다. 본문은 키보드 inset만큼 줄어 버튼이 키보드 위에 보인다.
+    @Test
+    fun keyboardOnResultFieldMovesCommandsIntoBodyAboveKeyboard() {
+        val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
+        fun shell(command: String) = automation.executeShellCommand(command).use { android.os.ParcelFileDescriptor.AutoCloseInputStream(it).reader().readText().trim() }
+        val previous = shell("settings get secure show_ime_with_hard_keyboard")
+        shell("settings put secure show_ime_with_hard_keyboard 1")
+        try {
+            show(flowWithCard(first))
+            waitForText(first.task)
+            compose.onNodeWithTag(PINNED_COMMANDS).assertExists()
+            resultField.performScrollTo().performClick()
+            fun imeBottom() = ViewCompat.getRootWindowInsets(view)?.getInsets(WindowInsetsCompat.Type.ime())?.bottom ?: 0
+            compose.waitUntil(10_000) { imeBottom() > 0 }
+            compose.waitUntil(5_000) { compose.onAllNodes(hasTestTag(PINNED_COMMANDS)).fetchSemanticsNodes().isEmpty() }
+            for (text in listOf("결과 남기기", "완료")) {
+                compose.onNodeWithText(text).performScrollTo().assertIsDisplayed()
+                val bottom = with(compose.density) { bounds(text).bottom.toPx() }
+                assertTrue(text, bottom <= view.height - imeBottom())
+            }
+        } finally {
+            shell("settings put secure show_ime_with_hard_keyboard ${if (previous == "null") 0 else previous}")
+        }
+    }
+
+    // 최대 글꼴: 대상·설명과 자료·결과·입력 안내가 잘리지 않고 버튼은 48dp 이상이다.
+    @Test
+    fun largestFontKeepsCardDetailsAndResultControlsReadable() {
+        val flow = flowWithCard(
+            first.copy(
+                targetName = "업무 보고서",
+                targetDescription = "이번 주 업무를 적은 문서",
+                materialLinks = listOf("https://example.com/report"),
+            ),
+        )
+        runBlocking {
+            val card = (flow.state.value.screen as ProgressScreen.CurrentAction).card
+            flow.recordResult("확인한 기간: 10월 첫째 주", card.id)
+        }
+        show(flow, fontScale = 2f)
+        waitForText(first.task)
+        compose.onNodeWithText("설명과 자료").performScrollTo().assertHeightIsAtLeast(48.dp).performClick()
+        compose.onNodeWithText("https://example.com/report").performScrollTo().assertHeightIsAtLeast(48.dp)
+        for (text in listOf("대상: 업무 보고서", "이번 주 업무를 적은 문서", "이 행동에 남긴 결과", "확인한 기간: 10월 첫째 주", "작성 중인 내용은 자동 저장돼요.")) {
+            compose.onNodeWithText(text).performScrollTo()
+            assertFullyLaidOut(text)
+        }
+        compose.onNodeWithText("결과 남기기").performScrollTo().assertHeightIsAtLeast(48.dp)
+        resultField.performScrollTo().assertHeightIsAtLeast(48.dp)
     }
 }
