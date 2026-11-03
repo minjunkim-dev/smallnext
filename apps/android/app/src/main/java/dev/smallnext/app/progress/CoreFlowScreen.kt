@@ -1,0 +1,410 @@
+package dev.smallnext.app.progress
+
+import android.content.res.Resources
+import android.util.Log
+import androidx.annotation.StringRes
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import dev.smallnext.app.R
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.launch
+
+/** 모션 값은 여기서만 조정한다. iOS `Motion`과 같은 값이다. 분할(0.34초)은 #353에서 더한다. */
+object Motion {
+    const val NEXT_CARD_MILLIS = 180
+}
+
+/** iOS 접근성 글꼴 크기(AX1 이상)에 대응하는 글꼴 배율이다. 이 배율부터 머리 영역을 쌓고 고정 버튼을 본문으로 옮긴다. */
+internal const val LARGE_FONT_SCALE = 1.5f
+
+/** iOS의 세로 compact 크기에 대응한다. 가로 화면에서는 고정 막대가 화면을 가린다. */
+private const val COMPACT_HEIGHT_DP = 480
+
+@Composable
+fun CoreFlowApp(flow: Deferred<ProgressFlow>) {
+    val opened by produceState<Result<ProgressFlow>?>(null, flow) {
+        value = try {
+            Result.success(flow.await())
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            // 예외 메시지·스택에는 원문이 담길 수 있어 클래스 이름만 남긴다.
+            Log.e("Smallnext", "Progress storage failed: ${error.javaClass.simpleName}")
+            Result.failure(error)
+        }
+    }
+    SmallnextTheme {
+        Surface(Modifier.fillMaxSize()) {
+            opened?.fold(
+                onSuccess = { CoreFlowScreen(it) },
+                onFailure = {
+                    Text(
+                        stringResource(R.string.storage_error),
+                        Modifier.safeDrawingPadding().padding(32.dp),
+                        style = MaterialTheme.typography.bodyLarge,
+                    )
+                },
+            )
+        }
+    }
+}
+
+@Composable
+internal fun SmallnextTheme(content: @Composable () -> Unit) {
+    // iOS smallnextAccent와 같은 값이다. 채운 버튼 글자 대비를 4.5:1 이상으로 둔다(#61).
+    val colors = if (isSystemInDarkTheme()) {
+        darkColorScheme(primary = Color(0.55f, 0.78f, 0.50f), onPrimary = Color.Black)
+    } else {
+        lightColorScheme(primary = Color(0.18f, 0.27f, 0.16f), onPrimary = Color.White)
+    }
+    MaterialTheme(colorScheme = colors, content = content)
+}
+
+/** 진행 흐름의 상태만 그린다. 진행 규칙은 [ProgressFlow]에 있다. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun CoreFlowScreen(flow: ProgressFlow) {
+    val state by flow.state.collectAsState()
+    val resources = LocalResources.current
+    val scope = rememberCoroutineScope()
+    var storageFailed by remember { mutableStateOf(false) }
+    var showingGoal by rememberSaveable { mutableStateOf(false) }
+    var announcement by remember { mutableStateOf("") }
+    var shown by remember { mutableStateOf(state.screen) }
+    val screen = state.screen
+    LaunchedEffect(screen) {
+        if (shown != screen) announcement(shown, screen, resources)?.let { announcement = it }
+        shown = screen
+    }
+    val run: (suspend () -> Unit) -> Unit = { command ->
+        scope.launch {
+            storageFailed = false
+            try {
+                command()
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: Exception) {
+                storageFailed = true
+                announcement = resources.getString(R.string.storage_failed)
+            }
+        }
+    }
+    val largeText = LocalDensity.current.fontScale >= LARGE_FONT_SCALE
+    val pinned = screen is ProgressScreen.CurrentAction && !largeText && LocalConfiguration.current.screenHeightDp >= COMPACT_HEIGHT_DP
+
+    Scaffold(
+        bottomBar = {
+            if (pinned) {
+                Surface(tonalElevation = 3.dp, modifier = Modifier.testTag(PINNED_COMMANDS)) {
+                    Column(Modifier.navigationBarsPadding().padding(horizontal = 24.dp, vertical = 12.dp), Arrangement.spacedBy(12.dp)) {
+                        // 누른 버튼 가까이에 실패를 보여준다.
+                        if (storageFailed) StorageFailure()
+                        CommandButton(R.string.complete) { run { flow.complete((screen as ProgressScreen.CurrentAction).card.id) } }
+                    }
+                }
+            }
+        },
+    ) { padding ->
+        Column(
+            Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding).imePadding()
+                .verticalScroll(rememberScrollState()).padding(24.dp),
+            Arrangement.spacedBy(24.dp),
+        ) {
+            Header(largeText, state.goal != null) { showingGoal = true }
+            // 상태별 화면을 위쪽에 맞춰 교체한다. 이동 없이 투명도 전환만 쓴다.
+            AnimatedContent(
+                screen,
+                contentAlignment = Alignment.TopStart,
+                transitionSpec = { fadeIn(tween(Motion.NEXT_CARD_MILLIS)) togetherWith fadeOut(tween(Motion.NEXT_CARD_MILLIS)) },
+                label = "screen",
+                contentKey = { it.key },
+            ) { target ->
+                when (target) {
+                    ProgressScreen.GoalInput -> GoalInputContent(state.goalInput) { input -> run { flow.prepareGoal(input) } }
+                    is ProgressScreen.PreparingGoal -> PreparingGoalContent(target, state.goal, flow, run)
+                    is ProgressScreen.AwaitingFirstAction ->
+                        SuggestionStatus(R.string.preparing_first_action, target.problem) { run(flow::retrySuggestion) }
+                    is ProgressScreen.CurrentAction -> ActionCardContent(target.card, commandsInBody = !pinned) { run { flow.complete(target.card.id) } }
+                    is ProgressScreen.AwaitingNextAction -> Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                        Heading(R.string.next_action_title, MaterialTheme.typography.titleLarge)
+                        SuggestionStatus(R.string.preparing_next_action, target.problem) { run(flow::retrySuggestion) }
+                    }
+                }
+            }
+            if (storageFailed && !pinned) StorageFailure()
+            // TalkBack 상태 안내다. 초점을 옮기지 않고 라이브 영역으로 읽힌다.
+            Box(
+                Modifier.size(1.dp).testTag(ANNOUNCEMENT).semantics {
+                    if (announcement.isNotEmpty()) {
+                        liveRegion = LiveRegionMode.Polite
+                        contentDescription = announcement
+                    }
+                },
+            )
+        }
+    }
+    val goal = state.goal
+    if (showingGoal && goal != null) {
+        ModalBottomSheet(onDismissRequest = { showingGoal = false }) {
+            Column(
+                Modifier.verticalScroll(rememberScrollState()).padding(start = 24.dp, end = 24.dp, bottom = 24.dp),
+                Arrangement.spacedBy(16.dp),
+            ) {
+                Heading(R.string.goal_heading, MaterialTheme.typography.titleMedium)
+                Text(goal.statement)
+                Heading(R.string.completion_criteria, MaterialTheme.typography.titleMedium)
+                Text(goal.completionCriteria ?: stringResource(R.string.completion_criteria_missing))
+            }
+        }
+    }
+}
+
+internal const val PINNED_COMMANDS = "pinnedCommands"
+internal const val ANNOUNCEMENT = "announcement"
+
+private val ProgressScreen.key: String
+    get() = when (this) {
+        ProgressScreen.GoalInput -> "goalInput"
+        is ProgressScreen.PreparingGoal -> "preparingGoal"
+        is ProgressScreen.AwaitingFirstAction -> "awaitingFirstAction-$problem"
+        is ProgressScreen.CurrentAction -> "currentAction-${card.id}"
+        is ProgressScreen.AwaitingNextAction -> "awaitingNextAction-$problem"
+    }
+
+/** 큰 글꼴에서는 머리 영역을 세로로 쌓는다. */
+@Composable
+private fun Header(largeText: Boolean, hasGoal: Boolean, onShowGoal: () -> Unit) {
+    val title = @Composable { Heading(R.string.app_name, MaterialTheme.typography.titleMedium) }
+    val goalButton = @Composable {
+        if (hasGoal) TextButton(onShowGoal, Modifier.heightIn(min = 48.dp)) { Text(stringResource(R.string.goal_view)) }
+    }
+    if (largeText) {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            title()
+            goalButton()
+        }
+    } else {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            title()
+            Spacer(Modifier.weight(1f))
+            goalButton()
+        }
+    }
+}
+
+@Composable
+private fun GoalInputContent(saved: GoalInput, prepare: (GoalInput) -> Unit) {
+    var statement by rememberSaveable { mutableStateOf(saved.statement) }
+    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        Heading(R.string.goal_input_title, MaterialTheme.typography.titleLarge)
+        OutlinedTextField(
+            statement,
+            { statement = it },
+            Modifier.fillMaxWidth(),
+            label = { Text(stringResource(R.string.goal_input_label)) },
+        )
+        CommandButton(R.string.prepare_goal, enabled = statement.isNotBlank()) { prepare(saved.copy(statement = statement)) }
+    }
+}
+
+@Composable
+private fun PreparingGoalContent(
+    screen: ProgressScreen.PreparingGoal,
+    goal: GoalDetails?,
+    flow: ProgressFlow,
+    run: (suspend () -> Unit) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        Heading(R.string.goal_review_title, MaterialTheme.typography.titleLarge)
+        Text(goal?.statement.orEmpty())
+        val question = screen.question
+        val criteria = screen.completionCriteria
+        when {
+            screen.problem == null && question != null -> {
+                var answer by rememberSaveable(question) { mutableStateOf("") }
+                Text(question, style = MaterialTheme.typography.titleMedium)
+                OutlinedTextField(
+                    answer,
+                    { answer = it },
+                    Modifier.fillMaxWidth(),
+                    label = { Text(stringResource(R.string.goal_question_prompt)) },
+                )
+                CommandButton(R.string.goal_question_send, enabled = answer.isNotBlank()) { run { flow.answerGoalQuestion(answer) } }
+            }
+            screen.problem == null && criteria != null -> {
+                var edited by rememberSaveable(criteria) { mutableStateOf(criteria) }
+                Text(stringResource(R.string.completion_criteria), style = MaterialTheme.typography.titleMedium)
+                OutlinedTextField(
+                    edited,
+                    { edited = it },
+                    Modifier.fillMaxWidth(),
+                    label = { Text(stringResource(R.string.completion_criteria_prompt)) },
+                )
+                Text(stringResource(R.string.current_state), style = MaterialTheme.typography.titleMedium)
+                Text(goal?.context?.currentState ?: stringResource(R.string.current_state_missing))
+                Text(stringResource(R.string.goal_review_guide))
+                CommandButton(R.string.confirm_goal, enabled = edited.isNotBlank()) { run { flow.confirmGoal(edited) } }
+            }
+            else -> SuggestionStatus(R.string.preparing_goal, screen.problem) { run(flow::retrySuggestion) }
+        }
+    }
+}
+
+/** 카드는 할 일 → 완료 조건 → 예상 시간 순서로 보이고 읽힌다. */
+@Composable
+private fun ActionCardContent(card: ActionCard, commandsInBody: Boolean, complete: () -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(24.dp)) {
+        Heading(R.string.current_action_title, MaterialTheme.typography.titleLarge)
+        Card(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(24.dp), Arrangement.spacedBy(16.dp)) {
+                Text(
+                    card.task,
+                    Modifier.semantics { heading() },
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                HorizontalDivider()
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        stringResource(R.string.completion_criteria),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(card.doneWhen, style = MaterialTheme.typography.bodyLarge)
+                }
+                Text(
+                    stringResource(R.string.estimated_minutes, card.estimatedMinutes),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+        if (commandsInBody) CommandButton(R.string.complete, onClick = complete)
+    }
+}
+
+/** 기다리는 중이면 진행 표시를, 문제가 있으면 짧은 이유와 '다시 시도'를 보여준다. 취소는 #349에서 더한다. */
+@Composable
+private fun SuggestionStatus(@StringRes waiting: Int, problem: SuggestionProblem?, retry: () -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        if (problem != null) {
+            Text(stringResource(problem.reason), style = MaterialTheme.typography.bodyLarge)
+            CommandButton(R.string.retry, onClick = retry)
+        } else {
+            CircularProgressIndicator()
+            Text(stringResource(waiting), style = MaterialTheme.typography.bodyLarge)
+        }
+    }
+}
+
+@Composable
+private fun Heading(@StringRes text: Int, style: androidx.compose.ui.text.TextStyle) {
+    Text(stringResource(text), Modifier.semantics { heading() }, style = style)
+}
+
+@Composable
+private fun StorageFailure() {
+    Text(stringResource(R.string.storage_failed), style = MaterialTheme.typography.bodyLarge)
+}
+
+@Composable
+private fun CommandButton(@StringRes title: Int, enabled: Boolean = true, onClick: () -> Unit) {
+    Button(onClick, Modifier.fillMaxWidth().heightIn(min = 48.dp), enabled) { Text(stringResource(title)) }
+}
+
+@get:StringRes
+private val SuggestionProblem.reason: Int
+    get() = when (this) {
+        SuggestionProblem.Unsuitable -> R.string.problem_unsuitable
+        SuggestionProblem.Interrupted -> R.string.problem_interrupted
+        SuggestionProblem.Cancelled -> R.string.problem_cancelled
+        is SuggestionProblem.Failure -> when (failure) {
+            SuggestionFailure.CONNECTION_LOST -> R.string.failure_connection_lost
+            SuggestionFailure.REJECTED -> R.string.failure_rejected
+            SuggestionFailure.UNDECIDABLE -> R.string.failure_undecidable
+            SuggestionFailure.FAILED -> R.string.failure_failed
+            SuggestionFailure.TIMED_OUT -> R.string.failure_timed_out
+            SuggestionFailure.BUDGET_LIMIT -> R.string.failure_budget_limit
+            SuggestionFailure.UNAVAILABLE -> R.string.failure_unavailable
+        }
+    }
+
+/** iOS `announceChange`와 같은 조건과 문장이다. 이 단계에서 닿는 화면만 다룬다. */
+private fun announcement(old: ProgressScreen, new: ProgressScreen, resources: Resources): String? {
+    val messages = buildList {
+        if (old is ProgressScreen.CurrentAction && new is ProgressScreen.AwaitingNextAction) add(resources.getString(R.string.announce_completed))
+        when (new) {
+            is ProgressScreen.CurrentAction -> if ((old as? ProgressScreen.CurrentAction)?.card?.id != new.card.id) {
+                add(resources.getString(R.string.announce_current_action, new.card.task))
+            }
+            is ProgressScreen.AwaitingFirstAction -> add(resources.getString(new.problem?.reason ?: R.string.preparing_first_action))
+            is ProgressScreen.AwaitingNextAction -> add(resources.getString(new.problem?.reason ?: R.string.preparing_next_action))
+            is ProgressScreen.PreparingGoal -> add(
+                new.problem?.let { resources.getString(it.reason) } ?: new.question
+                    ?: resources.getString(if (new.completionCriteria == null) R.string.preparing_goal else R.string.check_completion_criteria),
+            )
+            ProgressScreen.GoalInput -> Unit
+        }
+    }
+    return messages.joinToString(" ").ifEmpty { null }
+}
