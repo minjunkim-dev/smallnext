@@ -358,16 +358,21 @@ class CoreFlowScreenTest {
         // 다른 스레드가 트랜잭션을 잡고 있는 동안 자동 저장이 끝나지 않는다. 그 사이에 두 버튼을 누른다.
         val holding = java.util.concurrent.CountDownLatch(1)
         val release = java.util.concurrent.CountDownLatch(1)
-        val holder = Thread { database.runInTransaction { holding.countDown(); release.await() } }.apply { start() }
-        holding.await()
-        compose.runOnUiThread {
-            edit(AnnotatedString("완료 전에 남긴 결과."))
-            record()
-            complete()
+        val holder = Thread { database.runInTransaction { holding.countDown(); release.await(10, java.util.concurrent.TimeUnit.SECONDS) } }
+            .apply { start() }
+        try {
+            assertTrue(holding.await(5, java.util.concurrent.TimeUnit.SECONDS))
+            compose.runOnUiThread {
+                edit(AnnotatedString("완료 전에 남긴 결과."))
+                record()
+                complete()
+            }
+            // 세 코루틴이 메인 스레드에서 각자의 대기 지점까지 간다.
+            compose.waitForIdle()
+        } finally {
+            release.countDown()
+            holder.join()
         }
-        Thread.sleep(500)
-        release.countDown()
-        holder.join()
         waitForText(second.task)
         compose.waitForIdle()
         runBlocking { flow.retrySuggestion() }
