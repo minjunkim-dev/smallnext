@@ -77,6 +77,8 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 /** 모션 값은 여기서만 조정한다. iOS `Motion`과 같은 값이다. 분할(0.34초)은 #353에서 더한다. */
 object Motion {
@@ -182,6 +184,8 @@ internal fun CoreFlowScreen(flow: ProgressFlow) {
         }
     }
     var resultFocused by remember { mutableStateOf(false) }
+    // '결과 남기기'는 마지막 자동 저장을 기다린다. 그동안 누른 '완료'가 앞질러 결과를 거부하게 하지 않도록 누른 순서대로 실행한다.
+    val cardCommands = remember { Mutex() }
     val density = LocalDensity.current
     val largeText = density.fontScale >= LARGE_FONT_SCALE
     val compactHeight = with(density) { LocalWindowInfo.current.containerSize.height.toDp() } < COMPACT_HEIGHT.dp
@@ -196,7 +200,7 @@ internal fun CoreFlowScreen(flow: ProgressFlow) {
                     Column(Modifier.navigationBarsPadding().padding(horizontal = 24.dp, vertical = 12.dp), Arrangement.spacedBy(12.dp)) {
                         // 누른 버튼 가까이에 실패를 보여준다.
                         if (storageFailed) StorageFailure()
-                        CommandButton(R.string.complete) { run { flow.complete(screen.card.id) } }
+                        CommandButton(R.string.complete) { run { cardCommands.withLock { flow.complete(screen.card.id) } } }
                     }
                 }
             }
@@ -238,7 +242,8 @@ internal fun CoreFlowScreen(flow: ProgressFlow) {
                         run = run,
                         saveDraft = saveDraft,
                         onResultFocus = { resultFocused = it },
-                    ) { run { flow.complete(target.card.id) } }
+                        cardCommands = cardCommands,
+                    ) { run { cardCommands.withLock { flow.complete(target.card.id) } } }
                     is ProgressScreen.AwaitingNextAction -> Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
                         Heading(R.string.next_action_title, MaterialTheme.typography.titleLarge)
                         SuggestionStatus(R.string.preparing_next_action, target.problem, flow, run)
@@ -368,6 +373,7 @@ private fun ActionCardContent(
     run: (suspend () -> Unit) -> Unit,
     saveDraft: (String, Long) -> Job,
     onResultFocus: (Boolean) -> Unit,
+    cardCommands: Mutex,
     complete: () -> Unit,
 ) {
     var draftText by rememberSaveable(card.id) { mutableStateOf(card.draft) }
@@ -447,8 +453,10 @@ private fun ActionCardContent(
                         recording = true
                         run {
                             try {
-                                lastSave[0]?.join()
-                                flow.recordResult(text, card.id)
+                                cardCommands.withLock {
+                                    lastSave[0]?.join()
+                                    flow.recordResult(text, card.id)
+                                }
                                 // 기록하는 동안 더 적은 내용은 초안으로 남긴다.
                                 if (draftText == text) draftText = ""
                             } finally {

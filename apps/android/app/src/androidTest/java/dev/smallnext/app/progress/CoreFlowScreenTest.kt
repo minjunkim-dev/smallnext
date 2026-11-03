@@ -344,6 +344,37 @@ class CoreFlowScreenTest {
         compose.onNodeWithText("입력 다시 저장").assertDoesNotExist()
     }
 
+    // 자동 저장이 끝나기 전에 '결과 남기기'와 '완료'를 차례로 눌러도 결과가 먼저 기록되고 거부되지 않는다.
+    @Test
+    fun completeRightAfterRecordResultKeepsTheResult() {
+        val flow = flowWithCard(first, second)
+        show(flow)
+        waitForText(first.task)
+        resultField.performScrollTo().performTextInput("완료 전에 남긴 결과")
+        compose.waitUntil(5_000) { count("SELECT COUNT(*) FROM action_note WHERE is_draft") == 1L }
+        val edit = resultField.fetchSemanticsNode().config[SemanticsActions.SetText].action!!
+        val record = compose.onNodeWithText("결과 남기기").fetchSemanticsNode().config[SemanticsActions.OnClick].action!!
+        val complete = compose.onNodeWithText("완료").fetchSemanticsNode().config[SemanticsActions.OnClick].action!!
+        // 다른 스레드가 트랜잭션을 잡고 있는 동안 자동 저장이 끝나지 않는다. 그 사이에 두 버튼을 누른다.
+        val holding = java.util.concurrent.CountDownLatch(1)
+        val release = java.util.concurrent.CountDownLatch(1)
+        val holder = Thread { database.runInTransaction { holding.countDown(); release.await() } }.apply { start() }
+        holding.await()
+        compose.runOnUiThread {
+            edit(AnnotatedString("완료 전에 남긴 결과."))
+            record()
+            complete()
+        }
+        Thread.sleep(500)
+        release.countDown()
+        holder.join()
+        waitForText(second.task)
+        compose.waitForIdle()
+        runBlocking { flow.retrySuggestion() }
+        assertEquals(1L, count("SELECT COUNT(*) FROM action_note n JOIN action a ON a.id = n.action_id WHERE NOT n.is_draft AND a.status = 'done' AND n.body = '완료 전에 남긴 결과.'"))
+        assertEquals(0L, count("SELECT COUNT(*) FROM action_note WHERE is_draft"))
+    }
+
     // 결과 입력란에 초점이 있고 키보드가 열리면 '완료'를 본문으로 옮긴다. 본문은 키보드 inset만큼 줄어 버튼이 키보드 위에 보인다.
     @Test
     fun keyboardOnResultFieldMovesCommandsIntoBodyAboveKeyboard() {
