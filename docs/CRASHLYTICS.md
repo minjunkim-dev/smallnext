@@ -1,7 +1,8 @@
-# iOS Crashlytics 개발 검증
+# Crashlytics 개발 검증
 
-범위와 완료 조건은 [#80](https://github.com/minjunkim-dev/smallnext/issues/80)에서 관리합니다.
+iOS의 범위와 완료 조건은 [#80](https://github.com/minjunkim-dev/smallnext/issues/80)에서 관리합니다.
 검사 결과와 남은 콘솔 확인도 해당 Issue에 기록합니다.
+Android는 [Android](#android) 절을 따릅니다.
 
 ## 실행과 전송
 
@@ -82,3 +83,67 @@ SDK 전송 로그, 심볼 업로드, 콘솔 수신, 앱 프레임 심볼화는 �
 
 공식 근거: [시작과 테스트 크래시](https://firebase.google.com/docs/crashlytics/ios/get-started),
 [자동 수집과 수동 전송](https://firebase.google.com/docs/crashlytics/ios/customize-crash-reports).
+
+## Android
+
+범위는 [#361](https://github.com/minjunkim-dev/smallnext/issues/361), 콘솔 수신 확인은 [#362](https://github.com/minjunkim-dev/smallnext/issues/362)에서 관리합니다.
+
+### 실행과 전송
+
+`android_crash_reporting`의 기본값은 OFF입니다. Debug 빌드에서만 실행 인텐트 extra로 로컬 ON을 지정합니다.
+Release는 extra를 열지 않으므로 플래그를 바꾸거나 합성 크래시를 발생시킬 수 없습니다.
+진행 흐름 플래그(`android_core_flow`)와 독립입니다.
+
+매니페스트에서 `FirebaseInitProvider`를 제거합니다. 앱 시작 때 Firebase가 자동으로 초기화되지 않습니다.
+`firebase_crashlytics_collection_enabled`와 `firebase_data_collection_default_enabled`는 false입니다.
+OFF에서는 FirebaseApp을 초기화하지 않습니다.
+ON에서는 `MainActivity`가 시작될 때 수동 `FirebaseOptions`로 기본 FirebaseApp과 Crashlytics를 시작합니다.
+그 전, 곧 `Application` 시작 중의 크래시는 기록되지 않습니다.
+한 번 시작한 Crashlytics는 프로세스가 끝날 때까지 남습니다. 같은 프로세스에서 extra 없이 화면을 다시 열어도 크래시를 기록하므로, 검증은 `am start -S`로 프로세스를 새로 시작합니다.
+iOS와 같이 `setCrashlyticsCollectionEnabled(false)` 뒤 `sendUnsentReports()`로 저장된 보고서만 보냅니다.
+`true`는 다음 OFF 실행에도 남으므로 사용하지 않습니다.
+Analytics와 Firebase Auth는 연결하지 않습니다. 목표, 답변, AI 원문, 토큰, UID를 custom log, custom key, user ID로 보내지 않습니다.
+
+### 설정과 빌드
+
+google-services 플러그인과 `google-services.json`은 사용하지 않습니다.
+공개 클라이언트 설정 네 항목은 Git 밖의 Gradle 속성으로 넣습니다.
+`~/.gradle/gradle.properties`나 명령의 `-P`를 사용합니다. 저장소의 `apps/android/gradle.properties`에는 넣지 않습니다.
+
+| Gradle 속성 | 값 |
+| --- | --- |
+| `SMALLNEXT_FIREBASE_APP_ID` | Firebase 콘솔의 Android 앱(`dev.smallnext.app`) ID. `1:<번호>:android:<16진수>` |
+| `SMALLNEXT_FIREBASE_SENDER_ID` | 앱 ID의 `<번호>`와 같은 프로젝트 번호 |
+| `SMALLNEXT_FIREBASE_PROJECT_ID` | 소문자로 시작하는 프로젝트 ID |
+| `SMALLNEXT_FIREBASE_API_KEY` | `AIza`로 시작하는 39자 공개 키 |
+
+설정이 누락되거나 형식이 잘못되면 Firebase를 초기화하거나 보고서를 보내지 않습니다.
+설정이 없어도 Debug·Release·CI 빌드는 성공합니다.
+Crashlytics SDK는 build ID가 없으면 시작할 때 앱을 종료합니다. 에뮬레이터에서 확인했습니다.
+그래서 build ID를 넣는 Crashlytics Gradle 플러그인을 적용합니다. 현재 minify OFF라 매핑 업로드는 끕니다.
+
+### 에뮬레이터 합성 크래시
+
+`apps/android`에서 실행합니다. 설정을 넣은 Debug 앱을 설치합니다. 기존 앱 데이터는 삭제하지 않습니다.
+
+```sh
+./gradlew installDebug   # ~/.gradle/gradle.properties의 SMALLNEXT_FIREBASE_* 사용
+adb shell setprop log.tag.FirebaseCrashlytics DEBUG
+# 1. OFF 확인. Firebase·Crashlytics 로그가 없어야 합니다.
+adb shell am start -S -n dev.smallnext.app/.MainActivity
+# 2. 합성 크래시. 3초 뒤 고정 메시지로 종료합니다.
+adb shell am start -S -n dev.smallnext.app/.MainActivity \
+  --ez android_crash_reporting true --ez crashlytics_test_crash true
+# 3. 크래시 extra 없이 재실행해 저장된 보고서를 보냅니다.
+adb shell am start -S -n dev.smallnext.app/.MainActivity --ez android_crash_reporting true
+# 4. OFF 복귀
+adb shell am start -S -n dev.smallnext.app/.MainActivity
+adb logcat -s FirebaseCrashlytics AndroidRuntime
+```
+
+3단계 로그에는 `Sending cached crash reports...`가 보입니다.
+콘솔의 Android 앱에서 `Smallnext Crashlytics synthetic validation` 크래시를 확인합니다. 수신에는 수 분이 걸릴 수 있습니다.
+SDK 전송 로그와 콘솔 수신은 각각 확인합니다. 콘솔을 확인할 수 없으면 #362를 열린 상태로 유지합니다.
+
+공식 근거: [시작과 테스트 크래시](https://firebase.google.com/docs/crashlytics/android/get-started),
+[자동 수집과 수동 전송](https://firebase.google.com/docs/crashlytics/android/customize-crash-reports).

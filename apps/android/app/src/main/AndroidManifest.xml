@@ -1,4 +1,5 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
     <uses-permission android:name="android.permission.INTERNET" />
     <application
         android:name=".SmallnextApplication"
@@ -7,6 +8,13 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.Smallnext"
         android:usesCleartextTraffic="false">
+        <!-- Firebase는 android_crash_reporting이 켜진 실행에서만 CrashReporting이 직접 시작한다. -->
+        <provider
+            android:name="com.google.firebase.provider.FirebaseInitProvider"
+            android:authorities="${applicationId}.firebaseinitprovider"
+            tools:node="remove" />
+        <meta-data android:name="firebase_crashlytics_collection_enabled" android:value="false" />
+        <meta-data android:name="firebase_data_collection_default_enabled" android:value="false" />
         <activity android:name=".MainActivity" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

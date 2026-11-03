@@ -16,7 +16,7 @@ Android 기본 앱, Rust API, 개발 DB와 CI 구성도 있습니다.
 DB·인증의 선택 이유는 [Supabase 선택 ADR](docs/adr/0002-supabase-database-and-auth.md)에 있습니다.
 Supabase Free의 DB·인증 연결을 로컬에서 확인했습니다.
 실제 서버·앱의 전체 인증 경로, 유료 API, 기기 간 동기화와 운영 배포는 아직 검증하지 않았습니다.
-iOS Crashlytics의 개발 경로를 추가했습니다. 기본값은 OFF입니다.
+iOS·Android Crashlytics의 개발 경로를 추가했습니다. 기본값은 OFF입니다. Android의 콘솔 수신은 아직 확인하지 않았습니다.
 실행 방법과 검증 경계는 [Crashlytics](docs/CRASHLYTICS.md)에 있습니다.
 
 ## 제품 방향

@@ -64,7 +64,7 @@ GitHub 자동 병합 예약은 독립 리뷰 결과를 대상 SHA의 필수 체�
 | --- | --- |
 | API·AI | `CONTEXT.md`, `docs/SERVER_AI.md`, `contracts/openapi.json`, 관련 확정 Issue |
 | iOS | `docs/DEVELOPMENT.md`, `docs/CRASHLYTICS.md`, Issue #61의 실기기 보류 조건 |
-| Android | `docs/DEVELOPMENT.md`, `docs/SERVER_AI.md`의 앱 계약, 관련 확정 Issue |
+| Android | `docs/DEVELOPMENT.md`, `docs/CRASHLYTICS.md`의 Android 절, `docs/SERVER_AI.md`의 앱 계약, 관련 확정 Issue |
 | GitHub·CI·Draft | `docs/CI.md`, `docs/adr/0001-trusted-ci-aggregation.md`, `docs/DRAFT_RELEASE.md`, `docs/REPOSITORY_SETUP.md`, `.ci/toolchains.json` |
 | 검증 스크립트 | 해당 검사 계약·`docs/CI.md`·티켓의 재현 조건 |
 | 문서·권리 | `CONTEXT.md`, `docs/DECISIONS.md`, `docs/WORKFLOW.md`, `COPYRIGHT.md`, `THIRD_PARTY_NOTICES.md` |

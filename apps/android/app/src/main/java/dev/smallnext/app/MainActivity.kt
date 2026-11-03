@@ -28,6 +28,7 @@ import dev.smallnext.app.progress.CoreFlowApp
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        CrashReporting.start(this, FeatureFlags.forLaunch(this, intent).crashReporting, intent)
         enableEdgeToEdge()
         val flags = FeatureFlags.forLaunch(this, intent)
         setContent {
