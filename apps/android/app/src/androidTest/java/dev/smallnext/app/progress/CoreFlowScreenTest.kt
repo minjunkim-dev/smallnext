@@ -148,7 +148,8 @@ class CoreFlowScreenTest {
         assertHeading("목표")
         compose.onNodeWithText("분기 업무 보고서 초안 쓰기").assertIsDisplayed()
         assertEquals(0, compose.onAllNodes(hasSetTextAction()).fetchSemanticsNodes().size)
-        // 시스템 뒤로 가기는 시트를 먼저 닫고 진행 상태를 바꾸지 않는다.
+        // 시스템 뒤로 가기는 시트를 먼저 닫고 진행 상태를 바꾸지 않는다. 시트 창이 다 열려 초점을 받은 뒤에 누른다.
+        compose.waitForIdle()
         InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
         compose.waitUntil(5_000) { compose.onAllNodes(hasText("보고서 초안이 저장돼 있다")).fetchSemanticsNodes().isEmpty() }
         compose.onNodeWithText(first.task).assertIsDisplayed()
