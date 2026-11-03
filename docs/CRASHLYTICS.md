@@ -99,6 +99,7 @@ Release는 extra를 열지 않으므로 플래그를 바꾸거나 합성 크래�
 OFF에서는 FirebaseApp을 초기화하지 않습니다.
 ON에서는 `MainActivity`가 시작될 때 수동 `FirebaseOptions`로 기본 FirebaseApp과 Crashlytics를 시작합니다.
 그 전, 곧 `Application` 시작 중의 크래시는 기록되지 않습니다.
+한 번 시작한 Crashlytics는 프로세스가 끝날 때까지 남습니다. 같은 프로세스에서 extra 없이 화면을 다시 열어도 크래시를 기록하므로, 검증은 `am start -S`로 프로세스를 새로 시작합니다.
 iOS와 같이 `setCrashlyticsCollectionEnabled(false)` 뒤 `sendUnsentReports()`로 저장된 보고서만 보냅니다.
 `true`는 다음 OFF 실행에도 남으므로 사용하지 않습니다.
 Analytics와 Firebase Auth는 연결하지 않습니다. 목표, 답변, AI 원문, 토큰, UID를 custom log, custom key, user ID로 보내지 않습니다.

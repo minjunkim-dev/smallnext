@@ -43,7 +43,6 @@ object CrashReporting {
         val options = (if (enabled) config.options() else null) ?: return false
         val app = FirebaseApp.getApps(context).firstOrNull { it.name == FirebaseApp.DEFAULT_APP_NAME }
             ?: FirebaseApp.initializeApp(context, options)
-            ?: return false
         if (app.options != options) return false
         app.setDataCollectionDefaultEnabled(false)
         FirebaseCrashlytics.getInstance().run {
