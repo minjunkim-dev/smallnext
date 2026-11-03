@@ -320,9 +320,14 @@ private fun GoalInputContent(saved: GoalInput, save: (GoalInput) -> Unit, prepar
     }
 }
 
+/** 제목을 입력란 위에 따로 둔다(iOS `goalField`). 떠 있는 레이블은 큰 글꼴에서 테두리와 겹친다. */
 @Composable
 private fun GoalField(@StringRes label: Int, value: String, onValueChange: (String) -> Unit) {
-    OutlinedTextField(value, onValueChange, Modifier.fillMaxWidth(), label = { Text(stringResource(label)) })
+    val title = stringResource(label)
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(title, style = MaterialTheme.typography.titleSmall)
+        OutlinedTextField(value, onValueChange, Modifier.fillMaxWidth().semantics { contentDescription = title })
+    }
 }
 
 @Composable
@@ -344,7 +349,7 @@ private fun PreparingGoalContent(
         when {
             screen.problem == null && question != null -> {
                 var answer by rememberSaveable(input?.requestId) { mutableStateOf(input?.text.orEmpty()) }
-                // 새로 나타난 질문으로 TalkBack 초점을 옮긴다. 초점을 받으면 질문이 보이도록 스크롤된다.
+                // 새로 나타난 질문으로 입력 초점을 옮긴다. TalkBack 초점이 따라오는지는 실제 TalkBack으로 아직 확인하지 않았다. 초점을 받으면 질문이 보이도록 스크롤된다.
                 val focus = remember { FocusRequester() }
                 Text(question, Modifier.focusRequester(focus).focusable(), style = MaterialTheme.typography.titleMedium)
                 LaunchedEffect(question) { focus.requestFocus() }
@@ -356,7 +361,7 @@ private fun PreparingGoalContent(
                         autosave(it)
                     },
                     Modifier.fillMaxWidth().semantics { contentDescription = answerLabel },
-                    label = { Text(stringResource(R.string.goal_question_prompt)) },
+                    placeholder = { Text(stringResource(R.string.goal_question_prompt)) },
                 )
                 CommandButton(R.string.goal_question_send, enabled = answer.isNotBlank()) {
                     run { flow.run(Drafts(answer = answer)) { flow.answerGoalQuestion(answer) } }

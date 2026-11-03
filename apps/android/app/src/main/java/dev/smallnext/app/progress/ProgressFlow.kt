@@ -99,6 +99,7 @@ class ProgressFlow private constructor(
     /**
      * 사용자 명령 하나를 실행한다. 입력 초안을 먼저 저장한다(iOS `run(saving:)`).
      * 초안 저장에 실패하면 명령을 실행하지 않는다.
+     * iOS와 달리 저장과 명령 사이에 제안 결과 적용이 끼어들 수 있다. 명령은 화면 상태를 다시 검사한다.
      */
     suspend fun run(drafts: Drafts? = null, command: suspend () -> Unit) {
         drafts?.let { save(it) }

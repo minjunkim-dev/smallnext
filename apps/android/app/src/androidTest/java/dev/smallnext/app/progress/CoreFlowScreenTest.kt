@@ -174,17 +174,23 @@ class CoreFlowScreenTest {
         val flow = flow(provider)
         show(flow, fontScale = 2f)
         assertEquals(1, compose.onAllNodes(hasSetTextAction()).fetchSemanticsNodes().size)
-        compose.onNodeWithText("아는 맥락 보태기 (선택)").assertHeightIsAtLeast(48.dp).performScrollTo().performClick()
+        val toggle = compose.onNodeWithText("아는 맥락 보태기 (선택)")
+        toggle.assertHeightIsAtLeast(48.dp).assert(SemanticsMatcher.keyIsDefined(SemanticsActions.Expand)).performScrollTo().performClick()
+        toggle.assert(SemanticsMatcher.keyIsDefined(SemanticsActions.Collapse))
         val labels = listOf(
             "기한 (선택)", "현재 상태 (선택)", "막힌 점 (선택)", "자료 링크 (선택, 한 줄에 하나)", "고른 발췌·요약 (선택)", "지금 쓸 수 있는 시간 (선택, 분)",
         )
-        for (label in labels) compose.onNode(hasSetTextAction() and hasText(label)).assertExists()
+        for (label in labels) {
+            compose.onNode(hasSetTextAction() and hasContentDescription(label)).assertExists()
+            compose.onNodeWithText(label).performScrollTo()
+            assertFullyLaidOut(label)
+        }
         val notice = "자료는 링크와 직접 고른 발췌·요약만 보내요. 링크의 내용은 자동으로 읽지 않아요."
         compose.onNodeWithText(notice).performScrollTo()
         assertFullyLaidOut(notice)
 
-        compose.onNode(hasSetTextAction() and hasText("목표 한 문장")).performTextInput("화분 옮기기")
-        compose.onNode(hasSetTextAction() and hasText("자료 링크 (선택, 한 줄에 하나)")).performScrollTo().performTextInput("file:///tmp/plant")
+        compose.onNode(hasSetTextAction() and hasContentDescription("목표 한 문장")).performTextInput("화분 옮기기")
+        compose.onNode(hasSetTextAction() and hasContentDescription("자료 링크 (선택, 한 줄에 하나)")).performScrollTo().performTextInput("file:///tmp/plant")
         compose.waitUntil(5_000) { flow.state.value.goalInput == GoalInput("화분 옮기기", materialLinks = "file:///tmp/plant") }
         compose.onNodeWithText("목표 정리").performScrollTo().performClick()
         val problem = "자료 링크는 http:// 또는 https://로 입력해 주세요. 시간은 1 이상의 정수로 입력해 주세요."
@@ -195,7 +201,7 @@ class CoreFlowScreenTest {
         assertTrue(provider.requests.isEmpty())
 
         // 고쳐 입력하면 안내가 사라지고 요청한다.
-        compose.onNode(hasSetTextAction() and hasText("자료 링크 (선택, 한 줄에 하나)")).performScrollTo().performTextClearance()
+        compose.onNode(hasSetTextAction() and hasContentDescription("자료 링크 (선택, 한 줄에 하나)")).performScrollTo().performTextClearance()
         compose.onAllNodes(hasText(problem)).assertCountEquals(0)
         compose.onNodeWithText("목표 정리").performScrollTo().performClick()
         waitForText("확인하고 시작")
