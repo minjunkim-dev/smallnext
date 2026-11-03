@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.input.rememberTextFieldState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -39,15 +40,19 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TextFieldLabelPosition
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -75,7 +80,9 @@ import androidx.compose.ui.unit.dp
 import dev.smallnext.app.R
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /** 모션 값은 여기서만 조정한다. iOS `Motion`과 같은 값이다. 분할(0.34초)은 #353에서 더한다. */
 object Motion {
@@ -153,7 +160,8 @@ internal fun CoreFlowScreen(flow: ProgressFlow) {
         goalInputProblem = null
         scope.launch {
             try {
-                command()
+                // 화면을 다시 만들어도(회전 등) 시작한 저장과 명령은 끝까지 실행한다. 보이는 초안과 저장한 초안이 갈라지지 않게 한다.
+                withContext(NonCancellable) { command() }
                 storageFailed = false
             } catch (error: CancellationException) {
                 throw error
@@ -218,7 +226,8 @@ internal fun CoreFlowScreen(flow: ProgressFlow) {
             ) { target ->
                 when (target) {
                     ProgressScreen.GoalInput -> GoalInputContent(state.goalInput, { input -> save { flow.updateGoalInput(input) } }) { input ->
-                        run { flow.run(Drafts(goalInput = input)) { flow.prepareGoal() } }
+                        // 누른 순간의 입력을 저장하고 검사하는 일을 한 명령으로 한다. 사이에 다른 입력이 끼어들지 않는다.
+                        run { flow.prepareGoal(input) }
                     }
                     is ProgressScreen.PreparingGoal -> PreparingGoalContent(target, state.goal, state.suggestionInput, flow, run, save)
                     is ProgressScreen.AwaitingFirstAction ->
@@ -292,7 +301,10 @@ private val GoalInputSaver = listSaver<GoalInput, String>(
 @Composable
 private fun GoalInputContent(saved: GoalInput, save: (GoalInput) -> Unit, prepare: (GoalInput) -> Unit) {
     var input by rememberSaveable(stateSaver = GoalInputSaver) { mutableStateOf(saved) }
-    var expanded by rememberSaveable { mutableStateOf(false) }
+    // 다시 열었을 때 선택 입력에 내용이 있으면 펼친다. 보내질 내용과 입력 오류가 가려지지 않게 한다.
+    var expanded by rememberSaveable {
+        mutableStateOf(listOf(saved.deadline, saved.currentState, saved.blocker, saved.materialLinks, saved.materialExcerpt, saved.availableMinutes).any { it.isNotBlank() })
+    }
     val edit = { changed: GoalInput ->
         input = changed
         save(changed)
@@ -321,14 +333,27 @@ private fun GoalInputContent(saved: GoalInput, save: (GoalInput) -> Unit, prepar
     }
 }
 
-/** 제목을 입력란 위에 따로 둔다(iOS `goalField`). 떠 있는 레이블은 큰 글꼴에서 테두리와 겹친다. */
 @Composable
-private fun GoalField(@StringRes label: Int, value: String, onValueChange: (String) -> Unit) {
-    val title = stringResource(label)
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(title, style = MaterialTheme.typography.titleSmall)
-        OutlinedTextField(value, onValueChange, Modifier.fillMaxWidth().semantics { contentDescription = title })
-    }
+private fun GoalField(@StringRes label: Int, value: String, onValueChange: (String) -> Unit) =
+    LabeledField(stringResource(label), value, onValueChange)
+
+/**
+ * 레이블을 입력란 위에 둔다(iOS `goalField`). 떠 있는 레이블은 큰 글꼴에서 테두리와 겹친다.
+ * 레이블 위치는 `TextFieldState` 입력란만 정할 수 있다. 레이블은 입력란의 이름으로 읽히고 입력한 글자는 그대로 읽힌다.
+ */
+@Composable
+private fun LabeledField(label: String, value: String, onValueChange: (String) -> Unit, placeholder: String? = null) {
+    val state = rememberTextFieldState(value)
+    val current by rememberUpdatedState(value)
+    val change by rememberUpdatedState(onValueChange)
+    LaunchedEffect(state) { snapshotFlow { state.text.toString() }.collect { if (it != current) change(it) } }
+    OutlinedTextField(
+        state,
+        Modifier.fillMaxWidth(),
+        labelPosition = TextFieldLabelPosition.Above(),
+        label = { Text(label) },
+        placeholder = placeholder?.let { { Text(it) } },
+    )
 }
 
 @Composable
@@ -354,16 +379,12 @@ private fun PreparingGoalContent(
                 val focus = remember { FocusRequester() }
                 Text(question, Modifier.focusRequester(focus).focusable(), style = MaterialTheme.typography.titleMedium)
                 LaunchedEffect(question) { focus.requestFocus() }
-                val answerLabel = stringResource(R.string.goal_question_answer_label)
-                OutlinedTextField(
-                    answer,
-                    {
+                key(input?.requestId) {
+                    LabeledField(stringResource(R.string.goal_question_answer_label), answer, {
                         answer = it
                         autosave(it)
-                    },
-                    Modifier.fillMaxWidth().semantics { contentDescription = answerLabel },
-                    placeholder = { Text(stringResource(R.string.goal_question_prompt)) },
-                )
+                    }, placeholder = stringResource(R.string.goal_question_prompt))
+                }
                 CommandButton(R.string.goal_question_send, enabled = answer.isNotBlank()) {
                     run { flow.run(Drafts(answer = answer)) { flow.answerGoalQuestion(answer) } }
                 }

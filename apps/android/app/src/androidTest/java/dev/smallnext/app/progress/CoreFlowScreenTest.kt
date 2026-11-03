@@ -101,9 +101,9 @@ class CoreFlowScreenTest {
      * 모든 글자가 줄 수 제한·말줄임 없이 제약 안에 배치됐는지 확인한다.
      * `hasVisualOverflow`는 문단 폭(실수)과 크기(정수)의 반올림 차이만으로도 참이 돼 쓰지 않는다.
      */
-    private fun assertFullyLaidOut(text: String) {
+    private fun assertFullyLaidOut(text: String, unmerged: Boolean = false) {
         val results = mutableListOf<TextLayoutResult>()
-        compose.onNodeWithText(text).performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(results) }
+        compose.onNodeWithText(text, useUnmergedTree = unmerged).performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(results) }
         val layout = results.single()
         val last = layout.lineCount - 1
         assertFalse(text, layout.didOverflowHeight || layout.isLineEllipsized(last))
@@ -181,16 +181,15 @@ class CoreFlowScreenTest {
             "기한 (선택)", "현재 상태 (선택)", "막힌 점 (선택)", "자료 링크 (선택, 한 줄에 하나)", "고른 발췌·요약 (선택)", "지금 쓸 수 있는 시간 (선택, 분)",
         )
         for (label in labels) {
-            compose.onNode(hasSetTextAction() and hasContentDescription(label)).assertExists()
-            compose.onNodeWithText(label).performScrollTo()
-            assertFullyLaidOut(label)
+            compose.onNode(hasSetTextAction() and hasText(label)).performScrollTo()
+            assertFullyLaidOut(label, unmerged = true)
         }
         val notice = "자료는 링크와 직접 고른 발췌·요약만 보내요. 링크의 내용은 자동으로 읽지 않아요."
         compose.onNodeWithText(notice).performScrollTo()
         assertFullyLaidOut(notice)
 
-        compose.onNode(hasSetTextAction() and hasContentDescription("목표 한 문장")).performTextInput("화분 옮기기")
-        compose.onNode(hasSetTextAction() and hasContentDescription("자료 링크 (선택, 한 줄에 하나)")).performScrollTo().performTextInput("file:///tmp/plant")
+        compose.onNode(hasSetTextAction() and hasText("목표 한 문장")).performTextInput("화분 옮기기")
+        compose.onNode(hasSetTextAction() and hasText("자료 링크 (선택, 한 줄에 하나)")).performScrollTo().performTextInput("file:///tmp/plant")
         compose.waitUntil(5_000) { flow.state.value.goalInput == GoalInput("화분 옮기기", materialLinks = "file:///tmp/plant") }
         compose.onNodeWithText("목표 정리").performScrollTo().performClick()
         val problem = "자료 링크는 http:// 또는 https://로 입력해 주세요. 시간은 1 이상의 정수로 입력해 주세요."
@@ -201,11 +200,21 @@ class CoreFlowScreenTest {
         assertTrue(provider.requests.isEmpty())
 
         // 고쳐 입력하면 안내가 사라지고 요청한다.
-        compose.onNode(hasSetTextAction() and hasContentDescription("자료 링크 (선택, 한 줄에 하나)")).performScrollTo().performTextClearance()
+        compose.onNode(hasSetTextAction() and hasText("자료 링크 (선택, 한 줄에 하나)")).performScrollTo().performTextClearance()
         compose.onAllNodes(hasText(problem)).assertCountEquals(0)
         compose.onNodeWithText("목표 정리").performScrollTo().performClick()
         waitForText("확인하고 시작")
         assertEquals(listOf(SuggestionKind.GOAL_PREPARATION), provider.requests.map { it.kind })
+    }
+
+    // 다시 연 목표 입력 초안에 선택 입력이 있으면 펼쳐서 보여준다. 보내질 자료와 입력 오류가 가려지지 않는다.
+    @Test
+    fun restoredOptionalDraftShowsOptionalFields() {
+        val flow = flow(UnavailableSuggestionProvider)
+        runBlocking { flow.updateGoalInput(GoalInput("화분 옮기기", materialLinks = "file:///tmp/plant")) }
+        show(flow)
+        compose.onNode(hasSetTextAction() and hasText("자료 링크 (선택, 한 줄에 하나)")).performScrollTo().assertIsDisplayed()
+        compose.onNode(hasText("file:///tmp/plant")).assertExists()
     }
 
     // 목표 확인 질문(최대 글꼴): 질문으로 초점이 옮겨지고, 답 입력란 레이블과 답 초안 자동 저장을 확인한다.
@@ -222,7 +231,7 @@ class CoreFlowScreenTest {
         waitForText(question)
         compose.onNodeWithText(question).assertIsFocused()
         assertFullyLaidOut(question)
-        compose.onNode(hasSetTextAction() and hasContentDescription("목표 확인 질문 답")).performScrollTo().performTextInput("책상 위 서류")
+        compose.onNode(hasSetTextAction() and hasText("목표 확인 질문 답")).performScrollTo().performTextInput("책상 위 서류")
         compose.waitUntil(5_000) { flow.state.value.suggestionInput?.text == "책상 위 서류" }
         compose.onNodeWithText("답 보내기").assertHeightIsAtLeast(48.dp).performScrollTo().performClick()
         waitForText("확인하고 시작")
