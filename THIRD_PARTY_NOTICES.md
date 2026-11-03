@@ -53,6 +53,7 @@ Cargo.lock과 `cargo metadata --locked`의 패키지 메타데이터를 확인�
 | --- | --- | --- |
 | AndroidX Activity / Compose / Room / Test | Activity 1.12.4, Compose BOM 2026.09.00, Room 2.8.5, Test JUnit 1.3.0 / Runner 1.7.0 | Apache-2.0. [AndroidX 고지](https://android.googlesource.com/platform/frameworks/support/+/androidx-main/LICENSE.txt) |
 | Retrofit / Gson converter | 3.0.0 | Apache-2.0. [Retrofit LICENSE](https://github.com/square/retrofit/blob/trunk/LICENSE.txt) |
+| Firebase Crashlytics (BoM) / Crashlytics Gradle 플러그인 | BoM 35.1.0(Crashlytics 21.0.1) / 3.0.8 | Apache-2.0(두 Maven POM 기준). [firebase-android-sdk LICENSE](https://github.com/firebase/firebase-android-sdk/blob/main/LICENSE). 앱은 Crashlytics와 그 전이 의존성만 연결합니다. Analytics는 연결하지 않습니다. |
 | OkHttp | 5.5.1 | Apache-2.0. [OkHttp LICENSE](https://github.com/square/okhttp/blob/parent-5.5.1/LICENSE.txt) |
 | Kotlin | 2.4.21 | Apache-2.0. [Kotlin 라이선스](https://github.com/JetBrains/kotlin/blob/v2.4.21/license/LICENSE.txt) |
 | KSP | 2.3.12 | Apache-2.0. [KSP LICENSE](https://github.com/google/ksp/blob/main/LICENSE) |

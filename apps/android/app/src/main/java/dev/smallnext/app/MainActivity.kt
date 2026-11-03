@@ -27,6 +27,7 @@ import androidx.compose.ui.unit.dp
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        CrashReporting.start(this, FeatureFlags.forLaunch(this, intent).crashReporting, intent)
         enableEdgeToEdge()
         setContent {
             var storageFailed by remember { mutableStateOf(false) }
