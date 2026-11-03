@@ -362,8 +362,10 @@ private fun SuggestionStatus(@StringRes waiting: Int, problem: SuggestionProblem
             Text(stringResource(problem.reason), style = MaterialTheme.typography.bodyLarge)
             CommandButton(R.string.retry) { run(flow::retrySuggestion) }
         } else {
-            CircularProgressIndicator()
-            Text(stringResource(waiting), style = MaterialTheme.typography.bodyLarge)
+            val message = stringResource(waiting)
+            // iOS처럼 진행 표시에도 대기 문장을 이름으로 붙인다.
+            CircularProgressIndicator(Modifier.semantics { contentDescription = message })
+            Text(message, style = MaterialTheme.typography.bodyLarge)
             CommandButton(R.string.cancel, prominent = false) { run(flow::cancelSuggestion) }
         }
     }

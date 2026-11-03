@@ -5,6 +5,7 @@ import androidx.activity.compose.setContent
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.ProgressBarRangeInfo
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
@@ -14,6 +15,7 @@ import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasContentDescription
+import androidx.compose.ui.test.hasProgressBarRangeInfo
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -135,6 +137,7 @@ class SuggestionStatusScreenTest {
         waitForText("첫 행동을 준비하고 있어요.")
         compose.waitUntil(5_000) { provider.requests.get() == 1 }
         button("다시 시도").assertDoesNotExist()
+        compose.onNode(hasContentDescription("첫 행동을 준비하고 있어요.") and hasProgressBarRangeInfo(ProgressBarRangeInfo.Indeterminate)).assertExists()
         button("취소").assertHeightIsAtLeast(48.dp).performScrollTo().performClick()
         waitForText("행동 제안을 취소했어요.")
         assertAnnounced("행동 제안을 취소했어요.")
