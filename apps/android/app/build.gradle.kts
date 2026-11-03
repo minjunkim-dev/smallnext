@@ -22,7 +22,8 @@ android {
         // Crashlytics 공개 클라이언트 설정. Git 밖(~/.gradle/gradle.properties 또는 -P)에서만 받는다. 없으면 빈 값이다.
         for (key in listOf("APP_ID", "SENDER_ID", "PROJECT_ID", "API_KEY")) {
             val value = providers.gradleProperty("SMALLNEXT_FIREBASE_$key").getOrElse("")
-            buildConfigField("String", "FIREBASE_$key", "\"${value.replace("\\", "\\\\").replace("\"", "\\\"")}\"")
+            val literal = value.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n").replace("\r", "\\r")
+            buildConfigField("String", "FIREBASE_$key", "\"$literal\"")
         }
     }
     buildTypes {
