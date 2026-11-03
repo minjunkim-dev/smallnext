@@ -372,8 +372,9 @@ private fun ActionCardContent(
 ) {
     var draftText by rememberSaveable(card.id) { mutableStateOf(card.draft) }
     var detailsExpanded by rememberSaveable(card.id) { mutableStateOf(false) }
+    // 기록하는 동안 버튼을 꺼 연타로 같은 결과가 두 번 기록되지 않게 한다.
+    var recording by remember(card.id) { mutableStateOf(false) }
     val uriHandler = LocalUriHandler.current
-    val resultLabel = stringResource(R.string.action_result_input)
     Column(verticalArrangement = Arrangement.spacedBy(24.dp)) {
         Heading(R.string.current_action_title, MaterialTheme.typography.titleLarge)
         Card(Modifier.fillMaxWidth()) {
@@ -416,11 +417,6 @@ private fun ActionCardContent(
                 ResultSection(R.string.previous_results, card.previousResults)
                 ResultSection(R.string.action_results, card.results)
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(
-                        stringResource(R.string.action_result),
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
                     OutlinedTextField(
                         draftText,
                         { text ->
@@ -430,7 +426,9 @@ private fun ActionCardContent(
                                 saveDraft(text, card.id)
                             }
                         },
-                        Modifier.fillMaxWidth().onFocusChanged { onResultFocus(it.isFocused) }.semantics { contentDescription = resultLabel },
+                        Modifier.fillMaxWidth().onFocusChanged { onResultFocus(it.isFocused) },
+                        // 편집란의 contentDescription은 TalkBack이 입력한 글 대신 읽을 수 있어 레이블로 둔다.
+                        label = { Text(stringResource(R.string.action_result_input)) },
                         placeholder = { Text(stringResource(R.string.action_result_placeholder)) },
                         minLines = 3,
                         maxLines = 8,
@@ -440,12 +438,19 @@ private fun ActionCardContent(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    SecondaryButton(R.string.record_result, enabled = draftText.isNotBlank()) {
+                    SecondaryButton(R.string.record_result, enabled = draftText.isNotBlank() && !recording) {
+                        // 다시 그리기 전에 들어온 두 번째 탭도 막는다.
+                        if (recording) return@SecondaryButton
                         val text = draftText
+                        recording = true
                         run {
-                            flow.recordResult(text, card.id)
-                            // 기록하는 동안 더 적은 내용은 초안으로 남긴다.
-                            if (draftText == text) draftText = ""
+                            try {
+                                flow.recordResult(text, card.id)
+                                // 기록하는 동안 더 적은 내용은 초안으로 남긴다.
+                                if (draftText == text) draftText = ""
+                            } finally {
+                                recording = false
+                            }
                         }
                     }
                     if (storageFailed && draftText != card.draft) SecondaryButton(R.string.save_draft_again) { saveDraft(draftText, card.id) }

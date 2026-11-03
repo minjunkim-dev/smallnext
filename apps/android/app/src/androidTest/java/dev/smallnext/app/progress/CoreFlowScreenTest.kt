@@ -98,7 +98,7 @@ class CoreFlowScreenTest {
 
     private fun count(query: String) = database.openHelper.writableDatabase.query(query).use { it.moveToFirst(); it.getLong(0) }
 
-    private val resultField get() = compose.onNode(hasContentDescription("행동 결과 입력") and hasSetTextAction())
+    private val resultField get() = compose.onNode(hasText("행동 결과 입력") and hasSetTextAction())
 
     /** 목표를 확인하고 첫 행동을 받은 흐름이다. */
     private fun flowWithCard(vararg actions: ProposedAction) = flow(goalPreparing(ScriptedProvider(*actions.map(::Action).toTypedArray()))).also {
@@ -181,7 +181,7 @@ class CoreFlowScreenTest {
         assertHeading("목표")
         compose.onNodeWithText("분기 업무 보고서 초안 쓰기").assertIsDisplayed()
         // 시트는 읽기 전용이다. 입력란은 시트 뒤 카드의 결과 입력란뿐이다.
-        assertEquals(0, compose.onAllNodes(hasSetTextAction() and !hasContentDescription("행동 결과 입력")).fetchSemanticsNodes().size)
+        assertEquals(0, compose.onAllNodes(hasSetTextAction() and !hasText("행동 결과 입력")).fetchSemanticsNodes().size)
         // 시스템 뒤로 가기는 시트를 먼저 닫고 진행 상태를 바꾸지 않는다. 시트 창이 다 열려 초점을 받은 뒤에 누른다.
         compose.waitForIdle()
         InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
@@ -278,7 +278,9 @@ class CoreFlowScreenTest {
         assertEquals(0L, count("SELECT COUNT(*) FROM action_note WHERE NOT is_draft AND body = '보고서 첫 줄 작성'"))
         compose.onNodeWithText("작성 중인 내용은 자동 저장돼요.").assertExists()
 
-        compose.onNodeWithText("결과 남기기").performScrollTo().assertIsEnabled().assertHeightIsAtLeast(48.dp).performClick()
+        // 키보드가 열리는 중이면 터치 주입이 키보드에 떨어질 수 있어 클릭 동작을 직접 실행한다.
+        compose.onNodeWithText("결과 남기기").performScrollTo().assertIsEnabled().assertHeightIsAtLeast(48.dp)
+            .performSemanticsAction(SemanticsActions.OnClick)
         compose.waitUntil(5_000) { compose.onAllNodes(hasText("이 행동에 남긴 결과")).fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithText("보고서 첫 줄 작성").assertExists()
         resultField.assert(SemanticsMatcher.expectValue(SemanticsProperties.EditableText, AnnotatedString("")))
@@ -290,10 +292,30 @@ class CoreFlowScreenTest {
         // 키보드가 열려 있으면 '완료'는 본문 아래쪽에 있다. 터치 주입이 키보드에 떨어지지 않게 클릭 동작을 직접 실행한다.
         compose.onNodeWithText("완료").performSemanticsAction(SemanticsActions.OnClick)
         waitForText(third.task)
-        compose.waitUntil(5_000) { compose.onAllNodes(hasContentDescription("행동 결과 입력")).fetchSemanticsNodes().size == 1 }
+        compose.waitUntil(5_000) { compose.onAllNodes(hasText("행동 결과 입력") and hasSetTextAction()).fetchSemanticsNodes().size == 1 }
         resultField.assert(SemanticsMatcher.expectValue(SemanticsProperties.EditableText, AnnotatedString("")))
         compose.onNodeWithText("앞서 남긴 결과").assertDoesNotExist()
         assertEquals(1L, count("SELECT COUNT(*) FROM action_note WHERE is_draft"))
+    }
+
+    // '결과 남기기'를 다시 그리기 전에 두 번 눌러도 결과는 하나만 기록된다.
+    @Test
+    fun doubleTapOnRecordResultRecordsOnce() {
+        val flow = flowWithCard(first)
+        show(flow)
+        waitForText(first.task)
+        resultField.performScrollTo().performTextInput("한 번만 남길 결과")
+        compose.waitUntil(5_000) { count("SELECT COUNT(*) FROM action_note WHERE is_draft") == 1L }
+        val click = compose.onNodeWithText("결과 남기기").fetchSemanticsNode().config[SemanticsActions.OnClick].action!!
+        compose.runOnUiThread {
+            click()
+            click()
+        }
+        // 두 탭의 명령이 차례 대기열에 들어간 뒤, 뒤에 넣은 명령이 끝나면 두 명령 모두 끝났다.
+        compose.waitForIdle()
+        runBlocking { flow.retrySuggestion() }
+        assertEquals(1L, count("SELECT COUNT(*) FROM action_note WHERE NOT is_draft"))
+        assertEquals(0L, count("SELECT COUNT(*) FROM action_note WHERE is_draft"))
     }
 
     // 초안 저장 실패: 문구를 보이고 첫 실패만 알린다. 입력은 그대로 두고 '입력 다시 저장'으로 다시 저장한다.
@@ -306,7 +328,9 @@ class CoreFlowScreenTest {
         resultField.performScrollTo().performTextInput("가")
         assertAnnounced("저장하지 못했어요. 다시 시도해 주세요.")
         resultField.performTextReplacement("가나")
-        compose.waitUntil(5_000) { compose.onAllNodes(hasText("입력 다시 저장")).fetchSemanticsNodes().isNotEmpty() }
+        // 명령은 차례로 실행된다. 뒤에 넣은 저장이 끝나면 화면의 두 번째 저장 시도도 끝났다.
+        runBlocking { runCatching { flow.updateDraft("가나", (flow.state.value.screen as ProgressScreen.CurrentAction).card.id) } }
+        compose.waitForIdle()
         // 같은 안내를 다시 보내면 끝에 보이지 않는 문자가 붙는다. 붙지 않았으면 한 번만 알린 것이다.
         compose.onNodeWithTag(ANNOUNCEMENT).assert(hasContentDescription("저장하지 못했어요. 다시 시도해 주세요."))
         compose.onNodeWithText("저장하지 못했어요. 다시 시도해 주세요.").assertExists()
@@ -340,7 +364,7 @@ class CoreFlowScreenTest {
                 assertTrue(text, bottom <= view.height - imeBottom())
             }
         } finally {
-            shell("settings put secure show_ime_with_hard_keyboard ${if (previous == "null") 0 else previous}")
+            shell(if (previous == "null") "settings delete secure show_ime_with_hard_keyboard" else "settings put secure show_ime_with_hard_keyboard $previous")
         }
     }
 

@@ -35,7 +35,6 @@
     <string name="collapsed">접힘</string>
     <string name="previous_results">앞서 남긴 결과</string>
     <string name="action_results">이 행동에 남긴 결과</string>
-    <string name="action_result">행동 결과</string>
     <string name="action_result_input">행동 결과 입력</string>
     <string name="action_result_placeholder">문장이나 메모를 적어 주세요.</string>
     <string name="draft_autosaved">작성 중인 내용은 자동 저장돼요.</string>
