@@ -2,6 +2,8 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.ksp)
+    // Crashlytics SDK는 이 플러그인이 넣는 build ID가 없으면 시작할 때 앱을 종료한다. google-services 플러그인은 쓰지 않는다.
+    alias(libs.plugins.crashlytics)
 }
 
 android {
@@ -17,8 +19,19 @@ android {
         versionCode = 1
         versionName = "0.1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        // Crashlytics 공개 클라이언트 설정. Git 밖(~/.gradle/gradle.properties 또는 -P)에서만 받는다. 없으면 빈 값이다.
+        for (key in listOf("APP_ID", "SENDER_ID", "PROJECT_ID", "API_KEY")) {
+            val value = providers.gradleProperty("SMALLNEXT_FIREBASE_$key").getOrElse("")
+            buildConfigField("String", "FIREBASE_$key", "\"${value.replace("\\", "\\\\").replace("\"", "\\\"")}\"")
+        }
     }
     buildTypes {
+        all {
+            // minify OFF라 올릴 매핑이 없다. 업로드에는 google-services 설정도 필요하다.
+            configure<com.google.firebase.crashlytics.buildtools.gradle.CrashlyticsExtension> {
+                mappingFileUploadEnabled = false
+            }
+        }
         release {
             isMinifyEnabled = false
         }
@@ -81,6 +94,8 @@ dependencies {
     implementation(libs.retrofit)
     implementation(libs.retrofit.gson)
     implementation(libs.okhttp)
+    implementation(platform(libs.firebase.bom))
+    implementation(libs.firebase.crashlytics)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.runner)
