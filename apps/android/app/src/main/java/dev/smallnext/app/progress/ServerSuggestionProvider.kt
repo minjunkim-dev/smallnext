@@ -16,6 +16,7 @@ import java.net.URI
 import java.net.UnknownHostException
 import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlin.math.ceil
@@ -23,6 +24,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.suspendCancellableCoroutine
+import okhttp3.Authenticator
 import okhttp3.Call
 import okhttp3.Callback
 import okhttp3.HttpUrl
@@ -49,6 +51,13 @@ class ServerSuggestionProvider private constructor(
         .retryOnConnectionFailure(false)
         .callTimeout(TIMEOUT_SECONDS, TimeUnit.SECONDS)
         .readTimeout(TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        .authenticator(Authenticator.NONE)
+        .proxyAuthenticator(Authenticator.NONE)
+        // OkHttp는 503 `Retry-After: 0`·421에도 같은 요청을 다시 보낸다. AI 요청은 호출마다 한 번만 보낸다.
+        .addNetworkInterceptor { chain ->
+            if (chain.request().tag(AtomicBoolean::class.java)?.getAndSet(true) == true) throw IOException("resend blocked")
+            chain.proceed(chain.request())
+        }
         .build()
 
     override suspend fun suggest(request: SuggestionRequest): SuggestionCandidate {
@@ -62,6 +71,7 @@ class ServerSuggestionProvider private constructor(
             .url(url)
             .post(bytes.toRequestBody(JSON))
             .header("Authorization", "Bearer $value")
+            .tag(AtomicBoolean::class.java, AtomicBoolean())
             .build()
         val (status, data) = try {
             client.newCall(http).await()
@@ -163,8 +173,9 @@ class ServerSuggestionProvider private constructor(
             false
         }
 
+        /** iOS는 공백만 막는다. OkHttp 헤더는 출력 가능한 ASCII만 받으므로 그 밖의 문자도 전송 전에 거절한다. */
         private fun validToken(value: String) =
-            value.isNotEmpty() && value.toByteArray().size <= TOKEN_LIMIT && value.none { it.isWhitespace() }
+            value.isNotEmpty() && value.length <= TOKEN_LIMIT && value.all { it in '!'..'~' }
 
         /** 답을 확정하기 전에도 실제 송신할 본문과 같은 상한을 검사한다. */
         internal fun requestBody(request: SuggestionRequest): ByteArray {

@@ -7,6 +7,7 @@ import com.google.gson.JsonParser
 import com.google.gson.JsonPrimitive
 import java.io.File
 import java.io.IOException
+import java.lang.reflect.Proxy
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
 import java.util.concurrent.CopyOnWriteArrayList
@@ -16,6 +17,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import okhttp3.Authenticator
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import okhttp3.Protocol
@@ -141,16 +143,45 @@ class ServerSuggestionProviderTest {
         }
     }
 
-    /** iOS는 `NoRedirect`와 `timeoutInterval = 160`이다. 주입한 클라이언트의 설정과 관계없이 같은 규칙을 쓴다. */
+    /**
+     * iOS는 `NoRedirect`와 `timeoutInterval = 160`이다. 주입한 클라이언트의 설정과 관계없이 같은 규칙을 쓴다.
+     * 가짜 전송은 OkHttp의 재시도·후속 요청 단계 바깥에 있어 설정값과 네트워크 단계 차단을 직접 확인한다.
+     */
     @Test
-    fun testTransportNeverRedirectsRetriesConnectionsAndTimesOutAt160Seconds() {
-        val loose = OkHttpClient.Builder().followRedirects(true).retryOnConnectionFailure(true).build()
+    fun testTransportNeverRedirectsRetriesConnectionsAndTimesOutAt160Seconds() = runBlocking {
+        val resend = Authenticator { _, response -> response.request }
+        val loose = OkHttpClient.Builder().followRedirects(true).retryOnConnectionFailure(true).authenticator(resend)
+            .proxyAuthenticator(resend).addInterceptor(transport).build()
         val provider = ServerSuggestionProvider.create("https://api.example.invalid", { "token" }, loose) as ServerSuggestionProvider
         assertFalse(provider.client.followRedirects)
         assertFalse(provider.client.followSslRedirects)
         assertFalse(provider.client.retryOnConnectionFailure)
+        assertEquals(Authenticator.NONE, provider.client.authenticator)
+        assertEquals(Authenticator.NONE, provider.client.proxyAuthenticator)
         assertEquals(160_000, provider.client.callTimeoutMillis)
         assertEquals(160_000, provider.client.readTimeoutMillis)
+
+        // 503 `Retry-After: 0`처럼 OkHttp가 같은 요청을 다시 보내면 두 번째 네트워크 전송을 막는다.
+        transport.handler = { 200 to accepted(it) }
+        provider.suggest(request())
+        val sent = transport.requests.single().request
+        val guard = provider.client.networkInterceptors.single()
+        var proceeded = 0
+        val chain = Proxy.newProxyInstance(javaClass.classLoader, arrayOf(Interceptor.Chain::class.java)) { _, method, _ ->
+            when (method.name) {
+                "request" -> sent
+                "proceed" -> Response.Builder().request(sent).protocol(Protocol.HTTP_1_1).code(503).message("")
+                    .header("Retry-After", "0").body(ByteArray(0).toResponseBody()).build().also { proceeded++ }
+                else -> error(method.name)
+            }
+        } as Interceptor.Chain
+        assertEquals(503, guard.intercept(chain).code)
+        try {
+            guard.intercept(chain)
+            fail("must not resend")
+        } catch (_: IOException) {
+        }
+        assertEquals(1, proceeded)
     }
 
     @Test
@@ -177,7 +208,7 @@ class ServerSuggestionProviderTest {
     @Test
     fun testMalformedTokenIsNeverSent() = runBlocking {
         transport.handler = { 200 to accepted(it) }
-        for (token in listOf("", "a b", "a\nb", "x".repeat(16 * 1024 + 1))) {
+        for (token in listOf("", "a b", "a\nb", "a\tb", "토큰", "é", "x".repeat(16 * 1024 + 1))) {
             assertEquals(SuggestionFailure.REJECTED, failure { provider(token = { token }).suggest(request()) })
         }
         assertTrue(transport.requests.isEmpty())
