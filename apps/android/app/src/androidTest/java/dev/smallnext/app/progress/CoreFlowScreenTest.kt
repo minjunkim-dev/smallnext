@@ -93,10 +93,18 @@ class CoreFlowScreenTest {
 
     private fun bounds(text: String) = compose.onNodeWithText(text).getUnclippedBoundsInRoot()
 
-    private fun layout(text: String): TextLayoutResult {
+    /**
+     * 모든 글자가 줄 수 제한·말줄임 없이 제약 안에 배치됐는지 확인한다.
+     * `hasVisualOverflow`는 문단 폭(실수)과 크기(정수)의 반올림 차이만으로도 참이 돼 쓰지 않는다.
+     */
+    private fun assertFullyLaidOut(text: String) {
         val results = mutableListOf<TextLayoutResult>()
         compose.onNodeWithText(text).performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(results) }
-        return results.single()
+        val layout = results.single()
+        val last = layout.lineCount - 1
+        assertFalse(text, layout.didOverflowHeight || layout.isLineEllipsized(last))
+        assertEquals(text, text.length, layout.getLineEnd(last))
+        assertTrue(text, layout.size.width <= layout.layoutInput.constraints.maxWidth)
     }
 
     // 핵심 경로의 TalkBack 의미: heading·레이블·상태 안내·카드 읽기 순서·48dp·목표 보기(읽기 전용)·뒤로 가기
@@ -170,7 +178,7 @@ class CoreFlowScreenTest {
         compose.onNodeWithTag(PINNED_COMMANDS).assertDoesNotExist()
         assertTrue(bounds("목표 보기").top >= bounds("Smallnext").bottom)
         for (text in listOf(first.task, first.doneWhen, "약 3분 · 예상")) {
-            assertFalse(text, layout(text).hasVisualOverflow)
+            assertFullyLaidOut(text)
         }
         compose.onNodeWithText("완료").performScrollTo().assertIsDisplayed().assertHeightIsAtLeast(48.dp).performClick()
         waitForText("다음 행동 대기")

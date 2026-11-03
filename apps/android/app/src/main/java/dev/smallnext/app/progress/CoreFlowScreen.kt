@@ -52,9 +52,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
@@ -78,7 +78,7 @@ object Motion {
 internal const val LARGE_FONT_SCALE = 1.5f
 
 /** iOS의 세로 compact 크기에 대응한다. 가로 화면에서는 고정 막대가 화면을 가린다. */
-private const val COMPACT_HEIGHT_DP = 480
+private const val COMPACT_HEIGHT = 480
 
 @Composable
 fun CoreFlowApp(flow: Deferred<ProgressFlow>) {
@@ -149,8 +149,10 @@ internal fun CoreFlowScreen(flow: ProgressFlow) {
             }
         }
     }
-    val largeText = LocalDensity.current.fontScale >= LARGE_FONT_SCALE
-    val pinned = screen is ProgressScreen.CurrentAction && !largeText && LocalConfiguration.current.screenHeightDp >= COMPACT_HEIGHT_DP
+    val density = LocalDensity.current
+    val largeText = density.fontScale >= LARGE_FONT_SCALE
+    val compactHeight = with(density) { LocalWindowInfo.current.containerSize.height.toDp() } < COMPACT_HEIGHT.dp
+    val pinned = screen is ProgressScreen.CurrentAction && !largeText && !compactHeight
 
     Scaffold(
         bottomBar = {
