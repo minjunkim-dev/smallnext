@@ -7,6 +7,7 @@ import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
@@ -27,6 +28,7 @@ class CoreFlowActivityTest {
         Intent(app, MainActivity::class.java).apply { coreFlow?.let { putExtra(FeatureFlags.CORE_FLOW, it) } },
     )
 
+    // CI 에뮬레이터(320x640dp)는 입력 뒤 소프트 키보드가 남아 본문 버튼을 가린다. 본문 버튼은 화면 안으로 스크롤한 뒤 누른다.
     private fun waitFor(text: String) = compose.waitUntil(10_000) { compose.onAllNodes(hasText(text)).fetchSemanticsNodes().size == 1 }
 
     @Test
@@ -47,9 +49,9 @@ class CoreFlowActivityTest {
         launch(coreFlow = true).use { scenario ->
             waitFor("목표를 한 문장으로 적어 주세요.")
             compose.onNode(hasSetTextAction()).performTextInput("이력서 정리하기")
-            compose.onNodeWithText("목표 정리").performClick()
+            compose.onNodeWithText("목표 정리").performScrollTo().performClick()
             waitFor("확인하고 시작")
-            compose.onNodeWithText("확인하고 시작").performClick()
+            compose.onNodeWithText("확인하고 시작").performScrollTo().performClick()
             waitFor("이력서 파일 하나 열기")
             compose.onNodeWithText("약 3분 · 예상").assertIsDisplayed()
             compose.onNodeWithText("완료").performClick()

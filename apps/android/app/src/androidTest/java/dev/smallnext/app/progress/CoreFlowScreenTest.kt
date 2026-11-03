@@ -117,14 +117,14 @@ class CoreFlowScreenTest {
         compose.onNodeWithText("목표 한 문장").assertExists()
         compose.onNodeWithText("목표 정리").assertIsNotEnabled()
         compose.onNode(hasSetTextAction()).performTextInput("분기 업무 보고서 초안 쓰기")
-        compose.onNodeWithText("목표 정리").assertIsEnabled().assertHeightIsAtLeast(48.dp).performClick()
+        compose.onNodeWithText("목표 정리").assertIsEnabled().assertHeightIsAtLeast(48.dp).performScrollTo().performClick()
         assertAnnounced("목표를 정리하고 있어요.")
 
         provider.release()
         waitForText("확인하고 시작")
         assertAnnounced("완료 조건을 확인해 주세요.")
         assertHeading("목표 확인")
-        compose.onNodeWithText("확인하고 시작").assertHeightIsAtLeast(48.dp).performClick()
+        compose.onNodeWithText("확인하고 시작").assertHeightIsAtLeast(48.dp).performScrollTo().performClick()
         waitForText("첫 행동을 준비하고 있어요.")
         assertAnnounced("첫 행동을 준비하고 있어요.")
 

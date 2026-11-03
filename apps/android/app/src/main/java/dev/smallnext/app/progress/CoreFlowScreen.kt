@@ -53,6 +53,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.platform.testTag
@@ -138,7 +139,10 @@ internal fun CoreFlowScreen(flow: ProgressFlow) {
         if (shown != screen) announcement(shown, screen, resources)?.let(announce)
         shown = screen
     }
+    val focusManager = LocalFocusManager.current
     val run: (suspend () -> Unit) -> Unit = { command ->
+        // 입력을 마친 화면을 떠나므로 키보드를 닫는다. 남은 키보드가 고정 버튼과 다음 화면을 가리지 않게 한다.
+        focusManager.clearFocus()
         scope.launch {
             storageFailed = false
             try {
