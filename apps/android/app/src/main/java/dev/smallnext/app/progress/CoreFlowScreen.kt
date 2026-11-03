@@ -169,7 +169,7 @@ internal fun CoreFlowScreen(flow: ProgressFlow) {
                     Column(Modifier.navigationBarsPadding().padding(horizontal = 24.dp, vertical = 12.dp), Arrangement.spacedBy(12.dp)) {
                         // 누른 버튼 가까이에 실패를 보여준다.
                         if (storageFailed) StorageFailure()
-                        CommandButton(R.string.complete) { run { flow.complete((screen as ProgressScreen.CurrentAction).card.id) } }
+                        CommandButton(R.string.complete) { run { flow.complete(screen.card.id) } }
                     }
                 }
             }
