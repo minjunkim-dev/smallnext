@@ -66,6 +66,14 @@ sealed interface ProgressScreen {
     val problem: SuggestionProblem? get() = null
 }
 
+/** 제안을 기다리는 중인지 나타낸다. 결과 저장에 실패한 요청은 실패로 보여 취소할 수 없다. */
+val ProgressScreen.isWaitingForSuggestion: Boolean
+    get() = when (this) {
+        is ProgressScreen.PreparingGoal -> this == ProgressScreen.PreparingGoal(null, null, null)
+        is ProgressScreen.AwaitingFirstAction, is ProgressScreen.AwaitingNextAction -> problem == null
+        ProgressScreen.GoalInput, is ProgressScreen.CurrentAction -> false
+    }
+
 data class ProgressState(
     val screen: ProgressScreen,
     val goalInput: GoalInput,
@@ -243,6 +251,16 @@ class ProgressFlow private constructor(
         }
     }
 
+    /** 기다리는 중인 제안만 취소한다. 취소는 공급자 코루틴까지 전달하고, 그 뒤 도착한 결과는 적용하지 않는다. */
+    suspend fun cancelSuggestion() = serially {
+        if (!state.value.screen.isWaitingForSuggestion) return@serially
+        perform { db ->
+            selectedGoalId(db)?.let { endPendingRequests(db, it, "cancelled") }
+            null
+        }
+        suggestionJob?.cancel()
+    }
+
     /** 진행 중인 제안 요청이 끝날 때까지 기다린다. 테스트에서 쓴다. */
     internal suspend fun awaitSuggestion() {
         suggestionJob?.join()
@@ -375,10 +393,6 @@ class ProgressFlow private constructor(
                 is SuggestionCandidate.MinimalAction -> candidate.action
                 is SuggestionCandidate.InsufficientInfo, SuggestionCandidate.NoAction, null ->
                     return finishRequest(db, pending.id, "failed", UNSUITABLE)
-            }
-            // 완료한 행동을 다시 제안하면 적용하지 않는다.
-            if (db.long("SELECT EXISTS (SELECT 1 FROM action WHERE goal_id = ? AND status = 'done' AND task = ?)", pending.goalId, action.task) == 1L) {
-                return finishRequest(db, pending.id, "failed", UNSUITABLE)
             }
             db.insert(
                 """

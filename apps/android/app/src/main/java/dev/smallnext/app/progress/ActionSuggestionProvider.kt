@@ -102,7 +102,9 @@ class SuggestionException(val failure: SuggestionFailure) : Exception(failure.ra
 
 /**
  * 요청 종류에 맞고 바로 보여줄 수 있는 후보만 받는다. 앞뒤 공백을 지운 후보를 돌려준다.
- * 공급자와 관계없는 규칙이다. 저장된 기록이 필요한 검사는 [ProgressFlow]가 한다. iOS `CandidatePolicy`와 같다.
+ * 공급자와 관계없는 규칙이다. 요청에 없는 저장 기록이 필요한 검사는 [ProgressFlow]가 한다.
+ * iOS `CandidatePolicy`에 완료한 행동 검사를 더했다. iOS는 이 검사를 `ProgressFlow`에서 DB로 한다.
+ * 같은 결과는 "완료하면 completion을 남기고 리비전을 올린다"는 불변식에 기댄다. 완료 경로를 더하면 함께 확인한다.
  */
 object CandidatePolicy {
     fun accept(candidate: SuggestionCandidate, request: SuggestionRequest): SuggestionCandidate? = when (candidate) {
@@ -120,7 +122,8 @@ object CandidatePolicy {
 
     /**
      * 필수 필드가 비었거나 목표·원래 행동의 완료를 표시한 후보는 받지 않는다.
-     * 더 작게는 현재 행동을, 다른 요청은 보류한 행동을 그대로 다시 제안하면 받지 않는다.
+     * 더 작게는 현재 행동을, 다른 요청은 보류한 행동을 그대로 다시 제안하면 받지 않는다. 완료한 행동도 다시 받지 않는다.
+     * iOS는 완료 여부를 DB에서 확인한다. 요청의 완료 목록은 같은 리비전의 스냅숏이라 결과가 같다.
      */
     private fun action(proposed: ProposedAction, request: SuggestionRequest): ProposedAction? {
         if (request.kind == SuggestionKind.GOAL_PREPARATION) return null
@@ -129,7 +132,7 @@ object CandidatePolicy {
         if (proposed.estimatedMinutes <= 0 || proposed.marksGoalComplete || proposed.marksCurrentActionComplete) return null
         if (!proposed.materialLinks.all(::isWebLink)) return null
         val excluded = if (request.kind == SuggestionKind.SMALLER) listOfNotNull(request.currentAction?.task) else request.deferredTasks
-        if (task in excluded) return null
+        if (task in excluded || task in request.completedTasks) return null
         return proposed.copy(
             task = task,
             doneWhen = doneWhen,
