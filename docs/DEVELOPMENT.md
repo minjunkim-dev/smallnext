@@ -259,6 +259,7 @@ Room 테스트는 별도 테스트 DB 파일을 생성하고 삭제합니다.
 Android 플래그(`android_`)는 빌드 때 asset으로 넣은 같은 [등록 파일](../config/feature-flags.json)에서 `FeatureFlags`가 읽습니다. iOS 플래그는 읽지 않습니다.
 Debug 빌드에서만 실행 인텐트 extra로 로컬 확인용 ON을 지정할 수 있습니다. Release 빌드는 extra를 열지 않습니다.
 `android_core_flow`를 켜면 목표 입력 → 완료 조건 확인 → 현재 행동 → 완료 → 다음 행동 경로가 보입니다. OFF는 기존 시작 화면 그대로입니다.
+현재 행동 카드에서 행동 결과를 남깁니다. 입력 초안은 자동 저장됩니다. 대상·설명과 자료·같은 대상의 앞선 결과도 카드에서 봅니다.
 제안은 Debug 고정 공급자(`src/debug`)가 만듭니다. Release에는 이 공급자가 없고 제안은 `사용 불가`입니다.
 사용자 서버 `POST /v1/suggestions` 공급자(`ServerSuggestionProvider`)는 iOS와 같은 계약으로 있지만 앱에는 아직 연결하지 않았습니다. `android_server_ai`를 켜도 지금은 동작이 바뀌지 않습니다.
 

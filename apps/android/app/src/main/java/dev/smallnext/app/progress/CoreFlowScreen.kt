@@ -12,6 +12,8 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.consumeWindowInsets
@@ -19,6 +21,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
@@ -52,10 +55,12 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -64,12 +69,16 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import dev.smallnext.app.R
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 /** 모션 값은 여기서만 조정한다. iOS `Motion`과 같은 값이다. 분할(0.34초)은 #353에서 더한다. */
 object Motion {
@@ -123,7 +132,7 @@ internal fun SmallnextTheme(content: @Composable () -> Unit) {
 }
 
 /** 진행 흐름의 상태만 그린다. 진행 규칙은 [ProgressFlow]에 있다. */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 internal fun CoreFlowScreen(flow: ProgressFlow) {
     val state by flow.state.collectAsState()
@@ -158,10 +167,45 @@ internal fun CoreFlowScreen(flow: ProgressFlow) {
             }
         }
     }
+    // 카드별로 마지막에 입력한 초안이다. 저장하지 못했으면 완료 전에 다시 저장한다.
+    val draftInputs = remember { mutableMapOf<Long, String>() }
+    // 입력 초안 자동 저장이다. 키보드를 닫지 않는다. 실패는 첫 번째만 알려 입력마다 같은 안내가 반복되지 않게 한다.
+    val saveDraft = { text: String, actionId: Long ->
+        draftInputs[actionId] = text
+        scope.launch {
+            try {
+                flow.updateDraft(text, actionId)
+                storageFailed = false
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: ProgressFlowException) {
+                // 사라지는 카드에 늦게 들어온 입력이다. 다른 카드에 저장하지 않는다.
+            } catch (_: Exception) {
+                if (!storageFailed) announce(resources.getString(R.string.storage_failed))
+                storageFailed = true
+            }
+        }
+    }
+    var resultFocused by remember { mutableStateOf(false) }
+    // '결과 남기기'는 마지막 자동 저장을 기다린다. 그동안 누른 '완료'가 앞질러 결과를 거부하게 하지 않도록 누른 순서대로 실행한다.
+    val cardCommands = remember { Mutex() }
+    // iOS `run(saving:)`와 같다. 저장하지 못한 입력이 있으면 먼저 저장하고, 실패하면 완료하지 않는다.
+    val completeCard = { actionId: Long ->
+        run {
+            cardCommands.withLock {
+                val saved = (flow.state.value.screen as? ProgressScreen.CurrentAction)?.card?.takeIf { it.id == actionId }?.draft
+                val input = draftInputs[actionId]
+                if (saved != null && input != null && input != saved) flow.updateDraft(input, actionId)
+                flow.complete(actionId)
+            }
+        }
+    }
     val density = LocalDensity.current
     val largeText = density.fontScale >= LARGE_FONT_SCALE
     val compactHeight = with(density) { LocalWindowInfo.current.containerSize.height.toDp() } < COMPACT_HEIGHT.dp
-    val pinned = screen is ProgressScreen.CurrentAction && !largeText && !compactHeight
+    // 결과를 적는 동안은 키보드 위 공간이 좁아 고정 막대가 입력란을 가린다. 그래서 본문으로 옮긴다.
+    val writingResult = resultFocused && WindowInsets.isImeVisible
+    val pinned = screen is ProgressScreen.CurrentAction && !largeText && !compactHeight && !writingResult
 
     Scaffold(
         bottomBar = {
@@ -170,7 +214,7 @@ internal fun CoreFlowScreen(flow: ProgressFlow) {
                     Column(Modifier.navigationBarsPadding().padding(horizontal = 24.dp, vertical = 12.dp), Arrangement.spacedBy(12.dp)) {
                         // 누른 버튼 가까이에 실패를 보여준다.
                         if (storageFailed) StorageFailure()
-                        CommandButton(R.string.complete) { run { flow.complete(screen.card.id) } }
+                        CommandButton(R.string.complete) { completeCard(screen.card.id) }
                     }
                 }
             }
@@ -204,7 +248,17 @@ internal fun CoreFlowScreen(flow: ProgressFlow) {
                     is ProgressScreen.PreparingGoal -> PreparingGoalContent(target, state.goal, flow, run)
                     is ProgressScreen.AwaitingFirstAction ->
                         SuggestionStatus(R.string.preparing_first_action, target.problem, flow, run)
-                    is ProgressScreen.CurrentAction -> ActionCardContent(target.card, commandsInBody = !pinned) { run { flow.complete(target.card.id) } }
+                    is ProgressScreen.CurrentAction -> ActionCardContent(
+                        target.card,
+                        commandsInBody = !pinned,
+                        storageFailed = storageFailed,
+                        flow = flow,
+                        run = run,
+                        saveDraft = saveDraft,
+                        onResultFocus = { resultFocused = it },
+                        cardCommands = cardCommands,
+                        draftInputs = draftInputs,
+                    ) { completeCard(target.card.id) }
                     is ProgressScreen.AwaitingNextAction -> Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
                         Heading(R.string.next_action_title, MaterialTheme.typography.titleLarge)
                         SuggestionStatus(R.string.preparing_next_action, target.problem, flow, run)
@@ -321,13 +375,39 @@ private fun PreparingGoalContent(
     }
 }
 
-/** 카드는 할 일 → 완료 조건 → 예상 시간 순서로 보이고 읽힌다. */
+/**
+ * 카드는 할 일 → 완료 조건 → 예상 시간 순서로 보이고 읽힌다. 그 아래에 설명과 자료, 결과, 결과 입력이 온다.
+ * 입력 초안은 카드마다 따로 둔다. 사라지는 카드의 입력이 새 카드의 입력란에 섞이지 않는다.
+ */
 @Composable
-private fun ActionCardContent(card: ActionCard, commandsInBody: Boolean, complete: () -> Unit) {
+private fun ActionCardContent(
+    card: ActionCard,
+    commandsInBody: Boolean,
+    storageFailed: Boolean,
+    flow: ProgressFlow,
+    run: (suspend () -> Unit) -> Unit,
+    saveDraft: (String, Long) -> Job,
+    onResultFocus: (Boolean) -> Unit,
+    cardCommands: Mutex,
+    draftInputs: MutableMap<Long, String>,
+    complete: () -> Unit,
+) {
+    var draftText by rememberSaveable(card.id) { mutableStateOf(card.draft) }
+    var detailsExpanded by rememberSaveable(card.id) { mutableStateOf(false) }
+    // 기록하는 동안 버튼을 꺼 연타로 같은 결과가 두 번 기록되지 않게 한다.
+    var recording by remember(card.id) { mutableStateOf(false) }
+    // 마지막 자동 저장이다. 결과를 기록하기 전에 끝나기를 기다려, 늦은 초안 저장이 기록한 결과를 초안으로 되살리지 않게 한다.
+    val lastSave = remember(card.id) { arrayOfNulls<Job>(1) }
+    val uriHandler = LocalUriHandler.current
+    // 화면을 다시 만들면 입력란은 복구되지만 끝나지 않은 자동 저장은 취소된다. 복구한 입력을 다시 저장한다.
+    LaunchedEffect(card.id) {
+        if (draftText != card.draft) lastSave[0] = saveDraft(draftText, card.id)
+    }
     Column(verticalArrangement = Arrangement.spacedBy(24.dp)) {
         Heading(R.string.current_action_title, MaterialTheme.typography.titleLarge)
         Card(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(24.dp), Arrangement.spacedBy(16.dp)) {
+                card.targetName?.let { Text(stringResource(R.string.target_name, it), style = MaterialTheme.typography.titleMedium) }
                 Text(
                     card.task,
                     Modifier.semantics { heading() },
@@ -348,9 +428,79 @@ private fun ActionCardContent(card: ActionCard, commandsInBody: Boolean, complet
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                if (card.targetDescription != null || card.materialLinks.isNotEmpty()) {
+                    val expansion = stringResource(if (detailsExpanded) R.string.expanded else R.string.collapsed)
+                    TextButton(
+                        { detailsExpanded = !detailsExpanded },
+                        Modifier.heightIn(min = 48.dp).semantics { stateDescription = expansion },
+                    ) { Text(stringResource(R.string.details_and_materials)) }
+                    if (detailsExpanded) {
+                        card.targetDescription?.let { Text(it, style = MaterialTheme.typography.bodyLarge) }
+                        // 기기 브라우저로 연다. 열 앱이 없어도 화면을 닫지 않는다.
+                        for (link in card.materialLinks.filter(CandidatePolicy::isWebLink)) {
+                            TextButton({ runCatching { uriHandler.openUri(link) } }, Modifier.heightIn(min = 48.dp)) { Text(link) }
+                        }
+                    }
+                }
+                ResultSection(R.string.previous_results, card.previousResults)
+                ResultSection(R.string.action_results, card.results)
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        draftText,
+                        { text ->
+                            // 사라지는 카드에 늦게 들어온 입력은 받지 않는다.
+                            if ((flow.state.value.screen as? ProgressScreen.CurrentAction)?.card?.id == card.id) {
+                                draftText = text
+                                lastSave[0] = saveDraft(text, card.id)
+                            }
+                        },
+                        Modifier.fillMaxWidth().onFocusChanged { onResultFocus(it.isFocused) },
+                        // 편집란의 contentDescription은 TalkBack이 입력한 글 대신 읽을 수 있어 레이블로 둔다.
+                        label = { Text(stringResource(R.string.action_result_input)) },
+                        placeholder = { Text(stringResource(R.string.action_result_placeholder)) },
+                        minLines = 3,
+                        maxLines = 8,
+                    )
+                    Text(
+                        stringResource(R.string.draft_autosaved),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    SecondaryButton(R.string.record_result, enabled = draftText.isNotBlank() && !recording) {
+                        // 다시 그리기 전에 들어온 두 번째 탭도 막는다.
+                        if (recording) return@SecondaryButton
+                        val text = draftText
+                        recording = true
+                        run {
+                            try {
+                                cardCommands.withLock {
+                                    lastSave[0]?.join()
+                                    flow.recordResult(text, card.id)
+                                    // 기록하는 동안 더 적은 내용은 초안으로 남긴다.
+                                    if (draftText == text) {
+                                        draftText = ""
+                                        draftInputs[card.id] = ""
+                                    }
+                                }
+                            } finally {
+                                recording = false
+                            }
+                        }
+                    }
+                    if (storageFailed && draftText != card.draft) SecondaryButton(R.string.save_draft_again) { lastSave[0] = saveDraft(draftText, card.id) }
+                }
             }
         }
         if (commandsInBody) CommandButton(R.string.complete, onClick = complete)
+    }
+}
+
+@Composable
+private fun ResultSection(@StringRes title: Int, results: List<ActionResult>) {
+    if (results.isEmpty()) return
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(stringResource(title), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        results.forEach { Text(it.body, style = MaterialTheme.typography.bodyLarge) }
     }
 }
 
@@ -389,6 +539,11 @@ private fun CommandButton(@StringRes title: Int, enabled: Boolean = true, promin
     } else {
         OutlinedButton(onClick, modifier, enabled) { Text(stringResource(title)) }
     }
+}
+
+@Composable
+private fun SecondaryButton(@StringRes title: Int, enabled: Boolean = true, onClick: () -> Unit) {
+    OutlinedButton(onClick, Modifier.fillMaxWidth().heightIn(min = 48.dp), enabled) { Text(stringResource(title)) }
 }
 
 @get:StringRes
