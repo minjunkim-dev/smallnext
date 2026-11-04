@@ -18,14 +18,6 @@
       "remove_by": "2026-12-31"
     },
     {
-      "key": "development_subscription_ai",
-      "default": false,
-      "phase": "development",
-      "owner": "minjunkim-dev",
-      "issue": 17,
-      "remove_by": "2026-11-04"
-    },
-    {
       "key": "ios_core_flow",
       "default": false,
       "phase": "development",

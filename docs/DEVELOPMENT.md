@@ -116,8 +116,8 @@ cargo run --locked --manifest-path services/api/Cargo.toml --bin development-ai 
 이는 임시 보호 한도입니다. 출시 비용·지연·출력 토큰 한도가 아닙니다.
 임시 폴더에는 고정 프롬프트와 스키마만 기록합니다. 완료·실패 시 폴더를 제거합니다.
 
-플래그 기본값은 [등록 파일](../config/feature-flags.json)에서 읽습니다.
-ON은 로컬 실행 옵션 또는 아래 Mac 개발 서버 설정으로 허용합니다.
+기본 실행은 모델을 호출하지 않습니다.
+ON은 `--enable-local-ai` 또는 아래 Mac 개발 서버의 `DEVELOPMENT_SUBSCRIPTION_AI=1`로만 허용합니다.
 운영 AI와 실기기 검증은 [#47](https://github.com/minjunkim-dev/smallnext/issues/47)과 [#61](https://github.com/minjunkim-dev/smallnext/issues/61)에서 관리합니다.
 운영 API 연결과 자격증명은 개발 완료 후 별도로 준비합니다.
 

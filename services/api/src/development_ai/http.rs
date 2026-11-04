@@ -32,7 +32,7 @@ struct Request {
     input: AiInput,
 }
 
-/// Only an explicit local environment override enables the registered development flag.
+/// Only `DEVELOPMENT_SUBSCRIPTION_AI=1` registers the development route. The default stays off.
 pub fn from_environment(address: SocketAddr) -> Result<Router, &'static str> {
     let ai = if env::var("DEVELOPMENT_SUBSCRIPTION_AI").as_deref() == Ok("1") {
         SubscriptionAi::for_local_development()

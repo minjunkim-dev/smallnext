@@ -1,4 +1,4 @@
-//! Developer's Mac only: the Codex CLI adapter. HTTP access requires the local development flag.
+//! Developer's Mac only: the Codex CLI adapter. HTTP access requires the explicit local override.
 pub mod http;
 use crate::suggestion::{self, AiInput, Disposition, INPUT_LIMIT, Model, Proposal, Role};
 use serde_json::Value;
@@ -105,9 +105,8 @@ pub struct SubscriptionAi {
 }
 impl Default for SubscriptionAi {
     fn default() -> Self {
-        let enabled = crate::transport::flag_default("development_subscription_ai");
         Self {
-            enabled,
+            enabled: false,
             executable: "codex".into(),
             timeout: Duration::from_secs(120),
         }
