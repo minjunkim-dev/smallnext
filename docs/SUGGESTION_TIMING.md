@@ -172,7 +172,7 @@ Claude Code 구독 OAuth·`claude-haiku-5-5 / xhigh` 설정을 변경하지 않�
 이 명확화는 향후 새 입력에만 적용하며 과거 입력·결과·판정·삭제 기한을 변경하지 않는다.
 오프라인 검증은 실제 출력 개선의 근거가 아니며, 새 freeze/run·모델 호출에는 별도 사용자 승인이 필요하다.
 
-1. `TimingValidation`을 고정 패키지로 빌드하고 새 `Smallnext111-<식별자>` iOS27.0 시뮬레이터에 설치한다.
+1. `TimingValidation`을 고정 패키지로 빌드하고 새 `Smallnext111-<식별자>` iOS 27.2(`.ci/toolchains.json`의 `ios_runtime`) 시뮬레이터에 설치한다.
    개발 URL 없이 빈 앱을 한 번 열어 DB 마이그레이션만 수행한다. 별도 QA PostgreSQL과 loopback Rust 서버를 사용한다.
    구독 로그인 상태·CLI 버전/hash·최종 소스·시뮬레이터·서버·빌드 설정과 사용자 승인 원문을 비공개 실행 자료에 기록한다.
 2. `freeze`에 main checkout `work/` 아래의 **미사용 새 폴더**, 담당자·미래 종료 상한·삭제 방법,

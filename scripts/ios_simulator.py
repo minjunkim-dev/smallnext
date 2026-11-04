@@ -10,17 +10,23 @@ def select(devices, runtime, requested="", runtimes=()):
     keys = {item["identifier"] for item in runtimes
             if item.get("version") == runtime and item.get("isAvailable", False)
             and item["identifier"].startswith("com.apple.CoreSimulator.SimRuntime.iOS-")}
-    if len(keys) != 1:
+    if not keys:
         raise ValueError(f"Expected one available iOS {runtime} runtime; install it in Xcode.")
-    key = keys.pop()
-    available = [device for device in devices.get(key, [])
+    # Xcode can ship a device-specific build of the same version (e.g. iOS-27-2-iPhone19-4 for
+    # iPhone Duo). Stay on the shorter general runtime. A booted device there wins; otherwise
+    # use that runtime's first iPhone. Fall back only when the general runtime has no match.
+    chosen = []
+    for key in sorted(keys, key=lambda identifier: (len(identifier), identifier)):
+        group = [device for device in devices.get(key, [])
                  if device["name"].startswith("iPhone") and device.get("isAvailable", True)]
-    if requested:
-        available = [device for device in available
-                     if requested in (device["name"], device["udid"])]
-    if not available:
+        if requested:
+            group = [device for device in group if requested in (device["name"], device["udid"])]
+        if group:
+            chosen = group
+            break
+    if not chosen:
         raise ValueError(f"No matching iPhone simulator for iOS {runtime}. Install this runtime in Xcode.")
-    return next((device for device in available if device["state"] == "Booted"), available[0])["udid"]
+    return next((device for device in chosen if device["state"] == "Booted"), chosen[0])["udid"]
 
 
 if __name__ == "__main__":
