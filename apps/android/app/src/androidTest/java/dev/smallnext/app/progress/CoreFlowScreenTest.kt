@@ -344,6 +344,48 @@ class CoreFlowScreenTest {
         compose.onNodeWithText("입력 다시 저장").assertDoesNotExist()
     }
 
+    // iOS testRunDoesNotRunCommandWhenDraftSaveFails. 저장하지 못한 입력이 있으면 '완료'가 먼저 다시 저장하고, 실패하면 완료하지 않는다.
+    @Test
+    fun completeDoesNotRunWhenUnsavedDraftCannotBeSaved() {
+        val flow = flowWithCard(first, second)
+        show(flow)
+        waitForText(first.task)
+        sql("CREATE TRIGGER reject_note BEFORE INSERT ON action_note BEGIN SELECT RAISE(ABORT, 'test failure'); END")
+        resultField.performScrollTo().performTextInput("다시 볼 메모")
+        assertAnnounced("저장하지 못했어요. 다시 시도해 주세요.")
+
+        val complete = compose.onNodeWithText("완료")
+        complete.performSemanticsAction(SemanticsActions.OnClick)
+        compose.waitForIdle()
+        runBlocking { flow.retrySuggestion() }
+        compose.waitForIdle()
+        assertEquals(first.task, (flow.state.value.screen as ProgressScreen.CurrentAction).card.task)
+        assertEquals(0L, count("SELECT COUNT(*) FROM completion"))
+
+        sql("DROP TRIGGER reject_note")
+        compose.onNodeWithText("완료").performSemanticsAction(SemanticsActions.OnClick)
+        waitForText(second.task)
+        assertEquals(1L, count("SELECT COUNT(*) FROM completion"))
+        assertEquals(1L, count("SELECT COUNT(*) FROM action_note WHERE is_draft AND body = '다시 볼 메모'"))
+    }
+
+    // 화면을 다시 만들면 복구한 입력을 다시 저장한다. 끝나지 않은 자동 저장이 취소돼도 입력이 DB에 남는다.
+    @Test
+    fun recreatingTheScreenSavesTheRestoredDraft() {
+        val flow = flowWithCard(first)
+        val restoration = StateRestorationTester(compose)
+        restoration.setContent { SmallnextTheme { CoreFlowScreen(flow) } }
+        waitForText(first.task)
+        sql("CREATE TRIGGER reject_note BEFORE INSERT ON action_note BEGIN SELECT RAISE(ABORT, 'test failure'); END")
+        resultField.performScrollTo().performTextInput("복구할 입력")
+        compose.waitUntil(5_000) { compose.onAllNodes(hasText("입력 다시 저장")).fetchSemanticsNodes().isNotEmpty() }
+        sql("DROP TRIGGER reject_note")
+
+        restoration.emulateSavedInstanceStateRestore()
+        compose.waitUntil(5_000) { count("SELECT COUNT(*) FROM action_note WHERE is_draft AND body = '복구할 입력'") == 1L }
+        resultField.assert(SemanticsMatcher.expectValue(SemanticsProperties.EditableText, AnnotatedString("복구할 입력")))
+    }
+
     // 자동 저장이 끝나기 전에 '결과 남기기'와 '완료'를 차례로 눌러도 결과가 먼저 기록되고 거부되지 않는다.
     @Test
     fun completeRightAfterRecordResultKeepsTheResult() {

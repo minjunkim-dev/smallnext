@@ -167,8 +167,11 @@ internal fun CoreFlowScreen(flow: ProgressFlow) {
             }
         }
     }
+    // 카드별로 마지막에 입력한 초안이다. 저장하지 못했으면 완료 전에 다시 저장한다.
+    val draftInputs = remember { mutableMapOf<Long, String>() }
     // 입력 초안 자동 저장이다. 키보드를 닫지 않는다. 실패는 첫 번째만 알려 입력마다 같은 안내가 반복되지 않게 한다.
     val saveDraft = { text: String, actionId: Long ->
+        draftInputs[actionId] = text
         scope.launch {
             try {
                 flow.updateDraft(text, actionId)
@@ -186,6 +189,17 @@ internal fun CoreFlowScreen(flow: ProgressFlow) {
     var resultFocused by remember { mutableStateOf(false) }
     // '결과 남기기'는 마지막 자동 저장을 기다린다. 그동안 누른 '완료'가 앞질러 결과를 거부하게 하지 않도록 누른 순서대로 실행한다.
     val cardCommands = remember { Mutex() }
+    // iOS `run(saving:)`와 같다. 저장하지 못한 입력이 있으면 먼저 저장하고, 실패하면 완료하지 않는다.
+    val completeCard = { actionId: Long ->
+        run {
+            cardCommands.withLock {
+                val saved = (flow.state.value.screen as? ProgressScreen.CurrentAction)?.card?.takeIf { it.id == actionId }?.draft
+                val input = draftInputs[actionId]
+                if (saved != null && input != null && input != saved) flow.updateDraft(input, actionId)
+                flow.complete(actionId)
+            }
+        }
+    }
     val density = LocalDensity.current
     val largeText = density.fontScale >= LARGE_FONT_SCALE
     val compactHeight = with(density) { LocalWindowInfo.current.containerSize.height.toDp() } < COMPACT_HEIGHT.dp
@@ -200,7 +214,7 @@ internal fun CoreFlowScreen(flow: ProgressFlow) {
                     Column(Modifier.navigationBarsPadding().padding(horizontal = 24.dp, vertical = 12.dp), Arrangement.spacedBy(12.dp)) {
                         // 누른 버튼 가까이에 실패를 보여준다.
                         if (storageFailed) StorageFailure()
-                        CommandButton(R.string.complete) { run { cardCommands.withLock { flow.complete(screen.card.id) } } }
+                        CommandButton(R.string.complete) { completeCard(screen.card.id) }
                     }
                 }
             }
@@ -243,7 +257,8 @@ internal fun CoreFlowScreen(flow: ProgressFlow) {
                         saveDraft = saveDraft,
                         onResultFocus = { resultFocused = it },
                         cardCommands = cardCommands,
-                    ) { run { cardCommands.withLock { flow.complete(target.card.id) } } }
+                        draftInputs = draftInputs,
+                    ) { completeCard(target.card.id) }
                     is ProgressScreen.AwaitingNextAction -> Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
                         Heading(R.string.next_action_title, MaterialTheme.typography.titleLarge)
                         SuggestionStatus(R.string.preparing_next_action, target.problem, flow, run)
@@ -374,6 +389,7 @@ private fun ActionCardContent(
     saveDraft: (String, Long) -> Job,
     onResultFocus: (Boolean) -> Unit,
     cardCommands: Mutex,
+    draftInputs: MutableMap<Long, String>,
     complete: () -> Unit,
 ) {
     var draftText by rememberSaveable(card.id) { mutableStateOf(card.draft) }
@@ -383,6 +399,10 @@ private fun ActionCardContent(
     // 마지막 자동 저장이다. 결과를 기록하기 전에 끝나기를 기다려, 늦은 초안 저장이 기록한 결과를 초안으로 되살리지 않게 한다.
     val lastSave = remember(card.id) { arrayOfNulls<Job>(1) }
     val uriHandler = LocalUriHandler.current
+    // 화면을 다시 만들면 입력란은 복구되지만 끝나지 않은 자동 저장은 취소된다. 복구한 입력을 다시 저장한다.
+    LaunchedEffect(card.id) {
+        if (draftText != card.draft) lastSave[0] = saveDraft(draftText, card.id)
+    }
     Column(verticalArrangement = Arrangement.spacedBy(24.dp)) {
         Heading(R.string.current_action_title, MaterialTheme.typography.titleLarge)
         Card(Modifier.fillMaxWidth()) {
@@ -456,9 +476,12 @@ private fun ActionCardContent(
                                 cardCommands.withLock {
                                     lastSave[0]?.join()
                                     flow.recordResult(text, card.id)
+                                    // 기록하는 동안 더 적은 내용은 초안으로 남긴다.
+                                    if (draftText == text) {
+                                        draftText = ""
+                                        draftInputs[card.id] = ""
+                                    }
                                 }
-                                // 기록하는 동안 더 적은 내용은 초안으로 남긴다.
-                                if (draftText == text) draftText = ""
                             } finally {
                                 recording = false
                             }
