@@ -28,6 +28,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.foundation.text.input.rememberTextFieldState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
@@ -57,7 +58,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -348,26 +348,36 @@ private fun Header(largeText: Boolean, hasGoal: Boolean, onShowGoal: () -> Unit)
     }
 }
 
-private val GoalInputSaver = listSaver<GoalInput, String>(
-    { listOf(it.statement, it.deadline, it.currentState, it.blocker, it.materialLinks, it.materialExcerpt, it.availableMinutes) },
-    { GoalInput(it[0], it[1], it[2], it[3], it[4], it[5], it[6]) },
-)
-
 /** 입력은 바뀔 때마다 [save]로 초안에 저장한다. 선택 입력은 펼쳤을 때만 보인다. */
 @Composable
 private fun GoalInputContent(saved: GoalInput, save: (GoalInput) -> Unit, prepare: (GoalInput) -> Unit) {
-    var input by rememberSaveable(stateSaver = GoalInputSaver) { mutableStateOf(saved) }
+    // 보이는 글자가 기준이다. 제출과 자동 저장 모두 입력란 상태를 바로 읽는다.
+    val statement = rememberTextFieldState(saved.statement)
+    val deadline = rememberTextFieldState(saved.deadline)
+    val currentState = rememberTextFieldState(saved.currentState)
+    val blocker = rememberTextFieldState(saved.blocker)
+    val materialLinks = rememberTextFieldState(saved.materialLinks)
+    val materialExcerpt = rememberTextFieldState(saved.materialExcerpt)
+    val availableMinutes = rememberTextFieldState(saved.availableMinutes)
+    val read = {
+        GoalInput(
+            statement.text.toString(),
+            deadline.text.toString(),
+            currentState.text.toString(),
+            blocker.text.toString(),
+            materialLinks.text.toString(),
+            materialExcerpt.text.toString(),
+            availableMinutes.text.toString(),
+        )
+    }
+    AutosaveChanges(saved, read, save)
     // 다시 열었을 때 선택 입력에 내용이 있으면 펼친다. 보내질 내용과 입력 오류가 가려지지 않게 한다.
     var expanded by rememberSaveable {
         mutableStateOf(listOf(saved.deadline, saved.currentState, saved.blocker, saved.materialLinks, saved.materialExcerpt, saved.availableMinutes).any { it.isNotBlank() })
     }
-    val edit = { changed: GoalInput ->
-        input = changed
-        save(changed)
-    }
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Heading(R.string.goal_input_title, MaterialTheme.typography.titleLarge)
-        GoalField(R.string.goal_input_label, input.statement) { edit(input.copy(statement = it)) }
+        GoalField(R.string.goal_input_label, statement)
         TextButton(
             { expanded = !expanded },
             Modifier.fillMaxWidth().heightIn(min = 48.dp).semantics {
@@ -377,35 +387,40 @@ private fun GoalInputContent(saved: GoalInput, save: (GoalInput) -> Unit, prepar
             Text(stringResource(R.string.goal_context_toggle), Modifier.weight(1f))
         }
         if (expanded) {
-            GoalField(R.string.goal_deadline_label, input.deadline) { edit(input.copy(deadline = it)) }
-            GoalField(R.string.goal_current_state_label, input.currentState) { edit(input.copy(currentState = it)) }
-            GoalField(R.string.goal_blocker_label, input.blocker) { edit(input.copy(blocker = it)) }
-            GoalField(R.string.goal_material_links_label, input.materialLinks) { edit(input.copy(materialLinks = it)) }
-            GoalField(R.string.goal_material_excerpt_label, input.materialExcerpt) { edit(input.copy(materialExcerpt = it)) }
-            GoalField(R.string.goal_available_minutes_label, input.availableMinutes) { edit(input.copy(availableMinutes = it)) }
+            GoalField(R.string.goal_deadline_label, deadline)
+            GoalField(R.string.goal_current_state_label, currentState)
+            GoalField(R.string.goal_blocker_label, blocker)
+            GoalField(R.string.goal_material_links_label, materialLinks)
+            GoalField(R.string.goal_material_excerpt_label, materialExcerpt)
+            GoalField(R.string.goal_available_minutes_label, availableMinutes)
             Text(stringResource(R.string.goal_material_notice), style = MaterialTheme.typography.bodySmall)
         }
-        CommandButton(R.string.prepare_goal, enabled = input.statement.isNotBlank()) { prepare(input) }
+        CommandButton(R.string.prepare_goal, enabled = statement.text.isNotBlank()) { prepare(read()) }
+    }
+}
+
+/**
+ * [read]가 저장한 값과 달라질 때마다 [save]한다. 비교 기준은 저장한 초안 [stored]에서 시작한다.
+ * 그래서 다시 만든 화면의 입력이 저장한 초안보다 새로우면 바로 저장하고, 보이는 글자를 예전 값으로 덮지 않는다.
+ */
+@Composable
+private fun <T> AutosaveChanges(stored: T, read: () -> T, save: (T) -> Unit) {
+    val latest by rememberUpdatedState(save)
+    LaunchedEffect(Unit) {
+        var reported = stored
+        snapshotFlow(read).collect { if (it != reported) latest(it.also { reported = it }) }
     }
 }
 
 @Composable
-private fun GoalField(@StringRes label: Int, value: String, onValueChange: (String) -> Unit) =
-    LabeledField(stringResource(label), value, onValueChange)
+private fun GoalField(@StringRes label: Int, state: TextFieldState) = LabeledField(stringResource(label), state)
 
 /**
  * 레이블을 입력란 위에 둔다(iOS `goalField`). 떠 있는 레이블은 큰 글꼴에서 테두리와 겹친다.
  * 레이블 위치는 `TextFieldState` 입력란만 정할 수 있다. 레이블은 입력란의 이름으로 읽히고 입력한 글자는 그대로 읽힌다.
  */
 @Composable
-private fun LabeledField(label: String, value: String, onValueChange: (String) -> Unit, placeholder: String? = null) {
-    val state = rememberTextFieldState(value)
-    val change by rememberUpdatedState(onValueChange)
-    LaunchedEffect(state) {
-        // 마지막으로 알린 값과 비교한다. 한 프레임 안의 연속 변경도 빠지지 않는다.
-        var reported = state.text.toString()
-        snapshotFlow { state.text.toString() }.collect { if (it != reported) change(it.also { reported = it }) }
-    }
+private fun LabeledField(label: String, state: TextFieldState, placeholder: String? = null) {
     OutlinedTextField(
         state,
         Modifier.fillMaxWidth(),
@@ -433,19 +448,18 @@ private fun PreparingGoalContent(
         val criteria = screen.completionCriteria
         when {
             screen.problem == null && question != null -> {
-                var answer by rememberSaveable(input?.requestId) { mutableStateOf(input?.text.orEmpty()) }
                 // 새로 나타난 질문으로 입력 초점을 옮긴다. TalkBack 초점이 따라오는지는 실제 TalkBack으로 아직 확인하지 않았다. 초점을 받으면 질문이 보이도록 스크롤된다.
                 val focus = remember { FocusRequester() }
                 Text(question, Modifier.focusRequester(focus).focusable(), style = MaterialTheme.typography.titleMedium)
                 LaunchedEffect(question) { focus.requestFocus() }
                 key(input?.requestId) {
-                    LabeledField(stringResource(R.string.goal_question_answer_label), answer, {
-                        answer = it
-                        autosave(it)
-                    }, placeholder = stringResource(R.string.goal_question_prompt))
-                }
-                CommandButton(R.string.goal_question_send, enabled = answer.isNotBlank()) {
-                    run { flow.run(Drafts(answer = answer)) { flow.answerGoalQuestion(answer) } }
+                    val answer = rememberTextFieldState(input?.text.orEmpty())
+                    AutosaveChanges(input?.text.orEmpty(), { answer.text.toString() }) { autosave(it) }
+                    LabeledField(stringResource(R.string.goal_question_answer_label), answer, stringResource(R.string.goal_question_prompt))
+                    CommandButton(R.string.goal_question_send, enabled = answer.text.isNotBlank()) {
+                        val text = answer.text.toString()
+                        run { flow.run(Drafts(answer = text)) { flow.answerGoalQuestion(text) } }
+                    }
                 }
             }
             screen.problem == null && criteria != null -> {

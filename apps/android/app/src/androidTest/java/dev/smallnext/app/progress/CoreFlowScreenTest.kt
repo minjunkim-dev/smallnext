@@ -257,6 +257,26 @@ class CoreFlowScreenTest {
         compose.onNode(hasText("file:///tmp/plant")).assertExists()
     }
 
+    // 자동 저장 수집이 돌기 전에 눌러도 화면에 보이는 선택 입력을 제출한다.
+    @Test
+    fun submitSendsTheVisibleOptionalTextBeforeAutosaveRuns() {
+        val provider = ScriptedProvider(GoalSummary("화분이 새 자리에 있다"))
+        val flow = flow(provider)
+        show(flow)
+        compose.onNode(hasSetTextAction() and hasText("목표 한 문장")).performTextInput("화분 옮기기")
+        compose.waitUntil(5_000) { flow.state.value.goalInput.statement == "화분 옮기기" }
+        compose.onNodeWithText("아는 맥락 보태기 (선택)").performScrollTo().performClick()
+        val setLink = compose.onNode(hasSetTextAction() and hasText("자료 링크 (선택, 한 줄에 하나)"))
+            .performScrollTo().fetchSemanticsNode().config[SemanticsActions.SetText].action!!
+        val submit = compose.onNodeWithText("목표 정리").fetchSemanticsNode().config[SemanticsActions.OnClick].action!!
+        compose.runOnUiThread {
+            setLink(AnnotatedString("https://example.com/plant"))
+            submit()
+        }
+        waitForText("확인하고 시작")
+        assertEquals(listOf("https://example.com/plant"), provider.requests.single().context.materialLinks)
+    }
+
     // 목표 확인 질문(최대 글꼴): 질문으로 초점이 옮겨지고, 답 입력란 레이블과 답 초안 자동 저장을 확인한다.
     @Test
     fun goalQuestionTakesFocusAndAnswerDraftIsSaved() {
@@ -274,6 +294,31 @@ class CoreFlowScreenTest {
         compose.onNode(hasSetTextAction() and hasText("목표 확인 질문 답")).performScrollTo().performTextInput("책상 위 서류")
         compose.waitUntil(5_000) { flow.state.value.suggestionInput?.text == "책상 위 서류" }
         compose.onNodeWithText("답 보내기").assertHeightIsAtLeast(48.dp).performScrollTo().clickAfterTyping()
+        waitForText("확인하고 시작")
+        assertEquals(listOf(GoalAnswer(question, "책상 위 서류")), provider.requests[1].context.answers)
+    }
+
+    // 답 자동 저장이 돌기 전에 보내도 화면에 보이는 답을 요청에 담는다.
+    @Test
+    fun submitSendsTheVisibleAnswerBeforeAutosaveRuns() {
+        val question = "무엇을 정리하려고 하나요?"
+        val provider = ScriptedProvider(Question(question), GoalSummary("서류를 정리했다"))
+        val flow = flow(provider)
+        runBlocking {
+            flow.prepareGoal(GoalInput("정리하기"))
+            flow.awaitSuggestion()
+        }
+        show(flow)
+        waitForText(question)
+        val field = compose.onNode(hasSetTextAction() and hasText("목표 확인 질문 답")).performScrollTo()
+        field.performTextInput("책상")
+        compose.waitUntil(5_000) { flow.state.value.suggestionInput?.text == "책상" }
+        val setText = field.fetchSemanticsNode().config[SemanticsActions.SetText].action!!
+        val send = compose.onNodeWithText("답 보내기").fetchSemanticsNode().config[SemanticsActions.OnClick].action!!
+        compose.runOnUiThread {
+            setText(AnnotatedString("책상 위 서류"))
+            send()
+        }
         waitForText("확인하고 시작")
         assertEquals(listOf(GoalAnswer(question, "책상 위 서류")), provider.requests[1].context.answers)
     }
