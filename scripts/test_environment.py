@@ -100,6 +100,25 @@ class SimulatorTests(unittest.TestCase):
         self.assertEqual(select(devices, "27.2", runtimes=runtimes), "general")
         self.assertEqual(select(devices, "27.2", "iPhone Duo", runtimes), "duo")
 
+    def test_booted_device_specific_runtime_does_not_replace_shutdown_general_runtime(self):
+        runtimes = [
+            {"version": "27.2", "identifier": "com.apple.CoreSimulator.SimRuntime.iOS-27-2-iPhone19-4", "isAvailable": True},
+            {"version": "27.2", "identifier": "com.apple.CoreSimulator.SimRuntime.iOS-27-2", "isAvailable": True}]
+        devices = {
+            "com.apple.CoreSimulator.SimRuntime.iOS-27-2-iPhone19-4": [
+                {"name": "iPhone Duo", "udid": "duo", "state": "Booted", "isAvailable": True}],
+            "com.apple.CoreSimulator.SimRuntime.iOS-27-2": [
+                {"name": "iPhone 18 Pro", "udid": "general", "state": "Shutdown", "isAvailable": True}],
+        }
+        self.assertEqual(select(devices, "27.2", runtimes=runtimes), "general")
+
+    def test_booted_device_in_the_general_runtime_wins(self):
+        runtimes = [{"version": "27.2", "identifier": "com.apple.CoreSimulator.SimRuntime.iOS-27-2", "isAvailable": True}]
+        devices = {"com.apple.CoreSimulator.SimRuntime.iOS-27-2": [
+            {"name": "iPhone 18 Pro", "udid": "shutdown", "state": "Shutdown", "isAvailable": True},
+            {"name": "iPhone 18", "udid": "booted", "state": "Booted", "isAvailable": True}]}
+        self.assertEqual(select(devices, "27.2", runtimes=runtimes), "booted")
+
     def test_missing_or_unavailable_pinned_runtime_is_rejected(self):
         with self.assertRaises(ValueError):
             select(self.devices(), "26.5", runtimes=self.RUNTIMES)
