@@ -260,7 +260,9 @@ Android 플래그(`android_`)는 빌드 때 asset으로 넣은 같은 [등록 �
 Debug 빌드에서만 실행 인텐트 extra로 로컬 확인용 ON을 지정할 수 있습니다. Release 빌드는 extra를 열지 않습니다.
 `android_core_flow`를 켜면 목표 입력 → 완료 조건 확인 → 현재 행동 → 완료 → 다음 행동 경로가 보입니다. OFF는 기존 시작 화면 그대로입니다.
 목표 입력에서 선택 입력(기한·현재 상태·막힌 점·자료 링크·발췌·쓸 수 있는 시간)을 펼쳐 적을 수 있습니다. 목표가 모호하면 확인 질문 하나를 받습니다. 입력과 답은 제출 전에도 자동 저장됩니다.
+현재 행동 카드에서 행동 결과를 남깁니다. 입력 초안은 자동 저장됩니다. 대상·설명과 자료·같은 대상의 앞선 결과도 카드에서 봅니다.
 제안은 Debug 고정 공급자(`src/debug`)가 만듭니다. Release에는 이 공급자가 없고 제안은 `사용 불가`입니다.
+사용자 서버 `POST /v1/suggestions` 공급자(`ServerSuggestionProvider`)는 iOS와 같은 계약으로 있지만 앱에는 아직 연결하지 않았습니다. `android_server_ai`를 켜도 지금은 동작이 바뀌지 않습니다.
 
 ```sh
 adb shell am start -n dev.smallnext.app/.MainActivity --ez android_core_flow true

@@ -39,6 +39,18 @@
     <string name="current_action_title">지금 할 행동</string>
     <string name="estimated_minutes">약 %1$d분 · 예상</string>
     <string name="complete">완료</string>
+    <string name="target_name">대상: %1$s</string>
+    <string name="details_and_materials">설명과 자료</string>
+    <!-- 접기 버튼의 TalkBack 상태다. iOS DisclosureGroup은 시스템이 읽는다. -->
+    <string name="expanded">펼침</string>
+    <string name="collapsed">접힘</string>
+    <string name="previous_results">앞서 남긴 결과</string>
+    <string name="action_results">이 행동에 남긴 결과</string>
+    <string name="action_result_input">행동 결과 입력</string>
+    <string name="action_result_placeholder">문장이나 메모를 적어 주세요.</string>
+    <string name="draft_autosaved">작성 중인 내용은 자동 저장돼요.</string>
+    <string name="record_result">결과 남기기</string>
+    <string name="save_draft_again">입력 다시 저장</string>
     <string name="storage_failed">저장하지 못했어요. 다시 시도해 주세요.</string>
     <string name="announce_completed">행동을 완료했어요.</string>
     <string name="announce_current_action">지금 할 행동: %1$s</string>

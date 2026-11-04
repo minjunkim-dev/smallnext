@@ -67,6 +67,12 @@ class ProgressFlowTest {
 
     private fun ProgressFlow.card() = (state.value.screen as ProgressScreen.CurrentAction).card
 
+    private suspend fun firstCard(flow: ProgressFlow): ActionCard {
+        startGoal(flow, "주간 업무 보고서 초안 쓰기")
+        flow.awaitSuggestion()
+        return flow.card()
+    }
+
     private fun count(sql: String) = probe.query(sql).use { it.moveToFirst(); it.getLong(0) }
 
     private suspend fun failure(command: suspend () -> Unit) = runCatching { command() }.exceptionOrNull()
@@ -439,6 +445,117 @@ class ProgressFlowTest {
         assertEquals(second.task, flow.card().task)
         assertEquals(1L, count("SELECT COUNT(*) FROM completion"))
         assertEquals(1L, count("SELECT COUNT(*) FROM suggestion_request WHERE kind = 'smaller' AND status = 'interrupted'"))
+    }
+
+    // 행동 결과·입력 초안·카드 상세(#351). 이름은 iOS `ProgressFlowTests`와 같다.
+
+    @Test
+    fun testDraftAutosavesAndSurvivesReopenWithoutBecomingResult() = runBlocking {
+        val flow = makeFlow(ScriptedProvider(Action(first)))
+        val card = firstCard(flow)
+        flow.updateDraft("첫 문장\n작성 중", card.id)
+        flow.updateDraft("고친 문장\n작성 중", card.id)
+
+        val restored = makeFlow(UnavailableSuggestionProvider).card()
+        assertEquals("고친 문장\n작성 중", restored.draft)
+        assertTrue(restored.results.isEmpty())
+        assertEquals(card.id, restored.id)
+        assertEquals(1L, count("SELECT COUNT(*) FROM action_note"))
+        assertEquals(0L, count("SELECT COUNT(*) FROM completion"))
+    }
+
+    @Test
+    fun testCardRestoresTargetLinksAndEarlierResultsForSameTarget() = runBlocking {
+        val initial = first.copy(targetName = "업무 보고서")
+        val other = second.copy(targetName = "다른 문서")
+        val next = third.copy(
+            targetName = "업무 보고서",
+            targetDescription = "이번 주 업무를 적은 문서",
+            materialLinks = listOf("https://example.com/report"),
+        )
+        val flow = makeFlow(ScriptedProvider(Action(initial), Action(other), Action(next)))
+        val firstCard = firstCard(flow)
+        flow.recordResult("확인한 기간: 10월 첫째 주", firstCard.id)
+        flow.updateDraft("이 초안은 앞선 결과가 아니다", firstCard.id)
+        flow.complete(firstCard.id)
+        flow.awaitSuggestion()
+        val secondCard = flow.card()
+        flow.recordResult("다른 문서의 결과", secondCard.id)
+        flow.complete(secondCard.id)
+        flow.awaitSuggestion()
+
+        val restored = makeFlow(UnavailableSuggestionProvider).card()
+        assertEquals("업무 보고서", restored.targetName)
+        assertEquals("이번 주 업무를 적은 문서", restored.targetDescription)
+        assertEquals(listOf("https://example.com/report"), restored.materialLinks)
+        assertEquals(listOf("확인한 기간: 10월 첫째 주"), restored.previousResults.map { it.body })
+        assertTrue(restored.results.isEmpty())
+        assertEquals("", restored.draft)
+    }
+
+    @Test
+    fun testFailedResultCommitKeepsDraftAndScreenAndCanRetry() = runBlocking {
+        val flow = makeFlow(ScriptedProvider(Action(first)))
+        val card = firstCard(flow)
+        flow.updateDraft("지우면 안 되는 초안", card.id)
+        val before = flow.state.value.screen
+        probe.execSQL("CREATE TRIGGER reject_draft_delete BEFORE DELETE ON action_note BEGIN SELECT RAISE(ABORT, 'test failure'); END")
+        assertTrue(failure { flow.recordResult("지우면 안 되는 초안", card.id) } is SQLiteException)
+        assertEquals(before, flow.state.value.screen)
+        assertEquals(before, makeFlow(UnavailableSuggestionProvider).state.value.screen)
+
+        probe.execSQL("DROP TRIGGER reject_draft_delete")
+        flow.recordResult("지우면 안 되는 초안", card.id)
+        val saved = flow.card()
+        assertEquals(listOf("지우면 안 되는 초안"), saved.results.map { it.body })
+        assertEquals("", saved.draft)
+    }
+
+    // 사라지는 카드에 늦게 들어온 입력이 새 카드나 DB에 섞이지 않는다.
+    @Test
+    fun testStaleActionCannotSaveDraftIntoAnotherCard() = runBlocking {
+        val flow = makeFlow(ScriptedProvider(Action(first), Action(second)))
+        val old = firstCard(flow)
+        flow.complete(old.id)
+        flow.awaitSuggestion()
+        val current = flow.state.value.screen
+        val stale = failure { flow.updateDraft("늦은 입력", old.id) }
+        assertEquals(ProgressFlowException.Reason.ACTION_NOT_CURRENT, (stale as ProgressFlowException).reason)
+        assertTrue(failure { flow.recordResult("늦은 결과", old.id) } is ProgressFlowException)
+        assertEquals(current, flow.state.value.screen)
+        assertEquals(current, makeFlow(UnavailableSuggestionProvider).state.value.screen)
+        assertEquals(0L, count("SELECT COUNT(*) FROM action_note"))
+    }
+
+    @Test
+    fun testSameTargetNameInDifferentGoalDoesNotShareResults() = runBlocking {
+        val proposed = first.copy(targetName = "같은 이름의 자료")
+        val flow = makeFlow(ScriptedProvider(Action(proposed)))
+        val card = firstCard(flow)
+        flow.recordResult("이 목표에만 남긴 결과", card.id)
+
+        val other = newGoalFlow(ScriptedProvider(Action(proposed)))
+        startGoal(other, "다른 목표")
+        other.awaitSuggestion()
+        val current = other.card()
+        assertEquals("같은 이름의 자료", current.targetName)
+        assertTrue(current.previousResults.isEmpty())
+        assertTrue(current.results.isEmpty())
+        assertEquals("", current.draft)
+    }
+
+    // iOS testDraftSaveAfterUnsavedSuggestionResultKeepsRetryAvailable은 '더 작게' 대기 중에 카드가 남는 경로다.
+    // Android에는 아직 '더 작게'가 없어 #353에서 옮긴다. 초안 저장도 다른 명령처럼 `perform`을 거쳐 실패 상태를 함께 저장한다.
+
+    @Test
+    fun testBlankResultIsNotRecorded() = runBlocking {
+        val flow = makeFlow(ScriptedProvider(Action(first)))
+        val card = firstCard(flow)
+        flow.updateDraft(" \n ", card.id)
+        val error = failure { flow.recordResult(" \n ", card.id) }
+        assertEquals(ProgressFlowException.Reason.EMPTY_RESULT, (error as ProgressFlowException).reason)
+        assertEquals(" \n ", flow.card().draft)
+        assertEquals(0L, count("SELECT COUNT(*) FROM action_note WHERE NOT is_draft"))
     }
 
     @Test
