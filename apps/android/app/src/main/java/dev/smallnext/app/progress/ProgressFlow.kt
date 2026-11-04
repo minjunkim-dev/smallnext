@@ -29,6 +29,12 @@ data class GoalInput(
     val availableMinutes: String = "",
 )
 
+/** 화면에 남은 입력 초안이다. 명령 전에 현재 화면에 해당하는 값만 저장한다(iOS `Drafts`). */
+data class Drafts(val goalInput: GoalInput = GoalInput(), val answer: String = "", val completionCriteria: String = "")
+
+/** 확인 질문의 답이나 수정 중인 완료 조건의 초안이다. [text]가 null이면 아직 저장한 초안이 없다. */
+data class SuggestionInput(val requestId: Long, val text: String?)
+
 data class GoalDetails(val id: Long, val statement: String, val completionCriteria: String?, val context: GoalContext)
 
 data class ActionCard(
@@ -82,7 +88,12 @@ val ProgressScreen.isWaitingForSuggestion: Boolean
         ProgressScreen.GoalInput, is ProgressScreen.CurrentAction -> false
     }
 
-data class ProgressState(val screen: ProgressScreen, val goalInput: GoalInput, val goal: GoalDetails?)
+data class ProgressState(
+    val screen: ProgressScreen,
+    val goalInput: GoalInput,
+    val goal: GoalDetails?,
+    val suggestionInput: SuggestionInput? = null,
+)
 
 class ProgressFlowException(val reason: Reason) : RuntimeException(reason.name) {
     enum class Reason { EMPTY_GOAL, EMPTY_ANSWER, GOAL_INPUT_NOT_ACTIVE, INVALID_GOAL_CONTEXT, GOAL_NOT_READY, GOAL_NOT_FOUND, EMPTY_RESULT, ACTION_NOT_CURRENT }
@@ -108,15 +119,53 @@ class ProgressFlow private constructor(
     private var unsavedSuggestionId: Long? = null
 
     /**
-     * 선택 입력을 검사해 저장한다. 확인용 요약만 요청한다.
-     * 입력은 검사 전에 초안으로 따로 저장한다(iOS `run(saving:)`). 검사에 실패해도 초안은 남는다.
+     * 사용자 명령 하나를 실행한다. 입력 초안을 먼저 저장한다(iOS `run(saving:)`).
+     * 초안 저장에 실패하면 명령을 실행하지 않는다.
+     * iOS와 달리 저장과 명령 사이에 제안 결과 적용이 끼어들 수 있다. 명령은 화면 상태를 다시 검사한다.
      */
-    suspend fun prepareGoal(input: GoalInput) = serially {
-        if (state.value.screen != ProgressScreen.GoalInput) fail(ProgressFlowException.Reason.GOAL_INPUT_NOT_ACTIVE)
-        if (input != state.value.goalInput) {
-            database.write { db -> db.setMetadata(GOAL_INPUT, gson.toJson(input)) }
-            _state.update { it.copy(goalInput = input) }
+    suspend fun run(drafts: Drafts? = null, command: suspend () -> Unit) {
+        drafts?.let { save(it) }
+        command()
+    }
+
+    private suspend fun save(drafts: Drafts) {
+        state.value.suggestionInput?.let { input ->
+            val criteria = (state.value.screen as? ProgressScreen.PreparingGoal)?.completionCriteria
+            val (text, saved) = if (criteria != null) drafts.completionCriteria to (input.text ?: criteria) else drafts.answer to (input.text ?: "")
+            if (text != saved) updateSuggestionInput(text, input.requestId)
         }
+        if (state.value.screen == ProgressScreen.GoalInput && drafts.goalInput != state.value.goalInput) updateGoalInput(drafts.goalInput)
+    }
+
+    /** 제출하기 전의 입력도 그대로 저장한다. 입력 초안은 확인한 목표가 아니다. */
+    suspend fun updateGoalInput(input: GoalInput) = serially { saveGoalInput(input) }
+
+    private fun saveGoalInput(input: GoalInput) {
+        if (state.value.screen != ProgressScreen.GoalInput) fail(ProgressFlowException.Reason.GOAL_INPUT_NOT_ACTIVE)
+        database.write { db -> db.setMetadata(GOAL_INPUT, gson.toJson(input)) }
+        _state.update { it.copy(goalInput = input) }
+    }
+
+    /** 확인 질문의 답과 수정 중인 완료 조건도 초안으로 보존한다. 이전 요청의 늦은 입력은 거부한다. */
+    suspend fun updateSuggestionInput(text: String, requestId: Long) = serially {
+        perform { db ->
+            val goalId = selectedGoalId(db)
+            if (goalId == null || loadSuggestionInput(db, goalId, loadScreen(db, goalId))?.requestId != requestId) {
+                fail(ProgressFlowException.Reason.GOAL_NOT_READY)
+            }
+            db.setMetadata("$SUGGESTION_INPUT:$goalId", text)
+            null
+        }
+    }
+
+    /**
+     * 선택 입력을 검사해 저장한다. 확인용 요약만 요청한다.
+     * [draft]를 주면 검사 전에 초안으로 먼저 저장한다. 검사에 실패해도 초안은 남는다. 없으면 저장한 초안을 쓴다.
+     */
+    suspend fun prepareGoal(draft: GoalInput? = null) = serially {
+        if (state.value.screen != ProgressScreen.GoalInput) fail(ProgressFlowException.Reason.GOAL_INPUT_NOT_ACTIVE)
+        if (draft != null && draft != state.value.goalInput) saveGoalInput(draft)
+        val input = state.value.goalInput
         val statement = input.statement.trim().ifEmpty { fail(ProgressFlowException.Reason.EMPTY_GOAL) }
         val links = input.materialLinks.lines().mapNotNull(::nonempty)
         val minutesText = input.availableMinutes.trim()
@@ -335,6 +384,7 @@ class ProgressFlow private constructor(
     companion object {
         private const val TAG = "Smallnext"
         private const val GOAL_INPUT = "goal_input"
+        private const val SUGGESTION_INPUT = "suggestion_input"
         private const val SELECTED_GOAL_ID = "selected_goal_id"
         private const val UNSUITABLE = "unsuitable"
         private val gson = Gson()
@@ -422,6 +472,7 @@ class ProgressFlow private constructor(
 
         private fun insertRequest(db: SupportSQLiteDatabase, goalId: Long, kind: SuggestionKind): PendingSuggestion {
             val revision = db.long("SELECT revision FROM goal WHERE id = ?", goalId)?.toInt() ?: fail(ProgressFlowException.Reason.GOAL_NOT_FOUND)
+            db.update("DELETE FROM app_metadata WHERE `key` = ?", "$SUGGESTION_INPUT:$goalId")
             val id = db.insert(
                 "INSERT INTO suggestion_request (goal_id, kind, goal_revision, status, failure_reason, question, answer, created_at) " +
                     "VALUES (?, ?, ?, 'pending', NULL, NULL, NULL, ?)",
@@ -475,7 +526,19 @@ class ProgressFlow private constructor(
 
         private fun loadState(db: SupportSQLiteDatabase): ProgressState {
             val goalId = selectedGoalId(db)
-            return ProgressState(loadScreen(db, goalId), loadGoalInput(db, goalId), goalId?.let { loadGoalDetails(db, it) })
+            val screen = loadScreen(db, goalId)
+            return ProgressState(
+                screen, loadGoalInput(db, goalId), goalId?.let { loadGoalDetails(db, it) }, goalId?.let { loadSuggestionInput(db, it, screen) },
+            )
+        }
+
+        /** 확인 질문이나 확인할 완료 조건이 보이는 동안만 초안을 받는다. 행동 질문은 #354에서 더한다. */
+        private fun loadSuggestionInput(db: SupportSQLiteDatabase, goalId: Long, screen: ProgressScreen): SuggestionInput? {
+            if (screen !is ProgressScreen.PreparingGoal || screen.problem != null || (screen.question == null && screen.completionCriteria == null)) {
+                return null
+            }
+            val requestId = db.long("SELECT MAX(id) FROM suggestion_request WHERE goal_id = ?", goalId) ?: return null
+            return SuggestionInput(requestId, db.string("SELECT value FROM app_metadata WHERE `key` = ?", "$SUGGESTION_INPUT:$goalId"))
         }
 
         private fun selectedGoalId(db: SupportSQLiteDatabase) =

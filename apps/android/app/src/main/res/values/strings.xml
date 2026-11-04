@@ -9,6 +9,16 @@
     <string name="goal_input_title">목표를 한 문장으로 적어 주세요.</string>
     <string name="goal_input_label">목표 한 문장</string>
     <string name="prepare_goal">목표 정리</string>
+    <string name="goal_context_toggle">아는 맥락 보태기 (선택)</string>
+    <string name="goal_deadline_label">기한 (선택)</string>
+    <string name="goal_current_state_label">현재 상태 (선택)</string>
+    <string name="goal_blocker_label">막힌 점 (선택)</string>
+    <string name="goal_material_links_label">자료 링크 (선택, 한 줄에 하나)</string>
+    <string name="goal_material_excerpt_label">고른 발췌·요약 (선택)</string>
+    <string name="goal_available_minutes_label">지금 쓸 수 있는 시간 (선택, 분)</string>
+    <string name="goal_material_notice">자료는 링크와 직접 고른 발췌·요약만 보내요. 링크의 내용은 자동으로 읽지 않아요.</string>
+    <string name="goal_input_problem">자료 링크는 http:// 또는 https://로 입력해 주세요. 시간은 1 이상의 정수로 입력해 주세요.</string>
+    <string name="goal_question_answer_label">목표 확인 질문 답</string>
     <string name="goal_review_title">목표 확인</string>
     <string name="goal_question_prompt">알고 있는 답</string>
     <string name="goal_question_send">답 보내기</string>

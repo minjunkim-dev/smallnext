@@ -6,6 +6,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import dev.smallnext.app.data.AppDatabase
 import dev.smallnext.app.progress.SuggestionCandidate.Action
 import dev.smallnext.app.progress.SuggestionCandidate.GoalSummary
+import dev.smallnext.app.progress.SuggestionCandidate.Question
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.CoroutineScope
@@ -19,6 +20,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -111,6 +113,174 @@ class ProgressFlowTest {
         assertNull(flow.state.value.goal?.context?.currentState)
         assertNull(flow.state.value.goal?.completionCriteria)
         assertEquals(0L, count("SELECT COUNT(*) FROM action"))
+    }
+
+    // 선택 입력과 목표 확인 질문(#350)
+
+    @Test
+    fun testGoalInputDraftSurvivesReopenBeforeSubmission() = runBlocking {
+        val input = GoalInput(
+            "화분 옮기기", "이번 주", "화분은 골랐다", "흙이 있는지 모른다", "https://example.com/plant", "사용자가 고른 요약", "15",
+        )
+        val flow = makeFlow(UnavailableSuggestionProvider)
+        flow.updateGoalInput(input)
+        assertEquals(ProgressScreen.GoalInput, flow.state.value.screen)
+        closeAll()
+        val reopened = makeFlow(UnavailableSuggestionProvider)
+        assertEquals(input, reopened.state.value.goalInput)
+        assertNull(reopened.state.value.goal)
+    }
+
+    @Test
+    fun testGoalContextIsSentAndFirstActionWaitsForConfirmation() = runBlocking {
+        val provider = ScriptedProvider(GoalSummary("화분 하나를 옮겼다"), Action(first))
+        val flow = makeFlow(provider, preparing = false)
+        flow.updateGoalInput(
+            GoalInput(" 화분 옮기기 ", "이번 주", "화분은 골랐다", "흙이 있는지 모른다", "https://example.com/plant", "고른 발췌만 보낸다", "15"),
+        )
+        flow.prepareGoal()
+        flow.awaitSuggestion()
+        assertEquals(ProgressScreen.PreparingGoal(null, "화분 하나를 옮겼다", null), flow.state.value.screen)
+        assertNull(flow.state.value.goal?.completionCriteria)
+        assertEquals(listOf(SuggestionKind.GOAL_PREPARATION), provider.requests.map { it.kind })
+        val context = provider.requests[0].context
+        assertEquals("화분은 골랐다", context.currentState)
+        assertEquals("이번 주", context.deadline)
+        assertEquals(listOf("https://example.com/plant"), context.materialLinks)
+        assertEquals("고른 발췌만 보낸다", context.materialExcerpt)
+        assertEquals(15, context.availableMinutes)
+        assertEquals("흙이 있는지 모른다", provider.requests[0].blocker)
+        flow.confirmGoal("화분 하나가 새 자리에 있다")
+        flow.awaitSuggestion()
+        assertEquals(first.task, flow.card().task)
+        assertEquals(listOf(SuggestionKind.GOAL_PREPARATION, SuggestionKind.FIRST_ACTION), provider.requests.map { it.kind })
+        assertEquals("화분 하나가 새 자리에 있다", provider.requests[1].completionCriteria)
+        assertEquals(context, provider.requests[1].context)
+        closeAll()
+        val reopened = makeFlow(UnavailableSuggestionProvider, preparing = false)
+        assertEquals("화분 옮기기", reopened.state.value.goal?.statement)
+        assertEquals("화분 하나가 새 자리에 있다", reopened.state.value.goal?.completionCriteria)
+        assertEquals(context, reopened.state.value.goal?.context)
+    }
+
+    @Test
+    fun testGoalQuestionAnswerSurvivesReopenAndIsNotAskedAgain() = runBlocking {
+        val question = "무엇을 정리하려고 하나요?"
+        val flow = makeFlow(ScriptedProvider(Question(question)), preparing = false)
+        flow.updateGoalInput(GoalInput("정리하기"))
+        flow.prepareGoal()
+        flow.awaitSuggestion()
+        assertEquals(ProgressScreen.PreparingGoal(question, null, null), flow.state.value.screen)
+        closeAll()
+        val provider = ScriptedProvider(Question(question), GoalSummary("화분 자리를 정했다"))
+        val reopened = makeFlow(provider, preparing = false)
+        assertEquals(ProgressScreen.PreparingGoal(question, null, null), reopened.state.value.screen)
+        assertTrue(failure { reopened.answerGoalQuestion(" \n") } is ProgressFlowException)
+        reopened.answerGoalQuestion("화분 자리")
+        reopened.awaitSuggestion()
+        assertEquals(ProgressScreen.PreparingGoal(null, null, SuggestionProblem.Unsuitable), reopened.state.value.screen)
+        reopened.retrySuggestion()
+        reopened.awaitSuggestion()
+        assertEquals(ProgressScreen.PreparingGoal(null, "화분 자리를 정했다", null), reopened.state.value.screen)
+        assertEquals(listOf(SuggestionKind.GOAL_PREPARATION, SuggestionKind.GOAL_PREPARATION), provider.requests.map { it.kind })
+        assertEquals(listOf(GoalAnswer(question, "화분 자리")), provider.requests[1].context.answers)
+        assertNull(provider.requests[1].context.currentState)
+        assertNull(provider.requests[1].blocker)
+        closeAll()
+        val again = makeFlow(UnavailableSuggestionProvider, preparing = false)
+        assertEquals(reopened.state.value.screen, again.state.value.screen)
+        assertEquals(provider.requests[1].context.answers, again.state.value.goal?.context?.answers)
+        assertNull(again.state.value.goal?.completionCriteria)
+    }
+
+    // iOS testSuggestionInputDraftsSurviveGoalSwitchAndReopenAndRejectStaleInput 중 목표 전환을 뺀 부분이다(목표 전환은 #357).
+    @Test
+    fun testSuggestionInputDraftsSurviveReopenAndRejectStaleInput() = runBlocking {
+        val flow = makeFlow(ScriptedProvider(Question("어떤 자료인가요?"), GoalSummary("자료를 정리했다")), preparing = false)
+        flow.prepareGoal(GoalInput("학습 자료 정리"))
+        flow.awaitSuggestion()
+        val questionRequest = flow.state.value.suggestionInput!!.requestId
+        flow.updateSuggestionInput("질문 답을 작성 중", questionRequest)
+        closeAll()
+        val reopened = makeFlow(ScriptedProvider(Action(first)), preparing = false)
+        assertEquals(SuggestionInput(questionRequest, "질문 답을 작성 중"), reopened.state.value.suggestionInput)
+        reopened.run(Drafts(answer = "자료 목록")) { reopened.answerGoalQuestion("자료 목록") }
+        assertNull(reopened.state.value.suggestionInput)
+        reopened.awaitSuggestion()
+        closeAll()
+        val provider = ScriptedProvider(GoalSummary("자료를 정리했다"), Action(first))
+        val again = makeFlow(provider, preparing = false)
+        again.retrySuggestion()
+        again.awaitSuggestion()
+        val criteriaRequest = again.state.value.suggestionInput!!.requestId
+        assertTrue(failure { again.updateSuggestionInput("다른 질문의 늦은 입력", questionRequest) } is ProgressFlowException)
+        again.run(Drafts(completionCriteria = "자료 목록이 한 곳에 있다")) {}
+        closeAll()
+        val last = makeFlow(provider, preparing = false)
+        assertEquals(SuggestionInput(criteriaRequest, "자료 목록이 한 곳에 있다"), last.state.value.suggestionInput)
+        last.confirmGoal("자료 목록이 한 곳에 있다")
+        last.awaitSuggestion()
+        assertNull(last.state.value.suggestionInput)
+        assertTrue(failure { last.updateSuggestionInput("이전 완료 조건", criteriaRequest) } is ProgressFlowException)
+        assertEquals("자료 목록이 한 곳에 있다", last.state.value.goal?.completionCriteria)
+    }
+
+    @Test
+    fun testInvalidOptionalInputStaysInDraftWithoutRequestingProvider() = runBlocking {
+        val provider = ScriptedProvider(GoalSummary("정리를 마쳤다"))
+        val flow = makeFlow(provider, preparing = false)
+        for (input in listOf(
+            GoalInput("정리", materialLinks = "file:///private/tmp/file"),
+            GoalInput("정리", availableMinutes = "-3"),
+            GoalInput("정리", availableMinutes = "abc"),
+        )) {
+            flow.updateGoalInput(input)
+            val error = failure { flow.prepareGoal() }
+            assertEquals(ProgressFlowException.Reason.INVALID_GOAL_CONTEXT, (error as ProgressFlowException).reason)
+            assertEquals(input, flow.state.value.goalInput)
+            assertEquals(ProgressScreen.GoalInput, flow.state.value.screen)
+        }
+        assertTrue(provider.requests.isEmpty())
+    }
+
+    @Test
+    fun testWhitespaceOnlyOptionalLinkIsTreatedAsEmpty() = runBlocking {
+        val provider = ScriptedProvider(GoalSummary("메모를 정리했다"))
+        val flow = makeFlow(provider, preparing = false)
+        flow.updateGoalInput(GoalInput("메모 정리", materialLinks = " \n\t "))
+        flow.prepareGoal()
+        flow.awaitSuggestion()
+        assertEquals(1, provider.requests.size)
+        assertTrue(provider.requests[0].context.materialLinks.isEmpty())
+    }
+
+    @Test
+    fun testNonWebMaterialLinkIsRejected() = runBlocking {
+        val flow = makeFlow(ScriptedProvider(Action(first.copy(materialLinks = listOf("file:///private/tmp/report")))))
+        startGoal(flow, "보고서 정리")
+        flow.awaitSuggestion()
+        assertEquals(ProgressScreen.AwaitingFirstAction("보고서 정리", SuggestionProblem.Unsuitable), flow.state.value.screen)
+    }
+
+    @Test
+    fun testRunSavesGoalInputDraftBeforeCommand() = runBlocking {
+        val flow = makeFlow(UnavailableSuggestionProvider, preparing = false)
+        flow.run(Drafts(GoalInput("자료 정리"))) { flow.prepareGoal() }
+        assertEquals("자료 정리", flow.state.value.goal?.statement)
+    }
+
+    // iOS는 행동 메모 초안과 '나중에'로 확인한다. 둘은 #351·#355에서 생겨 여기서는 목표 입력 초안으로 같은 계약을 확인한다.
+    @Test
+    fun testRunDoesNotRunCommandWhenDraftSaveFails() = runBlocking {
+        val flow = makeFlow(UnavailableSuggestionProvider, preparing = false)
+        probe.execSQL("CREATE TRIGGER reject_draft BEFORE INSERT ON app_metadata BEGIN SELECT RAISE(ABORT, 'test failure'); END")
+        var ran = false
+        assertTrue(failure { flow.run(Drafts(GoalInput("다시 볼 목표"))) { ran = true } } is SQLiteException)
+        assertFalse(ran)
+        assertEquals(GoalInput(), flow.state.value.goalInput)
+        probe.execSQL("DROP TRIGGER reject_draft")
+        flow.run(Drafts(GoalInput("다시 볼 목표"))) { flow.prepareGoal() }
+        assertEquals("다시 볼 목표", flow.state.value.goal?.statement)
     }
 
     @Test

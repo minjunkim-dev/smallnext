@@ -8,6 +8,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -27,6 +28,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.input.TextFieldState
+import androidx.compose.foundation.text.input.rememberTextFieldState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -41,20 +44,26 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TextFieldLabelPosition
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
@@ -65,7 +74,9 @@ import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.collapse
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.expand
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
@@ -74,11 +85,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import dev.smallnext.app.R
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 
 /** 모션 값은 여기서만 조정한다. iOS `Motion`과 같은 값이다. 분할(0.34초)은 #353에서 더한다. */
 object Motion {
@@ -150,22 +164,35 @@ internal fun CoreFlowScreen(flow: ProgressFlow) {
         shown = screen
     }
     val focusManager = LocalFocusManager.current
+    var goalInputProblem by remember { mutableStateOf<String?>(null) }
+    /** 입력 자동 저장이다. 명령은 [run]으로 실행한다. */
+    val save: (suspend () -> Unit) -> Unit = { command ->
+        goalInputProblem = null
+        // 디스패치를 기다리지 않고 바로 시작한다. 시작 전에 화면이 다시 만들어져 저장이 취소되지 않게 한다.
+        scope.launch(start = CoroutineStart.UNDISPATCHED) {
+            try {
+                // 화면을 다시 만들어도(회전 등) 시작한 저장과 명령은 끝까지 실행한다. 보이는 초안과 저장한 초안이 갈라지지 않게 한다.
+                withContext(NonCancellable) { command() }
+                storageFailed = false
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: ProgressFlowException) {
+                if (error.reason == ProgressFlowException.Reason.INVALID_GOAL_CONTEXT) {
+                    goalInputProblem = resources.getString(R.string.goal_input_problem).also(announce)
+                }
+                // 그 밖에는 이미 바뀐 화면에 대한 늦은 입력이다(연타, 전환 중 사라지는 버튼). 저장은 앞 명령이 마쳤다.
+            } catch (_: Exception) {
+                // 자동 저장은 첫 실패만 알린다. 명령은 실패 표시를 지우고 시작하므로 매번 알린다.
+                if (!storageFailed) announce(resources.getString(R.string.storage_failed))
+                storageFailed = true
+            }
+        }
+    }
     val run: (suspend () -> Unit) -> Unit = { command ->
         // 입력을 마친 화면을 떠나므로 키보드를 닫는다. 남은 키보드가 고정 버튼과 다음 화면을 가리지 않게 한다.
         focusManager.clearFocus()
-        scope.launch {
-            storageFailed = false
-            try {
-                command()
-            } catch (error: CancellationException) {
-                throw error
-            } catch (_: ProgressFlowException) {
-                // 이미 바뀐 화면에 대한 늦은 입력이다(연타, 전환 중 사라지는 버튼). 저장은 앞 명령이 마쳤다.
-            } catch (_: Exception) {
-                storageFailed = true
-                announce(resources.getString(R.string.storage_failed))
-            }
-        }
+        storageFailed = false
+        save(command)
     }
     // 카드별로 마지막에 입력한 초안이다. 저장하지 못했으면 완료 전에 다시 저장한다.
     val draftInputs = remember { mutableMapOf<Long, String>() }
@@ -244,8 +271,11 @@ internal fun CoreFlowScreen(flow: ProgressFlow) {
                 contentKey = { it.key },
             ) { target ->
                 when (target) {
-                    ProgressScreen.GoalInput -> GoalInputContent(state.goalInput) { input -> run { flow.prepareGoal(input) } }
-                    is ProgressScreen.PreparingGoal -> PreparingGoalContent(target, state.goal, flow, run)
+                    ProgressScreen.GoalInput -> GoalInputContent(state.goalInput, { input -> save { flow.updateGoalInput(input) } }) { input ->
+                        // 누른 순간의 입력을 저장하고 검사하는 일을 한 명령으로 한다. 사이에 다른 입력이 끼어들지 않는다.
+                        run { flow.prepareGoal(input) }
+                    }
+                    is ProgressScreen.PreparingGoal -> PreparingGoalContent(target, state.goal, state.suggestionInput, flow, run, save)
                     is ProgressScreen.AwaitingFirstAction ->
                         SuggestionStatus(R.string.preparing_first_action, target.problem, flow, run)
                     is ProgressScreen.CurrentAction -> ActionCardContent(
@@ -266,6 +296,7 @@ internal fun CoreFlowScreen(flow: ProgressFlow) {
                 }
             }
             if (storageFailed && !pinned) StorageFailure()
+            goalInputProblem?.let { Text(it, style = MaterialTheme.typography.bodyLarge) }
         }
     }
     val goal = state.goal
@@ -317,28 +348,99 @@ private fun Header(largeText: Boolean, hasGoal: Boolean, onShowGoal: () -> Unit)
     }
 }
 
+/** 입력은 바뀔 때마다 [save]로 초안에 저장한다. 선택 입력은 펼쳤을 때만 보인다. */
 @Composable
-private fun GoalInputContent(saved: GoalInput, prepare: (GoalInput) -> Unit) {
-    var statement by rememberSaveable { mutableStateOf(saved.statement) }
+private fun GoalInputContent(saved: GoalInput, save: (GoalInput) -> Unit, prepare: (GoalInput) -> Unit) {
+    // 보이는 글자가 기준이다. 제출과 자동 저장 모두 입력란 상태를 바로 읽는다.
+    val statement = rememberTextFieldState(saved.statement)
+    val deadline = rememberTextFieldState(saved.deadline)
+    val currentState = rememberTextFieldState(saved.currentState)
+    val blocker = rememberTextFieldState(saved.blocker)
+    val materialLinks = rememberTextFieldState(saved.materialLinks)
+    val materialExcerpt = rememberTextFieldState(saved.materialExcerpt)
+    val availableMinutes = rememberTextFieldState(saved.availableMinutes)
+    val read = {
+        GoalInput(
+            statement.text.toString(),
+            deadline.text.toString(),
+            currentState.text.toString(),
+            blocker.text.toString(),
+            materialLinks.text.toString(),
+            materialExcerpt.text.toString(),
+            availableMinutes.text.toString(),
+        )
+    }
+    AutosaveChanges(saved, read, save)
+    // 다시 열었을 때 선택 입력에 내용이 있으면 펼친다. 보내질 내용과 입력 오류가 가려지지 않게 한다.
+    var expanded by rememberSaveable {
+        mutableStateOf(listOf(saved.deadline, saved.currentState, saved.blocker, saved.materialLinks, saved.materialExcerpt, saved.availableMinutes).any { it.isNotBlank() })
+    }
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Heading(R.string.goal_input_title, MaterialTheme.typography.titleLarge)
-        OutlinedTextField(
-            statement,
-            { statement = it },
-            Modifier.fillMaxWidth(),
-            label = { Text(stringResource(R.string.goal_input_label)) },
-        )
-        CommandButton(R.string.prepare_goal, enabled = statement.isNotBlank()) { prepare(saved.copy(statement = statement)) }
+        GoalField(R.string.goal_input_label, statement)
+        TextButton(
+            { expanded = !expanded },
+            Modifier.fillMaxWidth().heightIn(min = 48.dp).semantics {
+                if (expanded) collapse { expanded = false; true } else expand { expanded = true; true }
+            },
+        ) {
+            Text(stringResource(R.string.goal_context_toggle), Modifier.weight(1f))
+        }
+        if (expanded) {
+            GoalField(R.string.goal_deadline_label, deadline)
+            GoalField(R.string.goal_current_state_label, currentState)
+            GoalField(R.string.goal_blocker_label, blocker)
+            GoalField(R.string.goal_material_links_label, materialLinks)
+            GoalField(R.string.goal_material_excerpt_label, materialExcerpt)
+            GoalField(R.string.goal_available_minutes_label, availableMinutes)
+            Text(stringResource(R.string.goal_material_notice), style = MaterialTheme.typography.bodySmall)
+        }
+        CommandButton(R.string.prepare_goal, enabled = statement.text.isNotBlank()) { prepare(read()) }
     }
+}
+
+/**
+ * [read]가 저장한 값과 달라질 때마다 [save]한다. 비교 기준은 저장한 초안 [stored]에서 시작한다.
+ * 그래서 다시 만든 화면의 입력이 저장한 초안보다 새로우면 바로 저장하고, 보이는 글자를 예전 값으로 덮지 않는다.
+ */
+@Composable
+private fun <T> AutosaveChanges(stored: T, read: () -> T, save: (T) -> Unit) {
+    val latest by rememberUpdatedState(save)
+    LaunchedEffect(Unit) {
+        var reported = stored
+        snapshotFlow(read).collect { if (it != reported) latest(it.also { reported = it }) }
+    }
+}
+
+@Composable
+private fun GoalField(@StringRes label: Int, state: TextFieldState) = LabeledField(stringResource(label), state)
+
+/**
+ * 레이블을 입력란 위에 둔다(iOS `goalField`). 떠 있는 레이블은 큰 글꼴에서 테두리와 겹친다.
+ * 레이블 위치는 `TextFieldState` 입력란만 정할 수 있다. 레이블은 입력란의 이름으로 읽히고 입력한 글자는 그대로 읽힌다.
+ */
+@Composable
+private fun LabeledField(label: String, state: TextFieldState, placeholder: String? = null) {
+    OutlinedTextField(
+        state,
+        Modifier.fillMaxWidth(),
+        labelPosition = TextFieldLabelPosition.Above(),
+        label = { Text(label) },
+        placeholder = placeholder?.let { { Text(it) } },
+    )
 }
 
 @Composable
 private fun PreparingGoalContent(
     screen: ProgressScreen.PreparingGoal,
     goal: GoalDetails?,
+    input: SuggestionInput?,
     flow: ProgressFlow,
     run: (suspend () -> Unit) -> Unit,
+    save: (suspend () -> Unit) -> Unit,
 ) {
+    // 이전 요청의 초안은 받지 않는다. 진행 흐름도 요청 ID로 늦은 입력을 거부한다.
+    val autosave = { text: String -> input?.let { save { flow.updateSuggestionInput(text, it.requestId) } } }
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Heading(R.string.goal_review_title, MaterialTheme.typography.titleLarge)
         Text(goal?.statement.orEmpty())
@@ -346,29 +448,38 @@ private fun PreparingGoalContent(
         val criteria = screen.completionCriteria
         when {
             screen.problem == null && question != null -> {
-                var answer by rememberSaveable(question) { mutableStateOf("") }
-                Text(question, style = MaterialTheme.typography.titleMedium)
-                OutlinedTextField(
-                    answer,
-                    { answer = it },
-                    Modifier.fillMaxWidth(),
-                    label = { Text(stringResource(R.string.goal_question_prompt)) },
-                )
-                CommandButton(R.string.goal_question_send, enabled = answer.isNotBlank()) { run { flow.answerGoalQuestion(answer) } }
+                // 새로 나타난 질문으로 입력 초점을 옮긴다. TalkBack 초점이 따라오는지는 실제 TalkBack으로 아직 확인하지 않았다. 초점을 받으면 질문이 보이도록 스크롤된다.
+                val focus = remember { FocusRequester() }
+                Text(question, Modifier.focusRequester(focus).focusable(), style = MaterialTheme.typography.titleMedium)
+                LaunchedEffect(question) { focus.requestFocus() }
+                key(input?.requestId) {
+                    val answer = rememberTextFieldState(input?.text.orEmpty())
+                    AutosaveChanges(input?.text.orEmpty(), { answer.text.toString() }) { autosave(it) }
+                    LabeledField(stringResource(R.string.goal_question_answer_label), answer, stringResource(R.string.goal_question_prompt))
+                    CommandButton(R.string.goal_question_send, enabled = answer.text.isNotBlank()) {
+                        val text = answer.text.toString()
+                        run { flow.run(Drafts(answer = text)) { flow.answerGoalQuestion(text) } }
+                    }
+                }
             }
             screen.problem == null && criteria != null -> {
-                var edited by rememberSaveable(criteria) { mutableStateOf(criteria) }
+                var edited by rememberSaveable(input?.requestId) { mutableStateOf(input?.text ?: criteria) }
                 Text(stringResource(R.string.completion_criteria), style = MaterialTheme.typography.titleMedium)
                 OutlinedTextField(
                     edited,
-                    { edited = it },
+                    {
+                        edited = it
+                        autosave(it)
+                    },
                     Modifier.fillMaxWidth(),
                     label = { Text(stringResource(R.string.completion_criteria_prompt)) },
                 )
                 Text(stringResource(R.string.current_state), style = MaterialTheme.typography.titleMedium)
                 Text(goal?.context?.currentState ?: stringResource(R.string.current_state_missing))
                 Text(stringResource(R.string.goal_review_guide))
-                CommandButton(R.string.confirm_goal, enabled = edited.isNotBlank()) { run { flow.confirmGoal(edited) } }
+                CommandButton(R.string.confirm_goal, enabled = edited.isNotBlank()) {
+                    run { flow.run(Drafts(completionCriteria = edited)) { flow.confirmGoal(edited) } }
+                }
             }
             else -> SuggestionStatus(R.string.preparing_goal, screen.problem, flow, run)
         }
@@ -573,9 +684,11 @@ private fun announcement(old: ProgressScreen, new: ProgressScreen, resources: Re
             }
             is ProgressScreen.AwaitingFirstAction -> add(resources.getString(new.problem?.reason ?: R.string.preparing_first_action))
             is ProgressScreen.AwaitingNextAction -> add(resources.getString(new.problem?.reason ?: R.string.preparing_next_action))
-            is ProgressScreen.PreparingGoal -> add(
-                new.problem?.let { resources.getString(it.reason) } ?: new.question
-                    ?: resources.getString(if (new.completionCriteria == null) R.string.preparing_goal else R.string.check_completion_criteria),
+            // 질문은 초점을 옮겨 읽힌다. iOS는 초점을 옮기지 않고 질문을 안내한다.
+            is ProgressScreen.PreparingGoal -> if (new.problem != null || new.question == null) add(
+                resources.getString(
+                    new.problem?.reason ?: if (new.completionCriteria == null) R.string.preparing_goal else R.string.check_completion_criteria,
+                ),
             )
             ProgressScreen.GoalInput -> Unit
         }

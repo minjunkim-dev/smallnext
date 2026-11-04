@@ -9,10 +9,13 @@ import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.assert
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.hasContentDescription
@@ -27,6 +30,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performSemanticsAction
+import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextLayoutResult
@@ -41,6 +45,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import dev.smallnext.app.data.AppDatabase
 import dev.smallnext.app.progress.SuggestionCandidate.Action
 import dev.smallnext.app.progress.SuggestionCandidate.GoalSummary
+import dev.smallnext.app.progress.SuggestionCandidate.Question
 import java.util.UUID
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -124,15 +129,18 @@ class CoreFlowScreenTest {
     private fun assertHeading(text: String) =
         compose.onNodeWithText(text).assert(SemanticsMatcher.keyIsDefined(SemanticsProperties.Heading))
 
+    /** 입력 뒤 남은 소프트 키보드가 버튼을 가려도 누를 수 있게 터치 대신 클릭 동작을 보낸다(CI 320×640). */
+    private fun SemanticsNodeInteraction.clickAfterTyping() = performSemanticsAction(SemanticsActions.OnClick)
+
     private fun bounds(text: String) = compose.onNodeWithText(text).getUnclippedBoundsInRoot()
 
     /**
      * 모든 글자가 줄 수 제한·말줄임 없이 제약 안에 배치됐는지 확인한다.
      * `hasVisualOverflow`는 문단 폭(실수)과 크기(정수)의 반올림 차이만으로도 참이 돼 쓰지 않는다.
      */
-    private fun assertFullyLaidOut(text: String) {
+    private fun assertFullyLaidOut(text: String, unmerged: Boolean = false) {
         val results = mutableListOf<TextLayoutResult>()
-        compose.onNodeWithText(text).performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(results) }
+        compose.onNodeWithText(text, useUnmergedTree = unmerged).performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(results) }
         val layout = results.single()
         val last = layout.lineCount - 1
         assertFalse(text, layout.didOverflowHeight || layout.isLineEllipsized(last))
@@ -195,6 +203,124 @@ class CoreFlowScreenTest {
         provider.release()
         waitForText(second.task)
         assertAnnounced("지금 할 행동: ${second.task}")
+    }
+
+    // 선택 입력(최대 글꼴): 펼친 입력란 레이블·자료 안내·자동 저장, 잘못된 입력은 요청 없이 같은 안내를 보이고 읽힌다.
+    @Test
+    fun optionalInputsAutosaveAndInvalidInputShowsGuidanceWithoutRequest() {
+        val provider = ScriptedProvider(GoalSummary("화분이 새 자리에 있다"))
+        val flow = flow(provider)
+        show(flow, fontScale = 2f)
+        assertEquals(1, compose.onAllNodes(hasSetTextAction()).fetchSemanticsNodes().size)
+        val toggle = compose.onNodeWithText("아는 맥락 보태기 (선택)")
+        toggle.assertHeightIsAtLeast(48.dp).assert(SemanticsMatcher.keyIsDefined(SemanticsActions.Expand)).performScrollTo().performClick()
+        toggle.assert(SemanticsMatcher.keyIsDefined(SemanticsActions.Collapse))
+        val labels = listOf(
+            "기한 (선택)", "현재 상태 (선택)", "막힌 점 (선택)", "자료 링크 (선택, 한 줄에 하나)", "고른 발췌·요약 (선택)", "지금 쓸 수 있는 시간 (선택, 분)",
+        )
+        for (label in labels) {
+            // 접근성 이름은 레이블로 붙는다. contentDescription은 입력한 글자를 가려 쓰지 않는다.
+            compose.onNode(hasSetTextAction() and hasText(label))
+                .assert(SemanticsMatcher.keyNotDefined(SemanticsProperties.ContentDescription)).performScrollTo()
+            assertFullyLaidOut(label, unmerged = true)
+        }
+        val notice = "자료는 링크와 직접 고른 발췌·요약만 보내요. 링크의 내용은 자동으로 읽지 않아요."
+        compose.onNodeWithText(notice).performScrollTo()
+        assertFullyLaidOut(notice)
+
+        compose.onNode(hasSetTextAction() and hasText("목표 한 문장")).performTextInput("화분 옮기기")
+        compose.onNode(hasSetTextAction() and hasText("자료 링크 (선택, 한 줄에 하나)")).performScrollTo().performTextInput("file:///tmp/plant")
+        compose.waitUntil(5_000) { flow.state.value.goalInput == GoalInput("화분 옮기기", materialLinks = "file:///tmp/plant") }
+        compose.onNodeWithText("목표 정리").performScrollTo().clickAfterTyping()
+        val problem = "자료 링크는 http:// 또는 https://로 입력해 주세요. 시간은 1 이상의 정수로 입력해 주세요."
+        assertAnnounced(problem)
+        compose.onNodeWithText(problem).performScrollTo().assertIsDisplayed()
+        assertFullyLaidOut(problem)
+        assertEquals(ProgressScreen.GoalInput, flow.state.value.screen)
+        assertTrue(provider.requests.isEmpty())
+
+        // 고쳐 입력하면 안내가 사라지고 요청한다.
+        compose.onNode(hasSetTextAction() and hasText("자료 링크 (선택, 한 줄에 하나)")).performScrollTo().performTextClearance()
+        compose.onAllNodes(hasText(problem)).assertCountEquals(0)
+        compose.onNodeWithText("목표 정리").performScrollTo().clickAfterTyping()
+        waitForText("확인하고 시작")
+        assertEquals(listOf(SuggestionKind.GOAL_PREPARATION), provider.requests.map { it.kind })
+    }
+
+    // 다시 연 목표 입력 초안에 선택 입력이 있으면 펼쳐서 보여준다. 보내질 자료와 입력 오류가 가려지지 않는다.
+    @Test
+    fun restoredOptionalDraftShowsOptionalFields() {
+        val flow = flow(UnavailableSuggestionProvider)
+        runBlocking { flow.updateGoalInput(GoalInput("화분 옮기기", materialLinks = "file:///tmp/plant")) }
+        show(flow)
+        compose.onNode(hasSetTextAction() and hasText("자료 링크 (선택, 한 줄에 하나)")).performScrollTo().assertIsDisplayed()
+        compose.onNode(hasText("file:///tmp/plant")).assertExists()
+    }
+
+    // 자동 저장 수집이 돌기 전에 눌러도 화면에 보이는 선택 입력을 제출한다.
+    @Test
+    fun submitSendsTheVisibleOptionalTextBeforeAutosaveRuns() {
+        val provider = ScriptedProvider(GoalSummary("화분이 새 자리에 있다"))
+        val flow = flow(provider)
+        show(flow)
+        compose.onNode(hasSetTextAction() and hasText("목표 한 문장")).performTextInput("화분 옮기기")
+        compose.waitUntil(5_000) { flow.state.value.goalInput.statement == "화분 옮기기" }
+        compose.onNodeWithText("아는 맥락 보태기 (선택)").performScrollTo().performClick()
+        val setLink = compose.onNode(hasSetTextAction() and hasText("자료 링크 (선택, 한 줄에 하나)"))
+            .performScrollTo().fetchSemanticsNode().config[SemanticsActions.SetText].action!!
+        val submit = compose.onNodeWithText("목표 정리").fetchSemanticsNode().config[SemanticsActions.OnClick].action!!
+        compose.runOnUiThread {
+            setLink(AnnotatedString("https://example.com/plant"))
+            submit()
+        }
+        waitForText("확인하고 시작")
+        assertEquals(listOf("https://example.com/plant"), provider.requests.single().context.materialLinks)
+    }
+
+    // 목표 확인 질문(최대 글꼴): 질문으로 초점이 옮겨지고, 답 입력란 레이블과 답 초안 자동 저장을 확인한다.
+    @Test
+    fun goalQuestionTakesFocusAndAnswerDraftIsSaved() {
+        val question = "무엇을 정리하려고 하나요? 책상 위 서류인지 컴퓨터의 파일인지 알려 주세요."
+        val provider = ScriptedProvider(Question(question), GoalSummary("서류를 정리했다"))
+        val flow = flow(provider)
+        runBlocking {
+            flow.prepareGoal(GoalInput("정리하기"))
+            flow.awaitSuggestion()
+        }
+        show(flow, fontScale = 2f)
+        waitForText(question)
+        compose.onNodeWithText(question).assertIsFocused()
+        assertFullyLaidOut(question)
+        compose.onNode(hasSetTextAction() and hasText("목표 확인 질문 답")).performScrollTo().performTextInput("책상 위 서류")
+        compose.waitUntil(5_000) { flow.state.value.suggestionInput?.text == "책상 위 서류" }
+        compose.onNodeWithText("답 보내기").assertHeightIsAtLeast(48.dp).performScrollTo().clickAfterTyping()
+        waitForText("확인하고 시작")
+        assertEquals(listOf(GoalAnswer(question, "책상 위 서류")), provider.requests[1].context.answers)
+    }
+
+    // 답 자동 저장이 돌기 전에 보내도 화면에 보이는 답을 요청에 담는다.
+    @Test
+    fun submitSendsTheVisibleAnswerBeforeAutosaveRuns() {
+        val question = "무엇을 정리하려고 하나요?"
+        val provider = ScriptedProvider(Question(question), GoalSummary("서류를 정리했다"))
+        val flow = flow(provider)
+        runBlocking {
+            flow.prepareGoal(GoalInput("정리하기"))
+            flow.awaitSuggestion()
+        }
+        show(flow)
+        waitForText(question)
+        val field = compose.onNode(hasSetTextAction() and hasText("목표 확인 질문 답")).performScrollTo()
+        field.performTextInput("책상")
+        compose.waitUntil(5_000) { flow.state.value.suggestionInput?.text == "책상" }
+        val setText = field.fetchSemanticsNode().config[SemanticsActions.SetText].action!!
+        val send = compose.onNodeWithText("답 보내기").fetchSemanticsNode().config[SemanticsActions.OnClick].action!!
+        compose.runOnUiThread {
+            setText(AnnotatedString("책상 위 서류"))
+            send()
+        }
+        waitForText("확인하고 시작")
+        assertEquals(listOf(GoalAnswer(question, "책상 위 서류")), provider.requests[1].context.answers)
     }
 
     // 큰 글꼴: 머리 영역을 세로로 쌓고 하단 고정 버튼을 본문으로 옮긴다. 최대 배율에서 카드 글자가 잘리지 않는다.
