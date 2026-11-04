@@ -22,7 +22,7 @@ Supabase DB·인증의 로컬 연결은 확인했습니다. 실제 앱·서버 �
 
 ## 필요한 도구
 
-- iOS: Xcode 27.1 (27A9275), simulator SDK 27.1, iOS runtime 27.0.
+- iOS: Xcode 27.1 (27A9275), simulator SDK 27.1, iOS runtime 27.2.
 - Android: Temurin JDK (설치 선택값 17.0.20+101, 실제 runtime 17.0.20.1+1), Android SDK 37, Build Tools 36.0.0, 에뮬레이터.
 - API: rustup, Rust 1.99.1, Docker Compose v2, Python 3, make.
 
@@ -31,6 +31,10 @@ Rust 기준은 `rust-toolchain.toml`입니다. 다른 도구의 기준은 `.ci/t
 검사 명령은 다른 Rust·JDK·Xcode 버전을 차단합니다.
 개발 PC와 CI는 같은 Make 명령을 사용합니다.
 개인 PC의 기존 DB, 캐시와 환경 파일은 CI에 전달하지 않습니다.
+
+제품 발견용 스킬 목록은 `skills-lock.json`입니다. 스킬 폴더는 커밋하지 않습니다.
+복원은 `npx skills experimental_install --frozen-lockfile`입니다. 각 항목의 `ref` 커밋 내용이 `computedHash`와 다르면 명령이 실패하고 잠금 파일은 그대로입니다.
+복원은 `.agents/skills/`만 채웁니다. Claude Code용 `.claude/skills/` 링크는 저장소에 만들지 않습니다.
 
 iOS 지원 하한은 우선 17.0, Android 지원 하한은 API 26입니다.
 이 값은 초기 빌드 기준입니다. 출시 지원 범위는 별도로 확인합니다.
@@ -201,7 +205,7 @@ node --test apps/ios/scripts/test-turnstile-page.cjs
 ```
 
 커밋한 Xcode 프로젝트를 바로 사용할 수 있습니다.
-검사는 iOS 27.0 runtime에 있는 iPhone만 선택합니다.
+검사는 `.ci/toolchains.json`의 `ios_runtime`(현재 27.2) runtime에 있는 iPhone만 선택합니다.
 `IOS_SIMULATOR`를 생략하면 해당 runtime의 기기를 자동 선택합니다.
 다른 runtime의 부팅한 기기는 대신 사용하지 않습니다.
 시뮬레이터 빌드는 Keychain 권한을 적용하기 위해 ad-hoc 서명을 사용합니다. 개발자 계정과 서명 private key는 사용하지 않습니다.
