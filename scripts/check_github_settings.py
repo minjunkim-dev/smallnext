@@ -200,17 +200,24 @@ def validate_profile(profile):
         raise ValueError("Invalid repository ID")
 
 
-def audit(profile, read=None):
-    validate_profile(profile)
-    read = read_api if read is None else read
-    if type(profile["schema_version"]) is not int or profile["schema_version"] != 1:
+def validate_target(profile):
+    """Schema version, repository name and branch, checked before any request path is built."""
+    if type(profile.get("schema_version")) is not int or profile["schema_version"] != 1:
         raise ValueError("Unsupported settings baseline version")
-    repo = profile["repository"]
-    branch = profile["default_branch"]
+    repo = profile.get("repository")
+    branch = profile.get("default_branch")
     if not isinstance(repo, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9-]{0,38}/[A-Za-z0-9_.-]+", repo) or repo.split("/")[-1] in {".", ".."}:
         raise ValueError("Invalid repository identity")
     if not isinstance(branch, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]*", branch) or ".." in branch or branch.endswith("."):
         raise ValueError("Invalid baseline branch")
+
+
+def audit(profile, read=None):
+    validate_profile(profile)
+    read = read_api if read is None else read
+    validate_target(profile)
+    repo = profile["repository"]
+    branch = profile["default_branch"]
     prefix = f"repos/{repo}"
     metadata = read(prefix)
     if not isinstance(metadata, dict) or metadata["id"] != profile["repository_id"] or metadata["full_name"] != repo:

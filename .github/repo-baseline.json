@@ -2,15 +2,15 @@
   "files": {
     "scripts/check_repo_baseline.py": {
       "source": "scripts/check_repo_baseline.py",
-      "sha256": "640c1a1c3f0f51184be6b6f415b5f34f8684533ac4289febf054b75d9d9e9f97"
+      "sha256": "5681aba08de95a795d7330fbdafe2e1925067aabec3f94327aa074dc34714c96"
     },
     "scripts/test_repo_baseline.py": {
       "source": "scripts/test_repo_baseline.py",
-      "sha256": "d8218967d9d4d4f0ade68196328b5f193b0d993bfb38c33267be76a334e8fd89"
+      "sha256": "463b77ecb045e6cfce374e94ef645de202021cb90a41bfcfaa7db82e4f03c2d2"
     },
     "scripts/check_github_settings.py": {
       "source": "scripts/check_github_settings.py",
-      "sha256": "098499b06ac24025de1badc871e2d486c99cb72ebfe5fb5da268bc9aad14188f"
+      "sha256": "690cb4ba69529eca80ba3e84de03ce0670de49861a8f5d40bc1067033bd2b4d5"
     },
     "scripts/test_github_settings.py": {
       "source": "scripts/test_github_settings.py",
@@ -33,8 +33,40 @@
         }
       ],
       "sha256": "70ff016b340818a25acc8d7d3843565de6b74212ade46095bd514e09425f0937"
+    },
+    "scripts/check_review_status.py": {
+      "source": "scripts/check_review_status.py",
+      "sha256": "fe2ad7addba7636223e192e453e1809cd3207c1a5a5f2a1d161a70ebfec207e4"
+    },
+    "scripts/test_review_status.py": {
+      "source": "scripts/test_review_status.py",
+      "sha256": "ef636e6d9314d3e09e4c8f0f2a6c7842c7073a0335a97ea175fdedafb642a836"
+    },
+    ".agents/skills/matt-code-review/SKILL.md": {
+      "source": "vendor/mattpocock-skills/matt-code-review/SKILL.md",
+      "sha256": "6b1d85f6f33b83f2015f8b67f8816f9f3f53e7bba29cfb25a64673bc9e8d11cc"
+    },
+    ".agents/skills/matt-code-review/agents/openai.yaml": {
+      "source": "vendor/mattpocock-skills/matt-code-review/agents/openai.yaml",
+      "sha256": "8229ca854e11dc8e6aef2131ee03f31fb1561cf905fab9ccc325180cf3331352"
+    },
+    ".agents/skills/matt-code-review/LICENSE": {
+      "source": "vendor/mattpocock-skills/matt-code-review/LICENSE",
+      "sha256": "0e7ac423bf2c6e223b7c5b156f8cf72da49d748e56a1641402c31f22ad07dbb5"
+    },
+    ".claude/skills/matt-code-review/SKILL.md": {
+      "source": "vendor/mattpocock-skills/matt-code-review/SKILL.md",
+      "sha256": "6b1d85f6f33b83f2015f8b67f8816f9f3f53e7bba29cfb25a64673bc9e8d11cc"
+    },
+    ".claude/skills/matt-code-review/agents/openai.yaml": {
+      "source": "vendor/mattpocock-skills/matt-code-review/agents/openai.yaml",
+      "sha256": "8229ca854e11dc8e6aef2131ee03f31fb1561cf905fab9ccc325180cf3331352"
+    },
+    ".claude/skills/matt-code-review/LICENSE": {
+      "source": "vendor/mattpocock-skills/matt-code-review/LICENSE",
+      "sha256": "0e7ac423bf2c6e223b7c5b156f8cf72da49d748e56a1641402c31f22ad07dbb5"
     }
   },
   "source": "minjunkim-dev/repo-baseline",
-  "source_commit": "9d3958b5dc35b43b98ee8adb53bd416eac956e0a"
+  "source_commit": "8aad448d196ac21308e88e016d17c1f3b6920221"
 }
