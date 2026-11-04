@@ -87,6 +87,19 @@ class SimulatorTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 select(self.devices(), "26.4.1", requested, self.RUNTIMES)
 
+    def test_device_specific_runtime_of_same_version_prefers_general_runtime(self):
+        runtimes = [
+            {"version": "27.2", "identifier": "com.apple.CoreSimulator.SimRuntime.iOS-27-2-iPhone19-4", "isAvailable": True},
+            {"version": "27.2", "identifier": "com.apple.CoreSimulator.SimRuntime.iOS-27-2", "isAvailable": True}]
+        devices = {
+            "com.apple.CoreSimulator.SimRuntime.iOS-27-2-iPhone19-4": [
+                {"name": "iPhone Duo", "udid": "duo", "state": "Shutdown", "isAvailable": True}],
+            "com.apple.CoreSimulator.SimRuntime.iOS-27-2": [
+                {"name": "iPhone 18 Pro", "udid": "general", "state": "Shutdown", "isAvailable": True}],
+        }
+        self.assertEqual(select(devices, "27.2", runtimes=runtimes), "general")
+        self.assertEqual(select(devices, "27.2", "iPhone Duo", runtimes), "duo")
+
     def test_missing_or_unavailable_pinned_runtime_is_rejected(self):
         with self.assertRaises(ValueError):
             select(self.devices(), "26.5", runtimes=self.RUNTIMES)

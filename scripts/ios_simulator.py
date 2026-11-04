@@ -10,10 +10,12 @@ def select(devices, runtime, requested="", runtimes=()):
     keys = {item["identifier"] for item in runtimes
             if item.get("version") == runtime and item.get("isAvailable", False)
             and item["identifier"].startswith("com.apple.CoreSimulator.SimRuntime.iOS-")}
-    if len(keys) != 1:
+    if not keys:
         raise ValueError(f"Expected one available iOS {runtime} runtime; install it in Xcode.")
-    key = keys.pop()
-    available = [device for device in devices.get(key, [])
+    # Xcode can ship a device-specific build of the same version (e.g. iOS-27-2-iPhone19-4 for
+    # iPhone Duo). Prefer the general runtime, then fall back to the device-specific ones.
+    available = [device for key in sorted(keys, key=lambda k: (len(k), k))
+                 for device in devices.get(key, [])
                  if device["name"].startswith("iPhone") and device.get("isAvailable", True)]
     if requested:
         available = [device for device in available

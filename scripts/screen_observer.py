@@ -5,12 +5,14 @@ import errno
 import os
 from pathlib import Path
 import plistlib
+import re
 import signal
 import sqlite3
 import subprocess
 import sys
 from time import monotonic, sleep
 
+from environment import config
 import oauth_quality as qa
 
 
@@ -51,10 +53,12 @@ class Observer:
 
     def preflight(self):
         devices = json.loads(self.command(['xcrun', 'simctl', 'list', 'devices', '-j']))['devices']
-        selected = [device for runtime, rows in devices.items() if runtime.endswith('iOS-27-0')
+        version = config()['ios_runtime']
+        pinned = re.compile(r'SimRuntime\.iOS-' + re.escape(version.replace('.', '-')) + r'(-|$)')
+        selected = [device for runtime, rows in devices.items() if pinned.search(runtime)
                     for device in rows if device['udid'] == self.simulator]
         if len(selected) != 1 or not selected[0]['name'].startswith('Smallnext111-'):
-            raise ValueError('fresh dedicated Smallnext111 iOS 27.0 simulator required')
+            raise ValueError(f'fresh dedicated Smallnext111 iOS {version} simulator required')
         self.refresh_container()
         if not self.database.is_file():
             raise ValueError('initialize the empty QA app without a development URL first')
