@@ -32,6 +32,10 @@ Rust 기준은 `rust-toolchain.toml`입니다. 다른 도구의 기준은 `.ci/t
 개발 PC와 CI는 같은 Make 명령을 사용합니다.
 개인 PC의 기존 DB, 캐시와 환경 파일은 CI에 전달하지 않습니다.
 
+제품 발견용 스킬 목록은 `skills-lock.json`입니다. 스킬 폴더는 커밋하지 않습니다.
+복원은 `npx skills experimental_install --frozen-lockfile`입니다. 각 항목의 `ref` 커밋 내용이 `computedHash`와 다르면 명령이 실패하고 잠금 파일은 그대로입니다.
+복원은 `.agents/skills/`만 채웁니다. Claude Code용 `.claude/skills/` 링크는 저장소에 만들지 않습니다.
+
 iOS 지원 하한은 우선 17.0, Android 지원 하한은 API 26입니다.
 이 값은 초기 빌드 기준입니다. 출시 지원 범위는 별도로 확인합니다.
 기본 앱 식별자는 `dev.smallnext.app`입니다.
