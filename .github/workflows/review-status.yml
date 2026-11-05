@@ -1,8 +1,11 @@
 # Copy to .github/workflows/review-status.yml (POLICY.md §9). The project owns this copy so Dependabot can update the pin.
 name: Review status
 
-# pull_request_target runs this file and the script from the default branch, also for a PR into another branch,
-# so a PR cannot change the code this job runs. Safe only while no step checks out or runs the PR head.
+# pull_request_target runs this file and the script from the default branch, so a PR cannot change the code this job runs.
+# branches is main: a pull request into any other branch does not run Review status. The checker rejects a base
+# ref other than the repository default branch, and an event base SHA that is not on that branch.
+# Rerunning an old run keeps its BASE_SHA, so retargeting to the default branch does not make that SHA pass.
+# Safe only while no step checks out or runs the PR head.
 # edited re-runs this job when the body changes. ready_for_review re-runs it when a draft becomes ready,
 # even if the body was not edited. The checker parses that body and does not execute it.
 # issue_comment runs are not pull request checks (their SHA is the default branch). That job only re-runs the
@@ -16,6 +19,7 @@ name: Review status
 # It does not write review/independent or review/security. review-status-policy.json allows only these two events.
 on:
   pull_request_target:
+    branches: [main]
     types: [opened, synchronize, reopened, ready_for_review, edited]
   issue_comment:
     types: [created, edited, deleted]

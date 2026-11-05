@@ -27,7 +27,10 @@ BRANCH = re.compile(rf"^(?:({TYPES})/[1-9][0-9]*-{SLUG}|(?:docs|build|ci|chore)/
 ISSUE_REF = re.compile(r"\b(?:Closes|Fixes|Resolves|Refs)\s+#[1-9][0-9]*\b", re.IGNORECASE)
 ISSUE_TYPES = {"feat", "fix", "refactor", "perf", "test", "revert"}
 HEADERS = ("Summary", "Evidence", "Merge Danger")
-DOORS = {"양쪽 문", "한쪽 문"}
+# Current names. The deprecated pair is the previous name for the same decision.
+DOOR_VALUES = {"되돌리기 쉬움", "되돌리기 어려움"}
+DEPRECATED_DOOR_VALUES = {"양쪽 문", "한쪽 문"}
+DOORS = DOOR_VALUES | DEPRECATED_DOOR_VALUES
 DEFAULT_BOT_PREFIXES = ("claude", "codex", "dependabot")
 CONFIG_NAME = ".github/workflow-policy.json"
 DEPENDABOT = "dependabot[bot]"
@@ -58,9 +61,10 @@ def validate_body(body, author=""):
     for name in HEADERS:
         if not any(line.strip() == f"## {name}" for line in text.split("\n")):
             errors.append(f"PR body: missing ## {name}")
+    # The field name stays Door:. A value must match exactly, including the deprecated names.
     doors = [line[len("Door:"):].strip() for line in text.split("\n") if line.startswith("Door:")]
     if len(doors) != 1 or doors[0] not in DOORS:
-        errors.append("PR body: Door must be 양쪽 문 or 한쪽 문")
+        errors.append("PR body: Door must be 되돌리기 쉬움 or 되돌리기 어려움")
     _, _, author_errors = parse_author(text)
     errors.extend(author_errors)
     return errors

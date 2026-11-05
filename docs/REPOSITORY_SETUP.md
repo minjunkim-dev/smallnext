@@ -194,9 +194,9 @@ CodeQL workflow를 바꾸면 기준선의 `codeql_main_source.sha`도 새 Git bl
 
 ## 공통 기준 갱신과 설정 관측 기록
 
-적용 원본은 `minjunkim-dev/repo-baseline`의 main `e8c5224e33d8ebe3aa915fd741702ee75c77ecc2`다. 복사본의 경로·생태계를 유지하며 원본 도구로 갱신했다. 로컬 스킬 설정과 일상 작업 진입은 [개발 절차](agents/development.md), 자체 리뷰와 사용자 요청 회고는 [리뷰 절차](agents/review.md)를 따른다.
+적용 원본은 `minjunkim-dev/repo-baseline`의 main `c6405a09a7d06af943cb08db5b600fe0f655b0a2`다. 복사본의 경로·생태계를 유지하며 원본 도구로 갱신했다. `Review status`와 `PR policy`는 `branches: [main]`만 본다. 결정 분류 이름은 `되돌리기 어려움`·`되돌리기 쉬움`이고, 옛 `한쪽 문`·`양쪽 문`과 `한쪽 문 승인: <sha>`는 검사기가 deprecated로 계속 받는다. 로컬 스킬 설정과 일상 작업 진입은 [개발 절차](agents/development.md), 자체 리뷰와 사용자 요청 회고는 [리뷰 절차](agents/review.md)를 따른다.
 
-기존 기준선의 설명용 `exceptions` 배열은 내용을 보존해 `observations`로 옮겼다. 관측 기록은 API 감사 항목을 제외하지 않는다. 실제 기능 미지원·비해당을 감사 범위에서 제외하려면 원본의 [설정 기준선 형식](https://github.com/minjunkim-dev/repo-baseline/blob/e8c5224e33d8ebe3aa915fd741702ee75c77ecc2/docs/github-settings-profile.md)에 맞는 `exceptions` 객체와 사유·근거가 필요하다. 예외가 있으면 exit 0이어도 결과는 전체 PASS가 아닌 LIMITED다. 미선언 403·404·누락·권한 오류는 계속 실패한다.
+기존 기준선의 설명용 `exceptions` 배열은 내용을 보존해 `observations`로 옮겼다. 관측 기록은 API 감사 항목을 제외하지 않는다. 실제 기능 미지원·비해당을 감사 범위에서 제외하려면 원본의 [설정 기준선 형식](https://github.com/minjunkim-dev/repo-baseline/blob/c6405a09a7d06af943cb08db5b600fe0f655b0a2/docs/github-settings-profile.md)에 맞는 `exceptions` 객체와 사유·근거가 필요하다. 예외가 있으면 exit 0이어도 결과는 전체 PASS가 아닌 LIMITED다. 미선언 403·404·누락·권한 오류는 계속 실패한다.
 
 이번 갱신은 GitHub 서버 기대값·권한·필수 체크·CodeQL·배포·Actions 이벤트 정책과 `.github/repository-settings.json`을 바꾸지 않는다. `Review status`는 이 PR에서 필수 체크로 등록하지 않는다. 병합 후 소유자 승인으로 필수 체크에 추가한다. 공개 저장소의 Actions 이벤트 정책은 이 workflow를 기본 브랜치에 병합하기 전에 저장소 관리자가 만든다. 필수 체크 이름은 workflow가 기본 브랜치에 있고 그 job이 한 번 돈 뒤에 올린다. 그 전에 체크 이름을 올리면 검사가 대기할 수 있다. 과거 실행 기록을 현재 검증 결과로 바꾸지 않는다.
 
