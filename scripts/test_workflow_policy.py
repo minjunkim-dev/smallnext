@@ -1,7 +1,11 @@
 from copy import deepcopy
 from datetime import date
 from io import StringIO
+import json
+import os
 from pathlib import Path
+import subprocess
+import sys
 from tempfile import TemporaryDirectory
 import unittest
 from unittest.mock import patch
@@ -106,6 +110,107 @@ class FlagsTest(unittest.TestCase):
         self.assertTrue(validate_flags({"version": 1, "flags": [flag]}, self.today))
         flag["release_issue"] = 19
         self.assertEqual([], validate_flags({"version": 1, "flags": [flag]}, self.today))
+
+
+class PolicyRootTest(unittest.TestCase):
+    def setUp(self):
+        temporary = TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.work = Path(temporary.name)
+        source = Path(__file__).resolve().parent / "workflow_policy.py"
+        base = self.work / "policy-base"
+        head = self.work / "policy-head"
+        (base / "scripts").mkdir(parents=True)
+        (base / "scripts" / "workflow_policy.py").write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
+        (base / "config").mkdir()
+        (base / "config" / "feature-flags.json").write_text('{"version": 1, "flags": [null]}\n', encoding="utf-8")
+        (head / "config").mkdir(parents=True)
+        (head / "AGENTS.md").write_text("pull copy\n", encoding="utf-8")
+        (head / "config" / "feature-flags.json").write_text('{"version": 1, "flags": []}\n', encoding="utf-8")
+
+    def invoke(self, *args, event=None):
+        env = os.environ.copy()
+        if event is not None:
+            path = self.work / "event.json"
+            path.write_text(json.dumps(event), encoding="utf-8")
+            env["GITHUB_EVENT_PATH"] = str(path)
+        return subprocess.run(
+            [sys.executable, "policy-base/scripts/workflow_policy.py", *args],
+            cwd=self.work, env=env, capture_output=True, text=True, timeout=30,
+        )
+
+    def test_root_reads_the_given_tree(self):
+        ok = self.invoke("--root", "policy-head")
+        self.assertEqual(0, ok.returncode, ok.stdout + ok.stderr)
+        self.assertIn("PASS", ok.stdout)
+        ignored = self.invoke()
+        self.assertEqual(1, ignored.returncode, ignored.stdout + ignored.stderr)
+        self.assertIn("AGENTS.md is required", ignored.stdout)
+        self.assertIn("Feature flag", ignored.stdout)
+
+    def test_missing_agents_or_bad_flags_in_the_root_fail(self):
+        head = self.work / "policy-head"
+        (head / "AGENTS.md").unlink()
+        missing = self.invoke("--root", "policy-head")
+        self.assertEqual(1, missing.returncode, missing.stdout + missing.stderr)
+        self.assertIn("AGENTS.md is required", missing.stdout)
+        self.assertNotIn("PASS", missing.stdout)
+        (head / "AGENTS.md").write_text("pull copy\n", encoding="utf-8")
+        (head / "config" / "feature-flags.json").write_text('{"version": 1, "flags": [null]}\n', encoding="utf-8")
+        bad_flags = self.invoke("--root", "policy-head")
+        self.assertEqual(1, bad_flags.returncode, bad_flags.stdout + bad_flags.stderr)
+        self.assertNotIn("AGENTS.md is required", bad_flags.stdout)
+        self.assertIn("Feature flag", bad_flags.stdout)
+
+    def test_claude_and_symlinks_in_the_root_fail(self):
+        head = self.work / "policy-head"
+        (head / "CLAUDE.md").write_text("not used\n", encoding="utf-8")
+        claude = self.invoke("--root", "policy-head")
+        self.assertEqual(1, claude.returncode, claude.stdout + claude.stderr)
+        self.assertIn("remove CLAUDE.md", claude.stdout)
+        (head / "CLAUDE.md").unlink()
+        (head / "AGENTS.md").unlink()
+        (head / "AGENTS.md").symlink_to("config/feature-flags.json")
+        linked_agents = self.invoke("--root", "policy-head")
+        self.assertEqual(1, linked_agents.returncode, linked_agents.stdout + linked_agents.stderr)
+        self.assertIn("AGENTS.md is required", linked_agents.stdout)
+        (head / "AGENTS.md").unlink()
+        (head / "AGENTS.md").write_text("pull copy\n", encoding="utf-8")
+        flags = head / "config" / "feature-flags.json"
+        flags.unlink()
+        flags.symlink_to("feature-flags.json")
+        linked_flags = self.invoke("--root", "policy-head")
+        self.assertEqual(1, linked_flags.returncode, linked_flags.stdout + linked_flags.stderr)
+        self.assertIn("refusing to follow a symlink", linked_flags.stdout)
+
+    def test_absolute_and_parent_roots_are_rejected(self):
+        for value in ("/tmp", "../policy-head", "policy-head/../../etc"):
+            result = self.invoke("--root", value)
+            self.assertEqual(1, result.returncode, result.stdout + result.stderr)
+            self.assertIn("relative path", result.stdout)
+
+    def test_pr_rules_still_apply_beside_the_root(self):
+        good = {"pull_request": {
+            "title": "ci: honor the policy root",
+            "body": "Refs #379",
+            "head": {"ref": "ci/379-policy-root"},
+            "user": {"login": "minjunkim-dev"},
+        }}
+        ok = self.invoke("--pr", "--root", "policy-head", event=good)
+        self.assertEqual(0, ok.returncode, ok.stdout + ok.stderr)
+        bad_title = {"pull_request": {
+            "title": "Not conventional",
+            "body": "",
+            "head": {"ref": "evil"},
+            "user": {"login": "alice"},
+        }}
+        title = self.invoke("--pr", "--root", "policy-head", event=bad_title)
+        self.assertEqual(1, title.returncode, title.stdout + title.stderr)
+        self.assertIn("PR title", title.stdout)
+        (self.work / "policy-head" / "AGENTS.md").unlink()
+        files = self.invoke("--pr", "--root", "policy-head", event=good)
+        self.assertEqual(1, files.returncode, files.stdout + files.stderr)
+        self.assertIn("AGENTS.md is required", files.stdout)
 
 
 class ReviewTrustTest(unittest.TestCase):
