@@ -97,28 +97,15 @@ def contains_symlink(path):
 
 
 def readable_file(tree, relative):
-    """A regular file under tree. Symlinks are not followed."""
-    current = tree
-    if current.is_symlink():
+    """A regular file under tree. A symlink in the root or the relative path is refused."""
+    full = Path(tree) / relative
+    if contains_symlink(full):
         return None
-    for part in Path(relative).parts:
-        current = current / part
-        if current.is_symlink():
-            return None
-    return current if current.is_file() else None
+    return full if full.is_file() else None
 
 
 def _symlink_inside(tree, relative):
-    current = tree
-    if current.is_symlink():
-        return True
-    for part in Path(relative).parts:
-        current = current / part
-        if current.is_symlink():
-            return True
-        if not current.exists():
-            return False
-    return False
+    return contains_symlink(Path(tree) / relative)
 
 
 def instruction_errors(tree):

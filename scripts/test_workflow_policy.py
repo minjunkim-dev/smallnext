@@ -190,6 +190,13 @@ class PolicyRootTest(unittest.TestCase):
         (nested / "AGENTS.md").write_text("outside\n", encoding="utf-8")
         (nested / "config" / "feature-flags.json").write_text('{"version": 1, "flags": []}\n', encoding="utf-8")
         (self.work / "link").symlink_to(outside, target_is_directory=True)
+        previous = os.getcwd()
+        os.chdir(self.work)
+        try:
+            self.assertIsNone(workflow_policy.readable_file(Path("link/nested"), "AGENTS.md"))
+            self.assertIsNone(workflow_policy.readable_file(Path("link/nested"), "config/feature-flags.json"))
+        finally:
+            os.chdir(previous)
         leaked = self.invoke("--root", "link/nested")
         self.assertEqual(1, leaked.returncode, leaked.stdout + leaked.stderr)
         self.assertIn("symlink", leaked.stdout)
