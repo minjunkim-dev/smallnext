@@ -1,6 +1,7 @@
 """PR conventions, and the optional AGENTS.md and feature-flag checks."""
 
 from datetime import date
+from io import StringIO
 import json
 import os
 from pathlib import Path
@@ -23,7 +24,7 @@ why
 ran
 
 ## Merge Danger
-Door: 양쪽 문
+Door: 되돌리기 쉬움
 """
 
 
@@ -129,12 +130,24 @@ class ConventionsTest(unittest.TestCase):
         self.assertEqual([], validate_body(BODY.replace("Author: Cursor / grok-4.7", "작성 도구: Cursor 클라우드 에이전트\n작성 모델: grok-4.7")))
         self.assertEqual([], validate_body(BODY.replace("grok-4.7", "없음").replace("Cursor", "사람")))
         self.assertTrue(validate_body(BODY.replace("## Evidence\n", "")))
-        self.assertTrue(validate_body(BODY.replace("Door: 양쪽 문", "Door: 양쪽 문 또는 한쪽 문")))
+        self.assertTrue(validate_body(BODY.replace("Door: 되돌리기 쉬움", "Door: 양쪽 문 또는 한쪽 문")))
         self.assertTrue(validate_body(BODY + "Door: 한쪽 문\n"))
         self.assertTrue(validate_body(BODY.replace("Cursor", "Codex")))
         self.assertTrue(validate_body(BODY.replace("사람", "Cursor").replace("grok-4.7", "없음").replace("Cursor / 없음", "사람 / grok-4.7")))
         self.assertTrue(any("disagree" in error for error in validate_body(BODY + "작성 도구: Claude Code\n작성 모델: opus-5.5\n")))
         self.assertEqual(parse_author("Author: Claude Code / Opus 5.5\n이전 작성 모델: grok-4.7, composer-2.5\n")[1], ["grok-4.7", "composer-2.5"])
+
+    def test_door_accepts_current_and_deprecated_values_only(self):
+        current = "Door: 되돌리기 쉬움"
+        for value in ("되돌리기 쉬움", "되돌리기 어려움", "양쪽 문", "한쪽 문"):
+            with self.subTest(value=value):
+                self.assertEqual([], validate_body(BODY.replace(current, f"Door: {value}")))
+        for value in ("one-way", "two-way", "한쪽문", "되돌리기 어려움 추가", "어려움", ""):
+            with self.subTest(value=value):
+                errors = validate_body(BODY.replace(current, f"Door: {value}"))
+                self.assertTrue(any("되돌리기 쉬움" in error and "되돌리기 어려움" in error for error in errors))
+        renamed = BODY.replace(current, "분류: 되돌리기 어려움")
+        self.assertTrue(any("Door must be" in error for error in validate_body(renamed)))
 
     def test_both_checks_use_the_one_author_parser(self):
         import check_review_status as review
@@ -191,6 +204,33 @@ class ConventionsTest(unittest.TestCase):
         event.write_text(json.dumps(broken))
         with patch.object(workflow_policy, "ROOT", root), patch.dict(os.environ, {"GITHUB_EVENT_PATH": str(event)}):
             self.assertEqual(1, workflow_policy.main(["--pr"]))
+
+    def test_root_rejects_absolute_and_parent_paths(self):
+        temporary = TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        root = Path(temporary.name)
+        rejected = ("", "/etc", "/var/tmp", "../outside", "policy-head/../../etc", "foo/../../../tmp")
+        for value in rejected:
+            with self.subTest(value=value):
+                buf = StringIO()
+                with patch.object(workflow_policy, "ROOT", root), patch("sys.stdout", buf):
+                    code = workflow_policy.main(["--root", value])
+                self.assertEqual(1, code)
+                self.assertIn("root must be a relative path", buf.getvalue())
+        nested = root / "nested"
+        (nested / "config").mkdir(parents=True)
+        (nested / "AGENTS.md").write_text("nested\n", encoding="utf-8")
+        (nested / "config" / "feature-flags.json").write_text('{"version": 1, "flags": []}\n', encoding="utf-8")
+        previous = Path.cwd()
+        try:
+            os.chdir(root)
+            buf = StringIO()
+            with patch.object(workflow_policy, "ROOT", root), patch("sys.stdout", buf):
+                code = workflow_policy.main(["--root", "nested"])
+            self.assertEqual(0, code, buf.getvalue())
+            self.assertIn("PASS", buf.getvalue())
+        finally:
+            os.chdir(previous)
 
     def test_template_has_the_sections_and_axes(self):
         text = (ROOT / ".github/pull_request_template.md").read_text(encoding="utf-8")

@@ -5,6 +5,9 @@ An issue_comment run is not a pull request check. The previous success stays
 until the pull_request_target run for this head is re-run, or until a newer
 failing check named Review status is posted on that head. This does not write
 review/independent or review/security, and it does not read the comment body.
+issue_comment has no branch filter. A pull request whose base is not the
+default branch posts nothing, so that head is not turned red for the pull
+request that does target the default branch.
 """
 
 from datetime import datetime, timezone
@@ -101,6 +104,18 @@ def fetch_pages(repo, execute):
     return pages
 
 
+def targets_default(pull):
+    """True when this pull request's base ref is that repository's default branch.
+    Raises when either name cannot be read. The base repository is the pull request target."""
+    base = pull.get("base") if isinstance(pull, dict) else None
+    ref = base.get("ref") if isinstance(base, dict) else None
+    target = base.get("repo") if isinstance(base, dict) else None
+    default = target.get("default_branch") if isinstance(target, dict) else None
+    if not isinstance(ref, str) or ref == "" or not isinstance(default, str) or default == "":
+        raise ValueError("default branch")
+    return ref == default
+
+
 def main(env=None, execute=None, pages=None):
     env = env if env is not None else os.environ
     number = env.get("PR_NUMBER") or ""
@@ -109,8 +124,17 @@ def main(env=None, execute=None, pages=None):
         print("bad pull request number", file=sys.stderr)
         return 1
     execute = execute or _run
-    listed = execute(["gh", "api", f"repos/{repo}/pulls/{number}", "--jq", ".head.sha"])
-    sha = (listed.stdout or "").strip()
+    listed = execute(["gh", "api", f"repos/{repo}/pulls/{number}"])
+    try:
+        pull = json.loads(listed.stdout or "")
+        on_default = targets_default(pull)
+    except (json.JSONDecodeError, ValueError, TypeError, AttributeError):
+        print("bad pull request", file=sys.stderr)
+        return 1
+    if not on_default:
+        print(f"side base; not posting a check for {number}", file=sys.stderr)
+        return 0
+    sha = ((pull.get("head") or {}).get("sha") or "").strip()
     if len(sha) != 40 or any(char not in "0123456789abcdefABCDEF" for char in sha):
         print("bad head sha", file=sys.stderr)
         return 1

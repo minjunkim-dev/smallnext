@@ -16,7 +16,7 @@
 ## 독립 리뷰와 병합
 
 리뷰 에이전트는 [코딩 규칙](docs/coding-standards.md)과 [로컬 독립 리뷰](docs/agents/review.md)를 읽습니다. 코딩 규칙은 구현 컨텍스트에 일괄 주입하지 않습니다.
-맡긴 `two-way/narrow` 작업은 최종 독립 리뷰·필수 CI·완료 조건 통과 후 병합합니다. `one-way/broad`는 사람이 최종 head를 승인합니다. 자세한 조건은 [병합 정책](docs/WORKFLOW.md#병합-조건)을 따릅니다.
+맡긴 되돌리기 쉬움 작업은 최종 독립 리뷰·필수 CI·완료 조건 통과 후 병합합니다. 되돌리기 어려움은 사람이 최종 head를 승인합니다. 자세한 조건은 [병합 정책](docs/WORKFLOW.md#병합-조건)을 따릅니다.
 자동화 연결·실행 근거는 [자동화 설정](docs/REPOSITORY_SETUP.md)을 확인합니다.
 
 ## Agent skills

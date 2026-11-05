@@ -2,6 +2,9 @@
 # pull_request selects this file from the pull request. The job runs the script and reads
 # workflow-policy.json from the base commit when that commit has the script, so a later pull request
 # cannot replace them. The head copy runs only when the base commit has no script yet.
+# branches is main, so this copy does not run for another base. pull_request uses the workflow
+# file from the pull request, so that pull request can delete this filter. PR conventions is not
+# the gate. Review status, once it is required, blocks a workflow change.
 # --root is the pull request tree. AGENTS.md, CLAUDE.md, and feature flags are read there and not executed.
 # pull_request_target is not used: the public repository allows that event only for review-status.yml.
 # ready_for_review reruns the job when a draft becomes ready, even if the body was not edited.
@@ -10,6 +13,7 @@ name: PR policy
 
 on:
   pull_request:
+    branches: [main]
     types: [opened, edited, synchronize, reopened, ready_for_review]
 
 permissions:

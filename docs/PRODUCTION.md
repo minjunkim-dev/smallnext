@@ -80,7 +80,7 @@ Firebase 서비스 계정과 credential JSON mount는 사용하지 않는다.
 
 ## 3. 승인한 이미지 묶음을 준비한다
 
-운영 구성과 이미지 변경은 `one-way/broad`다. 사람이 통합 PR의 최종 head와 영향 범위를 승인한다.
+운영 구성과 이미지 변경은 되돌리기 어려움이다. 사람이 통합 PR의 최종 head와 영향 범위를 승인한다.
 승인한 변경을 병합한 뒤 정확한 source SHA의 main CI를 확인한다.
 [미공개 Draft CD](DRAFT_RELEASE.md)의 절차로 해당 source의 이미지 묶음을 만든다.
 이 runbook은 새 Draft 생성 권한이나 실행 승인을 대신하지 않는다.

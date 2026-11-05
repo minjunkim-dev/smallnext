@@ -21,9 +21,9 @@ Author: <tool> / <model>
 
 ## Merge Danger
 
-<!-- Door 값은 `양쪽 문` 또는 `한쪽 문`만. POLICY.md §10으로 판정한다. -->
+<!-- 되돌리기 어려움(one-way door: 되돌리기 어려운 결정), 되돌리기 쉬움(two-way door: 되돌리기 쉬운 결정). Door 값은 그 둘만. 필드 이름은 Door:다. POLICY.md §10으로 판정한다. 옛 `양쪽 문`·`한쪽 문`은 deprecated이고 검사기가 아직 받는다. -->
 
-Door: <양쪽 문 또는 한쪽 문>
+Door: <되돌리기 쉬움 또는 되돌리기 어려움>
 
 영향 범위:
 
