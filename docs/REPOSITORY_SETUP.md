@@ -191,13 +191,13 @@ Project checks는 iOS·Android·API와 컨테이너를 검사합니다.
 실제 AI 품질과 운영 배포는 초기 셋업의 검증 범위에 포함하지 않습니다.
 
 CodeQL workflow를 바꾸면 기준선의 `codeql_main_source.sha`도 새 Git blob SHA로 갱신합니다. PR의 `Repository hygiene` unittest가 갱신하지 않은 SHA를 거부합니다. 감사 도구는 필수 제어 항목이나 보호 필드가 빠진 기준선을 `UNVERIFIED`로 거부합니다.
-공통 검사기(`check_github_settings.py`·`check_repo_baseline.py`·`check_review_status.py`)와 테스트는 공개 `minjunkim-dev/repo-baseline`에서 복사합니다. 이 저장소에서 직접 고치지 않습니다. 원본을 고친 뒤 `tools/apply_baseline.py`로 다시 적용합니다. 복사본이 `.github/repo-baseline.json`의 해시와 다르면 `python3 scripts/check_repo_baseline.py`가 실패합니다. CodeQL 단계들이 서로 다른 `github/codeql-action` commit을 쓰는 것도 거부합니다. `Review status` workflow(`.github/workflows/review-status.yml`)는 해시로 검사하지 않는 프로젝트 복사본입니다.
+공통 검사기(`check_github_settings.py`·`check_repo_baseline.py`·`check_review_status.py`·`workflow_policy.py`·`pr_author.py`·`rerun_review_status.py`)와 테스트, `.github/pull_request_template.md`는 공개 `minjunkim-dev/repo-baseline`에서 복사합니다. 이 저장소에서 직접 고치지 않습니다. 원본을 고친 뒤 `tools/apply_baseline.py`로 다시 적용합니다. 복사본이 `.github/repo-baseline.json`의 해시와 다르면 `python3 scripts/check_repo_baseline.py`가 실패합니다. CodeQL 단계들이 서로 다른 `github/codeql-action` commit을 쓰는 것도 거부합니다. `Review status` workflow(`.github/workflows/review-status.yml`)와 `PR policy` workflow(`.github/workflows/pr-policy.yml`)는 해시로 검사하지 않는 프로젝트 복사본입니다. Dependabot이 그 pin을 올립니다. `.github/workflow-policy.json`은 두지 않습니다. 그 파일이 없으면 `AGENTS.md`와 feature flag 검사는 켜진 채로 남습니다. 이 저장소의 `.github/PULL_REQUEST_TEMPLATE.md`는 해시 복사본과 다른 파일이며 유지합니다.
 
 ## 공통 기준 갱신과 설정 관측 기록
 
-적용 원본은 `minjunkim-dev/repo-baseline`의 main `8aad448d196ac21308e88e016d17c1f3b6920221`다. 복사본의 경로·생태계를 유지하며 원본 도구로 갱신했다. 로컬 스킬 설정과 일상 작업 진입은 [개발 절차](agents/development.md), 자체 리뷰와 사용자 요청 회고는 [리뷰 절차](agents/review.md)를 따른다.
+적용 원본은 `minjunkim-dev/repo-baseline`의 main `e8c5224e33d8ebe3aa915fd741702ee75c77ecc2`다. 복사본의 경로·생태계를 유지하며 원본 도구로 갱신했다. 로컬 스킬 설정과 일상 작업 진입은 [개발 절차](agents/development.md), 자체 리뷰와 사용자 요청 회고는 [리뷰 절차](agents/review.md)를 따른다.
 
-기존 기준선의 설명용 `exceptions` 배열은 내용을 보존해 `observations`로 옮겼다. 관측 기록은 API 감사 항목을 제외하지 않는다. 실제 기능 미지원·비해당을 감사 범위에서 제외하려면 원본의 [설정 기준선 형식](https://github.com/minjunkim-dev/repo-baseline/blob/8aad448d196ac21308e88e016d17c1f3b6920221/docs/github-settings-profile.md)에 맞는 `exceptions` 객체와 사유·근거가 필요하다. 예외가 있으면 exit 0이어도 결과는 전체 PASS가 아닌 LIMITED다. 미선언 403·404·누락·권한 오류는 계속 실패한다.
+기존 기준선의 설명용 `exceptions` 배열은 내용을 보존해 `observations`로 옮겼다. 관측 기록은 API 감사 항목을 제외하지 않는다. 실제 기능 미지원·비해당을 감사 범위에서 제외하려면 원본의 [설정 기준선 형식](https://github.com/minjunkim-dev/repo-baseline/blob/e8c5224e33d8ebe3aa915fd741702ee75c77ecc2/docs/github-settings-profile.md)에 맞는 `exceptions` 객체와 사유·근거가 필요하다. 예외가 있으면 exit 0이어도 결과는 전체 PASS가 아닌 LIMITED다. 미선언 403·404·누락·권한 오류는 계속 실패한다.
 
 이번 갱신은 GitHub 서버 기대값·권한·필수 체크·CodeQL·배포·Actions 이벤트 정책을 변경하지 않는다. `Review status`를 필수 체크로 등록하지 않는다. 공개 저장소의 Actions 이벤트 정책은 이 workflow를 기본 브랜치에 병합하기 전에 저장소 관리자가 만든다. 필수 체크 `Review status`는 workflow가 기본 브랜치에 있고 그 job이 한 번 돈 뒤에 등록한다. 그 전에 체크 이름을 올리면 검사가 대기할 수 있다. 과거 실행 기록을 현재 검증 결과로 바꾸지 않는다.
 

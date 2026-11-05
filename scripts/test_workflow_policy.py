@@ -1,6 +1,6 @@
-from copy import deepcopy
+"""PR conventions, and the optional AGENTS.md and feature-flag checks."""
+
 from datetime import date
-from io import StringIO
 import json
 import os
 from pathlib import Path
@@ -11,8 +11,20 @@ import unittest
 from unittest.mock import patch
 
 import workflow_policy
-from workflow_policy import validate_flags, validate_pr
-from review_context import review_request
+from workflow_policy import parse_author, validate_body, validate_flags, validate_pr
+
+ROOT = Path(__file__).resolve().parents[1]
+BODY = """Author: Cursor / grok-4.7
+
+## Summary
+why
+
+## Evidence
+ran
+
+## Merge Danger
+Door: 양쪽 문
+"""
 
 
 class SharedInstructionsTest(unittest.TestCase):
@@ -24,11 +36,15 @@ class SharedInstructionsTest(unittest.TestCase):
         (self.root / "config").mkdir()
         (self.root / "config/feature-flags.json").write_text('{"version": 1, "flags": []}\n')
 
-    def run_policy(self):
-        output = StringIO()
-        with patch.object(workflow_policy, "ROOT", self.root), patch("sys.argv", ["workflow_policy.py"]), patch("sys.stdout", output):
+    def run_policy(self, argv=None):
+        output = []
+
+        def capture(text=""):
+            output.append(text)
+
+        with patch.object(workflow_policy, "ROOT", self.root), patch("sys.argv", argv or ["workflow_policy.py"]), patch("builtins.print", capture):
             result = workflow_policy.main()
-        return result, output.getvalue()
+        return result, "\n".join(output)
 
     def test_agents_only_passes(self):
         self.assertEqual(0, self.run_policy()[0])
@@ -52,6 +68,20 @@ class SharedInstructionsTest(unittest.TestCase):
         self.assertEqual(1, result)
         self.assertIn("AGENTS.md is required", output)
 
+    def test_config_can_turn_repo_specific_checks_off(self):
+        (self.root / "AGENTS.md").unlink()
+        (self.root / "config/feature-flags.json").unlink()
+        (self.root / "CLAUDE.md").write_text("@AGENTS.md\n")
+        github = self.root / ".github"
+        github.mkdir()
+        (github / "workflow-policy.json").write_text(json.dumps({
+            "require_agents_md": False,
+            "reject_claude_md": False,
+            "feature_flags": False,
+            "bot_branch_prefixes": ["claude", "codex", "dependabot", "cursor"],
+        }))
+        self.assertEqual(0, self.run_policy()[0])
+
 
 class ConventionsTest(unittest.TestCase):
     def test_small_changes_and_numbered_work(self):
@@ -61,6 +91,7 @@ class ConventionsTest(unittest.TestCase):
             ("fix(api)!: change action contract", "codex/fix-action", "Refs #18"),
             ("chore(deps): bump checkout", "dependabot/github_actions/actions/checkout-7", ""),
             ("docs: add guide", "docs/a", ""),
+            ("docs: 안내를 더한다", "docs/guide", ""),
         ]:
             with self.subTest(branch=branch):
                 self.assertEqual([], validate_pr(title, branch, body))
@@ -80,9 +111,185 @@ class ConventionsTest(unittest.TestCase):
             ("docs: add guide\nrun a command", "docs/guide", ""),
             ("docs: " + "a" * 70, "docs/guide", ""),
             ("fix: save data", "fix/0-save", "Refs #18"),
+            ("refactor: 묶는다", "refactor/no-issue", ""),
+            ("perf: faster", "perf/12-faster", "see the issue"),
+            ("test: cover it", "test/3-cover", ""),
+            ("revert: undo", "revert/9-undo", ""),
         ]:
             with self.subTest(branch=branch, title=title):
                 self.assertTrue(validate_pr(title, branch, body))
+
+    def test_issue_link_accepts_refs_and_cursor_prefix_is_configurable(self):
+        self.assertEqual([], validate_pr("fix: save", "fix/18-save", "Resolves #18"))
+        self.assertTrue(validate_pr("docs: add guide", "cursor/pr-body-template-01eb", ""))
+        self.assertEqual([], validate_pr("docs: add guide", "cursor/pr-body-template-01eb", "", bot_prefixes=("cursor",)))
+
+    def test_body_sections_door_and_author(self):
+        self.assertEqual([], validate_body(BODY, "minjunkim-dev"))
+        self.assertEqual([], validate_body(BODY.replace("Author: Cursor / grok-4.7", "작성 도구: Cursor 클라우드 에이전트\n작성 모델: grok-4.7")))
+        self.assertEqual([], validate_body(BODY.replace("grok-4.7", "없음").replace("Cursor", "사람")))
+        self.assertTrue(validate_body(BODY.replace("## Evidence\n", "")))
+        self.assertTrue(validate_body(BODY.replace("Door: 양쪽 문", "Door: 양쪽 문 또는 한쪽 문")))
+        self.assertTrue(validate_body(BODY + "Door: 한쪽 문\n"))
+        self.assertTrue(validate_body(BODY.replace("Cursor", "Codex")))
+        self.assertTrue(validate_body(BODY.replace("사람", "Cursor").replace("grok-4.7", "없음").replace("Cursor / 없음", "사람 / grok-4.7")))
+        self.assertTrue(any("disagree" in error for error in validate_body(BODY + "작성 도구: Claude Code\n작성 모델: opus-5.5\n")))
+        self.assertEqual(parse_author("Author: Claude Code / Opus 5.5\n이전 작성 모델: grok-4.7, composer-2.5\n")[1], ["grok-4.7", "composer-2.5"])
+
+    def test_both_checks_use_the_one_author_parser(self):
+        import check_review_status as review
+        import pr_author
+        self.assertIs(workflow_policy.parse_author, pr_author.parse_author)
+        self.assertIs(review.parse_author, pr_author.parse_author)
+        disagreed = "Author: Claude Code / Opus 5.5\n작성 도구: Cursor\n작성 모델: grok-4.7\n"
+        self.assertTrue(any("disagree" in error for error in parse_author(disagreed)[2]))
+        model_only = "Author: Cursor / grok-4.7\n작성 모델: Opus 5.5\n"
+        self.assertTrue(any("disagree" in error for error in parse_author(model_only)[2]))
+        duplicate_model = "Author: Cursor / grok-4.7\n작성 모델: grok-4.7\n작성 모델: Opus 5.5\n"
+        self.assertTrue(any("disagree" in error for error in parse_author(duplicate_model)[2]))
+        self.assertEqual([], parse_author("Author: Cursor / grok-4.7\n작성 도구: Cursor\n")[2])
+        conflict = "Author: Cursor / grok-4.7\nAuthor: Claude Code / Opus 5.5\n"
+        self.assertIsNone(parse_author(conflict)[0])
+        self.assertTrue(any("conflicts" in error for error in parse_author(conflict)[2]))
+        previous = parse_author("Author: Cursor / grok-4.7\n이전 작성 모델: Sonnet 5.5\n이전 작성 모델: Composer 2.5\n")[1]
+        self.assertEqual(previous, ["Sonnet 5.5", "Composer 2.5"])
+
+    def test_dependabot_skips_body_rules_and_shell_text_is_not_run(self):
+        marker = "/tmp/workflow-policy-body-was-executed"
+        if os.path.exists(marker):
+            os.unlink(marker)
+        payload = "Author: $(touch " + marker + ")\n## Summary\n"
+        self.assertEqual([], validate_body(payload, "dependabot[bot]"))
+        self.assertFalse(os.path.exists(marker))
+        self.assertTrue(validate_body(payload, "minjunkim-dev"))
+        self.assertFalse(os.path.exists(marker))
+
+    def test_event_path_checks_the_pull_request_without_running_the_body(self):
+        temporary = TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        root = Path(temporary.name)
+        github = root / ".github"
+        github.mkdir()
+        (github / "workflow-policy.json").write_text(json.dumps({
+            "require_agents_md": False,
+            "reject_claude_md": False,
+            "feature_flags": False,
+            "bot_branch_prefixes": ["claude", "codex", "dependabot", "cursor"],
+        }))
+        event = root / "event.json"
+        event.write_text(json.dumps({"pull_request": {
+            "title": "ci: 본문을 검사한다",
+            "body": BODY + "\n`os.system('echo no')`\n",
+            "head": {"ref": "cursor/pr-convention-checks-01eb"},
+            "user": {"login": "minjunkim-dev"},
+        }}))
+        with patch.object(workflow_policy, "ROOT", root), patch.dict(os.environ, {"GITHUB_EVENT_PATH": str(event)}):
+            self.assertEqual(0, workflow_policy.main(["--pr"]))
+        broken = json.loads(event.read_text())
+        broken["pull_request"]["title"] = "feat: add split"
+        broken["pull_request"]["body"] = BODY
+        event.write_text(json.dumps(broken))
+        with patch.object(workflow_policy, "ROOT", root), patch.dict(os.environ, {"GITHUB_EVENT_PATH": str(event)}):
+            self.assertEqual(1, workflow_policy.main(["--pr"]))
+
+    def test_template_has_the_sections_and_axes(self):
+        text = (ROOT / ".github/pull_request_template.md").read_text(encoding="utf-8")
+        for header in ("## Summary", "## Evidence", "## Merge Danger", "Author:", "Door:"):
+            self.assertIn(header, text)
+        for axis in ("Standards", "Spec", "버그 찾기", "Security"):
+            self.assertIn(f"| {axis} |", text)
+        self.assertIn("axis | model | effort | head SHA | P0 | P1 | P2 | result", text)
+
+    def test_a_pull_request_cannot_replace_the_convention_script(self):
+        source = Path(__file__).resolve().parents[1]
+        temporary = TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        base = Path(temporary.name) / "base"
+        pull = Path(temporary.name) / "pull"
+        for tree in (base, pull):
+            (tree / "scripts").mkdir(parents=True)
+            (tree / ".github").mkdir()
+        for name in ("workflow_policy.py", "pr_author.py"):
+            (base / "scripts" / name).write_text((source / "scripts" / name).read_text(encoding="utf-8"), encoding="utf-8")
+        config = source / ".github" / "workflow-policy.json"
+        if config.is_file():
+            (base / ".github" / "workflow-policy.json").write_text(config.read_text(encoding="utf-8"), encoding="utf-8")
+        (pull / "scripts" / "workflow_policy.py").write_text("import sys\nsys.exit(0)\n", encoding="utf-8")
+        event = Path(temporary.name) / "event.json"
+        event.write_text(json.dumps({"pull_request": {
+            "title": "Not conventional",
+            "body": "",
+            "head": {"ref": "evil"},
+            "user": {"login": "alice"},
+        }}), encoding="utf-8")
+        env = os.environ.copy()
+        env["GITHUB_EVENT_PATH"] = str(event)
+        command = [sys.executable, "scripts/workflow_policy.py", "--pr"]
+        # The job's checkout is the base tree, then this relative command. The pull tree's stub would pass.
+        blocked = subprocess.run(command, cwd=base, env=env, capture_output=True, text=True, timeout=30)
+        bypass = subprocess.run(command, cwd=pull, env=env, capture_output=True, text=True, timeout=30)
+        self.assertEqual(0, bypass.returncode, bypass.stdout + bypass.stderr)
+        self.assertEqual(1, blocked.returncode, blocked.stdout + blocked.stderr)
+        self.assertIn("PR title", blocked.stdout)
+
+    def test_base_checker_reads_the_pull_request_tree(self):
+        source = Path(__file__).resolve().parents[1]
+        temporary = TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        work = Path(temporary.name)
+        base = work / "policy-base"
+        pull = work / "policy-head"
+        for name in ("workflow_policy.py", "pr_author.py"):
+            (base / "scripts").mkdir(parents=True, exist_ok=True)
+            (base / "scripts" / name).write_text((source / "scripts" / name).read_text(encoding="utf-8"), encoding="utf-8")
+        (base / "AGENTS.md").write_text("base copy\n", encoding="utf-8")
+        (base / "config").mkdir()
+        (base / "config" / "feature-flags.json").write_text('{"version": 1, "flags": []}\n', encoding="utf-8")
+        (pull / "scripts").mkdir(parents=True)
+        (pull / "scripts" / "workflow_policy.py").write_text("import sys\nsys.exit(0)\n", encoding="utf-8")
+        (pull / "config").mkdir()
+        (pull / "config" / "feature-flags.json").write_text('{"version": 1, "flags": [null]}\n', encoding="utf-8")
+        event = work / "event.json"
+        event.write_text(json.dumps({"pull_request": {
+            "title": "docs: 안내를 고친다",
+            "body": BODY,
+            "head": {"ref": "docs/notes"},
+            "user": {"login": "alice"},
+        }}), encoding="utf-8")
+        env = os.environ.copy()
+        env["GITHUB_EVENT_PATH"] = str(event)
+        command = [sys.executable, "policy-base/scripts/workflow_policy.py", "--pr", "--root", "policy-head"]
+        missing = subprocess.run(command, cwd=work, env=env, capture_output=True, text=True, timeout=30)
+        self.assertEqual(1, missing.returncode, missing.stdout + missing.stderr)
+        self.assertIn("AGENTS.md is required", missing.stdout)
+        self.assertIn("Feature flag", missing.stdout)
+        (pull / "AGENTS.md").write_text("pull copy\n", encoding="utf-8")
+        bad_flags = subprocess.run(command, cwd=work, env=env, capture_output=True, text=True, timeout=30)
+        self.assertEqual(1, bad_flags.returncode, bad_flags.stdout + bad_flags.stderr)
+        self.assertNotIn("AGENTS.md is required", bad_flags.stdout)
+        self.assertIn("Feature flag", bad_flags.stdout)
+        (pull / "config" / "feature-flags.json").write_text('{"version": 1, "flags": []}\n', encoding="utf-8")
+        ok = subprocess.run(command, cwd=work, env=env, capture_output=True, text=True, timeout=30)
+        self.assertEqual(0, ok.returncode, ok.stdout + ok.stderr)
+        stub = subprocess.run([sys.executable, "policy-head/scripts/workflow_policy.py"], cwd=work, capture_output=True, text=True, timeout=30)
+        self.assertEqual(0, stub.returncode, stub.stdout + stub.stderr)
+        (pull / "CLAUDE.md").write_text("not used\n", encoding="utf-8")
+        claude = subprocess.run(command, cwd=work, env=env, capture_output=True, text=True, timeout=30)
+        self.assertEqual(1, claude.returncode, claude.stdout + claude.stderr)
+        self.assertIn("remove CLAUDE.md", claude.stdout)
+        (pull / "CLAUDE.md").unlink()
+        (pull / "AGENTS.md").unlink()
+        (pull / ".github").mkdir()
+        (pull / ".github" / "workflow-policy.json").write_text(
+            '{"require_agents_md": false, "reject_claude_md": false, "feature_flags": false, "bot_branch_prefixes": ["dependabot"]}\n',
+            encoding="utf-8")
+        ignored = subprocess.run(command, cwd=work, env=env, capture_output=True, text=True, timeout=30)
+        self.assertEqual(1, ignored.returncode, ignored.stdout + ignored.stderr)
+        self.assertIn("AGENTS.md is required", ignored.stdout)
+        (pull / "AGENTS.md").symlink_to("../policy-base/AGENTS.md")
+        linked = subprocess.run(command, cwd=work, env=env, capture_output=True, text=True, timeout=30)
+        self.assertEqual(1, linked.returncode, linked.stdout + linked.stderr)
+        self.assertIn("AGENTS.md is required", linked.stdout)
 
 
 class FlagsTest(unittest.TestCase):
@@ -110,187 +317,6 @@ class FlagsTest(unittest.TestCase):
         self.assertTrue(validate_flags({"version": 1, "flags": [flag]}, self.today))
         flag["release_issue"] = 19
         self.assertEqual([], validate_flags({"version": 1, "flags": [flag]}, self.today))
-
-
-class PolicyRootTest(unittest.TestCase):
-    def setUp(self):
-        temporary = TemporaryDirectory()
-        self.addCleanup(temporary.cleanup)
-        self.work = Path(temporary.name)
-        source = Path(__file__).resolve().parent / "workflow_policy.py"
-        base = self.work / "policy-base"
-        head = self.work / "policy-head"
-        (base / "scripts").mkdir(parents=True)
-        (base / "scripts" / "workflow_policy.py").write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
-        (base / "config").mkdir()
-        (base / "config" / "feature-flags.json").write_text('{"version": 1, "flags": [null]}\n', encoding="utf-8")
-        (head / "config").mkdir(parents=True)
-        (head / "AGENTS.md").write_text("pull copy\n", encoding="utf-8")
-        (head / "config" / "feature-flags.json").write_text('{"version": 1, "flags": []}\n', encoding="utf-8")
-
-    def invoke(self, *args, event=None):
-        env = os.environ.copy()
-        if event is not None:
-            path = self.work / "event.json"
-            path.write_text(json.dumps(event), encoding="utf-8")
-            env["GITHUB_EVENT_PATH"] = str(path)
-        return subprocess.run(
-            [sys.executable, "policy-base/scripts/workflow_policy.py", *args],
-            cwd=self.work, env=env, capture_output=True, text=True, timeout=30,
-        )
-
-    def test_root_reads_the_given_tree(self):
-        ok = self.invoke("--root", "policy-head")
-        self.assertEqual(0, ok.returncode, ok.stdout + ok.stderr)
-        self.assertIn("PASS", ok.stdout)
-        ignored = self.invoke()
-        self.assertEqual(1, ignored.returncode, ignored.stdout + ignored.stderr)
-        self.assertIn("AGENTS.md is required", ignored.stdout)
-        self.assertIn("Feature flag", ignored.stdout)
-
-    def test_missing_agents_or_bad_flags_in_the_root_fail(self):
-        head = self.work / "policy-head"
-        (head / "AGENTS.md").unlink()
-        missing = self.invoke("--root", "policy-head")
-        self.assertEqual(1, missing.returncode, missing.stdout + missing.stderr)
-        self.assertIn("AGENTS.md is required", missing.stdout)
-        self.assertNotIn("PASS", missing.stdout)
-        (head / "AGENTS.md").write_text("pull copy\n", encoding="utf-8")
-        (head / "config" / "feature-flags.json").write_text('{"version": 1, "flags": [null]}\n', encoding="utf-8")
-        bad_flags = self.invoke("--root", "policy-head")
-        self.assertEqual(1, bad_flags.returncode, bad_flags.stdout + bad_flags.stderr)
-        self.assertNotIn("AGENTS.md is required", bad_flags.stdout)
-        self.assertIn("Feature flag", bad_flags.stdout)
-
-    def test_claude_and_symlinks_in_the_root_fail(self):
-        head = self.work / "policy-head"
-        (head / "CLAUDE.md").write_text("not used\n", encoding="utf-8")
-        claude = self.invoke("--root", "policy-head")
-        self.assertEqual(1, claude.returncode, claude.stdout + claude.stderr)
-        self.assertIn("remove CLAUDE.md", claude.stdout)
-        (head / "CLAUDE.md").unlink()
-        (head / "AGENTS.md").unlink()
-        (head / "AGENTS.md").symlink_to("config/feature-flags.json")
-        linked_agents = self.invoke("--root", "policy-head")
-        self.assertEqual(1, linked_agents.returncode, linked_agents.stdout + linked_agents.stderr)
-        self.assertIn("AGENTS.md is required", linked_agents.stdout)
-        (head / "AGENTS.md").unlink()
-        (head / "AGENTS.md").write_text("pull copy\n", encoding="utf-8")
-        flags = head / "config" / "feature-flags.json"
-        flags.unlink()
-        flags.symlink_to("feature-flags.json")
-        linked_flags = self.invoke("--root", "policy-head")
-        self.assertEqual(1, linked_flags.returncode, linked_flags.stdout + linked_flags.stderr)
-        self.assertIn("refusing to follow a symlink", linked_flags.stdout)
-
-    def test_a_symlink_prefix_cannot_point_outside_the_root(self):
-        outside = self.work / "outside"
-        nested = outside / "nested"
-        (nested / "config").mkdir(parents=True)
-        (nested / "AGENTS.md").write_text("outside\n", encoding="utf-8")
-        (nested / "config" / "feature-flags.json").write_text('{"version": 1, "flags": []}\n', encoding="utf-8")
-        (self.work / "link").symlink_to(outside, target_is_directory=True)
-        previous = os.getcwd()
-        os.chdir(self.work)
-        try:
-            self.assertIsNone(workflow_policy.readable_file(Path("link/nested"), "AGENTS.md"))
-            self.assertIsNone(workflow_policy.readable_file(Path("link/nested"), "config/feature-flags.json"))
-        finally:
-            os.chdir(previous)
-        leaked = self.invoke("--root", "link/nested")
-        self.assertEqual(1, leaked.returncode, leaked.stdout + leaked.stderr)
-        self.assertIn("symlink", leaked.stdout)
-        self.assertNotIn("PASS", leaked.stdout)
-        direct = self.invoke("--root", "link")
-        self.assertEqual(1, direct.returncode, direct.stdout + direct.stderr)
-        self.assertIn("symlink", direct.stdout)
-
-    def test_absolute_and_parent_roots_are_rejected(self):
-        for value in ("/tmp", "../policy-head", "policy-head/../../etc"):
-            result = self.invoke("--root", value)
-            self.assertEqual(1, result.returncode, result.stdout + result.stderr)
-            self.assertIn("relative path", result.stdout)
-
-    def test_pr_rules_still_apply_beside_the_root(self):
-        good = {"pull_request": {
-            "title": "ci: honor the policy root",
-            "body": "Refs #379",
-            "head": {"ref": "ci/379-policy-root"},
-            "user": {"login": "minjunkim-dev"},
-        }}
-        ok = self.invoke("--pr", "--root", "policy-head", event=good)
-        self.assertEqual(0, ok.returncode, ok.stdout + ok.stderr)
-        bad_title = {"pull_request": {
-            "title": "Not conventional",
-            "body": "",
-            "head": {"ref": "evil"},
-            "user": {"login": "alice"},
-        }}
-        title = self.invoke("--pr", "--root", "policy-head", event=bad_title)
-        self.assertEqual(1, title.returncode, title.stdout + title.stderr)
-        self.assertIn("PR title", title.stdout)
-        (self.work / "policy-head" / "AGENTS.md").unlink()
-        files = self.invoke("--pr", "--root", "policy-head", event=good)
-        self.assertEqual(1, files.returncode, files.stdout + files.stderr)
-        self.assertIn("AGENTS.md is required", files.stdout)
-
-
-class ReviewTrustTest(unittest.TestCase):
-    def setUp(self):
-        self.event = {"sender": {"type": "User", "login": "minjunkim-dev"}, "pull_request": {"number": 17}}
-        self.data = {
-            "collaborators/minjunkim-dev/permission": {"permission": "admin"},
-            "issues/17": {"state": "open", "labels": []},
-            "pulls/17": {"state": "open", "draft": False, "base": {"ref": "main"}, "head": {"repo": {"full_name": "minjunkim-dev/smallnext"}, "sha": "a" * 40}},
-        }
-
-    def request(self, event_name="pull_request_target", event=None):
-        return review_request(event_name, event or self.event, "minjunkim-dev/smallnext", self.data.__getitem__)[0]
-
-    def test_owner_pr_authorized_with_exact_sha(self):
-        self.assertEqual("a" * 40, self.request()["sha"])
-
-    def test_bot_and_read_only_actor_rejected(self):
-        self.event["sender"]["type"] = "Bot"
-        self.assertIsNone(self.request())
-        self.event["sender"]["type"] = "User"
-        self.data["collaborators/minjunkim-dev/permission"]["permission"] = "read"
-        self.assertIsNone(self.request())
-
-    def test_fork_draft_closed_non_main_and_skip_rejected(self):
-        baseline = deepcopy(self.data)
-        for field, value in [("draft", True), ("state", "closed"), ("base", {"ref": "develop"}), ("head", {"repo": {"full_name": "attacker/fork"}})]:
-            self.data = deepcopy(baseline)
-            self.data["pulls/17"][field] = value
-            self.assertIsNone(self.request())
-        self.data = baseline
-        self.data["issues/17"]["labels"] = [{"name": "ai:skip"}]
-        self.assertIsNone(self.request())
-
-    def test_mentions_do_not_authorize_implementation_or_quoted_commands(self):
-        event = {"sender": self.event["sender"], "issue": {"number": 17, "pull_request": {}}, "comment": {"body": "@claude implement this"}}
-        self.assertIsNone(self.request("issue_comment", event))
-        event["comment"]["body"] = "> @claude review"
-        self.assertIsNone(self.request("issue_comment", event))
-        event["comment"]["body"] = "@claude security review"
-        event["issue"]["pull_request"] = {"url": "example"}
-        self.assertEqual("security", self.request("issue_comment", event)["mode"])
-
-    def test_dispatch_is_rejected_even_for_valid_writer_and_target(self):
-        for ref in ["refs/heads/main", "refs/heads/untrusted"]:
-            for number in ["17", "17; echo secret"]:
-                event = {"sender": self.event["sender"], "ref": ref,
-                         "inputs": {"kind": "pr", "number": number}}
-                with self.subTest(ref=ref, number=number):
-                    self.assertIsNone(self.request("workflow_dispatch", event))
-
-    def test_issue_auto_review_and_explicit_label(self):
-        event = {"sender": self.event["sender"], "issue": {"number": 17}, "action": "opened"}
-        self.assertEqual("issue", self.request("issues", event)["kind"])
-        event.update(action="labeled", label={"name": "decision"})
-        self.assertIsNone(self.request("issues", event))
-        event["label"]["name"] = "ai:review"
-        self.assertEqual("issue", self.request("issues", event)["kind"])
 
 
 if __name__ == "__main__":

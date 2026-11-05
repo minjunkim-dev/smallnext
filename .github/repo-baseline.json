@@ -16,31 +16,33 @@
       "source": "scripts/test_github_settings.py",
       "sha256": "fbf6239243b13dcf6c94f143985cb89458a74000066ef83ea609c38900a39153"
     },
-    ".github/dependabot.yml": {
-      "source": "templates/dependabot.yml",
-      "ecosystems": [
-        {
-          "package-ecosystem": "cargo",
-          "directory": "/services/api"
-        },
-        {
-          "package-ecosystem": "gradle",
-          "directory": "/apps/android"
-        },
-        {
-          "package-ecosystem": "docker",
-          "directory": "/services/api"
-        }
-      ],
-      "sha256": "70ff016b340818a25acc8d7d3843565de6b74212ade46095bd514e09425f0937"
-    },
     "scripts/check_review_status.py": {
       "source": "scripts/check_review_status.py",
-      "sha256": "fe2ad7addba7636223e192e453e1809cd3207c1a5a5f2a1d161a70ebfec207e4"
+      "sha256": "2e33dbad9524778a0174800d2c8aad62630b0b97f185ec82e7647453f9229294"
     },
     "scripts/test_review_status.py": {
       "source": "scripts/test_review_status.py",
-      "sha256": "ef636e6d9314d3e09e4c8f0f2a6c7842c7073a0335a97ea175fdedafb642a836"
+      "sha256": "5939ea096f83dbd01589357d57854e272f2efa385816a901080a9922aa3d8db4"
+    },
+    "scripts/rerun_review_status.py": {
+      "source": "scripts/rerun_review_status.py",
+      "sha256": "c3915064e6d09eba285005b00094ccb5daec691d2542c92edc460566baebeeeb"
+    },
+    "scripts/workflow_policy.py": {
+      "source": "scripts/workflow_policy.py",
+      "sha256": "e193ebe720bebcf1fb4d13ee8be852442da3d62ded8d337b0194d0d8b2ec107a"
+    },
+    "scripts/pr_author.py": {
+      "source": "scripts/pr_author.py",
+      "sha256": "96b3d830b30c98b6e4897a1fec852d660b3fcb9a62da52aada4864dc5dd4ef49"
+    },
+    "scripts/test_workflow_policy.py": {
+      "source": "scripts/test_workflow_policy.py",
+      "sha256": "531be1cd0d6e83884131300c3bbc90f0260fe61c11d61a09f0e5b9a609d5b47a"
+    },
+    ".github/pull_request_template.md": {
+      "source": ".github/pull_request_template.md",
+      "sha256": "de5b1cbb88141f6ad19edfc57734cdc7475f51594f38227ee2a029d413e19dfb"
     },
     ".agents/skills/matt-code-review/SKILL.md": {
       "source": "vendor/mattpocock-skills/matt-code-review/SKILL.md",
@@ -65,8 +67,26 @@
     ".claude/skills/matt-code-review/LICENSE": {
       "source": "vendor/mattpocock-skills/matt-code-review/LICENSE",
       "sha256": "0e7ac423bf2c6e223b7c5b156f8cf72da49d748e56a1641402c31f22ad07dbb5"
+    },
+    ".github/dependabot.yml": {
+      "source": "templates/dependabot.yml",
+      "ecosystems": [
+        {
+          "package-ecosystem": "cargo",
+          "directory": "/services/api"
+        },
+        {
+          "package-ecosystem": "gradle",
+          "directory": "/apps/android"
+        },
+        {
+          "package-ecosystem": "docker",
+          "directory": "/services/api"
+        }
+      ],
+      "sha256": "70ff016b340818a25acc8d7d3843565de6b74212ade46095bd514e09425f0937"
     }
   },
   "source": "minjunkim-dev/repo-baseline",
-  "source_commit": "8aad448d196ac21308e88e016d17c1f3b6920221"
+  "source_commit": "e8c5224e33d8ebe3aa915fd741702ee75c77ecc2"
 }
