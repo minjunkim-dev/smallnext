@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Check PR conventions, shared instructions, and feature flag metadata."""
+"""Check PR conventions, shared instructions, and feature flag metadata.
+
+--root is the tree for AGENTS.md, CLAUDE.md, and feature flags. Those files are
+read and not executed. Without --root the checks use the tree beside this script.
+"""
 
 import argparse
 from datetime import date, datetime
@@ -72,20 +76,85 @@ def validate_flags(registry, today=None):
     return errors
 
 
+def checked_tree(value):
+    """Files are read from this path. It is not imported or executed."""
+    if value is None:
+        return None
+    path = Path(value)
+    if path.is_absolute() or not value or ".." in path.parts:
+        raise ValueError("root must be a relative path")
+    return path
+
+
+def contains_symlink(path):
+    """True when any component of a relative path is a symlink. Parents count."""
+    current = Path()
+    for part in path.parts:
+        current = current / part
+        if current.is_symlink():
+            return True
+    return False
+
+
+def readable_file(tree, relative):
+    """A regular file under tree. A symlink in the root or the relative path is refused."""
+    full = Path(tree) / relative
+    if contains_symlink(full):
+        return None
+    return full if full.is_file() else None
+
+
+def _symlink_inside(tree, relative):
+    return contains_symlink(Path(tree) / relative)
+
+
+def instruction_errors(tree):
+    """Shared instructions and feature flags. None keeps the tree beside this script."""
+    if tree is None:
+        errors = []
+        claude = ROOT / "CLAUDE.md"
+        if claude.exists() or claude.is_symlink():
+            errors.append("Use AGENTS.md only; remove CLAUDE.md")
+        if not (ROOT / "AGENTS.md").is_file():
+            errors.append("AGENTS.md is required")
+        try:
+            errors.extend(validate_flags(json.loads((ROOT / "config/feature-flags.json").read_text())))
+        except (OSError, json.JSONDecodeError) as error:
+            errors.append(f"Feature flags: {error}")
+        return errors
+    if contains_symlink(tree):
+        return ["root must not contain a symlink"]
+    errors = []
+    claude = tree / "CLAUDE.md"
+    if claude.exists() or claude.is_symlink():
+        errors.append("Use AGENTS.md only; remove CLAUDE.md")
+    if readable_file(tree, "AGENTS.md") is None:
+        errors.append("AGENTS.md is required")
+    flags = "config/feature-flags.json"
+    flag_file = readable_file(tree, flags)
+    if flag_file is None and _symlink_inside(tree, flags):
+        errors.append("Feature flags: refusing to follow a symlink")
+    else:
+        try:
+            if flag_file is None:
+                raise OSError("missing")
+            errors.extend(validate_flags(json.loads(flag_file.read_text(encoding="utf-8"))))
+        except (OSError, json.JSONDecodeError) as error:
+            errors.append(f"Feature flags: {error}")
+    return errors
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--pr", action="store_true", help="Read PR metadata from GITHUB_EVENT_PATH")
+    parser.add_argument("--root", help="Tree to read for AGENTS.md, CLAUDE.md, and feature flags")
     args = parser.parse_args()
-    errors = []
-    claude = ROOT / "CLAUDE.md"
-    if claude.exists() or claude.is_symlink():
-        errors.append("Use AGENTS.md only; remove CLAUDE.md")
-    if not (ROOT / "AGENTS.md").is_file():
-        errors.append("AGENTS.md is required")
     try:
-        errors.extend(validate_flags(json.loads((ROOT / "config/feature-flags.json").read_text())))
-    except (OSError, json.JSONDecodeError) as error:
-        errors.append(f"Feature flags: {error}")
+        tree = checked_tree(args.root)
+    except ValueError as error:
+        print(f"FAIL: {error}")
+        return 1
+    errors = instruction_errors(tree)
     if args.pr:
         event = json.loads(Path(os.environ["GITHUB_EVENT_PATH"]).read_text())
         pr = event["pull_request"]
