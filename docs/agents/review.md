@@ -70,6 +70,7 @@ GitHub 자동 병합 예약은 독립 리뷰 결과를 대상 SHA의 필수 체�
 | 문서·권리 | `CONTEXT.md`, `docs/DECISIONS.md`, `docs/WORKFLOW.md`, `COPYRIGHT.md`, `THIRD_PARTY_NOTICES.md` |
 
 권한·Secret·workflow·저장소 설정·dependency 정책 변경에는 작성자와 다른 모델의 리뷰를 추가한다. 실행할 수 없으면 그 한계를 기록하고 프로젝트의 위험별 승인 기준을 따른다.
+프로젝트 신뢰 경계 경로는 `.github/trust-boundary-paths`에 한 줄에 하나씩 적는다. 그 파일은 아직 없다. 공통 경로와 리뷰 status 판정은 복사한 `scripts/check_review_status.py`를 따른다. 이 경로 목록을 리뷰 문서에 다시 옮기지 않는다.
 
 ## Matt Pocock retro로 환경 개선
 

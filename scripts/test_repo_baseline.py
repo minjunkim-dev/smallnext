@@ -8,7 +8,7 @@ import tempfile
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from check_repo_baseline import MANIFEST, ROOT, drift
+from check_repo_baseline import MANIFEST, ROOT, drift, mcp_literal_fields
 import subprocess
 
 
@@ -27,6 +27,12 @@ class RepoBaselineTests(unittest.TestCase):
             (root / MANIFEST).write_text(json.dumps({"source_commit": "a" * 40, "files": {
                 "a.py": {"sha256": hashlib.sha256(b"print(1)\n").hexdigest()}}}))
             self.assertEqual(run().returncode, 0)
+            (root / ".mcp.json").write_text(json.dumps({"mcpServers": {"s": {"env": {"TOKEN": "sk-123"}}}}))
+            result = run()
+            self.assertEqual(result.returncode, 1)
+            self.assertIn("s.env.TOKEN", result.stdout)
+            self.assertNotIn("sk-123", result.stdout + result.stderr)
+            (root / ".mcp.json").unlink()
             (root / "a.py").write_text("print(2)\n")
             self.assertEqual(run().returncode, 1)
 
@@ -53,6 +59,22 @@ class RepoBaselineTests(unittest.TestCase):
             write({"a.py": {"sha256": good}}, commit=None)
             with self.assertRaises(ValueError):
                 drift(root)
+
+    def test_mcp_json_values_must_reference_variables(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            self.assertEqual(mcp_literal_fields(root), [])
+            (root / ".mcp.json").write_text(json.dumps({"mcpServers": {
+                "ok": {"env": {"TOKEN": "${API_TOKEN}"}, "headers": {"Authorization": "Bearer ${API_TOKEN}"}},
+                "bad": {"env": {"TOKEN": "sk-123", "KEY": "${API_KEY:-sk-123}", "MIXED": "${API_KEY:-sk-123}${OTHER}",
+                                "PART": "sk-123${OTHER}"},
+                        "headers": {"Authorization": "Bearer sk-123"}},
+            }}))
+            self.assertEqual(mcp_literal_fields(root), ["bad.env.TOKEN", "bad.env.KEY", "bad.env.MIXED", "bad.env.PART",
+                              "bad.headers.Authorization"])
+            (root / ".mcp.json").write_text("[]")
+            with self.assertRaises(ValueError):
+                mcp_literal_fields(root)
 
 
 if __name__ == "__main__":
