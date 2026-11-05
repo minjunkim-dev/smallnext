@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
-"""Check PR conventions, shared instructions, and feature flag metadata.
+"""Check PR conventions, and optional shared instructions and feature flags.
 
---root is the tree for AGENTS.md, CLAUDE.md, and feature flags. Those files are
-read and not executed. Without --root the checks use the tree beside this script.
+Title, branch, issue link, and body sections are the shared rules. AGENTS.md and
+feature flags stay on unless .github/workflow-policy.json turns them off, so a
+consumer that copies this file keeps those checks. The pull request body is parsed
+and never executed.
 """
 
 import argparse
@@ -14,28 +16,53 @@ import re
 import sys
 from zoneinfo import ZoneInfo
 
+from pr_author import parse_author, text_of
+
 ROOT = Path(__file__).resolve().parents[1]
 TYPES = "feat|fix|refactor|perf|test|docs|build|ci|chore|revert"
-TITLE = re.compile(rf"^({TYPES})(\([a-z0-9]+(?:[-_][a-z0-9]+)*\))?!?: [a-z][^\r\n]*$")
+TITLE = re.compile(rf"^({TYPES})(\([a-z0-9]+(?:[-_][a-z0-9]+)*\))?!?: (?:[a-z]|[가-힣])[^\r\n]*$")
 SLUG = r"[a-z0-9]+(?:-[a-z0-9]+)*"
 LETTER_SLUG = r"[a-z][a-z0-9]*(?:-[a-z0-9]+)*"
 BRANCH = re.compile(rf"^(?:({TYPES})/[1-9][0-9]*-{SLUG}|(?:docs|build|ci|chore)/{LETTER_SLUG})$")
-BOT_BRANCH = re.compile(r"^(?:claude|codex|dependabot)/[a-z0-9][a-z0-9._/-]*$")
 ISSUE_REF = re.compile(r"\b(?:Closes|Fixes|Resolves|Refs)\s+#[1-9][0-9]*\b", re.IGNORECASE)
+ISSUE_TYPES = {"feat", "fix", "refactor", "perf", "test", "revert"}
+HEADERS = ("Summary", "Evidence", "Merge Danger")
+DOORS = {"양쪽 문", "한쪽 문"}
+DEFAULT_BOT_PREFIXES = ("claude", "codex", "dependabot")
+CONFIG_NAME = ".github/workflow-policy.json"
+DEPENDABOT = "dependabot[bot]"
 
 
-def validate_pr(title, branch, body="", author=""):
+def validate_pr(title, branch, body="", author="", bot_prefixes=None):
     errors = []
     match = TITLE.fullmatch(title)
-    # Dependabot names long packages in full ("bump androidx.compose:compose-bom from ... in /apps/android").
-    # The PR author is set by GitHub; anyone can name a branch dependabot/.
-    too_long = len(title) > 72 and author != "dependabot[bot]"
+    # Dependabot names long packages in full. The PR author is set by GitHub.
+    prefixes = DEFAULT_BOT_PREFIXES if bot_prefixes is None else tuple(bot_prefixes)
+    too_long = len(title) > 72 and author != DEPENDABOT
     if not match or too_long or title.endswith("."):
-        errors.append("PR title: use Conventional Commits, lowercase description, <=72 characters, no final period")
-    if not BRANCH.fullmatch(branch) and not BOT_BRANCH.fullmatch(branch):
+        errors.append("PR title: use Conventional Commits, lowercase or Hangul description, <=72 characters, no final period")
+    bot = re.compile(rf"^(?:{'|'.join(re.escape(item) for item in prefixes)})/[a-z0-9][a-z0-9._/-]*$") if prefixes else None
+    if not BRANCH.fullmatch(branch) and not (bot and bot.fullmatch(branch)):
         errors.append("Branch: use <type>/<issue>-<slug>; docs/build/ci/chore may omit the issue")
-    if match and match[1] in {"feat", "fix", "refactor", "perf", "test", "revert"} and not ISSUE_REF.search(body):
+    if match and match[1] in ISSUE_TYPES and not ISSUE_REF.search(body or ""):
         errors.append("PR body: link the implementation issue with Refs #N or Closes #N")
+    return errors
+
+
+def validate_body(body, author=""):
+    """Required sections. Dependabot keeps the title and branch rules and skips these."""
+    if author == DEPENDABOT:
+        return []
+    text = text_of(body)
+    errors = []
+    for name in HEADERS:
+        if not any(line.strip() == f"## {name}" for line in text.split("\n")):
+            errors.append(f"PR body: missing ## {name}")
+    doors = [line[len("Door:"):].strip() for line in text.split("\n") if line.startswith("Door:")]
+    if len(doors) != 1 or doors[0] not in DOORS:
+        errors.append("PR body: Door must be 양쪽 문 or 한쪽 문")
+    _, _, author_errors = parse_author(text)
+    errors.extend(author_errors)
     return errors
 
 
@@ -76,94 +103,139 @@ def validate_flags(registry, today=None):
     return errors
 
 
+def load_config(root):
+    """Defaults keep a consumer's AGENTS.md and feature-flag checks. A file may turn them off."""
+    config = {
+        "require_agents_md": True,
+        "reject_claude_md": True,
+        "feature_flags": "config/feature-flags.json",
+        "bot_branch_prefixes": list(DEFAULT_BOT_PREFIXES),
+        "protected_paths": [
+            "scripts/workflow_policy.py", "scripts/pr_author.py", ".github/workflow-policy.json",
+        ],
+    }
+    path = root / CONFIG_NAME
+    if not path.exists() and not path.is_symlink():
+        return config
+    found = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(found, dict):
+        raise ValueError("workflow policy config must be an object")
+    unknown = set(found) - set(config)
+    if unknown:
+        raise ValueError("unknown workflow policy keys: " + ", ".join(sorted(unknown)))
+    for key in ("require_agents_md", "reject_claude_md"):
+        if key in found:
+            if type(found[key]) is not bool:
+                raise ValueError(f"{key} must be a boolean")
+            config[key] = found[key]
+    if "feature_flags" in found:
+        value = found["feature_flags"]
+        if value is False or value is None:
+            config["feature_flags"] = False
+        elif isinstance(value, str) and value and ".." not in value.split("/") and not value.startswith(("/", "\\")):
+            config["feature_flags"] = value
+        else:
+            raise ValueError("feature_flags must be false or a relative path")
+    if "bot_branch_prefixes" in found:
+        prefixes = found["bot_branch_prefixes"]
+        if not isinstance(prefixes, list) or not prefixes or any(
+                not isinstance(item, str) or not re.fullmatch(r"[a-z][a-z0-9-]*", item) for item in prefixes):
+            raise ValueError("bot_branch_prefixes must be lowercase names")
+        config["bot_branch_prefixes"] = prefixes
+    if "protected_paths" in found:
+        value = found["protected_paths"]
+        required = set(config["protected_paths"])
+        if not isinstance(value, list) or any(not isinstance(item, str) or not item or ".." in item.split("/") for item in value) or required - set(value):
+            raise ValueError("protected_paths must include the convention scripts")
+        config["protected_paths"] = value
+    return config
+
+
 def checked_tree(value):
     """Files are read from this path. It is not imported or executed."""
     if value is None:
-        return None
+        return ROOT
     path = Path(value)
     if path.is_absolute() or not value or ".." in path.parts:
         raise ValueError("root must be a relative path")
     return path
 
 
-def contains_symlink(path):
-    """True when any component of a relative path is a symlink. Parents count."""
-    current = Path()
-    for part in path.parts:
+def readable_file(tree, relative):
+    """A regular file under tree. Symlinks are not followed."""
+    current = tree
+    if current.is_symlink():
+        return None
+    for part in Path(relative).parts:
         current = current / part
         if current.is_symlink():
-            return True
-    return False
-
-
-def readable_file(tree, relative):
-    """A regular file under tree. A symlink in the root or the relative path is refused."""
-    full = Path(tree) / relative
-    if contains_symlink(full):
-        return None
-    return full if full.is_file() else None
+            return None
+    return current if current.is_file() else None
 
 
 def _symlink_inside(tree, relative):
-    return contains_symlink(Path(tree) / relative)
+    current = tree
+    if current.is_symlink():
+        return True
+    for part in Path(relative).parts:
+        current = current / part
+        if current.is_symlink():
+            return True
+        if not current.exists():
+            return False
+    return False
 
 
-def instruction_errors(tree):
-    """Shared instructions and feature flags. None keeps the tree beside this script."""
-    if tree is None:
-        errors = []
-        claude = ROOT / "CLAUDE.md"
-        if claude.exists() or claude.is_symlink():
-            errors.append("Use AGENTS.md only; remove CLAUDE.md")
-        if not (ROOT / "AGENTS.md").is_file():
-            errors.append("AGENTS.md is required")
-        try:
-            errors.extend(validate_flags(json.loads((ROOT / "config/feature-flags.json").read_text())))
-        except (OSError, json.JSONDecodeError) as error:
-            errors.append(f"Feature flags: {error}")
-        return errors
-    if contains_symlink(tree):
-        return ["root must not contain a symlink"]
-    errors = []
-    claude = tree / "CLAUDE.md"
-    if claude.exists() or claude.is_symlink():
-        errors.append("Use AGENTS.md only; remove CLAUDE.md")
-    if readable_file(tree, "AGENTS.md") is None:
-        errors.append("AGENTS.md is required")
-    flags = "config/feature-flags.json"
-    flag_file = readable_file(tree, flags)
-    if flag_file is None and _symlink_inside(tree, flags):
-        errors.append("Feature flags: refusing to follow a symlink")
-    else:
-        try:
-            if flag_file is None:
-                raise OSError("missing")
-            errors.extend(validate_flags(json.loads(flag_file.read_text(encoding="utf-8"))))
-        except (OSError, json.JSONDecodeError) as error:
-            errors.append(f"Feature flags: {error}")
-    return errors
-
-
-def main():
+def main(argv=None):
     parser = argparse.ArgumentParser()
     parser.add_argument("--pr", action="store_true", help="Read PR metadata from GITHUB_EVENT_PATH")
-    parser.add_argument("--root", help="Tree to read for AGENTS.md, CLAUDE.md, and feature flags")
-    args = parser.parse_args()
+    parser.add_argument("--root", help="Tree to read for AGENTS.md, CLAUDE.md, and feature flags. Config stays beside the checker.")
+    args = parser.parse_args(argv)
     try:
+        config = load_config(ROOT)
         tree = checked_tree(args.root)
-    except ValueError as error:
-        print(f"FAIL: {error}")
+    except (OSError, json.JSONDecodeError, ValueError) as error:
+        print(f"FAIL: workflow policy config: {error}")
         return 1
-    errors = instruction_errors(tree)
+    errors = []
+    if config["reject_claude_md"]:
+        claude = tree / "CLAUDE.md"
+        if claude.exists() or claude.is_symlink():
+            errors.append("Use AGENTS.md only; remove CLAUDE.md")
+    if config["require_agents_md"] and readable_file(tree, "AGENTS.md") is None:
+        errors.append("AGENTS.md is required")
+    flags = config["feature_flags"]
+    if flags:
+        flag_file = readable_file(tree, flags)
+        if flag_file is None and _symlink_inside(tree, flags):
+            errors.append("Feature flags: refusing to follow a symlink")
+        else:
+            try:
+                if flag_file is None:
+                    raise OSError("missing")
+                errors.extend(validate_flags(json.loads(flag_file.read_text(encoding="utf-8"))))
+            except (OSError, json.JSONDecodeError) as error:
+                errors.append(f"Feature flags: {error}")
     if args.pr:
-        event = json.loads(Path(os.environ["GITHUB_EVENT_PATH"]).read_text())
+        # The event file is JSON. The body is untrusted text and is only parsed.
+        event = json.loads(Path(os.environ["GITHUB_EVENT_PATH"]).read_text(encoding="utf-8"))
         pr = event["pull_request"]
-        errors.extend(validate_pr(pr["title"], pr["head"]["ref"], pr.get("body") or "", pr["user"]["login"]))
+        login = pr["user"]["login"]
+        body = pr.get("body") or ""
+        errors.extend(validate_pr(pr["title"], pr["head"]["ref"], body, login, config["bot_branch_prefixes"]))
+        errors.extend(validate_body(body, login))
     for error in errors:
         print(f"FAIL: {error}")
     if errors:
         return 1
-    print("PASS: shared agent instructions, feature flag metadata" + (", PR conventions" if args.pr else ""))
+    parts = []
+    if config["reject_claude_md"] or config["require_agents_md"]:
+        parts.append("shared agent instructions")
+    if flags:
+        parts.append("feature flag metadata")
+    if args.pr:
+        parts.append("PR conventions")
+    print("PASS: " + ", ".join(parts))
     return 0
 
 

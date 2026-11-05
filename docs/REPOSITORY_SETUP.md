@@ -54,7 +54,7 @@ Swift CodeQL은 현재 구성의 지원 대상이 아니다. GitHub는 [CodeQL 2
 | PR 제목·브랜치·구현 Issue 연결 | PR policy. PR 생성·수정·새 커밋마다 실행 |
 | Issue의 범위·완료 조건·선행 조건 검토 | Claude. 수동 호출만. 쓰기 권한 사용자가 `ai:review` 라벨 지정 또는 리뷰 댓글 작성 |
 | PR의 회귀·플래그·보안 검토와 댓글 | Claude. 수동 호출만. main 대상 PR에 `ai:review` 라벨 지정 또는 리뷰 댓글 작성. Draft와 fork는 제외 |
-| 코드 리뷰와 보안 리뷰 | Codex. 모든 PR을 매 푸시마다 코드 검토하고 보안 검토도 함께 실행 |
+| 코드 리뷰와 보안 리뷰 | 작성 모델과 다른 계열. Claude Code로 쓴 변경은 Cursor 쪽 모델이, Cursor로 쓴 변경은 Claude가 본다. Codex는 작성 도구나 리뷰어로 쓰지 않는다 |
 | 제품 결정·계정 연결·기기 확인 | 사람. AI는 검토안을 제시하고 승인된 구현을 수행 |
 | 병합 | [병합 조건](WORKFLOW.md#병합-조건)을 충족하면 작업을 맡은 로컬 에이전트 또는 사람. 리뷰 봇은 병합하지 않음 |
 
@@ -86,13 +86,11 @@ Ubuntu 24.04의 AppArmor 제한이 켜져 있으면 `/usr/bin/bwrap`에만 사�
 격리 도구가 없으면 실행을 실패로 처리합니다. 인증 환경 변수 제거를 끄는 우회는 사용하지 않습니다.
 코드 쓰기와 병합 권한은 없습니다. 저장소의 Actions PR 자동 승인 설정도 꺼진 상태인지 확인합니다.
 `@claude implement`는 이 워크플로의 지원 명령이 아닙니다.
-구현은 승인된 Issue를 로컬 Claude Code/Codex에 전달합니다. Codex 원격 작업은 별도 환경 연결 후 사용합니다.
+구현은 승인된 Issue를 Claude Code 또는 Cursor에 전달합니다.
+리뷰는 작성 모델과 다른 계열로 합니다. Codex 멘션으로 리뷰를 요청하지 않습니다.
 Secret 미등록은 실행 실패로 표시합니다. 리뷰가 수행된 것으로 처리하지 않습니다.
 
-Codex 수동 요청은 PR에서 `@codex review`, `@codex security review`를 사용합니다.
-자동 리뷰 여부는 Codex 계정 설정으로 관리합니다. 저장소 YAML만으로 연결을 완료했다고 판단하지 않습니다.
 GitHub Actions 토큰이 쓴 댓글은 다른 워크플로의 트리거가 되지 않을 수 있습니다.
-따라서 Actions로 Codex 멘션을 자동 게시하는 우회 방식은 사용하지 않습니다.
 
 ## CI와 업데이트
 
@@ -115,6 +113,7 @@ GitHub 소유 Action 허용과 전체 SHA 강제는 유지합니다. 검증한 �
 
 ## 과거 최초 연결: 수동 설정
 
+아래 Codex 연결 단계는 과거 기록이다. 현재 작성 도구는 Claude Code와 Cursor이고, 리뷰는 작성 모델과 다른 계열이다. Codex를 다시 켜라는 지시가 아니다.
 이 작업에는 계정 로그인과 Secret 등록이 필요합니다. Secret 값은 채팅이나 문서에 기록하지 않습니다.
 
 1. 로컬 Claude Code에서 `claude setup-token`을 실행합니다. 발급 값을 Smallnext의 Actions Secret `CLAUDE_CODE_OAUTH_TOKEN`으로 등록합니다. GitHub 토큰이나 운영 API 키는 사용하지 않습니다.
@@ -130,7 +129,7 @@ Secret과 코드 리뷰 구독·요금은 별도 조건입니다. 일반 ChatGPT
 HTTP 401 또는 SDK `authentication_failed`가 발생하면 해당 리뷰를 미검증으로 표시합니다.
 `claude setup-token`으로 새 OAuth 토큰을 발급하고 Actions Secret을 교체한 뒤 main에서 다시 검토합니다.
 재등록 후에는 실행 성공과 실제 봇 댓글을 모두 확인합니다. PR 댓글의 검토 SHA가 현재 head와 같은지도 확인합니다.
-인증 장애 중에는 Claude 리뷰를 미검증으로 기록합니다. 병합은 Codex 결과로 [병합 조건](WORKFLOW.md#병합-조건)을 확인한 후 진행합니다. 봇은 승인하거나 병합하지 않습니다.
+인증 장애 중에는 그 리뷰를 미검증으로 기록합니다. 병합은 작성 모델과 다른 계열의 리뷰로 [병합 조건](WORKFLOW.md#병합-조건)을 확인한 뒤 진행합니다. 봇은 승인하거나 병합하지 않습니다.
 
 공식 기준: [Claude GitHub Actions](https://code.claude.com/docs/en/github-actions),
 [Claude Linux 격리 설정](https://code.claude.com/docs/en/sandboxing#set-up-linux-and-wsl2),
@@ -191,15 +190,15 @@ Project checks는 iOS·Android·API와 컨테이너를 검사합니다.
 실제 AI 품질과 운영 배포는 초기 셋업의 검증 범위에 포함하지 않습니다.
 
 CodeQL workflow를 바꾸면 기준선의 `codeql_main_source.sha`도 새 Git blob SHA로 갱신합니다. PR의 `Repository hygiene` unittest가 갱신하지 않은 SHA를 거부합니다. 감사 도구는 필수 제어 항목이나 보호 필드가 빠진 기준선을 `UNVERIFIED`로 거부합니다.
-공통 검사기(`check_github_settings.py`·`check_repo_baseline.py`·`check_review_status.py`)와 테스트는 공개 `minjunkim-dev/repo-baseline`에서 복사합니다. 이 저장소에서 직접 고치지 않습니다. 원본을 고친 뒤 `tools/apply_baseline.py`로 다시 적용합니다. 복사본이 `.github/repo-baseline.json`의 해시와 다르면 `python3 scripts/check_repo_baseline.py`가 실패합니다. CodeQL 단계들이 서로 다른 `github/codeql-action` commit을 쓰는 것도 거부합니다. `Review status` workflow(`.github/workflows/review-status.yml`)는 해시로 검사하지 않는 프로젝트 복사본입니다.
+공통 검사기(`check_github_settings.py`·`check_repo_baseline.py`·`check_review_status.py`·`workflow_policy.py`·`pr_author.py`·`rerun_review_status.py`)와 테스트, `.github/pull_request_template.md`는 공개 `minjunkim-dev/repo-baseline`에서 복사합니다. 이 저장소에서 직접 고치지 않습니다. 원본을 고친 뒤 `tools/apply_baseline.py`로 다시 적용합니다. 복사본이 `.github/repo-baseline.json`의 해시와 다르면 `python3 scripts/check_repo_baseline.py`가 실패합니다. CodeQL 단계들이 서로 다른 `github/codeql-action` commit을 쓰는 것도 거부합니다. `Review status` workflow(`.github/workflows/review-status.yml`)와 `PR policy` workflow(`.github/workflows/pr-policy.yml`)는 해시로 검사하지 않는 프로젝트 복사본입니다. Dependabot이 그 pin을 올립니다. `.github/workflow-policy.json`은 두지 않습니다. 그 파일이 없으면 `AGENTS.md`와 feature flag 검사는 켜진 채로 남습니다. PR 본문 양식은 해시 복사본 `.github/pull_request_template.md` 하나입니다. 대문자 `.github/PULL_REQUEST_TEMPLATE.md`는 대소문자만 달라 대소문자를 구분하지 않는 체크아웃에서 충돌하므로 제거했습니다. 플래그 안내는 [협업 규칙](WORKFLOW.md)에 있습니다.
 
 ## 공통 기준 갱신과 설정 관측 기록
 
-적용 원본은 `minjunkim-dev/repo-baseline`의 main `8aad448d196ac21308e88e016d17c1f3b6920221`다. 복사본의 경로·생태계를 유지하며 원본 도구로 갱신했다. 로컬 스킬 설정과 일상 작업 진입은 [개발 절차](agents/development.md), 자체 리뷰와 사용자 요청 회고는 [리뷰 절차](agents/review.md)를 따른다.
+적용 원본은 `minjunkim-dev/repo-baseline`의 main `e8c5224e33d8ebe3aa915fd741702ee75c77ecc2`다. 복사본의 경로·생태계를 유지하며 원본 도구로 갱신했다. 로컬 스킬 설정과 일상 작업 진입은 [개발 절차](agents/development.md), 자체 리뷰와 사용자 요청 회고는 [리뷰 절차](agents/review.md)를 따른다.
 
-기존 기준선의 설명용 `exceptions` 배열은 내용을 보존해 `observations`로 옮겼다. 관측 기록은 API 감사 항목을 제외하지 않는다. 실제 기능 미지원·비해당을 감사 범위에서 제외하려면 원본의 [설정 기준선 형식](https://github.com/minjunkim-dev/repo-baseline/blob/8aad448d196ac21308e88e016d17c1f3b6920221/docs/github-settings-profile.md)에 맞는 `exceptions` 객체와 사유·근거가 필요하다. 예외가 있으면 exit 0이어도 결과는 전체 PASS가 아닌 LIMITED다. 미선언 403·404·누락·권한 오류는 계속 실패한다.
+기존 기준선의 설명용 `exceptions` 배열은 내용을 보존해 `observations`로 옮겼다. 관측 기록은 API 감사 항목을 제외하지 않는다. 실제 기능 미지원·비해당을 감사 범위에서 제외하려면 원본의 [설정 기준선 형식](https://github.com/minjunkim-dev/repo-baseline/blob/e8c5224e33d8ebe3aa915fd741702ee75c77ecc2/docs/github-settings-profile.md)에 맞는 `exceptions` 객체와 사유·근거가 필요하다. 예외가 있으면 exit 0이어도 결과는 전체 PASS가 아닌 LIMITED다. 미선언 403·404·누락·권한 오류는 계속 실패한다.
 
-이번 갱신은 GitHub 서버 기대값·권한·필수 체크·CodeQL·배포·Actions 이벤트 정책을 변경하지 않는다. `Review status`를 필수 체크로 등록하지 않는다. 공개 저장소의 Actions 이벤트 정책은 이 workflow를 기본 브랜치에 병합하기 전에 저장소 관리자가 만든다. 필수 체크 `Review status`는 workflow가 기본 브랜치에 있고 그 job이 한 번 돈 뒤에 등록한다. 그 전에 체크 이름을 올리면 검사가 대기할 수 있다. 과거 실행 기록을 현재 검증 결과로 바꾸지 않는다.
+이번 갱신은 GitHub 서버 기대값·권한·필수 체크·CodeQL·배포·Actions 이벤트 정책과 `.github/repository-settings.json`을 바꾸지 않는다. `Review status`는 이 PR에서 필수 체크로 등록하지 않는다. 병합 후 소유자 승인으로 필수 체크에 추가한다. 공개 저장소의 Actions 이벤트 정책은 이 workflow를 기본 브랜치에 병합하기 전에 저장소 관리자가 만든다. 필수 체크 이름은 workflow가 기본 브랜치에 있고 그 job이 한 번 돈 뒤에 올린다. 그 전에 체크 이름을 올리면 검사가 대기할 수 있다. 과거 실행 기록을 현재 검증 결과로 바꾸지 않는다.
 
 ## 과거 Bugbot 확인 기록
 

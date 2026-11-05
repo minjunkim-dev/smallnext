@@ -5,7 +5,8 @@ head; a status from the same account cannot tell a person from an agent, so it i
 A base update creates a new head SHA. When the added and removed lines and binary blobs match a prior
 success, that status covers this head. Reuse is still only a process record.
 A 1-person pull request that changes a POLICY.md §10 gate path also needs the repository owner's
-approval comment on this head. That comment is not reused from an older head."""
+approval comment on this head. That comment is not reused from an older head.
+The pull request body is parsed for the review evidence table. It is never executed."""
 
 import base64
 import fnmatch
@@ -16,11 +17,15 @@ import re
 import subprocess
 import sys
 
+from pr_author import parse_author
+
 INDEPENDENT = "review/independent"
 SECURITY = "review/security"
 # Not a commit status. The job fails with this name when the owner comment is missing.
 # A status posted under this name does not count: the same account can post one without the comment.
 OWNER = "review/owner-approval"
+# Not a commit status. The job fails with this name when the evidence table does not match this head.
+EVIDENCE = "review/evidence"
 DEPENDABOT = "dependabot[bot]"
 WEB_FLOW = "web-flow"
 TEAM_LINE = "프로필: 팀"
@@ -31,14 +36,18 @@ PROJECT_PATHS = ".github/trust-boundary-paths"
 # POLICY.md §5 common paths. A pattern without "/" matches the file name at any depth.
 COMMON_PATHS = (
     ".github/workflows/**", ".github/actions/**", ".github/repository-settings.json", ".github/dependabot.yml",
-    ".github/dependabot.yaml", ".github/CODEOWNERS", ".github/repo-baseline.json", PROJECT_PATHS, "scripts/check_*.py",
+    ".github/dependabot.yaml", ".github/CODEOWNERS", ".github/repo-baseline.json", ".github/workflow-policy.json",
+    PROJECT_PATHS, "scripts/check_*.py",
+    "scripts/workflow_policy.py", "scripts/pr_author.py", "scripts/rerun_review_status.py",
     ".claude/settings.json", ".claude/hooks/**", ".claude/agents/**", ".claude/commands/**", ".agents/skills/**",
     ".claude/skills/**", ".mcp.json", "Dockerfile", ".env*",
 )
 # POLICY.md §10 gate paths. A change here needs the 1-person owner comment unless the Dependabot
 # version-only exception applies. Other one-way doors (money, account, migration) are not in this list.
 ONE_WAY_PATHS = (
-    ".github/workflows/**", "templates/review-status.yml", "scripts/check_review_status.py",
+    ".github/workflows/**", "templates/review-status.yml", "templates/pr-policy.yml",
+    "scripts/check_review_status.py", "scripts/workflow_policy.py", "scripts/pr_author.py",
+    "scripts/rerun_review_status.py", ".github/workflow-policy.json",
     "templates/review-status-policy.json", ".github/repository-settings.json", "templates/repository-settings.json",
 )
 # Dependency manifests and lockfiles; a project adds other ecosystems to PROJECT_PATHS.
@@ -92,19 +101,28 @@ def force_push_befores(repo, number):
         nodes = json.loads(result.stdout)["data"]["repository"]["pullRequest"]["timelineItems"]["nodes"]
     except (OSError, subprocess.SubprocessError, ValueError, KeyError, TypeError):
         return None
-    return force_push_oids(nodes)
+    return force_push_events(nodes)
+
+
+def force_push_events(nodes):
+    """Newest-first {createdAt, oid}. None when an event has no before SHA or no time."""
+    dated = []
+    for node in nodes or []:
+        oid = ((node or {}).get("beforeCommit") or {}).get("oid")
+        created = (node or {}).get("createdAt")
+        if not oid or not created:
+            return None
+        dated.append((created, oid))
+    dated.sort(reverse=True)
+    return [{"createdAt": created, "oid": oid} for created, oid in dated]
 
 
 def force_push_oids(nodes):
     """Newest-first SHAs. None when an event has no beforeCommit oid, so that head is not skipped."""
-    dated = []
-    for node in nodes or []:
-        oid = ((node or {}).get("beforeCommit") or {}).get("oid")
-        if not oid:
-            return None
-        dated.append((node.get("createdAt") or "", oid))
-    dated.sort(reverse=True)
-    return [oid for _, oid in dated]
+    events = force_push_events(nodes)
+    if events is None:
+        return None
+    return [event["oid"] for event in events]
 
 
 def diff_identity(diff):
@@ -224,15 +242,24 @@ def is_hash(token):
     return re.fullmatch(r"(?:sha\d+[-:]|h1:)[A-Za-z0-9+/=]+|[0-9a-fA-F]{7,}", token) is not None
 
 
+def _token_at(body, start, end):
+    while start > 0 and (body[start - 1].isalnum() or body[start - 1] in "+/=_-"):
+        start -= 1
+    while end < len(body) and (body[end].isalnum() or body[end] in "+/=_-"):
+        end += 1
+    return body[start:end]
+
+
 def line_majors(line, workflow):
-    """Major numbers on one diff line. None means a workflow line has no # vN comment and no @vN tag."""
+    """Major numbers on one diff line. None means a uses: line has no # vN comment and no @vN tag.
+    A digit inside a commit hash is not a major. Gate-path templates use the same rule as workflows."""
     body = line[1:]
-    if workflow:
+    if workflow or "uses:" in body:
         found = [int(number) for number in re.findall(r"(?:#\s*v|@v)(\d+)", body, re.IGNORECASE)]
         return found or None
     found = []
     for match in re.finditer(r"(?<![\w.-])v?(\d+)(?:\.\d+)*(?:[-+][0-9A-Za-z.-]+)?", body, re.IGNORECASE):
-        if is_hash(match.group(0)):
+        if is_hash(match.group(0)) or is_hash(_token_at(body, match.start(), match.end())):
             continue
         found.append(int(match.group(1)))
     return found
@@ -395,22 +422,37 @@ def prior_shas(repo, number, head, read, commit_count):
         # A missing count, or fewer commits than the PR reports, can hide a newer failed head.
         if commit_count is None or len(commits) < commit_count:
             return None
-        for commit in reversed(commits):
+        for commit in commits:
             sha = commit.get("sha")
-            if sha and sha != head and sha not in found:
-                found.append(sha)
+            when = ((commit.get("commit") or {}).get("committer") or {}).get("date")
+            if not sha or sha == head:
+                continue
+            if not isinstance(when, str) or when == "":
+                return None
+            found.append((when, sha))
     except (OSError, subprocess.SubprocessError, KeyError, ValueError, TypeError):
         return None
     try:
         befores = read(FORCE_PUSHES + f"{repo}/{number}")
     except (OSError, subprocess.SubprocessError, KeyError, ValueError, TypeError):
         return None
-    if befores is None:
+    if not isinstance(befores, list):
         return None
-    for sha in befores:
-        if isinstance(sha, str) and sha and sha != head and sha not in found:
-            found.append(sha)
-    return found[:PRIOR_LIMIT]
+    for item in befores:
+        if not isinstance(item, dict):
+            return None
+        sha = item.get("oid") or ""
+        when = item.get("createdAt") or ""
+        if not sha or not when:
+            return None
+        if sha != head:
+            found.append((when, sha))
+    found.sort(key=lambda pair: pair[0], reverse=True)
+    ordered = []
+    for _, sha in found:
+        if sha not in ordered:
+            ordered.append(sha)
+    return ordered[:PRIOR_LIMIT]
 
 
 def identity_of(repo, base, sha, read_diff, cache):
@@ -460,31 +502,209 @@ def carried_contexts(repo, number, head, base, contexts, read, read_diff, commit
     return carried
 
 
+# Alias, then family. Opus and Sonnet are both Claude. Two families in one name is unknown.
+FAMILY_ALIASES = (
+    ("composer", "composer"),
+    ("gemini", "gemini"),
+    ("sonnet", "claude"),
+    ("opus", "claude"),
+    ("claude", "claude"),
+    ("grok", "grok"),
+    ("gpt", "gpt"),
+)
+FAMILY_NAMES = "Claude, Grok, Composer, Gemini, or GPT"
+COLUMN_NAMES = {
+    "axis": "axis", "축": "axis", "model": "model", "모델": "model", "effort": "effort",
+    "head sha": "sha", "p0": "p0", "p1": "p1", "p2": "p2", "result": "result", "결과": "result",
+}
+TABLE_COLUMNS = ("axis", "model", "effort", "sha", "p0", "p1", "p2")
+AXIS_KEYS = {
+    "standards": "standards", "spec": "spec", "security": "security",
+    "버그 찾기": "bug", "bug-finding": "bug", "bug finding": "bug",
+}
+BODY_LIMIT = 200000
+
+
+def model_family(name):
+    """Family of a model name, or None when it is empty, mixed, or not in the alias table."""
+    if not isinstance(name, str):
+        return None
+    text = name.strip().lower()
+    if not text or "chatgpt" in text or re.search(r"(?<![a-z0-9])codex(?![a-z0-9])", text):
+        return None
+    found = set()
+    for alias, family in FAMILY_ALIASES:
+        if re.search(rf"(?<![a-z0-9]){alias}(?![a-z0-9])", text):
+            found.add(family)
+    if len(found) != 1:
+        return None
+    return found.pop()
+
+
+def _cells(line):
+    stripped = line.strip()
+    if len(stripped) < 2 or not stripped.startswith("|") or not stripped.endswith("|"):
+        return None
+    return [cell.strip() for cell in stripped[1:-1].split("|")]
+
+
+def _separator(cells):
+    return bool(cells) and all(re.fullmatch(r":?-{3,}:?", cell) for cell in cells)
+
+
+def _integer(value):
+    return re.fullmatch(r"0|[1-9][0-9]*", value.strip()) is not None
+
+
+def _not_applicable(model):
+    text = model.strip()
+    return text.startswith("해당 없음:") and text.split(":", 1)[1].strip() != ""
+
+
+def evidence_table(body):
+    """Rows of the last evidence table. An earlier table does not hide a later one. Parse only."""
+    lines = body.split("\n")
+    chosen = None
+    index = 0
+    while index < len(lines):
+        cells = _cells(lines[index])
+        mapped = [COLUMN_NAMES.get(cell.lower()) for cell in cells] if cells else []
+        named = [name for name in mapped if name]
+        if not cells or any(column not in named for column in TABLE_COLUMNS) or len(named) != len(set(named)):
+            index += 1
+            continue
+        # A later header replaces any earlier table. A broken later table does not keep the old one.
+        chosen = None
+        rows = []
+        broken = False
+        index += 1
+        while index < len(lines):
+            row = _cells(lines[index])
+            if row is None:
+                break
+            if _separator(row):
+                index += 1
+                continue
+            if len(row) != len(cells):
+                broken = True
+                break
+            rows.append({mapped[i]: row[i] for i in range(len(cells)) if mapped[i]})
+            index += 1
+        if not broken:
+            chosen = rows
+    return chosen
+
+
+def evidence_problems(body, head):
+    """Why the evidence table does not cover this head. Empty means it does. The body is not executed."""
+    if not isinstance(body, str):
+        return ["body"]
+    text = body.replace("\r\n", "\n").replace("\r", "\n")[:BODY_LIMIT]
+    problems = []
+    record, previous, author_errors = parse_author(text)
+    if any("person author" in error for error in author_errors):
+        problems.append("author-model")
+        families = set()
+        tool = model = None
+    elif record is None or any("disagree" in error or "conflicts" in error for error in author_errors):
+        problems.append("author")
+        families = set()
+        tool = model = None
+    else:
+        tool, model = record
+    if tool == "사람" and model == "없음":
+        families = set()
+    elif tool:
+        families = set()
+        author = model_family(model)
+        if author is None:
+            problems.append("unknown-family")
+        else:
+            families.add(author)
+    for name in previous:
+        family = model_family(name)
+        if family is None:
+            problems.append("unknown-family")
+        else:
+            families.add(family)
+    rows = evidence_table(text)
+    if rows is None:
+        problems.append("table")
+        return problems
+    seen = {}
+    for row in rows:
+        key = AXIS_KEYS.get(row.get("axis", "").strip().lower())
+        if key is None:
+            problems.append("axis-name")
+            continue
+        if key in seen:
+            problems.append("duplicate")
+        seen[key] = row
+    wanted = (head or "").lower()
+    for key in ("standards", "spec", "bug", "security"):
+        row = seen.get(key)
+        if row is None:
+            problems.append("axis-" + key)
+            continue
+        reviewer = row.get("model", "")
+        if _not_applicable(reviewer):
+            if key in ("standards", "spec"):
+                problems.append("not-applicable")
+            if any(row.get(column, "").strip() != "0" for column in ("p0", "p1", "p2")):
+                problems.append("p0")
+        elif reviewer.strip() == "" or reviewer.strip() == "미실행":
+            problems.append("model")
+        else:
+            family = model_family(reviewer)
+            if family is None:
+                problems.append("unknown-family")
+            elif family in families:
+                problems.append("same-family")
+            if not _integer(row.get("p0", "")):
+                problems.append("p0")
+            if not _integer(row.get("p1", "")):
+                problems.append("p1")
+        sha = row.get("sha", "").strip()
+        if not re.fullmatch(r"[0-9a-fA-F]{40}", sha) or sha.lower() != wanted:
+            problems.append("sha")
+    return problems
+
+
+def _dependabot_author(pull):
+    user = pull.get("user") if isinstance(pull, dict) else None
+    return isinstance(user, dict) and user.get("login") == DEPENDABOT
+
+
 def missing(repo, number, head, base, read=read_api, read_diff=None):
     pull = read(f"repos/{repo}/pulls/{number}")
-    files = [entry for page in read(f"repos/{repo}/pulls/{number}/files?per_page=100") for entry in page]
+    # The open pull request's file and commit lists follow its current head, which can move
+    # after this event. review/independent and review/security follow compare(base, head).
     patterns = COMMON_PATHS + DEPENDENCY_FILES + project_paths(repo, base, read)
-    touched = any(matches(entry.get(key, ""), patterns) for entry in files for key in ("filename", "previous_filename"))
-    truncated = pull["changed_files"] > len(files)
-    bump = False
-    if not truncated and touched:
-        commits = [commit for page in read(f"repos/{repo}/pulls/{number}/commits?per_page=100") for commit in page]
-        # The pulls commits API returns at most 250. A short list can hide a later human commit.
-        if pull.get("commits") == len(commits):
-            bump = dependabot_bump(pull, commits, files)
+    pinned, pinned_commits = pinned_change(repo, base, head, read)
+    if pinned is None:
+        touched = True
+        bump = False
+    else:
+        touched = any(matches(entry.get(key, ""), patterns) for entry in pinned
+                      for key in ("filename", "previous_filename"))
+        bump = bool(touched and pinned_commits is not None and dependabot_bump(pull, pinned_commits, pinned))
     needed = []
     # The version-only Dependabot exception drops both reviews. A status posted anyway still has to be success.
     if not bump:
         needed.append(INDEPENDENT)
-    # The files API stops listing at 3000: paths it hides cannot be ruled out.
-    if truncated or (touched and not bump):
+    # Compare stops at 300 files. A hidden path cannot be ruled out.
+    if pinned is None or (touched and not bump):
         needed.append(SECURITY)
     statuses = [status for page in read(f"repos/{repo}/commits/{head}/status?per_page=100") for status in page["statuses"]]
-    present = {status["context"] for status in statuses}
+    # The combined list is newest first. An older success in that list does not erase a newer failure.
+    newest = {}
+    for status in statuses:
+        newest.setdefault(status["context"], status["state"])
+    present = set(newest)
     for context in (INDEPENDENT, SECURITY):
         if context not in needed and context in present:
             needed.append(context)
-    passed = {status["context"] for status in statuses if status["state"] == "success"}
+    passed = {context for context, state in newest.items() if state == "success"}
     absent = [context for context in needed if context not in passed]
     # A failure or pending state on this head stands. Only a missing context can reuse an unchanged diff.
     reusable = [context for context in absent if context not in present]
@@ -495,8 +715,6 @@ def missing(repo, number, head, base, read=read_api, read_diff=None):
             repo, number, head, base, reusable, read, read_diff or read_diff_api, pull.get("commits"))
         result = [context for context in absent if context not in carried]
     # The owner comment is tied to this SHA, so an unchanged diff does not carry it. A posted status does not either.
-    # Gate paths come from compare(base, head), not the pull request's live file list.
-    pinned, pinned_commits = pinned_change(repo, base, head, read)
     if pinned is None:
         needs_owner = True
         version_only = False
@@ -507,6 +725,15 @@ def missing(repo, number, head, base, read=read_api, read_diff=None):
                         and not major_change(pinned))
     if needs_owner and not version_only and not team_profile(repo, base, read) and not owner_approved(repo, number, head, read):
         result.append(OWNER)
+    # The body is the current pull request text. This run's head is the event SHA, not a later push.
+    if isinstance(pull, dict) and not _dependabot_author(pull):
+        found = evidence_problems(pull.get("body"), head)
+        if found:
+            detail = ", ".join(found)
+            if "unknown-family" in found:
+                detail += "; expected family " + FAMILY_NAMES
+            print("review evidence: " + detail)
+            result.append(EVIDENCE)
     return result
 
 
