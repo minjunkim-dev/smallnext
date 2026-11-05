@@ -29,7 +29,7 @@ git switch -c feat/17-goal-split origin/main
 그 외 유형은 Issue 번호가 필요합니다. 구현 범위가 있는 작업은 유형과 무관하게 Issue를 연결합니다.
 
 허용 유형: `feat`, `fix`, `refactor`, `perf`, `test`, `docs`, `build`, `ci`, `chore`, `revert`.
-자동 생성 브랜치는 `claude/<description>`, `codex/<description>`, `dependabot/<description>`을 허용합니다.
+자동 생성 브랜치는 `claude/<description>`, `dependabot/<description>`을 허용합니다. 작성 도구는 Claude Code와 Cursor이고, 리뷰는 작성 모델과 다른 계열입니다. 복사한 검사기는 `codex/` 접두사도 받지만 Codex는 작성 도구나 리뷰어로 쓰지 않습니다.
 봇 브랜치도 PR 제목, 검증, Issue 연결, 병합 규칙을 따릅니다.
 
 커밋과 PR 제목은 Conventional Commits 형식을 사용합니다.
@@ -84,7 +84,7 @@ Issue 템플릿으로 기능, 문제, 결정을 구분합니다. 부족한 조�
 자동 리뷰가 추천했다는 사실로 결정 Issue를 종료하지 않습니다.
 
 PR은 한 목적과 작은 검증 가능한 범위를 가집니다. 문제와 변경 후 동작을 먼저 적습니다.
-완료 조건, 검사 결과, UI 근거, 미확인 범위, 플래그 상태를 기록합니다.
+완료 조건, 검사 결과, UI 근거, 미확인 범위, 플래그 상태를 기록합니다. 본문 양식은 `.github/pull_request_template.md`입니다. 플래그가 있으면 이름, 기본값, 담당자, 제거 기한을 적습니다. 해당 없으면 `해당 없음`입니다. 미완성 기능은 기본값 OFF로 병합하고, OFF의 기존 동작과 ON의 새 동작, 데이터 호환, 되돌리는 방법을 각각 적습니다.
 Issue를 해결했을 때만 `Closes #번호`를 사용합니다. 부분 변경은 `Refs #번호`를 사용합니다.
 
 자동화는 [REPOSITORY_SETUP](REPOSITORY_SETUP.md)에 정의합니다.
@@ -101,7 +101,7 @@ P2는 수정하거나 후속 Issue를 연결하고 병합 이유를 기록합니
 3. 미해결 리뷰 대화가 없습니다.
 4. PR에 검증 결과, 미확인 범위, 플래그 상태, 관련 Issue를 기록합니다. Issue를 생략할 수 있는 유지보수 PR은 관련 Issue 대신 생략 이유를 적습니다.
 
-조건을 충족하면 사용자가 작업을 맡긴 로컬 에이전트(Claude Code·Codex)가 별도 병합 위임 없이 직접 squash로 병합할 수 있습니다.
+조건을 충족하면 사용자가 작업을 맡긴 로컬 에이전트(Claude Code·Cursor)가 별도 병합 위임 없이 직접 squash로 병합할 수 있습니다.
 이 권한은 완료 조건을 충족한 two-way/narrow 변경에 적용합니다.
 권한 확대·되돌리기 어려운 데이터 변경·외부 대량 발송과 one-way/broad 변경은 사람이 최종 head SHA를 승인한 뒤 병합합니다.
 Draft CD의 배포 쓰기 권한 추가도 최종 head 승인이 필요합니다. 실행 절차는 [Draft CD](DRAFT_RELEASE.md)를 따릅니다.
