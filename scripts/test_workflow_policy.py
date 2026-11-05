@@ -183,6 +183,21 @@ class PolicyRootTest(unittest.TestCase):
         self.assertEqual(1, linked_flags.returncode, linked_flags.stdout + linked_flags.stderr)
         self.assertIn("refusing to follow a symlink", linked_flags.stdout)
 
+    def test_a_symlink_prefix_cannot_point_outside_the_root(self):
+        outside = self.work / "outside"
+        nested = outside / "nested"
+        (nested / "config").mkdir(parents=True)
+        (nested / "AGENTS.md").write_text("outside\n", encoding="utf-8")
+        (nested / "config" / "feature-flags.json").write_text('{"version": 1, "flags": []}\n', encoding="utf-8")
+        (self.work / "link").symlink_to(outside, target_is_directory=True)
+        leaked = self.invoke("--root", "link/nested")
+        self.assertEqual(1, leaked.returncode, leaked.stdout + leaked.stderr)
+        self.assertIn("symlink", leaked.stdout)
+        self.assertNotIn("PASS", leaked.stdout)
+        direct = self.invoke("--root", "link")
+        self.assertEqual(1, direct.returncode, direct.stdout + direct.stderr)
+        self.assertIn("symlink", direct.stdout)
+
     def test_absolute_and_parent_roots_are_rejected(self):
         for value in ("/tmp", "../policy-head", "policy-head/../../etc"):
             result = self.invoke("--root", value)

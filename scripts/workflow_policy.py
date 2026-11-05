@@ -86,6 +86,16 @@ def checked_tree(value):
     return path
 
 
+def contains_symlink(path):
+    """True when any component of a relative path is a symlink. Parents count."""
+    current = Path()
+    for part in path.parts:
+        current = current / part
+        if current.is_symlink():
+            return True
+    return False
+
+
 def readable_file(tree, relative):
     """A regular file under tree. Symlinks are not followed."""
     current = tree
@@ -125,6 +135,8 @@ def instruction_errors(tree):
         except (OSError, json.JSONDecodeError) as error:
             errors.append(f"Feature flags: {error}")
         return errors
+    if contains_symlink(tree):
+        return ["root must not contain a symlink"]
     errors = []
     claude = tree / "CLAUDE.md"
     if claude.exists() or claude.is_symlink():
