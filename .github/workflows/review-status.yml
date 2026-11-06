@@ -14,6 +14,10 @@ name: Review status
 # request, and only a comment whose author is the repository owner (github.repository_owner, the same login
 # the checker compares). An organization name is not a user, so a member comment does not rerun and is not an
 # approval. Deleting that comment still reruns, because the payload's comment author stays the owner.
+# Editing it still reruns for the same reason: comment.user stays the author, so another account's
+# edit of the owner's comment also reruns. The checker counts a comment only when updated_at equals
+# created_at. An edited comment is not approval; post a new comment. Skipping edited would leave
+# the previous success green. The job does not read the comment body.
 # The run is chosen by its own head_sha. pull_requests[].head.sha can change to the current head and point at an older run.
 # If that run cannot be listed, the job posts a failing check named Review status on the current head.
 # It does not write review/independent or review/security. review-status-policy.json allows only these two events.
@@ -78,6 +82,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.issue.number }}
+          COMMENT_ACTION: ${{ github.event.action }}
         run: |
           set -euo pipefail
           for _ in 1 2 3 4 5 6; do
