@@ -93,7 +93,7 @@ CI 통과와 최신 SHA의 Standards·Spec 리뷰 응답을 확인합니다. 보
 P2는 수정하거나 후속 Issue를 연결하고 병합 이유를 기록합니다.
 동료 승인은 필수가 아닙니다. 필요하면 동료에게 검토를 요청합니다. 협업자가 추가되면 필수 승인 수를 재검토합니다.
 현재 보호 설정은 [자동화 설정](REPOSITORY_SETUP.md#현재-제한)을 참조합니다.
-`.github/repository-settings.json`은 기존 필수 검사와 `strict: true`를 유지하고 `Review status`(`app_id` 15368)를 기대값으로 기록합니다. context는 `.github/workflows/review-status.yml`의 job 이름과 같습니다. 이 기록은 서버 보호를 바꾸지 않습니다. 병합 뒤 소유자가 적용합니다. 적용되면 Dependabot 버전 전용 PR을 뺀 모든 PR에 소유자가 올리는 `review/*` status가 필요합니다. `review/independent`는 그 예외를 뺀 모든 PR에 필요하고, 신뢰 경계 경로를 바꾸면 `review/security`도 필요합니다. 1인 프로필에서 검사기는 저장소 소유자이거나 `STATUS_ACTORS`(지금은 비어 있음)가 올린 status만 success로 봅니다. 에이전트는 status와 승인 댓글을 쓰지 않습니다. 적용 전에는 서버에 있는 필수 검사 목록을 따릅니다.
+`Review status` 기대값과, 그 기록이 서버에 적용된 뒤 필요한 소유자 `review/*` status는 그 절이 기준입니다. 에이전트는 status와 승인 댓글을 쓰지 않습니다.
 
 ### 병합 조건
 
