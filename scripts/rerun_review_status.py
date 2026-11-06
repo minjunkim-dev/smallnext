@@ -5,9 +5,15 @@ An issue_comment run is not a pull request check. The previous success stays
 until the pull_request_target run for this head is re-run, or until a newer
 failing check named Review status is posted on that head. This does not write
 review/independent or review/security, and it does not read the comment body.
-issue_comment has no branch filter. A pull request whose base is not the
-default branch posts nothing, so that head is not turned red for the pull
-request that does target the default branch.
+created, edited, and deleted all re-run. An edited comment is not approval:
+the checker counts a comment only when updated_at equals created_at and
+lastEditedAt is null, so a same-second edit is dropped too. This re-run
+clears the old success. Post a new comment.
+comment.user on an edit stays the original author, so another account's edit
+of the owner's comment still matches the workflow and still re-runs. Skipping
+edited would leave that success in place. issue_comment has no branch filter.
+A pull request whose base is not the default branch posts nothing, so that
+head is not turned red for the pull request that does target the default branch.
 """
 
 from datetime import datetime, timezone
@@ -18,10 +24,24 @@ import sys
 
 CHECK_NAME = "Review status"
 PAGE_LIMIT = 20
+# Same set as templates/review-status.yml issue_comment.types. edited stays:
+# the checker, not this script, rejects the edited body.
+COMMENT_ACTIONS = ("created", "edited", "deleted")
+
+
+def comment_action_reruns(action):
+    """True for the comment events that must re-run the checker.
+
+    edited is included on purpose. The checker ignores a comment whose
+    updated_at differs from created_at. Re-running is what clears a previous
+    success. The workflow matches comment.user, which stays the author, so a
+    write collaborator editing the owner's comment still re-runs."""
+    return action in COMMENT_ACTIONS
 
 
 def comment_triggers(is_pull_request, state, author, owner):
-    """Same rule as the workflow `if`. A fork's author is not the base repository owner."""
+    """Same rule as the workflow `if`. A fork's author is not the base repository owner.
+    This does not look at sender. An edit's author is still the original user."""
     return bool(is_pull_request) and state == "open" and bool(owner) and author == owner
 
 
@@ -64,8 +84,8 @@ def fail_closed_body(sha, now=None):
         "completed_at": stamp,
         "output": {
             "title": "Owner approval changed",
-            "summary": "The owner approval comment no longer matches this head, "
-                       "and the previous Review status run could not be re-run.",
+            "summary": "The owner comment changed. An edited comment is not approval. "
+                       "The previous Review status run could not be re-run.",
         },
     }
 
@@ -134,11 +154,24 @@ def main(env=None, execute=None, pages=None):
     if not on_default:
         print(f"side base; not posting a check for {number}", file=sys.stderr)
         return 0
+    # Unset keeps older callers re-running. edited is a real re-run: the checker
+    # drops a comment whose updated_at is not created_at. An unknown action must
+    # not post a check on a head this event did not change.
+    action = (env.get("COMMENT_ACTION") or "").strip()
+    if action and not comment_action_reruns(action):
+        print(f"comment action {action} is not a review-status rerun", file=sys.stderr)
+        return 0
     sha = ((pull.get("head") or {}).get("sha") or "").strip()
     if len(sha) != 40 or any(char not in "0123456789abcdefABCDEF" for char in sha):
         print("bad head sha", file=sys.stderr)
         return 1
-    runs, complete = collect(pages if pages is not None else fetch_pages(repo, execute))
+    # A failed or unreadable run list is incomplete. Post the failing check instead of
+    # leaving the previous Review status success in place.
+    try:
+        runs, complete = collect(pages if pages is not None else fetch_pages(repo, execute))
+    except (subprocess.CalledProcessError, OSError, ValueError) as error:
+        print(f"run list unreadable: {error}", file=sys.stderr)
+        runs, complete = [], False
     action, run_id = plan(runs, int(number), sha)
     if action == "wait":
         print("matching run still in progress", file=sys.stderr)

@@ -18,15 +18,15 @@
     },
     "scripts/check_review_status.py": {
       "source": "scripts/check_review_status.py",
-      "sha256": "16d7953bb342ecca655601dd0b34bdf513c1546f151f32b031495304095a9f8e"
+      "sha256": "256b28db2301b4e8e92a7eda812f498425a5a6b080ac6c941dbb69dd98ccc5eb"
     },
     "scripts/test_review_status.py": {
       "source": "scripts/test_review_status.py",
-      "sha256": "e31ce97852424e8ce44d88ff7fa4bb2e54301d997eb7ea206607c44d07f29b0d"
+      "sha256": "703cc77fb484402df8522b68f54317f660163029838e5b5f744b94a4b713453b"
     },
     "scripts/rerun_review_status.py": {
       "source": "scripts/rerun_review_status.py",
-      "sha256": "a1ed0736a9ade00cd43e63774fe4deae7acf8b1e95c7f871b176abd06237353e"
+      "sha256": "f72be336e122e2cea6d0c3325afb6e8baf90d7b0799bea5b0f7465a5333814d1"
     },
     "scripts/workflow_policy.py": {
       "source": "scripts/workflow_policy.py",
@@ -88,5 +88,5 @@
     }
   },
   "source": "minjunkim-dev/repo-baseline",
-  "source_commit": "c6405a09a7d06af943cb08db5b600fe0f655b0a2"
+  "source_commit": "9a3920b942695257772f25083e8a4fde5d4e3208"
 }

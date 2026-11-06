@@ -144,7 +144,8 @@ HTTP 401 또는 SDK `authentication_failed`가 발생하면 해당 리뷰를 미
 아래 과거 실행 기록은 이전 방식의 증거입니다.
 
 공개 전환 후 main 보호를 적용하고 API로 확인했습니다. PR과 최신 기준 브랜치의 검사를 요구합니다.
-필수 검사 이름은 `PR conventions`, `Repository hygiene`, `Project checks`입니다.
+서버에 적용된 필수 검사 이름은 `PR conventions`, `Repository hygiene`, `Project checks`입니다.
+`.github/repository-settings.json`의 기대값은 `strict: true`를 유지하고 그 셋에 `{"context": "Review status", "app_id": 15368}`을 더 기록합니다. context는 `.github/workflows/review-status.yml`의 job 이름 `Review status`와 같습니다. 이 파일 기록은 branch protection을 바꾸지 않습니다. 병합 뒤 소유자가 Mac에서 적용합니다. 적용되면 Dependabot 버전 전용 PR을 뺀 모든 PR(되돌리기 쉬움 포함)에 소유자가 올리는 `review/*` status가 필요합니다. `review/independent`는 그 예외를 뺀 모든 PR에 필요하고, 신뢰 경계 경로를 바꾸면 `review/security`도 필요합니다. 에이전트는 status와 승인 댓글을 쓰지 않습니다. 누가 success로 세는지는 [공통 기준 갱신](#공통-기준-갱신과-설정-관측-기록)의 검사기 규칙을 따릅니다. workflow는 기본 브랜치에 있고, job 이름 `Review status`는 [run 42023589501](https://github.com/minjunkim-dev/smallnext/actions/runs/42023589501)에서 성공했습니다.
 관리자에게도 규칙을 적용합니다. 선형 이력, 미해결 리뷰 대화 해결, 강제 push·main 삭제 금지를 요구합니다.
 동료 승인은 필수가 아닙니다. 2026-10-06 `gh api repos/minjunkim-dev/smallnext/branches/main/protection`의 `required_pull_request_reviews`에서 `required_approving_review_count: 0`, `require_code_owner_reviews: false`를 확인했습니다. 병합은 [병합 조건](WORKFLOW.md#병합-조건)을 따릅니다.
 비공개일 때 ruleset 요청이 HTTP 403으로 거절된 기록은 현재 공개 저장소의 보호 상태를 나타내지 않습니다.
@@ -194,11 +195,11 @@ CodeQL workflow를 바꾸면 기준선의 `codeql_main_source.sha`도 새 Git bl
 
 ## 공통 기준 갱신과 설정 관측 기록
 
-적용 원본은 `minjunkim-dev/repo-baseline`의 main `c6405a09a7d06af943cb08db5b600fe0f655b0a2`다. 복사본의 경로·생태계를 유지하며 원본 도구로 갱신했다. `Review status`와 `PR policy`는 `branches: [main]`만 본다. 결정 분류 이름은 `되돌리기 어려움`·`되돌리기 쉬움`이고, 옛 `한쪽 문`·`양쪽 문`과 `한쪽 문 승인: <sha>`는 검사기가 deprecated로 계속 받는다. 로컬 스킬 설정과 일상 작업 진입은 [개발 절차](agents/development.md), 자체 리뷰와 사용자 요청 회고는 [리뷰 절차](agents/review.md)를 따른다.
+적용 원본은 `minjunkim-dev/repo-baseline`의 main `9a3920b942695257772f25083e8a4fde5d4e3208`다. 복사본의 경로·생태계를 유지하며 원본 `tools/apply_baseline.py`로 갱신했다. `Review status`와 `PR policy`는 `branches: [main]`만 본다. 결정 분류 이름은 `되돌리기 어려움`·`되돌리기 쉬움`이고, 옛 `한쪽 문`·`양쪽 문`과 `한쪽 문 승인: <sha>`는 검사기가 deprecated로 계속 받는다. 1인 프로필에서 `review/independent`와 `review/security`는 `creator.login`이 저장소 소유자이거나 `STATUS_ACTORS`(지금은 비어 있음)일 때만 success다. 다른 작성자의 status는 실패로 보고, 없는 status로 보지 않는다. 승인 댓글은 `updated_at`이 `created_at`과 같고 `lastEditedAt`이 null이며 `includesCreatedEdit`가 아닐 때만 인정한다. 편집한 댓글은 무효이고 새 댓글을 단다. 이어받기 해시는 diff와 바뀐 파일의 변경 후 id다. 로컬 스킬 설정과 일상 작업 진입은 [개발 절차](agents/development.md), 자체 리뷰와 사용자 요청 회고는 [리뷰 절차](agents/review.md)를 따른다.
 
-기존 기준선의 설명용 `exceptions` 배열은 내용을 보존해 `observations`로 옮겼다. 관측 기록은 API 감사 항목을 제외하지 않는다. 실제 기능 미지원·비해당을 감사 범위에서 제외하려면 원본의 [설정 기준선 형식](https://github.com/minjunkim-dev/repo-baseline/blob/c6405a09a7d06af943cb08db5b600fe0f655b0a2/docs/github-settings-profile.md)에 맞는 `exceptions` 객체와 사유·근거가 필요하다. 예외가 있으면 exit 0이어도 결과는 전체 PASS가 아닌 LIMITED다. 미선언 403·404·누락·권한 오류는 계속 실패한다.
+기존 기준선의 설명용 `exceptions` 배열은 내용을 보존해 `observations`로 옮겼다. 관측 기록은 API 감사 항목을 제외하지 않는다. 실제 기능 미지원·비해당을 감사 범위에서 제외하려면 원본의 [설정 기준선 형식](https://github.com/minjunkim-dev/repo-baseline/blob/9a3920b942695257772f25083e8a4fde5d4e3208/docs/github-settings-profile.md)에 맞는 `exceptions` 객체와 사유·근거가 필요하다. 예외가 있으면 exit 0이어도 결과는 전체 PASS가 아닌 LIMITED다. 미선언 403·404·누락·권한 오류는 계속 실패한다.
 
-이번 갱신은 GitHub 서버 기대값·권한·필수 체크·CodeQL·배포·Actions 이벤트 정책과 `.github/repository-settings.json`을 바꾸지 않는다. `Review status`는 이 PR에서 필수 체크로 등록하지 않는다. 병합 후 소유자 승인으로 필수 체크에 추가한다. 공개 저장소의 Actions 이벤트 정책은 이 workflow를 기본 브랜치에 병합하기 전에 저장소 관리자가 만든다. 필수 체크 이름은 workflow가 기본 브랜치에 있고 그 job이 한 번 돈 뒤에 올린다. 그 전에 체크 이름을 올리면 검사가 대기할 수 있다. 과거 실행 기록을 현재 검증 결과로 바꾸지 않는다.
+`Review status`를 기대값에 더한 기록과, 적용 뒤의 병합 조건은 [현재 제한](#현재-제한)에 있다. 이 갱신은 GitHub 서버의 branch protection, 권한, CodeQL, 배포, Actions 이벤트 정책을 바꾸지 않는다. 카나리 통과는 [repo-baseline Issue #32 댓글](https://github.com/minjunkim-dev/repo-baseline/issues/32#issuecomment-6673035189)에 있다. 그 댓글의 Dependabot 예외는 시험할 PR이 없어 미검증이다. 과거 실행 기록을 현재 검증 결과로 바꾸지 않는다.
 
 ## 과거 Bugbot 확인 기록
 

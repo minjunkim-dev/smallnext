@@ -1,13 +1,27 @@
 #!/usr/bin/env python3
 """Fail when a pull request head lacks the review statuses its changed paths need (POLICY.md §5).
-Paths only: content signals stay a reviewer judgement. This shows the process ran on this exact
-head; a status from the same account cannot tell a person from an agent, so it is no security boundary.
-A base update creates a new head SHA. When the added and removed lines and binary blobs match a prior
-success, that status covers this head. Reuse is still only a process record.
+Paths only: content signals stay a reviewer judgement. On a 1-person profile, review/independent
+and review/security count only when creator.login is the repository owner or a login in
+STATUS_ACTORS (empty until the server app exists). Another creator is failure, not a missing
+context, so an older success is not carried over it. The same account still cannot tell a person
+from an agent. A team profile does not look at the creator.
+A base update creates a new head SHA. Carry hashes the diff and the full post-change blob id of
+each changed file. Line numbers do not count. Another file changing on the base leaves this file's
+blob in place, so that success still covers the head. The same file changing, even when the diff
+only shifts line numbers, is a new blob and is reviewed again. The function name after the second
+@@ stays in the hash: it records which function git named, and the blob id is what separates files
+where that name is missing or shared. A diff --git header that names one path twice is split in
+the middle, so a directory named "svc b" is not read as the root file. A rename or copy takes the
+new path from rename to or copy to. Anything else is not carried. Only the parent trees of changed
+paths are read. A gitlink that is itself the changed path contributes its commit id. Reuse is still
+only a process record, and it uses the same creator rule.
 A 1-person pull request that changes a POLICY.md §10 gate path also needs the repository owner's
-approval comment on this head. That comment is not reused from an older head.
+approval comment on this head. That comment is not reused from an older head. An edited comment
+is not approval: updated_at must equal created_at, and lastEditedAt must be null. A same-second
+edit keeps the timestamp strings equal and is still not approval. Post a new comment.
 The first line must be the current prefix or the deprecated prefix, then the full head SHA.
-A comment rerun does not parse the body. It runs this checker, so both prefixes share this match.
+A comment rerun does not parse the body. It runs this checker, so both prefixes share this match,
+and an edit re-run drops the edited comment.
 The pull request body is parsed for the review evidence table. It is never executed.
 The pull request base ref must be the repository default branch, and the event base SHA must be
 that branch or an ancestor of it. A pull request with a different base is not evidence."""
@@ -36,6 +50,10 @@ BASE_REF = "review/base-branch"
 DEPENDABOT = "dependabot[bot]"
 WEB_FLOW = "web-flow"
 TEAM_LINE = "프로필: 팀"
+# Solo-profile logins that may post review/independent and review/security, besides the
+# repository owner. Empty until the server app exists. This file runs from the default
+# branch, so a pull request cannot add a login. A team profile does not read this tuple.
+STATUS_ACTORS = ()
 # Exact first-line prefixes. The second is deprecated and means the same approval.
 APPROVAL_LINE = re.compile(
     r"(?:되돌리기 어려움 승인:|한쪽 문 승인:)"
@@ -80,6 +98,9 @@ def read_api(endpoint):
     if endpoint.startswith(FORCE_PUSHES):
         repo, number = endpoint[len(FORCE_PUSHES):].rsplit("/", 1)
         return force_push_befores(repo, number)
+    comments = comment_list_target(endpoint)
+    if comments is not None:
+        return approval_comment_pages(*comments)
     paged = ["--paginate", "--slurp"] if "per_page" in endpoint else []
     result = subprocess.run(["gh", "api", "--method", "GET", endpoint, *paged],
                             capture_output=True, text=True, check=True, timeout=60)
@@ -135,43 +156,88 @@ def force_push_oids(nodes):
     return [event["oid"] for event in events]
 
 
-def diff_identity(diff):
-    """SHA-256 of the exact added and removed lines, file paths, modes, renames, and binary blob ids.
-    Hunk positions and surrounding context do not count: a base update shifts them without changing the
-    pull request. Whitespace does count. None means the diff is not safe to treat as unchanged."""
+def full_oid(value):
+    """True for a full Git object id. An abbreviated index line is not one."""
+    return isinstance(value, str) and len(value) == 40 and all(char in "0123456789abcdefABCDEF" for char in value)
+
+
+def git_header_path(line):
+    """('path', path) when diff --git names one path on both sides, split at the middle.
+    ('rename', None) when the sides differ, so the new path comes from rename to or copy to.
+    ('bad', None) when the header is quoted or not diff --git a/. A last ' b/' is not a split:
+    a/svc b/package.json b/svc b/package.json is the file svc b/package.json, not package.json."""
+    prefix = "diff --git "
+    if not isinstance(line, str) or not line.startswith(prefix + "a/"):
+        return "bad", None
+    body = line[len(prefix):]
+    if (len(body) - 5) % 2 == 0:
+        length = (len(body) - 5) // 2
+        path = body[2:2 + length]
+        if length > 0 and body == f"a/{path} b/{path}":
+            return "path", path
+    return "rename", None
+
+
+def destination_path(line, current):
+    """New path after a rename to or copy to line. current when this line is not one of those.
+    False when the path is empty, quoted, or a different path was already chosen."""
+    dest = None
+    for prefix in ("rename to ", "copy to "):
+        if line.startswith(prefix):
+            dest = line[len(prefix):]
+            break
+    if dest is None:
+        return current
+    if dest == "" or dest.startswith('"') or (current is not None and current != dest):
+        return False
+    return dest
+
+
+def diff_identity(diff, blobs=None):
+    """SHA-256 of the diff body plus each changed file's post-change blob id.
+    blobs maps the path after the change to a full blob SHA, or None when that path was deleted.
+    The numbers in an @@ line do not count. The text after the second @@ stays: it is the function
+    git named. The blob id is the whole file, so a move still differs when that name is missing,
+    shared, or cut off, and when the surrounding lines are blank. A lone CR is part of the line.
+    None blobs means the caller is comparing diff text only. A provided map that misses a path, or
+    a blob that is not a full id, is not safe to treat as unchanged."""
     if diff is None:
         return None
-    # GitHub's diff is LF. splitlines() would also cut Unicode separators inside a line.
-    text = diff.replace("\r\n", "\n").replace("\r", "\n")
+    # GitHub's diff is LF. A bare CR is not a line ending here: stripping it would hide an injected CR.
+    text = diff.replace("\r\n", "\n")
     stripped = text.lstrip()
     if not stripped:
         return "empty"
     if stripped.startswith("{") or stripped.startswith("["):
         return None
     chunks = []
-    current = index_line = None
+    current = new_path = None
+    deleted = False
     header, body = [], []
     binary = False
     in_hunk = False
 
     def flush():
-        nonlocal current, index_line, header, body, binary
+        nonlocal current, new_path, deleted, header, body, binary
         if current is None:
             return True
-        if binary and not index_line:
+        if new_path is None:
             return False
-        if binary:
-            header.append(index_line)
-        chunks.append((current, tuple(header), tuple(body)))
-        current = index_line = None
-        header, body, binary = [], [], False
+        chunks.append((current, new_path, deleted, binary, tuple(header), tuple(body)))
+        current = new_path = None
+        deleted = binary = False
+        header, body = [], []
         return True
 
     for line in text.split("\n"):
         if line.startswith("diff --git "):
             if not flush():
                 return None
+            status, path = git_header_path(line)
+            if status == "bad":
+                return None
             current = line
+            new_path = path if status == "path" else None
             in_hunk = False
             continue
         if current is None:
@@ -179,16 +245,25 @@ def diff_identity(diff):
                 continue
             return None
         if line.startswith("index "):
-            index_line = line
+            # Abbreviated blob ids in this line are not the post-change id.
             continue
+        # A hunk line "+ ++ /dev/null" is content. Only the header marks a deleted file.
+        if not in_hunk and (line.startswith("deleted file mode ") or line == "+++ /dev/null"):
+            deleted = True
         if line.startswith(("new file mode ", "deleted file mode ", "old mode ", "new mode ",
                             "rename from ", "rename to ", "copy from ", "copy to ")):
+            chosen = destination_path(line, new_path)
+            if chosen is False:
+                return None
+            new_path = chosen
             header.append(line)
             continue
         # "--- a/file" is a header. A removed line "-- note" is also "--- note", so only skip headers
         # before the first hunk.
         if line.startswith("@@"):
             in_hunk = True
+            # Numbers sit between the markers. The function git named follows the second @@.
+            body.append("@@" + line.split("@@", 2)[-1])
             continue
         if not in_hunk and line.startswith(("--- ", "+++ ", "similarity index ", "dissimilarity index ")):
             continue
@@ -196,21 +271,147 @@ def diff_identity(diff):
             binary = True
             body.append(line)
             continue
-        if line.startswith(("+", "-", "\\")):
+        if line.startswith(("+", "-", "\\")) or (in_hunk and line.startswith(" ")):
             body.append(line)
             continue
-        if line.startswith(" ") or line == "":
+        if line == "" or line.startswith(" "):
             continue
         return None
     if not flush() or not chunks:
         return None
+    blob_lines = []
+    if blobs is not None:
+        if not isinstance(blobs, dict):
+            return None
+        for _, path, removed, _binary, _header, _body in chunks:
+            if path not in blobs:
+                return None
+            oid = blobs[path]
+            if removed:
+                if oid is not None:
+                    return None
+                blob_lines.append("blob\tdeleted\t" + path)
+                continue
+            if not full_oid(oid):
+                return None
+            blob_lines.append("blob\t" + path + "\t" + oid.lower())
     chunks.sort(key=lambda item: item[0])
     lines = []
-    for path, kept_header, kept_body in chunks:
+    for path, _new_path, _removed, _binary, kept_header, kept_body in chunks:
         lines.append(path)
         lines.extend(kept_header)
         lines.extend(kept_body)
+    lines.extend(sorted(blob_lines))
     return hashlib.sha256("\n".join(lines).encode("utf-8")).hexdigest()
+
+
+def path_oids(repo, sha, paths, read):
+    """Post-change id for each path. Only parent trees of those paths are read.
+    A blob contributes its blob id. A gitlink on the path itself contributes its commit id.
+    A gitlink anywhere else is not opened. Raises when a needed tree is truncated or an id is short."""
+    if not paths:
+        return {}
+    commit = read(f"repos/{repo}/commits/{sha}")
+    root = ((commit.get("commit") or {}).get("tree") or {}).get("sha") if isinstance(commit, dict) else None
+    if not full_oid(root):
+        raise ValueError("tree")
+    cache = {}
+
+    def load(oid):
+        if oid not in cache:
+            data = read(f"repos/{repo}/git/trees/{oid}")
+            if not isinstance(data, dict) or data.get("truncated") or not isinstance(data.get("tree"), list):
+                raise ValueError("tree")
+            entries = {}
+            for item in data["tree"]:
+                if not isinstance(item, dict):
+                    raise ValueError("tree")
+                name = item.get("path")
+                kind = item.get("type")
+                child = item.get("sha")
+                if not isinstance(name, str) or name == "" or "/" in name or not full_oid(child):
+                    raise ValueError("tree")
+                if kind not in ("blob", "tree", "commit"):
+                    raise ValueError("tree")
+                entries[name] = (kind, child.lower())
+            cache[oid] = entries
+        return cache[oid]
+
+    found = {}
+    for path in paths:
+        parts = path.split("/")
+        if any(part == "" for part in parts):
+            raise ValueError("tree")
+        current = root
+        matched = False
+        for index, part in enumerate(parts):
+            item = load(current).get(part)
+            if item is None:
+                raise ValueError("tree")
+            kind, oid = item
+            last = index == len(parts) - 1
+            if kind == "tree" and not last:
+                current = oid
+                continue
+            if last and kind in ("blob", "commit"):
+                found[path] = oid
+                matched = True
+                break
+            raise ValueError("tree")
+        if not matched:
+            raise ValueError("tree")
+    return found
+
+
+def changed_blobs(repo, sha, diff, read):
+    """Post-change id for each path in the diff. None on a path means that file was deleted.
+    A gitlink contributes its commit id."""
+    specs = []
+    current = new_path = None
+    deleted = False
+    in_hunk = False
+
+    def flush():
+        nonlocal current, new_path, deleted, in_hunk
+        if current is None:
+            return
+        if new_path is None:
+            raise ValueError("blobs")
+        specs.append((new_path, deleted))
+        current = new_path = None
+        deleted = False
+        in_hunk = False
+
+    for line in diff.replace("\r\n", "\n").split("\n"):
+        if line.startswith("diff --git "):
+            flush()
+            status, path = git_header_path(line)
+            if status == "bad":
+                raise ValueError("blobs")
+            current = line
+            new_path = path if status == "path" else None
+            continue
+        if current is None:
+            continue
+        if line.startswith(("rename to ", "copy to ")):
+            chosen = destination_path(line, new_path)
+            if chosen is False:
+                raise ValueError("blobs")
+            new_path = chosen
+        if line.startswith("@@"):
+            in_hunk = True
+        if not in_hunk and (line.startswith("deleted file mode ") or line == "+++ /dev/null"):
+            deleted = True
+    flush()
+    if not specs:
+        raise ValueError("blobs")
+    needed = [path for path, removed in specs if not removed]
+    found = {path: None for path, removed in specs if removed}
+    for path, oid in path_oids(repo, sha, needed, read).items():
+        found[path] = oid
+    if any(not removed and not full_oid(found.get(path)) for path, removed in specs):
+        raise ValueError("blobs")
+    return found
 
 
 def matches(path, patterns):
@@ -424,12 +625,129 @@ def event_base_on_default(repo, base, default, read):
     raise ValueError("base branch")
 
 
-def owner_approved(repo, number, head, read):
-    """True when the repository owner has an issue comment for this exact head. Edits are the current body."""
+def repository_owner(repo, read):
     info = read(f"repos/{repo}")
     owner = (info.get("owner") or {}).get("login") if isinstance(info, dict) else None
     if not isinstance(owner, str) or owner == "":
         raise ValueError("repository owner")
+    return owner
+
+
+def status_actors(repo, read):
+    """Owner plus STATUS_ACTORS. Blank entries are not logins. Solo profile only."""
+    extra = tuple(login for login in STATUS_ACTORS if isinstance(login, str) and login != "")
+    return (repository_owner(repo, read), *extra)
+
+
+def status_actor(status):
+    creator = status.get("creator") if isinstance(status, dict) else None
+    login = creator.get("login") if isinstance(creator, dict) else None
+    if not isinstance(login, str) or login == "":
+        return None
+    return login
+
+
+def reviewed_state(status, allowed):
+    """State that counts for one review context.
+
+    allowed is None on a team profile: the creator is not checked.
+    On a 1-person profile, a creator outside allowed is failure. Combined status keeps
+    the newest state per context, so dropping that status would look like a missing
+    context and carry could reuse an older success over a newer rejection."""
+    if allowed is None:
+        return status["state"]
+    actor = status_actor(status)
+    if any(same_login(actor, login) for login in allowed):
+        return status["state"]
+    print(f"review status untrusted {status.get('context')} from {actor or 'unknown'} is not success")
+    return "failure"
+
+
+def comment_unedited(comment):
+    """True when the comment was not edited.
+
+    updated_at must be the same string as created_at. REST timestamps are whole seconds,
+    so a same-second edit can keep those strings equal. last_edited_at is GraphQL
+    lastEditedAt: null means GitHub recorded no edit, and a missing key is not approval.
+    includes_created_edit true means the history contains an edit."""
+    if not isinstance(comment, dict):
+        return False
+    created = comment.get("created_at")
+    updated = comment.get("updated_at")
+    if not (isinstance(created, str) and created != "" and created == updated):
+        return False
+    if "last_edited_at" not in comment or comment.get("last_edited_at") is not None:
+        return False
+    return comment.get("includes_created_edit") is not True
+
+
+def comment_list_target(endpoint):
+    """(repo, number) when endpoint is the issue-comment list. None otherwise."""
+    parts = endpoint.split("/")
+    if (len(parts) != 6 or parts[0] != "repos" or parts[3] != "issues"
+            or parts[5] != "comments?per_page=100" or not parts[4].isdigit()):
+        return None
+    return f"{parts[1]}/{parts[2]}", parts[4]
+
+
+def comment_record(node):
+    """One issue comment from GraphQL. Raises when the edit fields are missing."""
+    if not isinstance(node, dict):
+        raise ValueError("approval comments")
+    if "lastEditedAt" not in node or "includesCreatedEdit" not in node:
+        raise ValueError("approval comments")
+    author = node.get("author")
+    login = author.get("login") if isinstance(author, dict) else None
+    return {
+        "user": {"login": login},
+        "body": node.get("body"),
+        "created_at": node.get("createdAt"),
+        "updated_at": node.get("updatedAt"),
+        "last_edited_at": node.get("lastEditedAt"),
+        "includes_created_edit": node.get("includesCreatedEdit") is True,
+    }
+
+
+def approval_comment_pages(repo, number):
+    """Issue comments, 100 per page. lastEditedAt is null when the body was never edited."""
+    owner, name = repo.split("/", 1)
+    query = (
+        "query($owner:String!,$name:String!,$number:Int!,$cursor:String){"
+        "repository(owner:$owner,name:$name){pullRequest(number:$number){"
+        "comments(first:100,after:$cursor){nodes{author{login} body createdAt updatedAt "
+        "lastEditedAt includesCreatedEdit}pageInfo{hasNextPage endCursor}}}}}"
+    )
+    pages = []
+    cursor = None
+    for _ in range(20):
+        command = ["gh", "api", "graphql", "-f", f"query={query}", "-f", f"owner={owner}",
+                   "-f", f"name={name}", "-F", f"number={int(number)}"]
+        if cursor:
+            command.extend(["-f", f"cursor={cursor}"])
+        result = subprocess.run(command, capture_output=True, text=True, check=True, timeout=60)
+        try:
+            pull = json.loads(result.stdout)["data"]["repository"]["pullRequest"]
+            connection = pull["comments"]
+            nodes = connection["nodes"]
+            info = connection["pageInfo"]
+        except (json.JSONDecodeError, KeyError, TypeError):
+            raise ValueError("approval comments") from None
+        if not isinstance(nodes, list) or not isinstance(info, dict):
+            raise ValueError("approval comments")
+        pages.append([comment_record(node) for node in nodes])
+        if not info.get("hasNextPage"):
+            return pages
+        cursor = info.get("endCursor")
+        if not isinstance(cursor, str) or cursor == "":
+            raise ValueError("approval comments")
+    raise ValueError("approval comments")
+
+
+def owner_approved(repo, number, head, read):
+    """True when the owner has an unedited issue comment for this exact head.
+    updated_at must equal created_at, and GitHub must have no edit (lastEditedAt null).
+    An edited comment is not approval, including a same-second edit; post a new comment."""
+    owner = repository_owner(repo, read)
     pages = read(f"repos/{repo}/issues/{number}/comments?per_page=100")
     if not isinstance(pages, list):
         raise ValueError("approval comments")
@@ -442,16 +760,35 @@ def owner_approved(repo, number, head, read):
                 continue
             user = comment.get("user")
             login = user.get("login") if isinstance(user, dict) else None
-            if same_login(login, owner) and approval_sha(comment.get("body")) == wanted:
+            if (same_login(login, owner) and comment_unedited(comment)
+                    and approval_sha(comment.get("body")) == wanted):
                 return True
     return False
 
 
-def latest_state(statuses, context):
-    """The combined status lists the newest state of each context first."""
+def status_list(pages):
+    """Newest-first status objects from GET /commits/{sha}/statuses.
+
+    Each page is a list. The combined status object is a dict and has no creator,
+    so it is not this list and must not count as success."""
+    if not isinstance(pages, list):
+        raise ValueError("commit statuses")
+    flat = []
+    for page in pages:
+        if not isinstance(page, list):
+            raise ValueError("commit statuses")
+        for status in page:
+            if not isinstance(status, dict) or "context" not in status:
+                raise ValueError("commit statuses")
+            flat.append(status)
+    return flat
+
+
+def latest_status(statuses, context):
+    """The status list is newest first. The first item of a context is the one that counts."""
     for status in statuses:
         if status["context"] == context:
-            return status["state"]
+            return status
     return None
 
 
@@ -497,17 +834,23 @@ def prior_shas(repo, number, head, read, commit_count):
     return ordered[:PRIOR_LIMIT]
 
 
-def identity_of(repo, base, sha, read_diff, cache):
+def identity_of(repo, base, sha, read_diff, cache, read):
     if sha not in cache:
         try:
-            cache[sha] = diff_identity(read_diff(f"repos/{repo}/compare/{base}...{sha}"))
-        except (OSError, subprocess.SubprocessError, ValueError, TypeError):
+            diff = read_diff(f"repos/{repo}/compare/{base}...{sha}")
+            if isinstance(diff, str) and diff.replace("\r\n", "\n").strip() == "":
+                cache[sha] = "empty"
+            else:
+                cache[sha] = diff_identity(diff, changed_blobs(repo, sha, diff, read))
+        except (OSError, subprocess.SubprocessError, ValueError, TypeError, AttributeError):
             cache[sha] = None
     return cache[sha]
 
 
-def carried_contexts(repo, number, head, base, contexts, read, read_diff, commit_count):
-    """Contexts whose newest prior status is success and whose diff matches this head. Anything unverified stays put."""
+def carried_contexts(repo, number, head, base, contexts, read, read_diff, commit_count, allowed=None):
+    """Contexts whose newest prior status is success and whose diff matches this head. Anything unverified stays put.
+    allowed is the solo-profile creator list. None keeps the team profile and does not read the creator.
+    An untrusted creator is failure, same as on the current head, so the walk does not skip it."""
     candidates = prior_shas(repo, number, head, read, commit_count)
     if not candidates:
         return set()
@@ -516,14 +859,17 @@ def carried_contexts(repo, number, head, base, contexts, read, read_diff, commit
     def state_at(sha, context):
         if sha not in fetched:
             try:
-                pages = read(f"repos/{repo}/commits/{sha}/status?per_page=100")
-                fetched[sha] = [status for page in pages for status in page["statuses"]]
+                pages = read(f"repos/{repo}/commits/{sha}/statuses?per_page=100")
+                fetched[sha] = status_list(pages)
             except (OSError, subprocess.SubprocessError, KeyError, ValueError, TypeError):
                 fetched[sha] = None
         # A failed lookup must not skip this SHA for an older success: its state is unknown.
         if fetched[sha] is None:
             return "unreadable"
-        return latest_state(fetched[sha], context)
+        found = latest_status(fetched[sha], context)
+        if found is None:
+            return None
+        return reviewed_state(found, allowed)
 
     for context in contexts:
         donor = None
@@ -533,8 +879,8 @@ def carried_contexts(repo, number, head, base, contexts, read, read_diff, commit
                 continue
             if state != "success":
                 break
-            current = identity_of(repo, base, head, read_diff, cache)
-            prior = identity_of(repo, base, sha, read_diff, cache)
+            current = identity_of(repo, base, head, read_diff, cache, read)
+            prior = identity_of(repo, base, sha, read_diff, cache, read)
             if current is not None and current == prior:
                 donor = sha
             break
@@ -724,6 +1070,10 @@ def missing(repo, number, head, base, read=read_api, read_diff=None):
     default = default_base(repo, pull, read)
     if default is None or not event_base_on_default(repo, base, default, read):
         return [BASE_REF]
+    # None means a team profile: any creator still counts. A 1-person profile counts the owner
+    # and STATUS_ACTORS only, and treats every other creator as failure.
+    solo = not team_profile(repo, base, read)
+    allowed = status_actors(repo, read) if solo else None
     # The open pull request's file and commit lists follow its current head, which can move
     # after this event. review/independent and review/security follow compare(base, head).
     patterns = COMMON_PATHS + DEPENDENCY_FILES + project_paths(repo, base, read)
@@ -742,11 +1092,18 @@ def missing(repo, number, head, base, read=read_api, read_diff=None):
     # Compare stops at 300 files. A hidden path cannot be ruled out.
     if pinned is None or (touched and not bump):
         needed.append(SECURITY)
-    statuses = [status for page in read(f"repos/{repo}/commits/{head}/status?per_page=100") for status in page["statuses"]]
-    # The combined list is newest first. An older success in that list does not erase a newer failure.
+    statuses = status_list(read(f"repos/{repo}/commits/{head}/statuses?per_page=100"))
+    # The list is newest first. An older success does not erase a newer failure.
+    # An untrusted creator is failure, so it also does not reveal an older trusted success.
     newest = {}
     for status in statuses:
-        newest.setdefault(status["context"], status["state"])
+        context = status["context"]
+        if context in newest:
+            continue
+        if allowed is not None and context in (INDEPENDENT, SECURITY):
+            newest[context] = reviewed_state(status, allowed)
+        else:
+            newest[context] = status["state"]
     present = set(newest)
     for context in (INDEPENDENT, SECURITY):
         if context not in needed and context in present:
@@ -759,7 +1116,7 @@ def missing(repo, number, head, base, read=read_api, read_diff=None):
         result = list(absent)
     else:
         carried = carried_contexts(
-            repo, number, head, base, reusable, read, read_diff or read_diff_api, pull.get("commits"))
+            repo, number, head, base, reusable, read, read_diff or read_diff_api, pull.get("commits"), allowed)
         result = [context for context in absent if context not in carried]
     # The owner comment is tied to this SHA, so an unchanged diff does not carry it. A posted status does not either.
     if pinned is None:
@@ -770,7 +1127,7 @@ def missing(repo, number, head, base, read=read_api, read_diff=None):
         needs_owner = one_way(pinned, False) or profile_line_changes(pinned) or introduced
         version_only = (pinned_commits is not None and dependabot_bump(pull, pinned_commits, pinned)
                         and not major_change(pinned))
-    if needs_owner and not version_only and not team_profile(repo, base, read) and not owner_approved(repo, number, head, read):
+    if needs_owner and not version_only and solo and not owner_approved(repo, number, head, read):
         result.append(OWNER)
     # The body is the current pull request text. This run's head is the event SHA, not a later push.
     if isinstance(pull, dict) and not _dependabot_author(pull):
