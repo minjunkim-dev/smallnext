@@ -145,7 +145,7 @@ HTTP 401 또는 SDK `authentication_failed`가 발생하면 해당 리뷰를 미
 
 공개 전환 후 main 보호를 적용하고 API로 확인했습니다. PR과 최신 기준 브랜치의 검사를 요구합니다.
 서버에 적용된 필수 검사 이름은 `PR conventions`, `Repository hygiene`, `Project checks`입니다.
-`.github/repository-settings.json`의 기대값은 `strict: true`를 유지하고 그 셋에 `{"context": "Review status", "app_id": 15368}`을 더 기록합니다. context는 `.github/workflows/review-status.yml`의 job 이름 `Review status`와 같습니다. 이 파일 기록은 branch protection을 바꾸지 않습니다. 병합 뒤 소유자가 Mac에서 적용합니다. 적용되면 Dependabot 버전 전용 PR을 뺀 모든 PR(되돌리기 쉬움 포함)에 소유자가 올리는 `review/*` status가 필요합니다. `review/independent`는 그 예외를 뺀 모든 PR에 필요하고, 신뢰 경계 경로를 바꾸면 `review/security`도 필요합니다. 1인 프로필에서 status는 소유자만 올린다는 규칙입니다. 에이전트가 status를 올리는 것은 금지지만 GitHub가 기술적으로 막지는 않습니다. 검사기는 `creator.login`이 저장소 소유자이거나 `STATUS_ACTORS`(지금은 비어 있음)인 status만 success로 셉니다. workflow는 기본 브랜치에 있고, job 이름 `Review status`는 [run 42023589501](https://github.com/minjunkim-dev/smallnext/actions/runs/42023589501)에서 성공했습니다.
+`.github/repository-settings.json`의 기대값은 `strict: true`를 유지하고 그 셋에 `{"context": "Review status", "app_id": 15368}`을 더 기록합니다. context는 `.github/workflows/review-status.yml`의 job 이름 `Review status`와 같습니다. 이 파일 기록은 branch protection을 바꾸지 않습니다. 병합 뒤 소유자가 Mac에서 적용합니다. 적용되면 Dependabot 버전 전용 PR을 뺀 모든 PR(되돌리기 쉬움 포함)에 소유자가 올리는 `review/*` status가 필요합니다. `review/independent`는 그 예외를 뺀 모든 PR에 필요하고, 신뢰 경계 경로를 바꾸면 `review/security`도 필요합니다. 에이전트는 status와 승인 댓글을 쓰지 않습니다. 누가 success로 세는지는 [공통 기준 갱신](#공통-기준-갱신과-설정-관측-기록)의 검사기 규칙을 따릅니다. workflow는 기본 브랜치에 있고, job 이름 `Review status`는 [run 42023589501](https://github.com/minjunkim-dev/smallnext/actions/runs/42023589501)에서 성공했습니다.
 관리자에게도 규칙을 적용합니다. 선형 이력, 미해결 리뷰 대화 해결, 강제 push·main 삭제 금지를 요구합니다.
 동료 승인은 필수가 아닙니다. 2026-10-06 `gh api repos/minjunkim-dev/smallnext/branches/main/protection`의 `required_pull_request_reviews`에서 `required_approving_review_count: 0`, `require_code_owner_reviews: false`를 확인했습니다. 병합은 [병합 조건](WORKFLOW.md#병합-조건)을 따릅니다.
 비공개일 때 ruleset 요청이 HTTP 403으로 거절된 기록은 현재 공개 저장소의 보호 상태를 나타내지 않습니다.
@@ -199,7 +199,7 @@ CodeQL workflow를 바꾸면 기준선의 `codeql_main_source.sha`도 새 Git bl
 
 기존 기준선의 설명용 `exceptions` 배열은 내용을 보존해 `observations`로 옮겼다. 관측 기록은 API 감사 항목을 제외하지 않는다. 실제 기능 미지원·비해당을 감사 범위에서 제외하려면 원본의 [설정 기준선 형식](https://github.com/minjunkim-dev/repo-baseline/blob/9a3920b942695257772f25083e8a4fde5d4e3208/docs/github-settings-profile.md)에 맞는 `exceptions` 객체와 사유·근거가 필요하다. 예외가 있으면 exit 0이어도 결과는 전체 PASS가 아닌 LIMITED다. 미선언 403·404·누락·권한 오류는 계속 실패한다.
 
-`.github/repository-settings.json`의 `required_status_checks.checks`에 `{"context": "Review status", "app_id": 15368}`을 기록했다. `strict`와 기존 `PR conventions`, `Repository hygiene`, `Project checks`는 그대로다. context는 workflow job 이름 `Review status`와 같다. 이 파일은 기대값이다. 이 기록은 GitHub 서버의 branch protection, 권한, CodeQL, 배포, Actions 이벤트 정책을 바꾸지 않는다. 카나리 통과는 [repo-baseline Issue #32 댓글](https://github.com/minjunkim-dev/repo-baseline/issues/32#issuecomment-6673035189)에 있다. 그 댓글의 Dependabot 예외는 시험할 PR이 없어 미검증이다. 병합 뒤 소유자가 Mac에서 적용한다. 적용되면 Dependabot 버전 전용 PR을 뺀 모든 PR(되돌리기 쉬움 포함)에 소유자가 올리는 `review/*` status가 필요하다. 과거 실행 기록을 현재 검증 결과로 바꾸지 않는다.
+`Review status`를 기대값에 더한 기록과, 적용 뒤의 병합 조건은 [현재 제한](#현재-제한)에 있다. 이 갱신은 GitHub 서버의 branch protection, 권한, CodeQL, 배포, Actions 이벤트 정책을 바꾸지 않는다. 카나리 통과는 [repo-baseline Issue #32 댓글](https://github.com/minjunkim-dev/repo-baseline/issues/32#issuecomment-6673035189)에 있다. 그 댓글의 Dependabot 예외는 시험할 PR이 없어 미검증이다. 과거 실행 기록을 현재 검증 결과로 바꾸지 않는다.
 
 ## 과거 Bugbot 확인 기록
 
