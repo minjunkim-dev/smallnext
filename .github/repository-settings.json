@@ -42,6 +42,10 @@
           {
             "context": "Project checks",
             "app_id": 15368
+          },
+          {
+            "context": "Review status",
+            "app_id": 15368
           }
         ]
       },
