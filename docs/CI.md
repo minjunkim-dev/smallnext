@@ -222,4 +222,4 @@ API 배포를 켜기 전에 운영 도메인·VM·관리형 DB·비밀정보 제
 
 ## 공통 기준 복사본 검사
 
-Repository hygiene는 `python3 scripts/check_repository.py`(파일·링크·action pin·피처 플래그·CodeQL blob pin)와 전체 scripts 테스트를 실행한다. repo-baseline 해시 복사본 검사는 2026-11-08에 제거했다. 자체 리뷰의 자료 선택과 사용자 요청 회고는 `docs/agents/review.md`를 따른다.
+Repository hygiene는 `python3 scripts/check_repository.py`(파일·링크·action pin·피처 플래그·CodeQL action commit 일치)와 전체 scripts 테스트를 실행한다. repo-baseline 해시 복사본 검사는 2026-11-08에 제거했다. 자체 리뷰의 자료 선택과 사용자 요청 회고는 `docs/agents/review.md`를 따른다.

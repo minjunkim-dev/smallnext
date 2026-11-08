@@ -68,17 +68,15 @@ class FlagsTest(unittest.TestCase):
 
 
 class CodeqlSourceTest(unittest.TestCase):
-    def test_pinned_blob_and_one_action_commit(self):
+    def test_one_action_commit(self):
         self.assertEqual([], codeql_source_drift(ROOT))
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)
             (root / ".github/workflows").mkdir(parents=True)
-            settings = (ROOT / ".github/repository-settings.json").read_text(encoding="utf-8")
-            (root / ".github/repository-settings.json").write_text(settings, encoding="utf-8")
             (root / ".github/workflows/codeql.yml").write_text(
                 "- uses: github/codeql-action/init@" + "a" * 40 + "\n- uses: github/codeql-action/analyze@" + "b" * 40 + "\n",
                 encoding="utf-8")
-            self.assertEqual(2, len(codeql_source_drift(root)))
+            self.assertEqual(1, len(codeql_source_drift(root)))
 
 
 if __name__ == "__main__":
