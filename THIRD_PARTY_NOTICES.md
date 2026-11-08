@@ -11,7 +11,6 @@
 | --- | --- | --- |
 | Gradle Wrapper | 9.8.2, `apps/android/gradle/wrapper/gradle-wrapper.jar`, `gradlew`, `gradlew.bat` | Apache-2.0. JAR의 `META-INF/LICENSE`와 스크립트의 원래 고지를 유지합니다. [Gradle 라이선스](https://github.com/gradle/gradle/blob/v9.8.2/LICENSE) |
 | mattpocock/skills wizard 라이브러리 | plugin 1.2.3, `scripts/prepare_beta_accounts.sh`의 STAGES 위 부분 | MIT. Copyright (c) 2026 Matt Pocock. 파일 머리말에 고지 전문을 유지합니다. [mattpocock/skills](https://github.com/mattpocock/skills) |
-| mattpocock/skills `code-review` | v1.3.2, commit `d1478fcb140db0b93c0c8df17bcfd311844749d0`. `.agents/skills/matt-code-review/`와 `.claude/skills/matt-code-review/`에 같은 사본. frontmatter 이름만 `matt-code-review` | MIT. Copyright (c) 2026 Matt Pocock. 각 사본의 `LICENSE`를 유지합니다. [mattpocock/skills](https://github.com/mattpocock/skills) |
 
 ## iOS 의존성
 
