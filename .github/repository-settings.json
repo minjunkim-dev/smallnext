@@ -87,6 +87,9 @@
     "immutable_releases": {
       "enabled": true
     },
+    "private_vulnerability_reporting": {
+      "enabled": true
+    },
     "dependabot_alerts": {
       "enabled": true
     },
