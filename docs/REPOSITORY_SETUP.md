@@ -25,7 +25,6 @@ python3 <repo-baseline>/tools/apply_github_settings.py <smallnext 경로>
 ```
 
 `--apply` 없이 실행하면 GET만 하고 차이(DIFF)와 쓸 요청(PLAN)만 보여 준다. 차이가 의도와 맞을 때만 소유자가 `--apply`로 다시 실행한다. 관리자 권한이 필요하므로 PR CI에 연결하지 않는다.
-CodeQL workflow blob pin(`codeql_main_source.sha`)과 CodeQL action commit 일치는 PR의 `Repository hygiene`에서 `scripts/check_repository.py`가 오프라인으로 검사한다.
 
 공개 배포·production workflow는 현재 없다. [Draft CD](DRAFT_RELEASE.md)는 미공개 Release만 생성한다. 사용하지 않는 `release` Environment를 만들지 않는다. 공개 배포를 추가할 때 실제 쓰기 job과 사람 승인 보호를 함께 연결한다.
 Release immutability는 앞으로 공개할 Release에 적용한다. Draft에서 파일·source SHA·checksum·다운로드 검증을 완료한 뒤 공개한다. 이 설정 적용으로 기존 Draft를 공개하거나 기존 Release를 소급 잠그지 않는다.
@@ -51,12 +50,11 @@ Swift CodeQL은 현재 구성의 지원 대상이 아니다. GitHub는 [CodeQL 2
 | 작업 | 담당과 실행 조건 |
 | --- | --- |
 | 문서 링크·공백·Action SHA·플래그 메타데이터 | Repository checks. main push와 PR마다 실행 |
-| PR 제목·브랜치·구현 Issue 연결 | PR policy. PR 생성·수정·새 커밋마다 실행 |
 | Issue의 범위·완료 조건·선행 조건 검토 | Claude. 수동 호출만. 쓰기 권한 사용자가 `ai:review` 라벨 지정 또는 리뷰 댓글 작성 |
 | PR의 회귀·플래그·보안 검토와 댓글 | Claude. 수동 호출만. main 대상 PR에 `ai:review` 라벨 지정 또는 리뷰 댓글 작성. Draft와 fork는 제외 |
 | 코드 리뷰와 보안 리뷰 | 작성 모델과 다른 계열. Claude Code로 쓴 변경은 Cursor 쪽 모델이, Cursor로 쓴 변경은 Claude가 본다. Codex는 작성 도구나 리뷰어로 쓰지 않는다 |
 | 제품 결정·계정 연결·기기 확인 | 사람. AI는 검토안을 제시하고 승인된 구현을 수행 |
-| 병합 | [병합 조건](WORKFLOW.md#병합-조건)을 충족하면 작업을 맡은 로컬 에이전트 또는 사람. 리뷰 봇은 병합하지 않음 |
+| 병합 | [병합 조건](WORKFLOW.md#병합-조건)을 충족하면 사람만. 에이전트·리뷰 봇은 병합하지 않음 |
 
 Claude 검토는 댓글 첫 줄에 `@claude review` 또는 `@claude security review`를 씁니다. Issue·PR 생성과 push는 Claude를 실행하지 않습니다.
 `ai:review` 라벨을 제거한 후 다시 지정해도 재검토합니다. `ai:skip` 항목은 Claude가 검토하지 않습니다.

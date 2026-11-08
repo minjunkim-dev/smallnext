@@ -155,8 +155,11 @@ def main():
                 if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_./-]+@[0-9a-f]{40}", action):
                     errors.append(f"{name}: pin external actions to full commit SHA ({action})")
 
+    flags = ROOT / "config/feature-flags.json"
     try:
-        errors.extend(validate_flags(json.loads((ROOT / "config/feature-flags.json").read_text(encoding="utf-8"))))
+        if flags.is_symlink():
+            raise ValueError("refusing to follow a symlink")
+        errors.extend(validate_flags(json.loads(flags.read_text(encoding="utf-8"))))
     except (OSError, ValueError) as error:
         errors.append(f"Feature flags: {error}")
     errors.extend(codeql_source_drift(ROOT))
