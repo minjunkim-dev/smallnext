@@ -1,8 +1,4 @@
-"""Smallnext review authorization checks.
-
-These tests lived in test_workflow_policy.py. That file is now a hashed
-repo-baseline copy, so the project-specific cases stay here.
-"""
+"""Smallnext review authorization checks."""
 
 from copy import deepcopy
 import unittest

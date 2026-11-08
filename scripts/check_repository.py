@@ -1,11 +1,15 @@
 #!/usr/bin/env python3
-"""Validate text files, local documentation links, and CI action pins."""
+"""Validate text files, local documentation links, CI action pins, and feature flags."""
 
+from datetime import date, datetime
+import hashlib
+import json
 from pathlib import Path
 import re
 import subprocess
 import sys
 from urllib.parse import unquote, urlsplit
+from zoneinfo import ZoneInfo
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -38,6 +42,55 @@ def crlf_paths(root):
         if "attr/-text" not in fields and {"i/crlf", "i/mixed", "w/crlf", "w/mixed"} & set(fields[:2]):
             found.append(name)
     return found
+
+
+def positive_integer(value):
+    return type(value) is int and value > 0
+
+
+def validate_flags(registry, today=None):
+    today = today or datetime.now(ZoneInfo("Asia/Seoul")).date()
+    if not isinstance(registry, dict) or type(registry.get("version")) is not int or registry["version"] != 1 or not isinstance(registry.get("flags"), list):
+        return ["Feature flags: expected version 1 and a flags array"]
+    errors, keys = [], set()
+    for index, flag in enumerate(registry["flags"]):
+        prefix = f"Feature flag {index}"
+        if not isinstance(flag, dict):
+            errors.append(f"{prefix}: expected an object")
+            continue
+        key = flag.get("key")
+        if not isinstance(key, str) or not re.fullmatch(r"[a-z][a-z0-9]*(?:_[a-z0-9]+)*", key) or key in keys:
+            errors.append(f"{prefix}: key must be unique snake_case")
+        elif key:
+            keys.add(key)
+        phase = flag.get("phase")
+        if phase not in ("development", "released") or type(flag.get("default")) is not bool:
+            errors.append(f"{prefix}: expected a valid phase and boolean default")
+        if phase == "development" and flag.get("default") is not False:
+            errors.append(f"{prefix}: unfinished features must default to OFF")
+        if phase == "released" and not positive_integer(flag.get("release_issue")):
+            errors.append(f"{prefix}: link the release approval issue")
+        if not isinstance(flag.get("owner"), str) or not flag["owner"].strip() or not positive_integer(flag.get("issue")):
+            errors.append(f"{prefix}: owner and issue are required")
+        try:
+            remove_by = date.fromisoformat(flag.get("remove_by", ""))
+            if remove_by < today:
+                errors.append(f"{prefix}: remove_by has expired; remove the flag or record a new date")
+        except (TypeError, ValueError):
+            errors.append(f"{prefix}: remove_by must be YYYY-MM-DD")
+    return errors
+
+
+def codeql_source_drift(root):
+    """The settings baseline pins the CodeQL workflow blob; init and analyze must share one action commit."""
+    source = json.loads((root / ".github/repository-settings.json").read_text(encoding="utf-8"))["expected"]["codeql_main_source"]
+    data = (root / source["path"]).read_bytes()
+    errors = []
+    if hashlib.sha1(b"blob %d\0" % len(data) + data).hexdigest() != source["sha"]:
+        errors.append(f"{source['path']}: update codeql_main_source.sha in .github/repository-settings.json")
+    if len(set(re.findall(r"uses:\s*github/codeql-action/[\w-]+@([0-9a-f]{40})", data.decode("utf-8")))) > 1:
+        errors.append(f"{source['path']}: every github/codeql-action step must use one commit")
+    return errors
 
 
 def main():
@@ -102,11 +155,17 @@ def main():
                 if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_./-]+@[0-9a-f]{40}", action):
                     errors.append(f"{name}: pin external actions to full commit SHA ({action})")
 
+    try:
+        errors.extend(validate_flags(json.loads((ROOT / "config/feature-flags.json").read_text(encoding="utf-8"))))
+    except (OSError, ValueError) as error:
+        errors.append(f"Feature flags: {error}")
+    errors.extend(codeql_source_drift(ROOT))
+
     if errors:
         print("FAIL: repository hygiene")
         print("\n".join(errors))
         return 1
-    print(f"PASS: {checked} repository text files; whitespace, local links, action pins.")
+    print(f"PASS: {checked} repository text files; whitespace, local links, action pins, feature flags.")
     return 0
 
 

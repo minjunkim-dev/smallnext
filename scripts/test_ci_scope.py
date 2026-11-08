@@ -73,8 +73,7 @@ class ScopeTests(unittest.TestCase):
 
     def test_known_review_and_policy_changes_do_not_build_apps(self):
         paths = [
-            ".github/workflows/agent-review.yml", ".github/workflows/pr-policy.yml",
-            "scripts/workflow_policy.py", "scripts/test_workflow_policy.py",
+            ".github/workflows/agent-review.yml",
             "scripts/review_context.py", "scripts/review_failure.py", "scripts/test_review_failure.py",
             "scripts/review_report.py", "scripts/test_review_report.py",
         ]

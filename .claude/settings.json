@@ -14,7 +14,24 @@
   "permissions": {
     "deny": [
       "Read(.env*)",
-      "Read(!.env.example)"
+      "Read(!.env.example)",
+      "Read(./.env)",
+      "Read(./.env.*)",
+      "Read(**/.env)",
+      "Read(**/.env.*)",
+      "Bash(gh pr merge *)",
+      "Bash(git push * main)",
+      "Bash(git push * *:main)",
+      "Bash(git push * +main)",
+      "Bash(git push *refs/heads/main*)",
+      "Bash(gh api *protection*)",
+      "Bash(gh api *rulesets*)",
+      "Bash(gh repo edit *)",
+      "Bash(gh pr merge)",
+      "Bash(git push)"
+    ],
+    "ask": [
+      "Bash(gh api *)"
     ]
   }
 }
