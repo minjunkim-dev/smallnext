@@ -14,11 +14,11 @@
   "permissions": {
     "deny": [
       "Read(.env*)",
-      "Read(!.env.example)",
       "Read(./.env)",
       "Read(./.env.*)",
       "Read(**/.env)",
       "Read(**/.env.*)",
+      "Read(!.env.example)",
       "Bash(gh pr merge *)",
       "Bash(git push * main)",
       "Bash(git push * *:main)",
