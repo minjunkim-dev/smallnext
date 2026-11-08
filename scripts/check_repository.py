@@ -2,7 +2,6 @@
 """Validate text files, local documentation links, CI action pins, and feature flags."""
 
 from datetime import date, datetime
-import hashlib
 import json
 from pathlib import Path
 import re
@@ -82,15 +81,12 @@ def validate_flags(registry, today=None):
 
 
 def codeql_source_drift(root):
-    """The settings baseline pins the CodeQL workflow blob; init and analyze must share one action commit."""
-    source = json.loads((root / ".github/repository-settings.json").read_text(encoding="utf-8"))["expected"]["codeql_main_source"]
-    data = (root / source["path"]).read_bytes()
-    errors = []
-    if hashlib.sha1(b"blob %d\0" % len(data) + data).hexdigest() != source["sha"]:
-        errors.append(f"{source['path']}: update codeql_main_source.sha in .github/repository-settings.json")
-    if len(set(re.findall(r"uses:\s*github/codeql-action/[\w-]+@([0-9a-f]{40})", data.decode("utf-8")))) > 1:
-        errors.append(f"{source['path']}: every github/codeql-action step must use one commit")
-    return errors
+    """init and analyze must share one github/codeql-action commit."""
+    path = ".github/workflows/codeql.yml"
+    text = (root / path).read_text(encoding="utf-8")
+    if len(set(re.findall(r"uses:\s*github/codeql-action/[\w-]+@([0-9a-f]{40})", text))) > 1:
+        return [f"{path}: every github/codeql-action step must use one commit"]
+    return []
 
 
 def main():

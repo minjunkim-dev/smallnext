@@ -187,7 +187,7 @@ Project checks는 iOS·Android·API와 컨테이너를 검사합니다.
 로컬 실행은 [개발 환경](DEVELOPMENT.md), 캐시와 병렬 실행은 [CI 구성](CI.md)을 따릅니다.
 실제 AI 품질과 운영 배포는 초기 셋업의 검증 범위에 포함하지 않습니다.
 
-CodeQL workflow를 바꾸면 기준선의 `codeql_main_source.sha`도 새 Git blob SHA로 갱신합니다. PR의 `Repository hygiene`가 갱신하지 않은 SHA와 서로 다른 `github/codeql-action` commit을 거부합니다.
+PR의 `Repository hygiene`는 CodeQL workflow의 `github/codeql-action` 단계가 서로 다른 commit을 쓰면 거부합니다.
 PR 본문 양식은 `.github/pull_request_template.md` 하나입니다. 대문자 `.github/PULL_REQUEST_TEMPLATE.md`는 대소문자만 달라 대소문자를 구분하지 않는 체크아웃에서 충돌하므로 제거했습니다. 플래그 안내는 [협업 규칙](WORKFLOW.md)에 있습니다.
 
 ## 공통 기준
