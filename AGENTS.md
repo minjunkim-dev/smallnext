@@ -2,7 +2,7 @@
 
 큰 목표를 지금 할 수 있는 작은 다음 행동으로 바꾸는 플래너다. iOS·Android 앱과 Rust API가 있다. 프로필: 1인.
 
-사람, Claude Code, Cursor가 같은 이 파일을 읽는다. 프로젝트 지침은 여기에만 둔다. Claude Code는 `CLAUDE.md`가 없으면 이 파일을 읽으므로 `CLAUDE.md`·`.claude/CLAUDE.md`·`CLAUDE.local.md`를 만들지 않는다. 하나라도 있으면 Claude Code가 이 파일을 읽지 않는다. 다른 도구별 지침 파일도 만들지 않는다.
+사람, Claude Code, Cursor가 같은 이 파일을 읽는다. 프로젝트 지침은 여기에만 둔다. Claude Code는 `CLAUDE.md`가 없으면 이 파일을 읽으므로 `CLAUDE.md`·`.claude/CLAUDE.md`·`CLAUDE.local.md`를 만들지 않는다. 기본 설정에서는 하나라도 있으면 Claude Code가 이 파일을 읽지 않는다. 다른 도구별 지침 파일도 만들지 않는다.
 
 ## 명령
 
