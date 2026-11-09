@@ -192,7 +192,7 @@ PR 본문 양식은 `.github/pull_request_template.md` 하나입니다. 대문�
 
 ## 공통 기준
 
-2026-11-08 공개 `minjunkim-dev/repo-baseline`의 새 기준(main `513ac5d`, 코어 + GitHub 프로필)으로 옮겼습니다([repo-baseline#71](https://github.com/minjunkim-dev/repo-baseline/issues/71)). 해시 복사(`.github/repo-baseline.json`과 복사한 검사기), `review/gate`, PR 제목·브랜치·본문 검사는 쓰지 않습니다. 코어 파일(`AGENTS.md`, `CLAUDE.md`, `REVIEW.md`, PR 양식)은 이 저장소가 직접 고칩니다. 규칙의 원문은 repo-baseline의 `POLICY.md`입니다. 이전 기준선의 설명용 `observations` 배열은 [repository-settings.json](../.github/repository-settings.json)에 그대로 둡니다.
+2026-11-08 공개 `minjunkim-dev/repo-baseline`의 새 기준(main `513ac5d`, 코어 + GitHub 프로필)으로 옮겼습니다([repo-baseline#71](https://github.com/minjunkim-dev/repo-baseline/issues/71)). 해시 복사(`.github/repo-baseline.json`과 복사한 검사기), `review/gate`, PR 제목·브랜치·본문 검사는 쓰지 않습니다. 코어 파일(`AGENTS.md`, `REVIEW.md`, PR 양식)은 이 저장소가 직접 고칩니다. 규칙의 원문은 repo-baseline의 `POLICY.md`입니다. 2026-11-09 repo-baseline이 코어에서 `CLAUDE.md`를 뺐으므로 이 저장소도 지웠습니다. 이전 기준선의 설명용 `observations` 배열은 [repository-settings.json](../.github/repository-settings.json)에 그대로 둡니다.
 
 ## 과거 Bugbot 확인 기록
 
