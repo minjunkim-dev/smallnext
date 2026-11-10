@@ -23,7 +23,8 @@ default branch 반영과 Draft 실제 실행은 최종 head 승인 뒤 확인한
 ## 실제 검사와 독립 리뷰
 
 이 파일은 구현 단계의 검증 기록이다. 최종 head·리뷰 결과·원격 CI URL은 PR의 Evidence와 별도 최종 검증 보고서에 기록한다.
-`python3 scripts/check_repository.py`, `python3 scripts/workflow_policy.py`, `git diff --check` 통과.
+`python3 scripts/check_repository.py`, 당시 `python3 scripts/workflow_policy.py`(이후 제거), `git diff --check` 통과.
+`workflow_policy.py`는 2026-11-08 `ae03c92`(#385)에서 제거됐다. 피처 플래그 검사는 `scripts/check_repository.py`가 이어받았고 현재 `make repository-check`가 실행한다.
 `python3 -m unittest discover -s scripts -p 'test_*.py'`: 초기 212개 검사 통과, 53.275초.
 `actionlint`: 통과. actionlint 1.7.12, ShellCheck 0.11.0, Python 3.9.6, gh 2.102.0.
 첫 로컬 검사에서 Python 3.9의 `hashlib.file_digest` 미지원 오류를 확인했다.
