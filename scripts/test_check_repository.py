@@ -66,6 +66,27 @@ class FlagsTest(unittest.TestCase):
         flag["release_issue"] = 19
         self.assertEqual([], validate_flags({"version": 1, "flags": [flag]}, self.today))
 
+    def test_issue_must_be_positive_integer(self):
+        rejected = [0, -1, True, "3", 1.0, None]
+        for value in rejected:
+            with self.subTest(issue=value):
+                flag = dict(self.flag, issue=value)
+                self.assertEqual(["Feature flag 0: owner and issue are required"], validate_flags({"version": 1, "flags": [flag]}, self.today))
+        with self.subTest(issue="missing"):
+            flag = {k: v for k, v in self.flag.items() if k != "issue"}
+            self.assertEqual(["Feature flag 0: owner and issue are required"], validate_flags({"version": 1, "flags": [flag]}, self.today))
+        self.assertEqual([], validate_flags({"version": 1, "flags": [dict(self.flag, issue=1)]}, self.today))
+
+    def test_release_issue_must_be_positive_integer(self):
+        released = dict(self.flag, phase="released", default=True)
+        for value in [0, -1, True, "3", 1.0, None]:
+            with self.subTest(release_issue=value):
+                flag = dict(released, release_issue=value)
+                self.assertEqual(["Feature flag 0: link the release approval issue"], validate_flags({"version": 1, "flags": [flag]}, self.today))
+        with self.subTest(release_issue="missing"):
+            self.assertEqual(["Feature flag 0: link the release approval issue"], validate_flags({"version": 1, "flags": [released]}, self.today))
+        self.assertEqual([], validate_flags({"version": 1, "flags": [dict(released, release_issue=1)]}, self.today))
+
 
 class CodeqlSourceTest(unittest.TestCase):
     def test_one_action_commit(self):
