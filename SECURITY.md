@@ -18,7 +18,9 @@
 
 ## 문제를 발견했을 때
 
-저장소 소유자에게 비공개로 알립니다.
+취약점은 공개 Issue가 아니라 이 저장소의 [비공개 취약점 보고](https://github.com/minjunkim-dev/smallnext/security/advisories/new)로 저장소 소유자에게 알립니다.
+공개 Issue, PR, 커밋, 댓글에 취약점 설명, 익스플로잇, 비밀값을 붙이지 않습니다.
+공개된 권고는 [보안 권고 목록](https://github.com/minjunkim-dev/smallnext/security/advisories)에 있습니다.
 노출된 값 자체를 재게시하지 않습니다.
 자격 증명이 노출되면 해당 서비스에서 폐기하거나 교체합니다.
 Git 기록에서 파일을 삭제하는 것만으로 노출이 해결되었다고 판단하지 않습니다.

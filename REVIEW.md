@@ -1,7 +1,7 @@
 # 리뷰 기준
 
 리뷰 에이전트가 읽는 파일이다. 구현 에이전트에게 상시 주입하지 않는다. 구현자는 관련 Issue·도메인 문서와 [WORKFLOW](docs/WORKFLOW.md)를 읽는다.
-리뷰는 구현과 다른 컨텍스트에서 한다. 입력은 변경분(diff), 이 파일, Issue의 확정 완료 조건이다. 입력 준비와 변경 영역별 상세 문서는 [로컬 독립 리뷰](docs/agents/review.md)에 있다.
+리뷰는 구현과 다른 컨텍스트에서 한다. 입력은 변경분(diff), 이 파일, PR 본문 Summary의 완료 기준(Issue의 확정 완료 조건)이다. 입력 준비와 변경 영역별 상세 문서는 [로컬 독립 리뷰](docs/agents/review.md)에 있다.
 
 ## 실패로 보는 것
 
@@ -16,8 +16,15 @@
 | 검증 스크립트 | 오류·timeout·취소·하위 프로세스 회수·소유한 임시 파일 정리를 잃는다. 삭제·덮어쓰기·경로 탈출·큰 출력·부분 결과에서 실패를 숨긴다 |
 | GitHub 수집·집계·Draft | pagination·최신 attempt·head/base/merge SHA·publisher·최종 상태를 대조하지 않는다. Draft가 main source·같은 SHA의 CI를 확인하지 않거나 기존 Release·태그·asset을 덮어쓴다 |
 | 문서 | 사실과 다르다. 명령이 실제로 동작하지 않는다. 하나의 사실을 두 기준 문서에 적는다 |
+| 범위 | 완료 기준과 관계없는 파일이나 동작을 바꾼다. 검사가 통과해도 실패다 |
 
 도메인은 [CONTEXT](CONTEXT.md), 보안·서버 제약은 [SERVER_AI](docs/SERVER_AI.md), 작업·플래그는 [WORKFLOW](docs/WORKFLOW.md), 저작권은 [COPYRIGHT](COPYRIGHT.md)를 따른다.
+
+## 코딩 기준
+
+판단이 필요한 작성 규칙만 적는다. 금지 API, import 모양, 파일 위치처럼 기계로 가릴 수 있는 규칙은 린트·검사로 만든다. 리뷰어는 이 기준을 diff가 건드린 줄에만 적용하고, 확실하면 직접 고친다. 어긴 곳은 P2다.
+
+- 아직 없음. 생기면 `YYYY-MM-DD 규칙` 형식으로 한 줄씩 더한다. 사용자가 승인한 것만 넣는다.
 
 ## 심각도
 
@@ -31,11 +38,11 @@
 - 이 PR이 만들지 않은 기존 문제(필요하면 "기존 문제"로 따로 표시한다).
 - 생성 파일(`contracts/openapi.json`은 `make api-spec-check`가 대조), lockfile의 해시 줄, `docs/research/fixtures/`.
 
-## 신뢰 경계
+## 민감한 파일
 
-Door가 되돌리기 어려움이거나 이 경로를 건드리면 보안 관점의 리뷰를 더한다.
+되돌리기 어려움이거나 이 경로를 건드리면 보안 관점의 리뷰를 더한다.
 
-- 공통: `.github/workflows/**`, 저장소·CI 설정(`.github/repository-settings.json`, `.github/dependabot.yml`, `CODEOWNERS`, `.ci/toolchains.json`), 의존성 manifest·lockfile(`Cargo.toml`·`Cargo.lock`, Gradle 파일, `mise.lock`, `skills-lock.json`), 에이전트 권한(`.claude/settings.json`).
+- 공통: `.github/workflows/**`, 저장소·CI 설정(`.github/repository-settings.json`, `.github/dependabot.yml`, `CODEOWNERS`, `.ci/toolchains.json`), 의존성 manifest·lockfile(`Cargo.toml`·`Cargo.lock`, Gradle 파일, `mise.lock`, `skills-lock.json`), 에이전트 설정 폴더(`.claude/`·`.agents/`·`.codex/`·`.cursor/` 같은 폴더와 그 안의 모든 파일, 하위 폴더에 있는 것 포함)와 `.mcp.json`.
 - 프로젝트: 인증·익명 계정·AI 예산·동의(`services/api/src/user_ai/**`, `apps/ios/Sources/TurnstileAuthentication.swift`, `apps/ios/Sources/UserServerAI.swift`, `apps/ios/Sources/AIConsent.swift`), DB migration(`services/api/migrations/**`, Android `apps/android/app/src/main/java/dev/smallnext/app/data/AppDatabase.kt`의 `ProgressMigration`), 운영(`infra/production/**`, `scripts/deploy_production.py`, `scripts/prepare_production.py`, `scripts/backup_ai_budget.py`), 독립 집계(`scripts/trusted_ci.py`, `.github/workflows/trusted-aggregation.yml`).
 
 이 경로에서 따로 보는 것:

@@ -64,7 +64,7 @@ head나 base가 바뀌면 최종 독립 리뷰와 영향받는 검증을 갱신�
 | 문서·권리 | `CONTEXT.md`, `docs/DECISIONS.md`, `docs/WORKFLOW.md`, `COPYRIGHT.md`, `THIRD_PARTY_NOTICES.md` |
 
 권한·Secret·workflow·저장소 설정·dependency 정책 변경에는 작성자와 다른 모델의 리뷰를 추가한다. 실행할 수 없으면 그 한계를 기록하고 프로젝트의 위험별 승인 기준을 따른다.
-신뢰 경계 경로는 [리뷰 기준](../../REVIEW.md#신뢰-경계) 한 곳에만 적는다.
+민감한 파일 경로는 [리뷰 기준](../../REVIEW.md#민감한-파일) 한 곳에만 적는다.
 
 ## Matt Pocock retro로 환경 개선
 

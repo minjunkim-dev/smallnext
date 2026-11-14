@@ -102,7 +102,7 @@ P2는 수정하거나 후속 Issue를 연결하고 병합 이유를 기록합니
 4. PR에 검증 결과, 미확인 범위, 플래그 상태, 관련 Issue를 기록합니다. Issue를 생략할 수 있는 유지보수 PR은 관련 Issue 대신 생략 이유를 적습니다.
 
 병합은 사람만 squash로 합니다. 에이전트는 PR을 병합하지 않고 자동 병합도 쓰지 않습니다.
-되돌리기 어려움이거나 [신뢰 경계](../REVIEW.md#신뢰-경계)를 건드린 변경은 사람이 diff를 읽고 그 최종 head에서 병합합니다. 그 뒤 push가 있으면 다시 읽습니다.
+되돌리기 어려움이거나 [민감한 파일](../REVIEW.md#민감한-파일)를 건드린 변경은 사람이 diff를 읽고 그 최종 head에서 병합합니다. 그 뒤 push가 있으면 다시 읽습니다.
 Draft CD의 배포 쓰기 권한 추가도 최종 head 승인이 필요합니다. 실행 절차는 [Draft CD](DRAFT_RELEASE.md)를 따릅니다.
 같은 저장소의 `main` PR은 [독립 집계](CI.md#기준-브랜치의-독립-집계)의 실제 실행 ID도 확인합니다.
 기준 브랜치의 `Trusted CI aggregation`이 대상 `Project checks` run ID·최신 attempt와 현재 PR head·base·merge SHA를 연결하고 `accepted`로 판정해야 합니다.
