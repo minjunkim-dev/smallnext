@@ -1,4 +1,6 @@
 SHELL := /bin/bash
+# A global RUSTUP_TOOLCHAIN (e.g. mise's stable) overrides rust-toolchain.toml; drop it so the pinned toolchain is used.
+unexport RUSTUP_TOOLCHAIN
 API_MANIFEST := services/api/Cargo.toml
 COMPOSE := docker compose --env-file .env -f infra/dev/compose.yaml
 
