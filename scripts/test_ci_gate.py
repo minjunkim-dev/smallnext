@@ -133,6 +133,10 @@ class GateTests(unittest.TestCase):
         env = os.environ.copy()
         env.update(BASE_SHA=base_sha, CURRENT_SHA=current_sha,
                    EVENT_NAME=event_name, NEEDS_JSON=json.dumps(needs))
+        # A mise shim on PATH refuses an untrusted temp clone's .mise.toml, which made
+        # every gate run exit 1 and let the "must fail" tests pass for the wrong reason.
+        trusted = env.get("MISE_TRUSTED_CONFIG_PATHS")
+        env["MISE_TRUSTED_CONFIG_PATHS"] = os.pathsep.join(filter(None, (str(cwd), trusted)))
         if bootstrap_sha is not None:
             command = command.replace("547fdc9bf908ed36d155259a83052102d7c139c3", bootstrap_sha)
         with tempfile.TemporaryDirectory() as runner_temp:
