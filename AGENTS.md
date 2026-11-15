@@ -35,6 +35,7 @@
   - leader 세션은 사람이 repo-office 체크아웃에서 hc 터미널 `office-leader`로 하나만 띄운다. leader는 방향 선택과 설계 승인을 사람에게 묻는다. 병합은 사람이 한다.
   - 이 규칙은 [개발 절차](docs/agents/development.md)의 `implement`와 [협업 규칙](docs/WORKFLOW.md)의 브랜치 이름보다 먼저다. office 과제의 브랜치는 `office/<과제>`다.
   - 예외: 문서·설정 작업(`docs`, `build`, `ci`, `chore`), 이미 열린 PR의 리뷰 수정과 CI 실패 수정, 사람이 여기서 하라고 한 작업.
+  - office 작업자는 이 규칙을 따르지 않는다. 작업 폴더가 repo-office 체크아웃의 `jobs/<과제>/`이고 브랜치가 `office/<과제>`면 office 작업자다. office 작업자는 단계 지시서대로 일하고 leader에 넘기지 않는다.
 
 ## 작업 방식
 
