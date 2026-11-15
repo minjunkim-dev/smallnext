@@ -29,7 +29,7 @@ git switch -c feat/17-goal-split origin/main
 그 외 유형은 Issue 번호가 필요합니다. 구현 범위가 있는 작업은 유형과 무관하게 Issue를 연결합니다.
 
 허용 유형: `feat`, `fix`, `refactor`, `perf`, `test`, `docs`, `build`, `ci`, `chore`, `revert`.
-자동 생성 브랜치는 `claude/<description>`, `dependabot/<description>`을 허용합니다. 리뷰는 구현과 다른 컨텍스트에서 합니다. 다른 모델 계열이면 좋지만 필수는 아닙니다.
+자동 생성 브랜치는 `claude/<description>`, `dependabot/<description>`, `office/<과제>`(repo-office 과제)를 허용합니다. 리뷰는 구현과 다른 컨텍스트에서 합니다. 다른 모델 계열이면 좋지만 필수는 아닙니다.
 봇 브랜치도 PR 제목, 검증, Issue 연결, 병합 규칙을 따릅니다.
 
 커밋과 PR 제목은 Conventional Commits 형식을 사용합니다.
