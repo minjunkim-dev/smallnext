@@ -20,6 +20,7 @@
 | [README](README.md) | 구현 상태와 문서 입구 |
 | [협업 규칙](docs/WORKFLOW.md) | 브랜치·이름·피처 플래그·병합 조건 |
 | [개발 절차](docs/agents/development.md) | 작업 진입, 초기 설정 확인, 명세와 티켓. 작은 수정에는 전체 명세 절차를 강제하지 않는다 |
+| [office 절차](docs/agents/office.md) | 코드 작업을 repo-office leader에 넘기는 법과 과제 등록 |
 | [문서 길잡이](docs/agents/domain.md) | `CONTEXT.md`와 관련 ADR |
 | [미결정 항목](docs/DECISIONS.md) | 사람이 확정한다. Issue의 확정 답·완료 조건이 제품 사양이다 |
 | [Issue tracker](docs/agents/issue-tracker.md), [Triage labels](docs/agents/triage-labels.md) | GitHub `minjunkim-dev/smallnext`, 다섯 역할과 라벨 |
@@ -28,6 +29,13 @@
 | `apps/ios/`, `apps/android/`, `services/api/` | 앱과 API |
 | `scripts/` | 저장소 검사·CI·운영 스크립트와 테스트 |
 | [REVIEW.md](REVIEW.md) | 리뷰 기준. 리뷰할 때만 읽는다. 절차는 [로컬 독립 리뷰](docs/agents/review.md) |
+
+- 코드를 바꾸는 작업은 repo-office 파이프라인으로 돌린다. 코드를 바꾸는 작업은 브랜치 type `feat`, `fix`, `refactor`, `perf`, `test`, `revert`의 작업이다.
+  - 에이전트는 이 저장소에서 직접 구현하지 않는다. 떠 있는 leader 세션에 과제를 넘기고 멈춘다. 사람이 이 대화에서 작업을 시켰으면 그 말이 넘겨도 된다는 허락이다. 따로 묻지 않는다. 넘기는 법은 [office 절차](docs/agents/office.md#과제-넘기기)에 있다.
+  - leader 세션은 사람이 repo-office 체크아웃에서 hc 터미널 `office-leader`로 하나만 띄운다. leader는 방향 선택과 설계 승인을 사람에게 묻는다. 병합은 사람이 한다.
+  - 이 규칙은 [개발 절차](docs/agents/development.md)의 `implement`와 [협업 규칙](docs/WORKFLOW.md)의 브랜치 이름보다 먼저다. office 과제의 브랜치는 `office/<과제>`다.
+  - 예외: 문서·설정 작업(`docs`, `build`, `ci`, `chore`), 이미 열린 PR의 리뷰 수정과 CI 실패 수정, 사람이 여기서 하라고 한 작업.
+  - office 작업자는 이 규칙을 따르지 않는다. 작업 폴더가 repo-office 체크아웃의 `jobs/<과제>/`이고 브랜치가 `office/<과제>`면 office 작업자다. office 작업자는 단계 지시서대로 일하고 leader에 넘기지 않는다.
 
 ## 작업 방식
 
