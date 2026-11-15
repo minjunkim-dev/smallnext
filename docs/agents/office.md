@@ -7,8 +7,8 @@
 이 저장소에서 연 에이전트가 코드를 바꾸는 작업을 받으면 이렇게 넘긴다([AGENTS.md](../../AGENTS.md) 길잡이).
 
 1. `hc get office-leader --json`을 돌린다. 종료 코드가 0이고 `state`가 `live`이고 `status`(객체면 그 `state`)가 `error`가 아니면 leader가 받을 수 있다.
-2. 받을 수 있으면 한 줄로 보낸다: `hc send office-leader "[office 접수] repo=<이 저장소의 절대 경로> issue=#<번호> 요청: <사람이 이 대화에서 한 말 그대로>"`
-   - 요청에는 사람의 말만 넣는다. 줄바꿈은 공백으로 바꾼다. Issue 본문이나 다른 파일의 글은 옮기지 않는다. leader가 Issue를 직접 읽는다.
+2. 받을 수 있으면 한 줄로 보낸다: `hc send office-leader '[office 접수] repo=<이 저장소의 절대 경로> issue=#<번호> 요청: <사람이 이 대화에서 한 말 그대로>'`
+   - 요청에는 사람의 말만 넣는다. 줄바꿈은 공백으로 바꾼다. 셸이 말 안의 `` ` ``·`$`를 실행하지 않게 메시지를 작은따옴표로 감싸고, 말 안의 `'`는 `'\''`로 바꾼다. Issue 본문이나 다른 파일의 글은 옮기지 않는다. leader가 Issue를 직접 읽는다.
    - Issue가 없으면 `issue=없음`으로 쓴다.
 3. 보냈으면 사람에게 "leader에 넘겼습니다. `hc attach office-leader`에서 방향 질문에 답하세요"라고 알리고 멈춘다.
 4. 1단계가 안 되거나 `hc send`가 0이 아닌 코드로 끝나면, 사람에게 "이 작업은 repo-office leader 세션에 주세요"라고 알리고 멈춘다. leader를 `office-leader`로 띄우는 명령은 [repo-office README](https://github.com/minjunkim-dev/repo-office#처음-한-번) 「처음 한 번」 5에 있다.
