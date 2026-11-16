@@ -101,14 +101,14 @@ P2는 수정하거나 후속 Issue를 연결하고 병합 이유를 기록합니
 3. 미해결 리뷰 대화가 없습니다.
 4. PR에 검증 결과, 미확인 범위, 플래그 상태, 관련 Issue를 기록합니다. Issue를 생략할 수 있는 유지보수 PR은 관련 Issue 대신 생략 이유를 적습니다.
 
-병합은 사람만 squash로 합니다. 에이전트는 PR을 병합하지 않고 자동 병합도 쓰지 않습니다.
+병합은 머지 큐가 squash로 합니다. 리뷰한 head SHA를 지정해 PR을 큐에 넣고, `gh pr merge`와 자동 병합은 쓰지 않습니다. 에이전트가 큐에 넣는 조건은 [`AGENTS.md`](../AGENTS.md)의 「하지 않는 것」에 있습니다.
 되돌리기 어려움이거나 [민감한 파일](../REVIEW.md#민감한-파일)을 건드린 변경은 사람이 diff를 읽고 그 최종 head에서 병합합니다. 그 뒤 push가 있으면 다시 읽습니다.
 Draft CD의 배포 쓰기 권한 추가도 최종 head 승인이 필요합니다. 실행 절차는 [Draft CD](DRAFT_RELEASE.md)를 따릅니다.
 같은 저장소의 `main` PR은 [독립 집계](CI.md#기준-브랜치의-독립-집계)의 실제 실행 ID도 확인합니다.
 기준 브랜치의 `Trusted CI aggregation`이 대상 `Project checks` run ID·최신 attempt와 현재 PR head·base·merge SHA를 연결하고 `accepted`로 판정해야 합니다.
 병합 직전에 GitHub API로 PR head·base, 소스 run·attempt, 집계 실행의 workflow ID/path·정책 SHA·완료 결과를 다시 확인합니다.
 검사 이름과 초록색 상태만으로 이 확인을 대신하지 않습니다. head·base·attempt가 바뀌면 새 검사를 확인합니다.
-최신 base의 검사는 현재 `main`을 반영한 새 PR 검사로 확인합니다. 이전 base의 실행을 전체 재실행한 결과는 인정하지 않습니다.
+PR 브랜치에 base를 합치지 않습니다. 머지 큐가 현재 `main`과 합친 결과에서 필수 검사를 다시 돌립니다. 큐에 들어간 PR 브랜치에는 push할 수 없습니다.
 CI 실패 처리는 [로컬 독립 리뷰](agents/review.md)를 따릅니다.
 GitHub의 자동 리뷰 봇은 승인하거나 병합하지 않습니다. 봇의 완료 댓글은 병합 조건 확인을 대신하지 않습니다.
 제품 결정은 이 조건과 관계없이 사람이 확정합니다.

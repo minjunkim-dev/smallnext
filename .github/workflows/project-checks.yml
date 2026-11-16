@@ -3,6 +3,8 @@ name: Project checks
 on:
   pull_request:
     branches: [main]
+  # The merge queue tests the queued result here; without it a queued PR never merges.
+  merge_group:
   push:
     branches: [main]
   workflow_dispatch:
@@ -36,7 +38,7 @@ jobs:
           persist-credentials: false
       - id: scope
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
         run: |
           if [ "$GITHUB_EVENT_NAME" != workflow_dispatch ] &&
              [[ "$BASE_SHA" =~ ^[0-9a-f]{40}$ ]] &&
@@ -93,7 +95,7 @@ jobs:
       - name: Check selected job results
         id: check-selected-jobs
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before || github.sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before || github.sha }}
           CURRENT_SHA: ${{ github.sha }}
           EVENT_NAME: ${{ github.event_name }}
           NEEDS_JSON: ${{ toJSON(needs) }}

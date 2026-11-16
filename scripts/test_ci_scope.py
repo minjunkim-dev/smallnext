@@ -121,6 +121,12 @@ class ScopeTests(unittest.TestCase):
                 "api=false", "container=false", "ios=true", "android=false", "ios_simulator=false",
             ])
 
+    def test_merge_group_diffs_from_queue_base(self):
+        with patch("ci_scope.subprocess.check_output", return_value="apps/ios/App.swift") as diff:
+            self.assertEqual(scopes({"merge_group": {"base_sha": "c" * 40}}),
+                             {"api": False, "container": False, "ios": True, "android": False})
+        self.assertEqual(diff.call_args.args[0][-2:], ["c" * 40, "HEAD"])
+
     def test_new_branch_checks_all_projects(self):
         self.assertEqual(scopes({"before": "0" * 40}), ALL)
 

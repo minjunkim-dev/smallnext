@@ -125,7 +125,7 @@ class GateTests(unittest.TestCase):
         command = indented_block(candidates[0], r"run: \|")
         bindings = dict(re.findall(r"^ *(\w+): \$\{\{ (.+?) \}\} *(?:#.*)?$", env_block, re.MULTILINE))
         self.assertEqual(bindings, {
-            "BASE_SHA": "github.event.pull_request.base.sha || github.event.before || github.sha",
+            "BASE_SHA": "github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before || github.sha",
             "CURRENT_SHA": "github.sha",
             "EVENT_NAME": "github.event_name",
             "NEEDS_JSON": "toJSON(needs)",

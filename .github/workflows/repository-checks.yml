@@ -3,6 +3,8 @@ name: Repository checks
 on:
   pull_request:
     branches: [main]
+  # The merge queue tests the queued result here; without it a queued PR never merges.
+  merge_group:
   push:
     branches: [main]
   workflow_dispatch:
