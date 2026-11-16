@@ -106,6 +106,7 @@ P2는 수정하거나 후속 Issue를 연결하고 병합 이유를 기록합니
 Draft CD의 배포 쓰기 권한 추가도 최종 head 승인이 필요합니다. 실행 절차는 [Draft CD](DRAFT_RELEASE.md)를 따릅니다.
 같은 저장소의 `main` PR은 큐에 넣기 전에 [독립 집계](CI.md#기준-브랜치의-독립-집계)의 실제 실행 ID도 확인합니다.
 기준 브랜치의 `Trusted CI aggregation`이 현재 PR head의 `Project checks` run ID·최신 attempt를 연결하고 `accepted`로 판정해야 합니다.
+집계가 기대하는 job·workflow 목록을 바꾸는 PR의 예외는 [독립 집계](CI.md#기준-브랜치의-독립-집계)를 따릅니다.
 큐에 넣기 직전에 GitHub API로 PR head, 소스 run·attempt, 집계 실행의 workflow ID/path·정책 SHA·완료 결과를 다시 확인합니다.
 검사 이름과 초록색 상태만으로 이 확인을 대신하지 않습니다. head·attempt가 바뀌면 새 검사와 집계를 확인합니다.
 PR 브랜치에 base를 합치지 않습니다. 집계가 `accepted`된 뒤 `main`만 움직였으면 PR 검사와 집계를 다시 받지 않습니다. 현재 `main`과 합친 결과는 머지 큐의 `merge_group` 실행이 필수 검사로 확인하고, 실패하면 PR이 큐에서 빠집니다. 집계는 `merge_group` 실행을 `out_of_scope`로 기록합니다.
