@@ -4,7 +4,7 @@
 
 ## 과제 넘기기
 
-이 저장소에서 연 에이전트가 코드를 바꾸는 작업을 받으면 이렇게 넘긴다([AGENTS.md](../../AGENTS.md) 길잡이).
+office는 선택이다. 사람이 이 대화에서 office나 leader로 돌리라고 하면 이 저장소에서 연 에이전트가 이렇게 넘긴다([AGENTS.md](../../AGENTS.md) 길잡이).
 
 1. `hc get office-leader --json`을 돌린다. 종료 코드가 0이고 `state`가 `live`이고 `status`(객체면 그 `state`)가 `error`가 아니면 leader가 받을 수 있다.
 2. 받을 수 있으면 한 줄로 보낸다: `hc send office-leader '[office 접수] repo=<이 저장소의 절대 경로> issue=#<번호> 요청: <사람이 이 대화에서 한 말 그대로>'`
@@ -13,7 +13,7 @@
 3. 보냈으면 사람에게 "leader에 넘겼습니다. `hc attach office-leader`에서 방향 질문에 답하세요"라고 알리고 멈춘다.
 4. 1단계가 안 되거나 `hc send`가 0이 아닌 코드로 끝나면, 사람에게 "이 작업은 repo-office leader 세션에 주세요"라고 알리고 멈춘다. leader를 `office-leader`로 띄우는 명령은 [repo-office README](https://github.com/minjunkim-dev/repo-office#처음-한-번) 「처음 한 번」 5에 있다.
 
-leader는 이 메시지를 새 과제로만 받고 방향을 사람에게 묻는다. 넘기는 규칙의 원본은 [repo-office 연결 5단계](https://github.com/minjunkim-dev/repo-office/blob/main/docs/connect.md#5-코드-작업을-office로-보내게-한다)다.
+leader는 이 메시지를 새 과제로만 받고 방향을 사람에게 묻는다. 넘기는 규칙의 원본은 [repo-office 연결 5단계](https://github.com/minjunkim-dev/repo-office/blob/main/docs/connect.md#5-원하면-코드-작업을-office로-보내게-한다)다.
 
 ## 과제 등록
 
