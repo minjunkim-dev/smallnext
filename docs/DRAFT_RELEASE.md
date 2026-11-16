@@ -23,7 +23,7 @@ Project checks의 모든 플랫폼 job과 Repository hygiene가 최신 attempt�
 승인 요청에서 source SHA와 workflow 정책 head SHA를 구분한다. 이미 통과한 같은 source의 CI는 재사용한다.
 
 ```sh
-gh workflow run draft-release.yml --repo minjunkim-dev/smallnext --ref main \
+gh workflow run draft-release.yml --repo minjunkim-labs/smallnext --ref main \
   -f version=v0.1.0-alpha.20261014 -f source-sha=FULL_MAIN_SOURCE_SHA
 ```
 
@@ -52,7 +52,7 @@ image에 실제 source SHA label을 넣는다. metadata에 checkout SHA·image I
 빈 디렉터리에 내려받는다. 기존 파일에 덮어쓰지 않는다.
 
 ```sh
-gh release download VERSION --repo minjunkim-dev/smallnext --dir EMPTY_DIRECTORY
+gh release download VERSION --repo minjunkim-labs/smallnext --dir EMPTY_DIRECTORY
 DRAFT_VERSION=VERSION SOURCE_SHA=FULL_MAIN_SOURCE_SHA \
   python3 scripts/draft_release.py verify --directory EMPTY_DIRECTORY
 ```

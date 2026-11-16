@@ -125,7 +125,7 @@ class GateTests(unittest.TestCase):
         command = indented_block(candidates[0], r"run: \|")
         bindings = dict(re.findall(r"^ *(\w+): \$\{\{ (.+?) \}\} *(?:#.*)?$", env_block, re.MULTILINE))
         self.assertEqual(bindings, {
-            "BASE_SHA": "github.event.pull_request.base.sha || github.event.before || github.sha",
+            "BASE_SHA": "github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before || github.sha",
             "CURRENT_SHA": "github.sha",
             "EVENT_NAME": "github.event_name",
             "NEEDS_JSON": "toJSON(needs)",
@@ -176,6 +176,12 @@ class GateTests(unittest.TestCase):
                     event_name="push", current_sha=bootstrap,
                 )
                 self.assertEqual(result.returncode == 0, success, result.stdout + result.stderr)
+            # A queue run never falls back to the queued commit, which carries the PR's gate.
+            result = self.run_gate(
+                self.needs(), cwd=clone, bootstrap_sha="missing-bootstrap",
+                event_name="merge_group", current_sha=bootstrap,
+            )
+            self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_invalid_base_commit_fails_closed(self):
         self.assertNotEqual(self.run_gate(self.needs(), "missing-base-commit").returncode, 0)

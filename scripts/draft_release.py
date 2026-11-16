@@ -12,7 +12,7 @@ import sys
 
 from trusted_ci import PROJECT_JOBS, pages, require, sha, timestamp
 
-REPO = "minjunkim-dev/smallnext"
+REPO = "minjunkim-labs/smallnext"
 ASSETS = ("smallnext-api-image.tar.gz", "metadata.json", "SHA256SUMS")
 
 

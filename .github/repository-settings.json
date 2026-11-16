@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "repository": "minjunkim-dev/smallnext",
+  "repository": "minjunkim-labs/smallnext",
   "repository_id": 1402815254,
   "default_branch": "main",
   "expected": {
@@ -66,7 +66,36 @@
         "enabled": false
       }
     },
-    "rulesets": [],
+    "rulesets": [
+      {
+        "name": "merge-queue",
+        "target": "branch",
+        "enforcement": "active",
+        "bypass_actors": [],
+        "conditions": {
+          "ref_name": {
+            "include": [
+              "~DEFAULT_BRANCH"
+            ],
+            "exclude": []
+          }
+        },
+        "rules": [
+          {
+            "type": "merge_queue",
+            "parameters": {
+              "merge_method": "SQUASH",
+              "grouping_strategy": "ALLGREEN",
+              "max_entries_to_build": 5,
+              "max_entries_to_merge": 5,
+              "min_entries_to_merge": 1,
+              "min_entries_to_merge_wait_minutes": 0,
+              "check_response_timeout_minutes": 60
+            }
+          }
+        ]
+      }
+    ],
     "actions": {
       "enabled": true,
       "allowed_actions": "selected",

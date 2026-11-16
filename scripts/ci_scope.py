@@ -50,7 +50,12 @@ SIMULATOR_FILES = {
 
 def changed_paths(event):
     """Return the changed paths, or None when history cannot prove what changed."""
-    base = event["pull_request"]["base"]["sha"] if "pull_request" in event else event.get("before")
+    if "pull_request" in event:
+        base = event["pull_request"]["base"]["sha"]
+    elif "merge_group" in event:
+        base = event["merge_group"]["base_sha"]
+    else:
+        base = event.get("before")
     if not base or set(base) == {"0"}:
         return None
     try:

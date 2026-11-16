@@ -1,9 +1,9 @@
 # CI 구성과 캐시
 
 Project checks는 PR 전체 변경 범위를 기준으로 검사할 프로젝트를 선택합니다.
-main push와 수동 실행도 지원합니다.
+머지 큐의 `merge_group` 실행, main push와 수동 실행도 지원합니다.
 변경 이력을 확인할 수 없으면 모든 프로젝트를 검사합니다.
-검사 선택기는 PR 기준 SHA 또는 main push의 before SHA에서 가져옵니다. PR이 수정한 선택기로 자신의 검사를 생략하지 않습니다.
+검사 선택기는 PR 기준 SHA, 머지 큐의 `merge_group.base_sha` 또는 main push의 before SHA에서 가져옵니다. PR이 수정한 선택기로 자신의 검사를 생략하지 않습니다.
 기준 선택기가 없거나 수동 실행이면 모든 프로젝트를 검사합니다. 선택기 변경의 새 규칙은 main 반영 뒤 후속 변경부터 사용합니다.
 문서만 바뀌면 Repository hygiene를 실행합니다.
 기존 리뷰·PR 정책 워크플로와 해당 Python 검사만 바뀌어도 앱·API 빌드를 선택하지 않습니다.
@@ -70,10 +70,10 @@ GitHub는 이전 성공 결과를 새 job ID·attempt로 복사할 수 있습니
 
 집계 실행의 Summary에는 판정과 대상 run ID·attempt, workflow ID/path, PR head·base·merge SHA, 정책 SHA, job ID를 기록합니다.
 `accepted`만 병합 근거입니다. `rejected`는 실패로 끝납니다.
-push·수동 실행·fork·닫힌 PR과 삭제한 브랜치는 `out_of_scope`로 기록합니다.
+push·수동 실행·머지 큐(`merge_group`)·fork·닫힌 PR과 삭제한 브랜치는 `out_of_scope`로 기록합니다.
 `out_of_scope` 실행의 초록색 상태는 PR 집계 통과를 뜻하지 않습니다.
 검사 이름만 확인하지 마십시오. 대상 run과 연결된 실제 집계 실행 ID를 확인하십시오.
-집계 완료 후 head·base·attempt가 바뀌면 새 전체 검사와 집계가 필요합니다.
+집계 완료 후 head·attempt가 바뀌면 새 전체 검사와 집계가 필요합니다. base만 바뀌면 머지 큐의 `merge_group` 실행이 합친 결과를 필수 검사로 확인합니다([병합 조건](WORKFLOW.md#병합-조건)).
 
 첫 구현 PR에는 기본 브랜치의 집계 실행이 없습니다.
 기존 필수 검사와 최신 SHA의 리뷰로 bootstrap PR을 검증합니다.
@@ -139,6 +139,7 @@ PR은 이어서 시뮬레이터 부팅 없이 `build-for-testing`만 수행합�
 | 이벤트 | 시뮬레이터 테스트 |
 | --- | --- |
 | PR | 실행하지 않음 |
+| 머지 큐(`merge_group`) | 실행하지 않음 |
 | main push | 앱 껍데기 입력이 바뀐 경우만: `apps/ios`의 Sources·Tests·Config·scripts·Xcode 프로젝트·`project.yml`, `config/feature-flags.json`, `.ci/toolchains.json`, iOS 검사 스크립트·workflow. 판정할 수 없는 이력이면 실행 |
 | 수동 실행 | 항상 실행 |
 | 로컬 `make ios-check` | 항상 실행 |
@@ -200,7 +201,7 @@ Repository hygiene에서 actionlint 1.7.12와 ShellCheck로 워크플로를 검�
 GitHub Action도 전체 커밋 SHA에 고정했습니다.
 PR의 이전 CI는 같은 PR의 새 커밋이 올라오면 취소합니다.
 main push 실행은 후속 push로 취소하지 않습니다. 후속 문서 변경이 앞선 기능 검사를 가리지 않습니다.
-PR은 같은 ref의 오래된 실행을 취소합니다. main과 수동 실행은 실행 ID별 concurrency 그룹을 사용합니다. 대기 중인 기능 검사도 후속 문서 push로 대체하지 않습니다.
+PR은 같은 ref의 오래된 실행을 취소합니다. 머지 큐, main과 수동 실행은 실행 ID별 concurrency 그룹을 사용하고 취소하지 않습니다. 대기 중인 기능 검사도 후속 문서 push로 대체하지 않습니다.
 실패한 iOS·Android 보고서와 에뮬레이터 로그는 7일 동안 보관합니다.
 
 ## 배포 자동화
