@@ -9,7 +9,7 @@
 열린 기존 PR #104–#109는 dependency 작업이다. 수정하지 않았다.
 기존 Release와 Draft 목록은 비어 있었다.
 main 보호의 strict 필수 검사는 PR conventions·Repository hygiene·Project checks다.
-2026-11-16부터 필수 검사는 판정 job `ci` 하나이고 strict는 꺼져 있다([CI](CI.md#기준-브랜치의-독립-집계), #404).
+2026-11-16 #404에서 필수 검사를 판정 job `ci` 하나로 바꾸고 strict를 끄기로 했다. 서버에 적용됐는지는 [자동화 설정](REPOSITORY_SETUP.md#현재-제한)을 따른다.
 Actions App ID는 15368이다. enforce_admins·linear history·대화 해결을 요구한다.
 GitHub의 필수 승인 수는 0이다. force push와 삭제를 허용하지 않는다.
 로컬 독립 리뷰와 위험에 따른 사람 승인은 절차 규칙이다. GitHub가 이 구분을 자동 강제하지 않는다.
