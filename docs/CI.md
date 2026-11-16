@@ -92,7 +92,7 @@ push·수동 실행·머지 큐(`merge_group`)·fork·닫힌 PR과 삭제한 브
 - 필수 검사 `ci`가 최신 head에서 통과했습니다.
 - 소유자가 diff를 읽고 승인합니다.
 
-집계는 처음 실패한 검사에서 멈춥니다. 그래서 그 뒤의 검사(merge ref와 부모 SHA, job 결과, 복사된 attempt, 더 새 run)는 이 PR에서 돌지 않습니다.
+집계는 처음 실패한 검사에서 멈춥니다. 그래서 그 뒤의 검사는 이 PR에서 돌지 않습니다. workflow 참조가 어긋나면 merge ref와 부모 SHA부터, job 목록이 어긋나면 job 결과부터 복사된 attempt와 더 새 run까지입니다.
 그 몫은 필수 검사 `ci`(같은 run의 모든 job 결과)와 머지 큐의 `merge_group` 실행(현재 `main`과 합친 결과)이 대신합니다.
 job을 지우거나 이름을 바꾸는 PR은 이 규칙의 범위 밖입니다(소유자 판정, 2026-11-16). 집계가 `Required jobs missing from latest attempt`로 먼저 거부하고, 이 이유는 덜 끝난 attempt에서도 나오기 때문입니다. 그런 PR이 생기면 소유자가 최신 attempt 전체를 확인한다는 조건과 함께 규칙을 넓힙니다.
 
