@@ -16,7 +16,7 @@
 ## GitHub 서버 기준선
 
 [repository-settings.json](../.github/repository-settings.json)은 이 저장소의 서버 설정 기준선이다. GitHub가 자동으로 적용하는 네이티브 설정 파일이 아니다.
-공통 보호 정책과 저장소 ID·필수 체크·App ID를 함께 기록한다. 값의 기준은 이 JSON이다. 다른 저장소에 적용할 때 프로젝트별 값을 그대로 복사하지 않는다.
+공통값은 repo-baseline `templates/github/repository-settings.json`에 있고, 이 JSON에는 이 저장소에만 있는 값(저장소 ID, 필수 체크, CodeQL 방식)만 둔다. 도구가 두 파일을 합친 값이 기준이다. 다른 저장소에 적용할 때 프로젝트별 값을 그대로 복사하지 않는다.
 
 서버 설정의 확인과 적용은 공개 `minjunkim-dev/repo-baseline`의 `tools/apply_github_settings.py`로 소유자가 한다. 이 저장소에는 그 도구를 복사하지 않는다.
 

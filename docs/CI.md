@@ -37,10 +37,10 @@ Android의 빌드·lint와 기기 테스트도 별도 실행기에서 수행합�
 반복 실행에는 Gradle 작업 캐시가 이 비용을 줄입니다.
 기기 테스트 안에서는 에뮬레이터 부팅과 APK 준비가 끝난 후 테스트를 수행합니다.
 Project checks는 선택한 모든 검사 결과를 확인합니다.
-마지막 `ci`는 유일한 필수 검사입니다. 같은 run에서 다시 호출한 Repository hygiene(`repository / Repository hygiene`)와 Project checks가 모두 `success`여야 통과합니다.
 scope가 성공하고 네 프로젝트의 선택 출력이 모두 `true` 또는 `false`여야 합니다.
 선택한 검사는 `success`, 선택하지 않은 검사는 `skipped`여야 통과합니다.
 선택한 검사의 `skipped`, 결과 누락, 실패, 취소는 통과로 처리하지 않습니다.
+마지막 `ci`는 유일한 필수 검사입니다. 같은 run에서 다시 호출한 Repository hygiene(`repository / Repository hygiene`)와 Project checks가 모두 `success`여야 통과합니다.
 집계 스크립트도 기준 SHA에서 가져옵니다. PR 작업 트리의 집계 스크립트는 실행하지 않습니다.
 기준 SHA에 스크립트가 없는 첫 PR은 workflow에 고정한 검토 커밋을 사용합니다.
 첫 main push는 검토 후 병합된 현재 main SHA를 사용합니다. 삭제한 PR 브랜치의 객체는 필요하지 않습니다.
