@@ -82,15 +82,17 @@ push·수동 실행·머지 큐(`merge_group`)·fork·닫힌 PR과 삭제한 브
 기존 필수 검사와 최신 SHA의 리뷰로 bootstrap PR을 검증합니다.
 병합 후 별도 PR에서 실제 집계를 확인한 뒤 병합 절차에 적용합니다.
 
+합성 테스트는 실제 도입 증거를 대신하지 않습니다.
+실제 도입 검증 근거는 [자동화 설정](REPOSITORY_SETUP.md#현재-제한)에서 확인합니다.
+확정 범위와 신뢰 한계는 [ADR-0001](adr/0001-trusted-ci-aggregation.md)을 따릅니다.
+
 집계가 기대하는 job·workflow 목록(`scripts/trusted_ci.py`의 `ALWAYS_JOBS`·`PROJECT_JOBS`·`PROJECT_WORKFLOWS`)을 바꾸는 PR도 기준 브랜치의 집계가 거부합니다. 집계는 기준 브랜치의 옛 목록으로 판정하기 때문입니다.
 이런 PR은 다음을 모두 갖추면 `accepted` 없이 큐에 넣을 수 있습니다.
 - 집계의 거부 이유가 이 PR이 바꾼 목록과의 불일치 하나뿐입니다(`Cannot prove source merge: missing or unexpected workflow references` 또는 `Unexpected job inventory; review workflow definitions`).
 - 나머지 필수 검사가 최신 head에서 모두 통과했습니다.
 - 소유자가 diff를 읽고 승인합니다.
+
 PR 본문 Evidence에 거부된 집계 run 링크와 거부 이유를 적고, 이 예외를 쓴다고 밝힙니다. 병합 뒤 다음 PR의 집계가 `accepted`인지 확인합니다.
-합성 테스트는 실제 도입 증거를 대신하지 않습니다.
-실제 도입 검증 근거는 [자동화 설정](REPOSITORY_SETUP.md#현재-제한)에서 확인합니다.
-확정 범위와 신뢰 한계는 [ADR-0001](adr/0001-trusted-ci-aggregation.md)을 따릅니다.
 
 ## 도구와 공통 명령
 
