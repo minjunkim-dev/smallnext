@@ -20,7 +20,10 @@ PROJECT_JOBS = {
     "ios": ("ios / test",),
     "android": ("android / build", "android / device-tests"),
 }
-PROJECT_WORKFLOWS = ("api-checks.yml", "api-container.yml", "ios-checks.yml", "android-checks.yml")
+# Jobs every Project checks run has, whatever the scope selects.
+ALWAYS_JOBS = ("scope", "repository / Repository hygiene", "Project checks", "ci")
+PROJECT_WORKFLOWS = ("api-checks.yml", "api-container.yml", "ios-checks.yml", "android-checks.yml",
+                     "repository-checks.yml")
 
 
 def require(condition, reason):
@@ -130,7 +133,7 @@ def aggregate(event, repo, get):
             paths.append(file["previous_filename"])
     selected = select(paths)
     jobs = pages(get, f"actions/runs/{run_id}/attempts/{run['run_attempt']}/jobs", "jobs")
-    expected = {"scope": "success", "Project checks": "success"}
+    expected = dict.fromkeys(ALWAYS_JOBS, "success")
     for project, names in PROJECT_JOBS.items():
         expected.update(dict.fromkeys(names, "success") if selected[project] else {project: "skipped"})
     names = [job["name"] for job in jobs]

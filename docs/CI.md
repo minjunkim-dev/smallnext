@@ -27,6 +27,8 @@ flowchart LR
     ios --> gate
     build --> gate
     device --> gate
+    hygiene[Repository hygiene] --> ci[ci]
+    gate --> ci
 ```
 
 API 검사와 이미지 빌드는 서로 기다리지 않습니다.
@@ -34,10 +36,11 @@ Android의 빌드·lint와 기기 테스트도 별도 실행기에서 수행합�
 첫 실행에는 Android 컴파일 일부가 중복됩니다.
 반복 실행에는 Gradle 작업 캐시가 이 비용을 줄입니다.
 기기 테스트 안에서는 에뮬레이터 부팅과 APK 준비가 끝난 후 테스트를 수행합니다.
-마지막 Project checks는 선택한 모든 검사 결과를 확인합니다.
+Project checks는 선택한 모든 검사 결과를 확인합니다.
 scope가 성공하고 네 프로젝트의 선택 출력이 모두 `true` 또는 `false`여야 합니다.
 선택한 검사는 `success`, 선택하지 않은 검사는 `skipped`여야 통과합니다.
 선택한 검사의 `skipped`, 결과 누락, 실패, 취소는 통과로 처리하지 않습니다.
+마지막 `ci`는 유일한 필수 검사입니다. 같은 run에서 다시 호출한 Repository hygiene(`repository / Repository hygiene`)와 Project checks가 모두 `success`여야 통과합니다.
 집계 스크립트도 기준 SHA에서 가져옵니다. PR 작업 트리의 집계 스크립트는 실행하지 않습니다.
 기준 SHA에 스크립트가 없는 첫 PR은 workflow에 고정한 검토 커밋을 사용합니다.
 첫 main push는 검토 후 병합된 현재 main SHA를 사용합니다. 삭제한 PR 브랜치의 객체는 필요하지 않습니다.
@@ -54,12 +57,12 @@ checkout은 집계 실행의 `github.sha`로 고정합니다. PR 코드와 artif
 
 `scripts/trusted_ci.py`는 GitHub API로 workflow ID/path, run ID, repository, event, head, 최신 attempt를 확인합니다.
 열린 같은 저장소의 `main` PR 하나와 head SHA·브랜치를 연결합니다.
-run의 `referenced_workflows` 네 개가 같은 PR merge ref와 같은 SHA를 사용해야 합니다.
+run의 `referenced_workflows` 다섯 개(플랫폼 네 개와 `repository-checks.yml`)가 같은 PR merge ref와 같은 SHA를 사용해야 합니다.
 Git commit API에서 해당 merge SHA의 두 부모가 현재 base·PR head인지 확인합니다.
 참조가 없거나 서로 다르거나 이전 base를 검사했으면 거부합니다. 이전 실행의 전체 재실행은 새 base 검사의 증거가 아닙니다.
 PR 변경 파일의 전체 목록에 기준 브랜치의 `ci_scope.select` 정책을 적용합니다.
 이동한 파일의 이전 경로도 포함합니다. PR의 scope 출력과 `NEEDS_JSON`은 사용하지 않습니다.
-최신 attempt의 `scope`, `Project checks`와 선택한 플랫폼 job을 모두 확인합니다.
+최신 attempt의 `scope`, `repository / Repository hygiene`, `Project checks`, `ci`와 선택한 플랫폼 job을 모두 확인합니다.
 선택하지 않은 플랫폼의 실제 job은 `skipped`여야 합니다.
 Android를 선택하면 `android / build`와 `android / device-tests`가 모두 성공해야 합니다.
 job 이름의 중복·누락·예상 밖 변경, 불완전한 API 목록과 API 오류를 거부합니다.
@@ -78,9 +81,18 @@ push·수동 실행·머지 큐(`merge_group`)·fork·닫힌 PR과 삭제한 브
 첫 구현 PR에는 기본 브랜치의 집계 실행이 없습니다.
 기존 필수 검사와 최신 SHA의 리뷰로 bootstrap PR을 검증합니다.
 병합 후 별도 PR에서 실제 집계를 확인한 뒤 병합 절차에 적용합니다.
+
 합성 테스트는 실제 도입 증거를 대신하지 않습니다.
 실제 도입 검증 근거는 [자동화 설정](REPOSITORY_SETUP.md#현재-제한)에서 확인합니다.
 확정 범위와 신뢰 한계는 [ADR-0001](adr/0001-trusted-ci-aggregation.md)을 따릅니다.
+
+집계가 기대하는 job·workflow 목록(`scripts/trusted_ci.py`의 `ALWAYS_JOBS`·`PROJECT_JOBS`·`PROJECT_WORKFLOWS`)을 바꾸는 PR도 기준 브랜치의 집계가 거부합니다. 집계는 기준 브랜치의 옛 목록으로 판정하기 때문입니다.
+이런 PR은 다음을 모두 갖추면 `accepted` 없이 큐에 넣을 수 있습니다.
+- 집계의 거부 이유가 이 PR이 바꾼 목록과의 불일치 하나뿐입니다(`Cannot prove source merge: missing or unexpected workflow references` 또는 `Unexpected job inventory; review workflow definitions`).
+- 나머지 필수 검사가 최신 head에서 모두 통과했습니다.
+- 소유자가 diff를 읽고 승인합니다.
+
+PR 본문 Evidence에 거부된 집계 run 링크와 거부 이유를 적고, 이 예외를 쓴다고 밝힙니다. 병합 뒤 다음 PR의 집계가 `accepted`인지 확인합니다.
 
 ## 도구와 공통 명령
 

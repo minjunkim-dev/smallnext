@@ -81,6 +81,24 @@ jobs:
     with:
       use-cache: ${{ github.event_name != 'workflow_dispatch' || inputs.use-cache }}
 
+  # Repository hygiene again, inside this run, so the ci gate can need it.
+  repository:
+    uses: ./.github/workflows/repository-checks.yml
+
+  # The single required check: passes only when both gates succeeded.
+  # Kept before project-checks; test_ci_gate expects that job last.
+  ci:
+    name: ci
+    if: always()
+    needs: [repository, project-checks]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    steps:
+      - name: every job succeeded
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: for r in $RESULTS; do [ "$r" = success ] || { echo "a job ended with $r"; exit 1; }; done
+
   project-checks:
     name: Project checks
     if: always()

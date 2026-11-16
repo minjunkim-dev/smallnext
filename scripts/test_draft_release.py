@@ -25,7 +25,7 @@ class DraftReleaseTest(unittest.TestCase):
         self.default_branch = "main"
         self.comparison = {"status": "ahead", "merge_base_commit": {"sha": SOURCE}}
         for index, (filename, names) in enumerate([
-            ("project-checks.yml", ["scope", "Project checks", "api / verify", "container / image", "ios / test", "android / build", "android / device-tests"]),
+            ("project-checks.yml", ["scope", "repository / Repository hygiene", "Project checks", "ci", "api / verify", "container / image", "ios / test", "android / build", "android / device-tests"]),
             ("repository-checks.yml", ["Repository hygiene"]),
         ], 1):
             self.runs[index] = {"id": index, "workflow_id": index, "path": f".github/workflows/{filename}",
