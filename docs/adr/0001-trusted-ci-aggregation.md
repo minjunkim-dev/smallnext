@@ -17,6 +17,7 @@ PR의 workflow는 집계 호출과 입력을 바꿀 수 있습니다.
 fork PR 지원과 필수 검사 출처의 독립 강제는 후속 범위입니다.
 
 2026-10-09 사용자가 추천안으로 설계를 확정했습니다.
+2026-11-16 머지 큐를 도입한 뒤로 집계는 큐에 넣기 전 PR head의 근거입니다. 현재 `main`과 합친 결과는 큐의 `merge_group` 실행에서 필수 검사가 확인합니다.
 확정 답, 실패 정책, 도입 순서와 완료 조건은 [Issue #83의 설계 확정 답](https://github.com/minjunkim-dev/smallnext/issues/83#issuecomment-6078139109)에 있습니다.
 구현과 bootstrap 절차는 [CI](../CI.md#기준-브랜치의-독립-집계)에 있습니다.
 실제 도입 검증 상태는 [자동화 설정](../REPOSITORY_SETUP.md#현재-제한)에서 확인합니다.

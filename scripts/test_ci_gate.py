@@ -176,6 +176,12 @@ class GateTests(unittest.TestCase):
                     event_name="push", current_sha=bootstrap,
                 )
                 self.assertEqual(result.returncode == 0, success, result.stdout + result.stderr)
+            # A queue run never falls back to the queued commit, which carries the PR's gate.
+            result = self.run_gate(
+                self.needs(), cwd=clone, bootstrap_sha="missing-bootstrap",
+                event_name="merge_group", current_sha=bootstrap,
+            )
+            self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_invalid_base_commit_fails_closed(self):
         self.assertNotEqual(self.run_gate(self.needs(), "missing-base-commit").returncode, 0)

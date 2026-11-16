@@ -103,8 +103,8 @@ jobs:
           git cat-file -e "$BASE_SHA^{commit}"
           gate_ref="$BASE_SHA"
           if ! git cat-file -e "$gate_ref:scripts/ci_gate.py"; then
-            if [ "$EVENT_NAME" = pull_request ]; then
-              # First PR uses this reviewed, immutable ancestor commit.
+            if [ "$EVENT_NAME" = pull_request ] || [ "$EVENT_NAME" = merge_group ]; then
+              # First PR or queue run uses this reviewed, immutable ancestor commit, never the PR code.
               gate_ref=547fdc9bf908ed36d155259a83052102d7c139c3
             else
               # First main push uses the reviewed squash commit, after branch deletion.
