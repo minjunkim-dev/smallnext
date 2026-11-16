@@ -27,6 +27,8 @@ flowchart LR
     ios --> gate
     build --> gate
     device --> gate
+    hygiene[Repository hygiene] --> ci[ci]
+    gate --> ci
 ```
 
 API 검사와 이미지 빌드는 서로 기다리지 않습니다.
@@ -34,7 +36,8 @@ Android의 빌드·lint와 기기 테스트도 별도 실행기에서 수행합�
 첫 실행에는 Android 컴파일 일부가 중복됩니다.
 반복 실행에는 Gradle 작업 캐시가 이 비용을 줄입니다.
 기기 테스트 안에서는 에뮬레이터 부팅과 APK 준비가 끝난 후 테스트를 수행합니다.
-마지막 Project checks는 선택한 모든 검사 결과를 확인합니다.
+Project checks는 선택한 모든 검사 결과를 확인합니다.
+마지막 `ci`는 유일한 필수 검사입니다. 같은 run에서 다시 호출한 Repository hygiene(`repository / Repository hygiene`)와 Project checks가 모두 `success`여야 통과합니다.
 scope가 성공하고 네 프로젝트의 선택 출력이 모두 `true` 또는 `false`여야 합니다.
 선택한 검사는 `success`, 선택하지 않은 검사는 `skipped`여야 통과합니다.
 선택한 검사의 `skipped`, 결과 누락, 실패, 취소는 통과로 처리하지 않습니다.
@@ -54,12 +57,12 @@ checkout은 집계 실행의 `github.sha`로 고정합니다. PR 코드와 artif
 
 `scripts/trusted_ci.py`는 GitHub API로 workflow ID/path, run ID, repository, event, head, 최신 attempt를 확인합니다.
 열린 같은 저장소의 `main` PR 하나와 head SHA·브랜치를 연결합니다.
-run의 `referenced_workflows` 네 개가 같은 PR merge ref와 같은 SHA를 사용해야 합니다.
+run의 `referenced_workflows` 다섯 개(플랫폼 네 개와 `repository-checks.yml`)가 같은 PR merge ref와 같은 SHA를 사용해야 합니다.
 Git commit API에서 해당 merge SHA의 두 부모가 현재 base·PR head인지 확인합니다.
 참조가 없거나 서로 다르거나 이전 base를 검사했으면 거부합니다. 이전 실행의 전체 재실행은 새 base 검사의 증거가 아닙니다.
 PR 변경 파일의 전체 목록에 기준 브랜치의 `ci_scope.select` 정책을 적용합니다.
 이동한 파일의 이전 경로도 포함합니다. PR의 scope 출력과 `NEEDS_JSON`은 사용하지 않습니다.
-최신 attempt의 `scope`, `Project checks`와 선택한 플랫폼 job을 모두 확인합니다.
+최신 attempt의 `scope`, `repository / Repository hygiene`, `Project checks`, `ci`와 선택한 플랫폼 job을 모두 확인합니다.
 선택하지 않은 플랫폼의 실제 job은 `skipped`여야 합니다.
 Android를 선택하면 `android / build`와 `android / device-tests`가 모두 성공해야 합니다.
 job 이름의 중복·누락·예상 밖 변경, 불완전한 API 목록과 API 오류를 거부합니다.

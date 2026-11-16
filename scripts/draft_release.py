@@ -10,7 +10,7 @@ import re
 import subprocess
 import sys
 
-from trusted_ci import PROJECT_JOBS, pages, require, sha, timestamp
+from trusted_ci import ALWAYS_JOBS, PROJECT_JOBS, pages, require, sha, timestamp
 
 REPO = "minjunkim-labs/smallnext"
 ASSETS = ("smallnext-api-image.tar.gz", "metadata.json", "SHA256SUMS")
@@ -33,7 +33,7 @@ def inputs(version, source):
 
 def check_ci(source, api):
     evidence = []
-    required = {"project-checks.yml": {"scope", "Project checks"} |
+    required = {"project-checks.yml": set(ALWAYS_JOBS) |
                 {name for names in PROJECT_JOBS.values() for name in names},
                 "repository-checks.yml": {"Repository hygiene"}}
     for filename, expected in required.items():

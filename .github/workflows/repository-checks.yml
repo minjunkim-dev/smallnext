@@ -8,6 +8,8 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+  # Project checks calls this so its ci gate can need Repository hygiene.
+  workflow_call:
 
 permissions:
   contents: read

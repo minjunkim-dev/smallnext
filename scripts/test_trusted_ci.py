@@ -28,7 +28,8 @@ class AggregationTests(unittest.TestCase):
             "created_at": "2026-10-09T10:12:38Z", "run_started_at": "2026-10-09T10:12:38Z",
             "referenced_workflows": [
                 {"path": f"{REPO}/.github/workflows/{file}@{MERGE}", "sha": MERGE, "ref": "refs/pull/30/merge"}
-                for file in ("api-checks.yml", "api-container.yml", "ios-checks.yml", "android-checks.yml")],
+                for file in ("api-checks.yml", "api-container.yml", "ios-checks.yml", "android-checks.yml",
+                             "repository-checks.yml")],
         }
         self.event = {"repository": {"full_name": REPO, "default_branch": "main"},
                       "workflow_run": deepcopy(self.run)}
@@ -39,6 +40,7 @@ class AggregationTests(unittest.TestCase):
             ("scope", "success"), ("Project checks", "success"),
             ("api", "skipped"), ("container", "skipped"),
             ("ios", "skipped"), ("android", "skipped"),
+            ("repository / Repository hygiene", "success"), ("ci", "success"),
         ]]
         self.data = {
             "actions/workflows/project-checks.yml": {"id": 20, "path": self.run["path"]},
@@ -49,7 +51,7 @@ class AggregationTests(unittest.TestCase):
             "branches/main": {"commit": {"sha": BASE}},
             "git/commits/" + MERGE: {"sha": MERGE, "parents": [{"sha": BASE}, {"sha": HEAD}]},
             "actions/workflows/20/runs?event=pull_request&branch=ci%2F83-example&head_sha=" + HEAD + "&per_page=100&page=1": {"total_count": 1, "workflow_runs": [self.run]},
-            "actions/runs/10/attempts/1/jobs?per_page=100&page=1": {"total_count": 6, "jobs": self.jobs},
+            "actions/runs/10/attempts/1/jobs?per_page=100&page=1": {"total_count": 8, "jobs": self.jobs},
         }
 
     def job(self, name, result):
@@ -110,7 +112,7 @@ class AggregationTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "ios / test: expected success"):
                     aggregate(self.event, REPO, self.get)
         self.jobs.pop(4)
-        self.data["actions/runs/10/attempts/1/jobs?per_page=100&page=1"]["total_count"] = 5
+        self.data["actions/runs/10/attempts/1/jobs?per_page=100&page=1"]["total_count"] = 7
         with self.assertRaisesRegex(ValueError, "re-run all jobs"):
             aggregate(self.event, REPO, self.get)
 
@@ -126,9 +128,9 @@ class AggregationTests(unittest.TestCase):
     def test_every_project_and_both_android_jobs_are_required_for_workflow_changes(self):
         self.data["pulls/30/files?per_page=100&page=1"] = [{"filename": ".github/workflows/project-checks.yml"}]
         self.jobs[:] = [self.job(name, "success") for name in (
-            "scope", "Project checks", "api / verify", "container / image", "ios / test",
-            "android / build", "android / device-tests")]
-        self.data["actions/runs/10/attempts/1/jobs?per_page=100&page=1"]["total_count"] = 7
+            "scope", "Project checks", "repository / Repository hygiene", "ci", "api / verify",
+            "container / image", "ios / test", "android / build", "android / device-tests")]
+        self.data["actions/runs/10/attempts/1/jobs?per_page=100&page=1"]["total_count"] = 9
         self.assertTrue(all(aggregate(self.event, REPO, self.get)["selected"].values()))
         self.jobs[-1]["conclusion"] = "failure"
         with self.assertRaisesRegex(ValueError, "android / device-tests"):
@@ -216,7 +218,7 @@ class AggregationTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Incomplete PR diff"):
             aggregate(self.event, REPO, self.get)
         self.pr["changed_files"] = 1
-        self.data["actions/runs/10/attempts/1/jobs?per_page=100&page=1"]["total_count"] = 7
+        self.data["actions/runs/10/attempts/1/jobs?per_page=100&page=1"]["total_count"] = 9
         with self.assertRaisesRegex(ValueError, "Incomplete API list"):
             aggregate(self.event, REPO, self.get)
 
@@ -269,7 +271,7 @@ class AggregationTests(unittest.TestCase):
                        started_at="2026-10-09T10:13:41Z", completed_at="2026-10-09T10:13:45Z")
         inherited[0].update(started_at="2026-10-09T10:12:42Z", completed_at="2026-10-09T10:12:47Z")
         self.data["actions/runs/10/attempts/2/jobs?per_page=100&page=1"] = {
-            "total_count": 6, "jobs": inherited}
+            "total_count": 8, "jobs": inherited}
         with self.assertRaisesRegex(ValueError, "earlier attempt.*re-run all jobs"):
             aggregate(self.event, REPO, self.get)
 

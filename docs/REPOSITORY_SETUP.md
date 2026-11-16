@@ -31,7 +31,7 @@ Release immutability는 앞으로 공개할 Release에 적용한다. Draft에서
 
 CodeQL은 [명시적인 workflow](../.github/workflows/codeql.yml)에서 Actions·Python·Rust·Kotlin을 분석한다. 기본 설정의 Android autobuild는 하위 프로젝트를 찾지 못했고 REST 언어 선택은 Rust를 거부했으므로 기본 설정을 끈다. 두 설정을 중복 실행하지 않는다.
 Kotlin은 기존 고정 Java·Android SDK와 `make android-check`를 사용한다. 분석은 배포하지 않으며 production Secret을 받지 않는다. 결과 게시에 필요한 `security-events: write`는 분석 job에만 둔다. 새 쓰기 권한은 사람이 최종 head를 승인한 뒤 main에 반영한다.
-Swift CodeQL은 현재 구성의 지원 대상이 아니다. GitHub는 [CodeQL 2.27.2 호환성 공지](https://github.blog/changelog/2026-10-09-codeql-2-27-2-improves-c-go-rust-and-javascript-analysis/#macos-27-compatibility)에서 macOS 27 또는 Xcode 27의 컴파일 추적 미지원을 명시한다. 실제 시험도 package manifest 실행에서 `Bad CPU type`으로 실패했다. Swift를 분석 완료로 표시하거나 CI 도구 버전을 낮추지 않는다. 기존 Xcode 27 iOS CI·독립 리뷰·보안 변경의 별도 리뷰를 유지한다. 이 분석 공백은 후속 Issue로 추적한다.
+Swift CodeQL은 현재 구성의 지원 대상이 아니다. GitHub는 [CodeQL 2.27.2 호환성 공지](https://github.blog/changelog/2026-10-09-codeql-2-27-2-improves-c-go-rust-and-javascript-analysis/#macos-27-compatibility)에서 macOS 27 또는 Xcode 27의 컴파일 추적 미지원을 명시한다. 실제 시험도 package manifest 실행에서 `Bad CPU type`으로 실패했다. Swift를 분석 완료로 표시하거나 CI 도구 버전을 낮추지 않는다. 기존 Xcode 27 iOS CI·독립 리뷰·보안 변경의 별도 리뷰를 유지한다. 이 분석 공백은 [후속 Issue](https://github.com/minjunkim-labs/smallnext/issues/142)로 추적한다.
 초기 범위는 같은 저장소의 PR·main push·수동 실행·주간 검사다. 외부 fork는 이 CodeQL job에서 제외하고 기존 승인·CI 경로를 유지한다. 분석 성공·결과 게시·최종 SHA는 실제 run으로 확인한다. 설정 파일이나 workflow 등록만으로 main에서 분석이 검증됐다고 보고하지 않는다.
 기존 모바일 CI·동작 검사는 유지한다. CodeQL이 코드 전체의 안전이나 실제 기기 동작을 보증하지 않는다.
 
@@ -142,7 +142,7 @@ HTTP 401 또는 SDK `authentication_failed`가 발생하면 해당 리뷰를 미
 아래 과거 실행 기록은 이전 방식의 증거입니다.
 
 공개 전환 후 main 보호를 적용하고 API로 확인했습니다. PR과 최신 기준 브랜치의 검사를 요구합니다.
-`.github/repository-settings.json`의 필수 검사 기대값은 `strict: true`와 `Repository hygiene`, `Project checks`입니다(2026-11-08, [repo-baseline#71](https://github.com/minjunkim-dev/repo-baseline/issues/71)). 2026-11-08 서버에는 옛 `PR conventions`가 더 남아 있었습니다. 소유자가 위 도구로 적용하기 전까지 그 검사가 보고되지 않아 PR 병합이 막힙니다. `Review status`·`PR policy` workflow와 `review/*` status 게이트는 제거했습니다. 에이전트는 status와 승인 댓글을 쓰지 않습니다.
+필수 검사는 `Project checks` workflow의 판정 job `ci` 하나입니다. 값과 `strict`는 repo-baseline `templates/github/README.md`의 「계약 값」을 따르고, [repository-settings.json](../.github/repository-settings.json)에는 이 저장소에만 있는 값만 둡니다(2026-11-16). `ci`는 `Repository hygiene`와 `Project checks`가 모두 성공해야 통과합니다. 소유자가 위 도구로 적용하기 전까지 서버는 옛 두 검사를 요구합니다. `Review status`·`PR policy` workflow와 `review/*` status 게이트는 제거했습니다. 에이전트는 status와 승인 댓글을 쓰지 않습니다.
 관리자에게도 규칙을 적용합니다. 선형 이력, 미해결 리뷰 대화 해결, 강제 push·main 삭제 금지를 요구합니다.
 동료 승인은 필수가 아닙니다. 2026-10-06 `gh api repos/minjunkim-dev/smallnext/branches/main/protection`의 `required_pull_request_reviews`에서 `required_approving_review_count: 0`, `require_code_owner_reviews: false`를 확인했습니다. 병합은 [병합 조건](WORKFLOW.md#병합-조건)을 따릅니다.
 비공개일 때 ruleset 요청이 HTTP 403으로 거절된 기록은 현재 공개 저장소의 보호 상태를 나타내지 않습니다.
@@ -192,7 +192,7 @@ PR 본문 양식은 `.github/pull_request_template.md` 하나입니다. 대문�
 
 ## 공통 기준
 
-2026-11-08 공개 `minjunkim-dev/repo-baseline`의 새 기준(main `513ac5d`, 코어 + GitHub 프로필)으로 옮겼습니다([repo-baseline#71](https://github.com/minjunkim-dev/repo-baseline/issues/71)). 해시 복사(`.github/repo-baseline.json`과 복사한 검사기), `review/gate`, PR 제목·브랜치·본문 검사는 쓰지 않습니다. 코어 파일(`AGENTS.md`, `REVIEW.md`, PR 양식)은 이 저장소가 직접 고칩니다. 규칙의 원문은 repo-baseline의 `POLICY.md`입니다. 2026-11-09 repo-baseline이 코어에서 `CLAUDE.md`를 뺐으므로 이 저장소도 지웠습니다. 이전 기준선의 설명용 `observations` 배열은 [repository-settings.json](../.github/repository-settings.json)에 그대로 둡니다.
+2026-11-08 공개 `minjunkim-dev/repo-baseline`의 새 기준(main `513ac5d`, 코어 + GitHub 프로필)으로 옮겼습니다([repo-baseline#71](https://github.com/minjunkim-dev/repo-baseline/issues/71)). 해시 복사(`.github/repo-baseline.json`과 복사한 검사기), `review/gate`, PR 제목·브랜치·본문 검사는 쓰지 않습니다. 코어 파일(`AGENTS.md`, `REVIEW.md`, PR 양식)은 이 저장소가 직접 고칩니다. 규칙의 원문은 repo-baseline의 `POLICY.md`입니다. 2026-11-09 repo-baseline이 코어에서 `CLAUDE.md`를 뺐으므로 이 저장소도 지웠습니다. 이전 기준선의 설명용 `observations` 배열은 2026-11-16에 지웠습니다. 그 내용(`release` Environment 없음, Swift CodeQL 미지원)은 이 문서 위쪽에 있습니다.
 
 ## 과거 Bugbot 확인 기록
 
