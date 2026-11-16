@@ -72,7 +72,7 @@ GitHub는 이전 성공 결과를 새 job ID·attempt로 복사할 수 있습니
 수집 후 run attempt, PR head·base와 현재 `main`을 다시 확인합니다.
 
 집계 실행의 Summary에는 판정과 대상 run ID·attempt, workflow ID/path, PR head·base·merge SHA, 정책 SHA, job ID를 기록합니다.
-`accepted`만 병합 근거입니다. `rejected`는 실패로 끝납니다.
+`accepted`만 병합 근거입니다. 예외는 이 절 끝의, 집계가 기대하는 목록을 바꾸는 PR의 규칙 하나입니다. `rejected`는 실패로 끝납니다.
 push·수동 실행·머지 큐(`merge_group`)·fork·닫힌 PR과 삭제한 브랜치는 `out_of_scope`로 기록합니다.
 `out_of_scope` 실행의 초록색 상태는 PR 집계 통과를 뜻하지 않습니다.
 검사 이름만 확인하지 마십시오. 대상 run과 연결된 실제 집계 실행 ID를 확인하십시오.
@@ -88,9 +88,13 @@ push·수동 실행·머지 큐(`merge_group`)·fork·닫힌 PR과 삭제한 브
 
 집계가 기대하는 job·workflow 목록(`scripts/trusted_ci.py`의 `ALWAYS_JOBS`·`PROJECT_JOBS`·`PROJECT_WORKFLOWS`)을 바꾸는 PR도 기준 브랜치의 집계가 거부합니다. 집계는 기준 브랜치의 옛 목록으로 판정하기 때문입니다.
 이런 PR은 다음을 모두 갖추면 `accepted` 없이 큐에 넣을 수 있습니다.
-- 집계의 거부 이유가 이 PR이 바꾼 목록과의 불일치 하나뿐입니다(`Cannot prove source merge: missing or unexpected workflow references` 또는 `Unexpected job inventory; review workflow definitions`).
-- 나머지 필수 검사가 최신 head에서 모두 통과했습니다.
+- 최신 head의 집계가 이 PR이 바꾼 목록과의 불일치로 멈췄습니다(`Cannot prove source merge: missing or unexpected workflow references` 또는 `Unexpected job inventory; review workflow definitions`).
+- 필수 검사 `ci`가 최신 head에서 통과했습니다.
 - 소유자가 diff를 읽고 승인합니다.
+
+집계는 처음 실패한 검사에서 멈춥니다. 그래서 그 뒤의 검사는 이 PR에서 돌지 않습니다. workflow 참조가 어긋나면 merge ref와 부모 SHA부터, job 목록이 어긋나면 job 결과부터 복사된 attempt와 더 새 run까지입니다.
+그 몫은 필수 검사 `ci`(같은 run의 모든 job 결과)와 머지 큐의 `merge_group` 실행(현재 `main`과 합친 결과)이 대신합니다.
+job을 지우거나 이름을 바꾸는 PR은 이 규칙의 범위 밖입니다(소유자 판정, 2026-11-16). 집계가 `Required jobs missing from latest attempt`로 먼저 거부하고, 이 이유는 덜 끝난 attempt에서도 나오기 때문입니다. 그런 PR이 생기면 소유자가 최신 attempt 전체를 확인한다는 조건과 함께 규칙을 넓힙니다.
 
 PR 본문 Evidence에 거부된 집계 run 링크와 거부 이유를 적고, 이 예외를 쓴다고 밝힙니다. 병합 뒤 다음 PR의 집계가 `accepted`인지 확인합니다.
 
