@@ -23,7 +23,7 @@
 | [office 절차](docs/agents/office.md) | 코드 작업을 repo-office leader에 넘기는 법과 과제 등록 |
 | [문서 길잡이](docs/agents/domain.md) | `CONTEXT.md`와 관련 ADR |
 | [미결정 항목](docs/DECISIONS.md) | 사람이 확정한다. Issue의 확정 답·완료 조건이 제품 사양이다 |
-| [Issue tracker](docs/agents/issue-tracker.md), [Triage labels](docs/agents/triage-labels.md) | GitHub `minjunkim-dev/smallnext`, 다섯 역할과 라벨 |
+| [Issue tracker](docs/agents/issue-tracker.md), [Triage labels](docs/agents/triage-labels.md) | GitHub `minjunkim-labs/smallnext`, 다섯 역할과 라벨 |
 | [자동화 설정](docs/REPOSITORY_SETUP.md), [CI](docs/CI.md) | 서버 설정 기준선, 필수 검사, 독립 집계 |
 | [COPYRIGHT](COPYRIGHT.md), [THIRD_PARTY_NOTICES](THIRD_PARTY_NOTICES.md) | 권리·외부 자산 |
 | `apps/ios/`, `apps/android/`, `services/api/` | 앱과 API |

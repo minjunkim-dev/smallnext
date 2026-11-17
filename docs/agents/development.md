@@ -1,6 +1,6 @@
 # 작업 시작과 스킬 연결
 
-이 프로젝트는 GitHub `minjunkim-dev/smallnext`의 기존 Issue·라벨·도메인 설정을 유지한다. 작업 전 [이슈 추적](issue-tracker.md)·[라벨](triage-labels.md)·[도메인 읽기](domain.md)를 확인한다. 관련 용어집·ADR과 티켓의 확정 완료 조건을 읽는다. 없는 도메인 문서는 필요가 생길 때 만든다.
+이 프로젝트는 GitHub `minjunkim-labs/smallnext`의 기존 Issue·라벨·도메인 설정을 유지한다. 작업 전 [이슈 추적](issue-tracker.md)·[라벨](triage-labels.md)·[도메인 읽기](domain.md)를 확인한다. 관련 용어집·ADR과 티켓의 확정 완료 조건을 읽는다. 없는 도메인 문서는 필요가 생길 때 만든다.
 
 ## 설정 확인
 

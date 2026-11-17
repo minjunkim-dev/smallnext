@@ -1,6 +1,6 @@
 # Crashlytics 개발 검증
 
-iOS의 범위와 완료 조건은 [#80](https://github.com/minjunkim-dev/smallnext/issues/80)에서 관리합니다.
+iOS의 범위와 완료 조건은 [#80](https://github.com/minjunkim-labs/smallnext/issues/80)에서 관리합니다.
 검사 결과와 남은 콘솔 확인도 해당 Issue에 기록합니다.
 Android는 [Android](#android) 절을 따릅니다.
 
@@ -86,7 +86,7 @@ SDK 전송 로그, 심볼 업로드, 콘솔 수신, 앱 프레임 심볼화는 �
 
 ## Android
 
-범위는 [#361](https://github.com/minjunkim-dev/smallnext/issues/361), 콘솔 수신 확인은 [#362](https://github.com/minjunkim-dev/smallnext/issues/362)에서 관리합니다.
+범위는 [#361](https://github.com/minjunkim-labs/smallnext/issues/361), 콘솔 수신 확인은 [#362](https://github.com/minjunkim-labs/smallnext/issues/362)에서 관리합니다.
 
 ### 실행과 전송
 

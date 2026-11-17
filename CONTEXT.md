@@ -1,9 +1,9 @@
 # Smallnext 용어
 
 목표와 행동의 진행, AI 제안의 근거를 설명할 때 쓰는 용어입니다.
-동작과 저장 범위의 확정 답은 [진행 상태의 저장·복구·동기화는 어디까지 필요한가?](https://github.com/minjunkim-dev/smallnext/issues/12)에 있습니다.
-사용자 진술과 자료 미기재의 범위는 [과거 사실 출처와 사용자 작성 대체 경로의 확정 답](https://github.com/minjunkim-dev/smallnext/issues/267#issuecomment-6359424978)에 있습니다.
-정보 부족 안내와 보충 입력의 범위는 [정보 부족 응답과 재요청의 확정 답](https://github.com/minjunkim-dev/smallnext/issues/268#issuecomment-6366338459)에 있습니다.
+동작과 저장 범위의 확정 답은 [진행 상태의 저장·복구·동기화는 어디까지 필요한가?](https://github.com/minjunkim-labs/smallnext/issues/12)에 있습니다.
+사용자 진술과 자료 미기재의 범위는 [과거 사실 출처와 사용자 작성 대체 경로의 확정 답](https://github.com/minjunkim-labs/smallnext/issues/267#issuecomment-6359424978)에 있습니다.
+정보 부족 안내와 보충 입력의 범위는 [정보 부족 응답과 재요청의 확정 답](https://github.com/minjunkim-labs/smallnext/issues/268#issuecomment-6366338459)에 있습니다.
 
 ## 용어
 

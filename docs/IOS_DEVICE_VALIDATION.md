@@ -1,6 +1,6 @@
 # iOS 핵심 흐름 실기기 검증
 
-[#61](https://github.com/minjunkim-dev/smallnext/issues/61)의 실행 절차와 결과 기록 양식이다.
+[#61](https://github.com/minjunkim-labs/smallnext/issues/61)의 실행 절차와 결과 기록 양식이다.
 완료 조건과 판단은 Issue에 기록한다. 이 문서는 검증 통과를 뜻하지 않는다.
 AI 품질과 출시 승인은 별도 검증이다.
 

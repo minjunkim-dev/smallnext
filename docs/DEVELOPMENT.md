@@ -68,8 +68,8 @@ DB는 `127.0.0.1:55432`, API는 `127.0.0.1:8080`을 사용합니다.
 
 ## 개발 전용 AI
 
-[개발 모델 결정](https://github.com/minjunkim-dev/smallnext/issues/17#issuecomment-5993865166)과
-[개발 중 구독 연결 결정](https://github.com/minjunkim-dev/smallnext/issues/17#issuecomment-5994138248)을 따릅니다.
+[개발 모델 결정](https://github.com/minjunkim-labs/smallnext/issues/17#issuecomment-5993865166)과
+[개발 중 구독 연결 결정](https://github.com/minjunkim-labs/smallnext/issues/17#issuecomment-5994138248)을 따릅니다.
 공식 Codex CLI가 기존 ChatGPT OAuth 로그인을 사용합니다. 새 API 키를 만들지 않습니다.
 인증정보는 Codex가 관리합니다. 실행기는 토큰을 읽거나 추출하지 않습니다.
 Codex CLI 0.160.0과 Python 3로 검증합니다. Python 3는 모의 CLI 회귀 테스트에만 사용합니다.
@@ -118,12 +118,12 @@ cargo run --locked --manifest-path services/api/Cargo.toml --bin development-ai 
 
 기본 실행은 모델을 호출하지 않습니다.
 ON은 `--enable-local-ai` 또는 아래 Mac 개발 서버의 `DEVELOPMENT_SUBSCRIPTION_AI=1`로만 허용합니다.
-운영 AI와 실기기 검증은 [#47](https://github.com/minjunkim-dev/smallnext/issues/47)과 [#61](https://github.com/minjunkim-dev/smallnext/issues/61)에서 관리합니다.
+운영 AI와 실기기 검증은 [#47](https://github.com/minjunkim-labs/smallnext/issues/47)과 [#61](https://github.com/minjunkim-labs/smallnext/issues/61)에서 관리합니다.
 운영 API 연결과 자격증명은 개발 완료 후 별도로 준비합니다.
 
 ### Mac 개발 서버와 iOS HTTP 공급자
 
-[#50의 확정 경로](https://github.com/minjunkim-dev/smallnext/issues/50#issuecomment-6006788499)를 사용합니다.
+[#50의 확정 경로](https://github.com/minjunkim-labs/smallnext/issues/50#issuecomment-6006788499)를 사용합니다.
 서버는 Mac에서 직접 실행합니다. Postgres만 Docker에서 실행합니다.
 Codex 로그인 파일을 복사하지 않습니다. 개발자 본인만 이 경로를 사용합니다.
 
@@ -163,7 +163,7 @@ Release는 HTTP 공급자와 설정 코드를 제외합니다. 평문 HTTP 허�
 미완료 분할 원본은 이후 다음 행동 요청과 재실행 뒤에도 `remaining_work`에 유지합니다.
 더 작게 요청은 분할 원본과 현재 행동을 `previous_proposals`로 전달합니다.
 `need_info`는 확인 질문으로, `minimum`은 최소 행동으로 매핑합니다. 이미 답한 질문은 진행 흐름에서 거부합니다.
-`insufficient_info`는 첫·축소·다음·대체 행동에서 정상 안내로 표시하고 목표별 metadata에 마지막 요청 기준과 함께 보존합니다. 재실행·목표 재선택·돌아가기는 AI를 호출하지 않습니다. 축소 안내의 돌아가기는 기존 현재 행동을, 나머지는 목표 목록을 보여 줍니다. 실제 `need_info`의 답은 원래 요청과 연결해 저장하고 같은 종류로 한 번 요청하며, 이미 답한 질문·답은 이후 행동 요청의 맥락으로 보냅니다. 목표 준비 답과 구분하며 축소 질문의 답만 기존처럼 막힘 원인으로 확정합니다. 보충 입력의 작성·확인 저장은 [#275](https://github.com/minjunkim-dev/smallnext/issues/275), 저장한 새 내용의 첫 행동 재요청은 [#276](https://github.com/minjunkim-dev/smallnext/issues/276)에서 연결했습니다. 현재 행동이 없는 확정 목표에서 입력이 마지막 정상 안내와 다를 때만 ‘새 정보로 다시 제안’을 제공하며, 기존 available에 확인 저장값만 사용자 제공·외부 검증 미확인으로 전송합니다. 초안·동일 입력·공백·저장/복구는 호출하지 않습니다. 전체 입력/본문 32KiB와 막힘 2,048바이트를 넘으면 호출하지 않고 입력을 보존합니다. 통신 실패의 수동 재시도와 구분하며, 더 작게·다음·대체의 보충 재요청도 [#277](https://github.com/minjunkim-dev/smallnext/issues/277)에서 연결했습니다. 네 요청 종류의 공유 합성·저장/전송·화면/접근성 검증 근거와 재사용 범위는 [#278 검증 기록](research/insufficient-info-validation.md)에 있습니다.
+`insufficient_info`는 첫·축소·다음·대체 행동에서 정상 안내로 표시하고 목표별 metadata에 마지막 요청 기준과 함께 보존합니다. 재실행·목표 재선택·돌아가기는 AI를 호출하지 않습니다. 축소 안내의 돌아가기는 기존 현재 행동을, 나머지는 목표 목록을 보여 줍니다. 실제 `need_info`의 답은 원래 요청과 연결해 저장하고 같은 종류로 한 번 요청하며, 이미 답한 질문·답은 이후 행동 요청의 맥락으로 보냅니다. 목표 준비 답과 구분하며 축소 질문의 답만 기존처럼 막힘 원인으로 확정합니다. 보충 입력의 작성·확인 저장은 [#275](https://github.com/minjunkim-labs/smallnext/issues/275), 저장한 새 내용의 첫 행동 재요청은 [#276](https://github.com/minjunkim-labs/smallnext/issues/276)에서 연결했습니다. 현재 행동이 없는 확정 목표에서 입력이 마지막 정상 안내와 다를 때만 ‘새 정보로 다시 제안’을 제공하며, 기존 available에 확인 저장값만 사용자 제공·외부 검증 미확인으로 전송합니다. 초안·동일 입력·공백·저장/복구는 호출하지 않습니다. 전체 입력/본문 32KiB와 막힘 2,048바이트를 넘으면 호출하지 않고 입력을 보존합니다. 통신 실패의 수동 재시도와 구분하며, 더 작게·다음·대체의 보충 재요청도 [#277](https://github.com/minjunkim-labs/smallnext/issues/277)에서 연결했습니다. 네 요청 종류의 공유 합성·저장/전송·화면/접근성 검증 근거와 재사용 범위는 [#278 검증 기록](research/insufficient-info-validation.md)에 있습니다.
 `goal_summary`는 사용자 확인 전 완료 조건 초안입니다. `no_action`은 대체 요청에만 허용합니다.
 선택한 가용 시간이 없으면 개발 요청의 임시 한도로 15분을 사용합니다. 사용자 가용 시간을 확인한 값은 아닙니다.
 연결 끊김·시간 초과·거절·판정 불가·예산 한도는 공급자 오류로 매핑합니다.
@@ -195,7 +195,7 @@ swift test --package-path apps/ios/Packages/SmallnextCore
 번들 리소스, Info.plist, Supabase Auth·Keychain·Crashlytics를 쓰는 테스트는 `apps/ios/Tests`의 앱 호스트 테스트에 둡니다.
 
 사용자 iPhone에서 핵심 흐름을 확인할 때는 [실기기 검증 절차](IOS_DEVICE_VALIDATION.md)를 따릅니다.
-설치, 저장 복구, 접근성과 모션 값의 결과는 [#61](https://github.com/minjunkim-dev/smallnext/issues/61)에 기록합니다.
+설치, 저장 복구, 접근성과 모션 값의 결과는 [#61](https://github.com/minjunkim-labs/smallnext/issues/61)에 기록합니다.
 
 CLI 검사에서는 설치한 시뮬레이터 이름을 지정합니다.
 

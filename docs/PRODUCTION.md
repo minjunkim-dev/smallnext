@@ -1,19 +1,19 @@
 # 사용자용 서버의 AI OFF 배포
 
-[#158](https://github.com/minjunkim-dev/smallnext/issues/158)의 배포 runbook이다.
+[#158](https://github.com/minjunkim-labs/smallnext/issues/158)의 배포 runbook이다.
 단일 Linux 서버에서 Docker Compose와 Caddy를 사용한다. DB·익명 인증은 Supabase Free로 통합한다.
 서버는 Supabase DB에 PostgreSQL로 직접 연결한다. Data API는 OFF, 자동 RLS는 ON으로 유지한다.
 서버 공급자는 사람이 선택한다. 레지스트리와 CI 자동 배포는 사용하지 않는다.
 
 이 절차는 서버 AI를 켜지 않는다. `USER_SERVER_AI`는 설정하지 않는다.
-제공사 API 키 생성·모델 API 접근 확인·단가·예산 설정·AI 활성화·유료 smoke는 [#242](https://github.com/minjunkim-dev/smallnext/issues/242)의 별도 승인 범위다. 실제 품질·비용·지연의 출시 검증은 [#47](https://github.com/minjunkim-dev/smallnext/issues/47)에서 병행한다.
-Supabase 프로젝트 생성·연결은 [#168](https://github.com/minjunkim-dev/smallnext/issues/168)에서 별도로 확인했다.
-[#162](https://github.com/minjunkim-dev/smallnext/issues/162)의 전체 wizard 실행과 [#164](https://github.com/minjunkim-dev/smallnext/issues/164)의 실제 서버 실행은 보류한다.
+제공사 API 키 생성·모델 API 접근 확인·단가·예산 설정·AI 활성화·유료 smoke는 [#242](https://github.com/minjunkim-labs/smallnext/issues/242)의 별도 승인 범위다. 실제 품질·비용·지연의 출시 검증은 [#47](https://github.com/minjunkim-labs/smallnext/issues/47)에서 병행한다.
+Supabase 프로젝트 생성·연결은 [#168](https://github.com/minjunkim-labs/smallnext/issues/168)에서 별도로 확인했다.
+[#162](https://github.com/minjunkim-labs/smallnext/issues/162)의 전체 wizard 실행과 [#164](https://github.com/minjunkim-labs/smallnext/issues/164)의 실제 서버 실행은 보류한다.
 아래 절차는 해당 실행을 승인한 뒤에 따른다. 로컬 연결의 확인 범위는 [서버 AI](SERVER_AI.md#supabase-free-연결-확인과-남은-조건)를 따른다.
 
 ## 베타 계정을 준비한다
 
-[#241](https://github.com/minjunkim-dev/smallnext/issues/241)의 Apple·Anthropic·도메인·Turnstile 준비는 별도 wizard가 안내한다.
+[#241](https://github.com/minjunkim-labs/smallnext/issues/241)의 Apple·Anthropic·도메인·Turnstile 준비는 별도 wizard가 안내한다.
 
 ```sh
 scripts/prepare_beta_accounts.sh
@@ -35,7 +35,7 @@ python3 scripts/prepare_production.py
 wizard는 Linux·방화벽 80/443, DNS, Supabase PostgreSQL·백업 조건, Anonymous 인증, DB 권한 순서로 안내한다.
 wizard는 서버를 배포하거나 계정을 생성하지 않는다.
 Supabase Free에는 자동 백업이 없다. 이전의 공급자 최소 자동 백업 조건을 충족했다고 처리하지 않는다.
-[#170](https://github.com/minjunkim-dev/smallnext/issues/170)에서 예산 데이터만 12시간마다 암호화해 최대 7일 보관하는 조건을 확정했다.
+[#170](https://github.com/minjunkim-labs/smallnext/issues/170)에서 예산 데이터만 12시간마다 암호화해 최대 7일 보관하는 조건을 확정했다.
 RPO·RTO 목표는 각각 24시간이다. 목표의 확정은 실제 달성 검증과 다르다.
 익명 계정과 세션은 백업하지 않는다. 계정을 유실하면 재생성하고 허용 UID를 다시 등록한다.
 목표·진행 상태는 기기에 유지한다. Mac의 Git 밖 폴더에서 최초 검증을 수행한다.
@@ -88,7 +88,7 @@ Firebase 서비스 계정과 credential JSON mount는 사용하지 않는다.
 빈 로컬 디렉터리에 승인한 Draft의 세 asset만 내려받는다.
 
 ```sh
-gh release download VERSION --repo minjunkim-dev/smallnext --dir EMPTY_DIRECTORY
+gh release download VERSION --repo minjunkim-labs/smallnext --dir EMPTY_DIRECTORY
 DRAFT_VERSION=VERSION SOURCE_SHA=FULL_MAIN_SOURCE_SHA \
   python3 scripts/draft_release.py verify --directory EMPTY_DIRECTORY
 ```
@@ -181,7 +181,7 @@ docker compose --env-file infra/production/.env.production --env-file infra/prod
 실제 도메인의 공인 TLS 인증서 유효성도 확인한다. 로컬 HTTP smoke로 공인 TLS를 확인했다고 보고하지 않는다.
 
 iOS 설정과 빌드 명령은 [iOS 연결](SERVER_AI.md#ios-연결)과 [개발 환경](DEVELOPMENT.md#ios)을 따른다.
-#164의 Release 익명 로그인은 아래 인증 전용 테스트를 사용한다. [확정 범위](https://github.com/minjunkim-dev/smallnext/issues/164#issuecomment-6286553318)와 [준비 티켓 #191](https://github.com/minjunkim-dev/smallnext/issues/191)을 따른다.
+#164의 Release 익명 로그인은 아래 인증 전용 테스트를 사용한다. [확정 범위](https://github.com/minjunkim-labs/smallnext/issues/164#issuecomment-6286553318)와 [준비 티켓 #191](https://github.com/minjunkim-labs/smallnext/issues/191)을 따른다.
 유료 API·사람 검토·실기기·공개 승인은 각각 별도 확인 범위다.
 
 ### Release AI OFF 인증 전용 검증
@@ -191,7 +191,7 @@ iOS 설정과 빌드 명령은 [iOS 연결](SERVER_AI.md#ios-연결)과 [개발 
 기존 `SupabaseAnonymousIdentity`를 직접 사용한다. 제품의 Keychain session과 분리한 고유 service·key를 만들고 자기 key만 제거한다.
 검증 transport는 Release 번들의 프로젝트로 보내는 `POST /auth/v1/signup` 한 번만 허용한다. redirect·재시도·AI 요청을 거부한다.
 CAPTCHA 설정이 있으면 기존 앱 sheet에서 사람이 완료한다. 부분 설정은 실패한다. CAPTCHA를 임의로 끄지 않는다.
-실제 CAPTCHA 검증에는 [#193](https://github.com/minjunkim-dev/smallnext/issues/193)의 callback 서명 수정과 selector 회귀가 포함된 빌드를 사용한다.
+실제 CAPTCHA 검증에는 [#193](https://github.com/minjunkim-labs/smallnext/issues/193)의 callback 서명 수정과 selector 회귀가 포함된 빌드를 사용한다.
 이 회귀는 navigation callback 등록만 확인한다. 실제 CAPTCHA 성공은 위 절차에서 따로 확인한다.
 
 1. Release 공개 client 설정·대상 Supabase 프로젝트·익명 인증 허용 상태를 확인한다. [iOS 연결](SERVER_AI.md#ios-연결)의 설정을 사용한다. 토큰·UID·key·설정 원문을 결과에 복사하지 않는다.
@@ -266,7 +266,7 @@ Turnstile widget은 도메인을 정한 뒤 [베타 계정 준비 wizard](#베�
 ## 개인정보 처리방침·지원 페이지
 
 Caddy는 `/privacy/`와 `/support/`에서 정적 페이지를 제공한다. 원본은 `infra/production/site/`다.
-문안은 [#240](https://github.com/minjunkim-dev/smallnext/issues/240)의 초안이다. #238·#239가 반영된 뒤 사람이 `[확정 필요]` 항목을 채워 확정한다.
+문안은 [#240](https://github.com/minjunkim-labs/smallnext/issues/240)의 초안이다. #238·#239가 반영된 뒤 사람이 `[확정 필요]` 항목을 채워 확정한다.
 
 ## 7. 직전 이미지로 되돌린다
 
