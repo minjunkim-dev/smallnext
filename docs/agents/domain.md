@@ -7,7 +7,7 @@ iOS·Android·API를 같은 제품의 구현으로 관리한다. 플랫폼별로
 
 1. 코드와 사양을 탐색하기 전에 루트 `CONTEXT.md`를 읽는다.
 2. `docs/adr/`에 관련 ADR이 있으면 읽는다.
-3. 제품 동작의 확정 답은 해당 GitHub Issue에서 확인한다. 기준은 [DECISIONS](../DECISIONS.md)와 완료한 [개발 사양 지도](https://github.com/minjunkim-dev/smallnext/issues/2)를 참조한다.
+3. 제품 동작의 확정 답은 해당 GitHub Issue에서 확인한다. 기준은 [DECISIONS](../DECISIONS.md)와 완료한 [개발 사양 지도](https://github.com/minjunkim-labs/smallnext/issues/2)를 참조한다.
 
 `CONTEXT.md`나 관련 ADR이 없으면 그대로 진행한다.
 빈 문서나 ADR 디렉터리를 미리 만들지 않는다. 용어나 결정이 확정될 때 필요한 문서만 만든다.

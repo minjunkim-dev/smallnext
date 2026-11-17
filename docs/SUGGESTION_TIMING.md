@@ -1,7 +1,7 @@
 # 개발 검증용 요청·화면 시간
 
-확정 범위는 [#114](https://github.com/minjunkim-dev/smallnext/issues/114)를 따른다.
-실제 OAuth 품질·시간 검증은 [#115](https://github.com/minjunkim-dev/smallnext/issues/115)에서 수행한다.
+확정 범위는 [#114](https://github.com/minjunkim-labs/smallnext/issues/114)를 따른다.
+실제 OAuth 품질·시간 검증은 [#115](https://github.com/minjunkim-labs/smallnext/issues/115)에서 수행한다.
 
 ## 실행 경계
 
@@ -117,7 +117,7 @@ Claude Code 구독 OAuth·`claude-haiku-5-5 / xhigh` 설정을 변경하지 않�
 
 ## 35초 모의 정상 화면
 
-[#122](https://github.com/minjunkim-dev/smallnext/issues/122)의 별도 관측이다.
+[#122](https://github.com/minjunkim-labs/smallnext/issues/122)의 별도 관측이다.
 기존 ON/OFF·행동·확인 질문·실패 관측은 10초 대기를 유지한다.
 `testDelayedNormalMockScreen`만 버튼 직전부터 사진 확보까지 60초를 사용한다.
 `SMALLNEXT_TIMING_DELAYED_TEST=1`을 지정하지 않으면 이 테스트는 건너뛴다.
@@ -160,7 +160,7 @@ Claude Code 구독 OAuth·`claude-haiku-5-5 / xhigh` 설정을 변경하지 않�
 
 ## 승인된 첫 행동10·더 작게10 화면 측정
 
-후보·독립 상태·순서·담당·삭제와 실행 승인은 [#111 최소 계획](https://github.com/minjunkim-dev/smallnext/issues/111#issuecomment-6409138337)을 따른다.
+후보·독립 상태·순서·담당·삭제와 실행 승인은 [#111 최소 계획](https://github.com/minjunkim-labs/smallnext/issues/111#issuecomment-6409138337)을 따른다.
 `scripts/screen_evaluation.py`는 해당5개 합성 목표×2회에만 적용한다. 기본 실행은 차단되며
 명시적인 `run(..., approved_once=True)`가 필요하다. 기존 launch의9후보·8흐름 승인을 재사용하지 않는다.
 실제 측정은 코드의 검증·독립 리뷰·병합과 main CI 완료 후 새 판으로만 실행한다.

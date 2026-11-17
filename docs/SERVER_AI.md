@@ -1,17 +1,17 @@
 # 사용자용 서버 AI 실행과 검증
 
-인증·권한·철회·보관의 확정 답은 [#75](https://github.com/minjunkim-dev/smallnext/issues/75)에 있습니다.
-인증 공급자 변경은 [#168](https://github.com/minjunkim-dev/smallnext/issues/168)을 따릅니다.
+인증·권한·철회·보관의 확정 답은 [#75](https://github.com/minjunkim-labs/smallnext/issues/75)에 있습니다.
+인증 공급자 변경은 [#168](https://github.com/minjunkim-labs/smallnext/issues/168)을 따릅니다.
 DB·인증의 선택 이유와 대안·제약은 [Supabase 선택 ADR](adr/0002-supabase-database-and-auth.md)에 기록합니다.
 코드는 기본 OFF입니다. Supabase Free 프로젝트의 DB·인증을 로컬에서 확인했습니다.
 실제 서버 배포와 앱에서 서버까지의 전체 인증 경로는 아직 검증하지 않았습니다.
-실제 API 품질·청구·지연은 [#47](https://github.com/minjunkim-dev/smallnext/issues/47)에서 검증합니다.
-사용자용 서버 모델 변경은 [#47의 Haiku 결정](https://github.com/minjunkim-dev/smallnext/issues/47#issuecomment-6074604866)을 따릅니다.
-추론 강도 변경은 [#47의 xhigh 승인과 검증 범위](https://github.com/minjunkim-dev/smallnext/issues/47#issuecomment-6075071867)를 따릅니다.
+실제 API 품질·청구·지연은 [#47](https://github.com/minjunkim-labs/smallnext/issues/47)에서 검증합니다.
+사용자용 서버 모델 변경은 [#47의 Haiku 결정](https://github.com/minjunkim-labs/smallnext/issues/47#issuecomment-6074604866)을 따릅니다.
+추론 강도 변경은 [#47의 xhigh 승인과 검증 범위](https://github.com/minjunkim-labs/smallnext/issues/47#issuecomment-6075071867)를 따릅니다.
 제한 구독 평가의 결과와 남은 오수용은 [Haiku 평가 기록](research/haiku-server-ai-evaluation.md)에 있습니다.
 요청별 계약 회귀와 미사용 후보·생성 단독·연결 결과는 [생성·검사 분리 평가](research/generator-checker-validation.md)에 있습니다.
 확정한 검증 범위와 유료 실행 시점은 [출시 검증 계획](research/server-ai-launch-validation-plan.md)을 따릅니다.
-[#61의 실기기 검증](https://github.com/minjunkim-dev/smallnext/issues/61#issuecomment-6049652307)은 보류 상태입니다.
+[#61의 실기기 검증](https://github.com/minjunkim-labs/smallnext/issues/61#issuecomment-6049652307)은 보류 상태입니다.
 
 ## 서버 계약
 
@@ -21,7 +21,7 @@ DB·인증의 선택 이유와 대안·제약은 [Supabase 선택 ADR](adr/0002-
 앱은 HTTPS의 `Authorization: Bearer`로 Supabase access token을 보냅니다.
 서버는 프로젝트 JWKS의 ES256 또는 RS256 서명과 `iss`, `aud`, `exp`, `iat`, `sub`를 확인합니다.
 `role=authenticated`, `is_anonymous=true`와 유효한 `session_id`를 요구합니다. HS256 토큰은 허용하지 않습니다.
-서버는 UID 허용 목록을 확인합니다. `AI_PUBLIC_ACCESS=1`일 때만 허용 목록 없이 인증된 익명 사용자를 받습니다([#237](https://github.com/minjunkim-dev/smallnext/issues/237) 공개 베타). 각 요청에서 Auth의 `/auth/v1/user`와 DB의 `smallnext_session_active`를 함께 조회합니다.
+서버는 UID 허용 목록을 확인합니다. `AI_PUBLIC_ACCESS=1`일 때만 허용 목록 없이 인증된 익명 사용자를 받습니다([#237](https://github.com/minjunkim-labs/smallnext/issues/237) 공개 베타). 각 요청에서 Auth의 `/auth/v1/user`와 DB의 `smallnext_session_active`를 함께 조회합니다.
 계정 삭제·차단, 세션 로그아웃·만료 또는 조회 실패에서는 AI를 호출하지 않습니다.
 `DELETE /v1/account`도 같은 플래그와 인증 검사를 따릅니다. 허용 UID 목록만 적용하지 않아 모든 익명 사용자가 자기 계정을 지울 수 있습니다(App Review 5.1.1(v)).
 그 계정의 일일 사용 횟수와 Supabase 익명 계정을 한 transaction에서 지우고 204로 답합니다. 계정을 지우지 못하면 사용 횟수도 남기고 503으로 답합니다.
@@ -44,7 +44,7 @@ DB는 기존 Rust 서버가 TLS PostgreSQL로 직접 연결합니다. Data API�
 반복 시작 실패를 입력이 명시하고 원인을 모르면 첫 실제 걸림돌을 직접 묻는 공통 지침을 사용합니다.
 이 경우 더 작은 신체 동작을 제안하는 후보도 검사에서 거부하게 합니다.
 개발 CLI와 사용자용 API는 같은 생성·검사 지침을 사용합니다. 요청별 허용 status를 생성 schema와 구조 검사에서 함께 사용합니다.
-생성은 결과가 기대는 과거 사실과 출처 상태(`facts`), smaller의 감소 내용(`reduction`)도 함께 냅니다. 검사는 이 두 칸을 후보와 원본에 대조합니다. 두 칸은 검사에만 쓰고 앱 응답에서는 서버가 제거합니다([#259](https://github.com/minjunkim-dev/smallnext/issues/259)).
+생성은 결과가 기대는 과거 사실과 출처 상태(`facts`), smaller의 감소 내용(`reduction`)도 함께 냅니다. 검사는 이 두 칸을 후보와 원본에 대조합니다. 두 칸은 검사에만 쓰고 앱 응답에서는 서버가 제거합니다([#259](https://github.com/minjunkim-labs/smallnext/issues/259)).
 알려진 제목 복사를 알 수 없는 과거 사실의 근거 확보로 취급하지 않습니다. 제목 작성 자체가 목표인 경우와 구분합니다. 이 지침이 모든 의미 오류를 막는다고 보장하지 않습니다.
 거부·불확실·실패·취소에서는 적용 후보를 반환하지 않습니다.
 앱은 기존 리비전 검사를 유지합니다. 늦은 응답으로 진행 상태를 바꾸지 않습니다.

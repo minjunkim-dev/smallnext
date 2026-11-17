@@ -4,7 +4,7 @@
 
 ## 현재 운영 방식
 
-[Issue #125](https://github.com/minjunkim-dev/smallnext/issues/125)에 따라 자동 AI 댓글·코드·AI 보안 리뷰를 로컬 독립 리뷰로 전환한다.
+[Issue #125](https://github.com/minjunkim-labs/smallnext/issues/125)에 따라 자동 AI 댓글·코드·AI 보안 리뷰를 로컬 독립 리뷰로 전환한다.
 절차는 [리뷰](agents/review.md), 리뷰 기준은 [REVIEW](../REVIEW.md), 미공개 CD는 [Draft CD](DRAFT_RELEASE.md)를 따른다.
 필수 CI·dependency 검사·독립 집계와 기존 Cloud 저장소 접근은 보존한다.
 2026-10-26부터 저장소의 Bugbot 전용 파일·검사·실행 요구를 제거하고 자체 리뷰를 사용한다. 고유 기준은 리뷰 기준과 리뷰 자료 선택 표에 보존한다. 서버 서비스·계정 연결은 이 파일 변경으로 제어하지 않는다.
@@ -37,7 +37,7 @@ Swift CodeQL은 현재 구성의 지원 대상이 아니다. GitHub는 [CodeQL 2
 
 ## 생성과 병합
 
-- 저장소: [minjunkim-dev/smallnext](https://github.com/minjunkim-dev/smallnext).
+- 저장소: [minjunkim-labs/smallnext](https://github.com/minjunkim-labs/smallnext).
 - 공개 범위: public. 2026-10-04 전환 후 GitHub API로 확인.
 - 기본 브랜치: main.
 - 병합 방식: squash만 허용.
@@ -116,7 +116,7 @@ GitHub 소유 Action 허용과 전체 SHA 강제는 유지합니다. 검증한 �
 
 1. 로컬 Claude Code에서 `claude setup-token`을 실행합니다. 발급 값을 Smallnext의 Actions Secret `CLAUDE_CODE_OAUTH_TOKEN`으로 등록합니다. GitHub 토큰이나 운영 API 키는 사용하지 않습니다.
 2. GitHub Actions의 허용 목록에 검토한 `anthropics/claude-code-action/base-action`과 필요한 내부 Action의 전체 SHA를 추가합니다. 전체 Action 허용으로 바꾸지 않습니다.
-3. Codex GitHub 연결에서 `minjunkim-dev/smallnext` 접근을 허용합니다. 해당 저장소의 자동 코드 검토를 `Review all PRs`, 검토 트리거를 `Every push`로 설정합니다.
+3. Codex GitHub 연결에서 `minjunkim-labs/smallnext` 접근을 허용합니다. 해당 저장소의 자동 코드 검토를 `Review all PRs`, 검토 트리거를 `Every push`로 설정합니다.
 4. 자동 보안 검토를 `Review all PRs`, 트리거를 `Whenever code review runs`로 설정합니다. 자동 보고는 Critical·High, 수동 보고는 Critical·High·Medium을 유지합니다. 위협 모델 경로를 비우면 검토마다 모델을 생성합니다.
 5. 워크플로를 main에 병합한 후 Issue와 작은 PR로 첫 실행을 확인합니다. 실행 URL, 봇 댓글 URL, 검토 SHA를 아래 표에 기록합니다.
 
@@ -144,16 +144,16 @@ HTTP 401 또는 SDK `authentication_failed`가 발생하면 해당 리뷰를 미
 공개 전환 후 main 보호를 적용하고 API로 확인했습니다. PR과 최신 기준 브랜치의 검사를 요구합니다.
 필수 검사는 `Project checks` workflow의 판정 job `ci` 하나입니다. 값과 `strict`는 repo-baseline `templates/github/README.md`의 「계약 값」을 따르고, [repository-settings.json](../.github/repository-settings.json)에는 이 저장소에만 있는 값만 둡니다(2026-11-16). `ci`는 `Repository hygiene`와 `Project checks`가 모두 성공해야 통과합니다. 소유자가 위 도구로 적용하기 전까지 서버는 옛 두 검사를 요구합니다. `Review status`·`PR policy` workflow와 `review/*` status 게이트는 제거했습니다. 에이전트는 status와 승인 댓글을 쓰지 않습니다.
 관리자에게도 규칙을 적용합니다. 선형 이력, 미해결 리뷰 대화 해결, 강제 push·main 삭제 금지를 요구합니다.
-동료 승인은 필수가 아닙니다. 2026-10-06 `gh api repos/minjunkim-dev/smallnext/branches/main/protection`의 `required_pull_request_reviews`에서 `required_approving_review_count: 0`, `require_code_owner_reviews: false`를 확인했습니다. 병합은 [병합 조건](WORKFLOW.md#병합-조건)을 따릅니다.
+동료 승인은 필수가 아닙니다. 2026-10-06 `gh api repos/minjunkim-labs/smallnext/branches/main/protection`의 `required_pull_request_reviews`에서 `required_approving_review_count: 0`, `require_code_owner_reviews: false`를 확인했습니다. 병합은 [병합 조건](WORKFLOW.md#병합-조건)을 따릅니다.
 비공개일 때 ruleset 요청이 HTTP 403으로 거절된 기록은 현재 공개 저장소의 보호 상태를 나타내지 않습니다.
 
 PR의 workflow는 집계 입력과 플랫폼 검사 정의를 변경할 수 있습니다.
 독립 집계를 병합 판단 근거로 사용하는 설계는 [ADR-0001](adr/0001-trusted-ci-aggregation.md)에 있습니다.
 집계 workflow의 구현과 bootstrap 절차는 [CI](CI.md#기준-브랜치의-독립-집계)에 있습니다.
 2026-10-09 같은 저장소 PR에서 정상 집계, 위조 JSON·gate 호출 거부, 부분 재실행 거부와 전체 재실행 통과를 확인했습니다.
-실행 ID·검토 SHA와 실제 API의 이전 성공 복사에 대한 보완은 [Issue #83의 구현 검증 기록](https://github.com/minjunkim-dev/smallnext/issues/83#issuecomment-6078266278)에 있습니다.
+실행 ID·검토 SHA와 실제 API의 이전 성공 복사에 대한 보완은 [Issue #83의 구현 검증 기록](https://github.com/minjunkim-labs/smallnext/issues/83#issuecomment-6078266278)에 있습니다.
 실제 집계 실행을 확인하는 병합 절차를 적용합니다. 기존 필수 검사와 보호 설정은 유지합니다.
-구현 완료 조건과 도입 순서는 [Issue #83의 확정 답](https://github.com/minjunkim-dev/smallnext/issues/83#issuecomment-6078139109)을 따릅니다.
+구현 완료 조건과 도입 순서는 [Issue #83의 확정 답](https://github.com/minjunkim-labs/smallnext/issues/83#issuecomment-6078139109)을 따릅니다.
 
 ## 연결 상태와 검증 근거
 
@@ -164,16 +164,16 @@ PR의 workflow는 집계 입력과 플랫폼 검사 정의를 변경할 수 있�
 | main·squash·병합 후 브랜치 삭제 | GitHub API로 설정 확인 |
 | main 보호 | rulesets API HTTP 403. 작업 규칙만 적용 |
 | Action 허용 목록·리뷰 라벨 | 고정 SHA 두 개와 `ai:review`·`ai:skip`을 저장하고 API로 재확인 |
-| Claude 인증·실행 | OAuth Secret 재등록 후 main의 [Issue 검토 실행](https://github.com/minjunkim-dev/smallnext/actions/runs/37126902068) 성공. 토큰 값은 읽거나 기록하지 않음 |
-| Claude Issue 실제 응답 | [Issue #15 검토 댓글](https://github.com/minjunkim-dev/smallnext/issues/15#issuecomment-5969716401) 게시 확인. 워크플로 기준 커밋 `1eaf836afd9f0c8c65978192f30e1f78c0ddedd1` |
-| Claude PR 일반 검토·CI 조회 | [PR #27 검토 실행](https://github.com/minjunkim-dev/smallnext/actions/runs/37127614521) 성공. [실제 리뷰 댓글](https://github.com/minjunkim-dev/smallnext/pull/27#issuecomment-5969819982)의 검토 SHA `3932a2512f28a5c40ddf6a495657d3b103a95b6c` 확인. 최소 읽기 권한 추가 후 CI 결과 조회 성공 |
-| Claude PR 보안 명령 | [`@claude security review` 요청](https://github.com/minjunkim-dev/smallnext/pull/27#issuecomment-5969832224) 뒤 [실행](https://github.com/minjunkim-dev/smallnext/actions/runs/37127780558) 성공. [보안 검토 댓글](https://github.com/minjunkim-dev/smallnext/pull/27#issuecomment-5969841220)의 검토 SHA `3932a2512f28a5c40ddf6a495657d3b103a95b6c` 확인. P2 취소 경합 지적은 후속 변경에서 그룹 키에 SHA를 추가해 수정 |
+| Claude 인증·실행 | OAuth Secret 재등록 후 main의 [Issue 검토 실행](https://github.com/minjunkim-labs/smallnext/actions/runs/37126902068) 성공. 토큰 값은 읽거나 기록하지 않음 |
+| Claude Issue 실제 응답 | [Issue #15 검토 댓글](https://github.com/minjunkim-labs/smallnext/issues/15#issuecomment-5969716401) 게시 확인. 워크플로 기준 커밋 `1eaf836afd9f0c8c65978192f30e1f78c0ddedd1` |
+| Claude PR 일반 검토·CI 조회 | [PR #27 검토 실행](https://github.com/minjunkim-labs/smallnext/actions/runs/37127614521) 성공. [실제 리뷰 댓글](https://github.com/minjunkim-labs/smallnext/pull/27#issuecomment-5969819982)의 검토 SHA `3932a2512f28a5c40ddf6a495657d3b103a95b6c` 확인. 최소 읽기 권한 추가 후 CI 결과 조회 성공 |
+| Claude PR 보안 명령 | [`@claude security review` 요청](https://github.com/minjunkim-labs/smallnext/pull/27#issuecomment-5969832224) 뒤 [실행](https://github.com/minjunkim-labs/smallnext/actions/runs/37127780558) 성공. [보안 검토 댓글](https://github.com/minjunkim-labs/smallnext/pull/27#issuecomment-5969841220)의 검토 SHA `3932a2512f28a5c40ddf6a495657d3b103a95b6c` 확인. P2 취소 경합 지적은 후속 변경에서 그룹 키에 SHA를 추가해 수정 |
 | Codex 저장소 접근 | GitHub 앱 설치 화면과 Codex 저장소 목록에서 Smallnext 접근 확인 |
 | Codex 자동 코드 리뷰 | 계정 설정에 모든 PR 검토·매 푸시마다 실행 저장 확인 |
 | Codex 자동 보안 리뷰 | 계정 설정에 모든 PR 검토·코드 리뷰와 함께 실행 저장 확인. 자동 보고 Critical·High, 수동 보고 Critical·High·Medium |
-| main 병합·CI | [PR #18](https://github.com/minjunkim-dev/smallnext/pull/18)을 squash 병합. 커밋 `1eaf836afd9f0c8c65978192f30e1f78c0ddedd1`의 [저장소 검사](https://github.com/minjunkim-dev/smallnext/actions/runs/37126498060)와 [프로젝트 검사](https://github.com/minjunkim-dev/smallnext/actions/runs/37126498353) 통과 |
-| Codex 실제 응답 | [PR #18 봇 응답](https://github.com/minjunkim-dev/smallnext/pull/18#issuecomment-5969297999)에서 최종 자동 코드·보안 리뷰 완료 확인. 검토 SHA `78ceee101164c9d768a24e50700092f717e4e06a`. 기존 지적 2건 수정 후 새 지적 없음 |
-| 앱·API 초기 셋업과 캐시 검증 | [PR #14 검사](https://github.com/minjunkim-dev/smallnext/pull/14/checks). 커밋 `2ab3841`의 [첫 실행](https://github.com/minjunkim-dev/smallnext/actions/runs/37118733750/attempts/1)과 [캐시 복원 실행](https://github.com/minjunkim-dev/smallnext/actions/runs/37118733750/attempts/2)에서 앱·API 테스트 통과 |
+| main 병합·CI | [PR #18](https://github.com/minjunkim-labs/smallnext/pull/18)을 squash 병합. 커밋 `1eaf836afd9f0c8c65978192f30e1f78c0ddedd1`의 [저장소 검사](https://github.com/minjunkim-labs/smallnext/actions/runs/37126498060)와 [프로젝트 검사](https://github.com/minjunkim-labs/smallnext/actions/runs/37126498353) 통과 |
+| Codex 실제 응답 | [PR #18 봇 응답](https://github.com/minjunkim-labs/smallnext/pull/18#issuecomment-5969297999)에서 최종 자동 코드·보안 리뷰 완료 확인. 검토 SHA `78ceee101164c9d768a24e50700092f717e4e06a`. 기존 지적 2건 수정 후 새 지적 없음 |
+| 앱·API 초기 셋업과 캐시 검증 | [PR #14 검사](https://github.com/minjunkim-labs/smallnext/pull/14/checks). 커밋 `2ab3841`의 [첫 실행](https://github.com/minjunkim-labs/smallnext/actions/runs/37118733750/attempts/1)과 [캐시 복원 실행](https://github.com/minjunkim-labs/smallnext/actions/runs/37118733750/attempts/2)에서 앱·API 테스트 통과 |
 
 브라우저 재시작과 GitHub 본인 인증 후 계정 설정을 확인했습니다.
 PR 생성·CI 통과는 Secret 등록, 계정 연결, AI 응답을 증명하지 않습니다.
@@ -181,7 +181,7 @@ PR 생성·CI 통과는 Secret 등록, 계정 연결, AI 응답을 증명하지 
 실제 fork PR의 권한 거절 실행은 확인하지 않았습니다. 거절 조건은 단위 테스트와 워크플로 소스로 확인했습니다.
 워크플로 변경을 시험한 실행과 main 실행을 구분합니다. 병합 전에는 현재 head의 리뷰 댓글과 CI도 다시 확인합니다.
 
-이번 작업의 연결·검증 후속 상태는 [Issue #15](https://github.com/minjunkim-dev/smallnext/issues/15)에 기록합니다.
+이번 작업의 연결·검증 후속 상태는 [Issue #15](https://github.com/minjunkim-labs/smallnext/issues/15)에 기록합니다.
 
 Project checks는 iOS·Android·API와 컨테이너를 검사합니다.
 로컬 실행은 [개발 환경](DEVELOPMENT.md), 캐시와 병렬 실행은 [CI 구성](CI.md)을 따릅니다.
@@ -196,4 +196,4 @@ PR 본문 양식은 `.github/pull_request_template.md` 하나입니다. 대문�
 
 ## 과거 Bugbot 확인 기록
 
-2026-10-14 개인 연결에서는 PR 작성자와 Cursor에 연결한 GitHub 계정의 일치가 수동 리뷰 실행 조건이었다. Dependabot 작성 PR #107의 수동 요청은 [실제 응답](https://github.com/minjunkim-dev/smallnext/pull/107#issuecomment-6158071176)에서 `GitHub account mismatch`로 거부됐다. 요청 ID 발급과 Analytics counter 증가는 리뷰 성공 근거가 아니며, 당시 리뷰·규칙·요약 출력은 검증하지 못했다. 이 기록은 과거 실패 근거이며 새 실행 요구가 아니다.
+2026-10-14 개인 연결에서는 PR 작성자와 Cursor에 연결한 GitHub 계정의 일치가 수동 리뷰 실행 조건이었다. Dependabot 작성 PR #107의 수동 요청은 [실제 응답](https://github.com/minjunkim-labs/smallnext/pull/107#issuecomment-6158071176)에서 `GitHub account mismatch`로 거부됐다. 요청 ID 발급과 Analytics counter 증가는 리뷰 성공 근거가 아니며, 당시 리뷰·규칙·요약 출력은 검증하지 못했다. 이 기록은 과거 실패 근거이며 새 실행 요구가 아니다.
