@@ -18,7 +18,7 @@
 [repository-settings.json](../.github/repository-settings.json)은 이 저장소의 서버 설정 기준선이다. GitHub가 자동으로 적용하는 네이티브 설정 파일이 아니다.
 공통값은 repo-baseline `templates/github/repository-settings.json`에 있고, 이 JSON에는 이 저장소에만 있는 값(저장소 ID, 필수 체크, CodeQL 방식)만 둔다. 도구가 두 파일을 합친 값이 기준이다. 다른 저장소에 적용할 때 프로젝트별 값을 그대로 복사하지 않는다.
 
-서버 설정의 확인과 적용은 공개 `minjunkim-dev/repo-baseline`의 `tools/apply_github_settings.py`로 소유자가 한다. 이 저장소에는 그 도구를 복사하지 않는다.
+서버 설정의 확인과 적용은 공개 `minjunkim-labs/repo-baseline`의 `tools/apply_github_settings.py`로 소유자가 한다. 이 저장소에는 그 도구를 복사하지 않는다.
 
 ```sh
 python3 <repo-baseline>/tools/apply_github_settings.py <smallnext 경로>
@@ -192,7 +192,7 @@ PR 본문 양식은 `.github/pull_request_template.md` 하나입니다. 대문�
 
 ## 공통 기준
 
-2026-11-08 공개 `minjunkim-dev/repo-baseline`의 새 기준(main `513ac5d`, 코어 + GitHub 프로필)으로 옮겼습니다([repo-baseline#71](https://github.com/minjunkim-dev/repo-baseline/issues/71)). 해시 복사(`.github/repo-baseline.json`과 복사한 검사기), `review/gate`, PR 제목·브랜치·본문 검사는 쓰지 않습니다. 코어 파일(`AGENTS.md`, `REVIEW.md`, PR 양식)은 이 저장소가 직접 고칩니다. 규칙의 원문은 repo-baseline의 `POLICY.md`입니다. 2026-11-09 repo-baseline이 코어에서 `CLAUDE.md`를 뺐으므로 이 저장소도 지웠습니다. 이전 기준선의 설명용 `observations` 배열은 2026-11-16에 지웠습니다. 그 내용(`release` Environment 없음, Swift CodeQL 미지원)은 이 문서 위쪽에 있습니다.
+2026-11-08 공개 `minjunkim-labs/repo-baseline`의 새 기준(main `513ac5d`, 코어 + GitHub 프로필)으로 옮겼습니다([repo-baseline#71](https://github.com/minjunkim-labs/repo-baseline/issues/71)). 해시 복사(`.github/repo-baseline.json`과 복사한 검사기), `review/gate`, PR 제목·브랜치·본문 검사는 쓰지 않습니다. 코어 파일(`AGENTS.md`, `REVIEW.md`, PR 양식)은 이 저장소가 직접 고칩니다. 규칙의 원문은 repo-baseline의 `POLICY.md`입니다. 2026-11-09 repo-baseline이 코어에서 `CLAUDE.md`를 뺐으므로 이 저장소도 지웠습니다. 이전 기준선의 설명용 `observations` 배열은 2026-11-16에 지웠습니다. 그 내용(`release` Environment 없음, Swift CodeQL 미지원)은 이 문서 위쪽에 있습니다.
 
 ## 과거 Bugbot 확인 기록
 
