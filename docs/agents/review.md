@@ -68,6 +68,6 @@ PR 브랜치에 base를 합치지 않는다. 큐가 base와 합친 결과에서 
 
 ## 회고로 환경 개선
 
-사용자가 회고를 요청하면 repo-baseline [`prompts/retro.md`](https://github.com/minjunkim-dev/repo-baseline/blob/main/prompts/retro.md)를 따른다. Matt Pocock `mattpocock-skills:retro`(`/retro`)를 써도 된다. 입력은 `prompts/retro.md`의 입력이고, 반영할 곳은 그 2번 순서(린트·검사, `REVIEW.md` 「코딩 기준」·「배운 규칙」, `AGENTS.md` 길잡이)다. `CODING_STANDARDS.md`는 만들지 않는다. 제안 중 사용자가 고른 것만 반영한다.
+사용자가 회고를 요청하면 repo-baseline [`prompts/retro.md`](https://github.com/minjunkim-labs/repo-baseline/blob/main/prompts/retro.md)를 따른다. Matt Pocock `mattpocock-skills:retro`(`/retro`)를 써도 된다. 입력은 `prompts/retro.md`의 입력이고, 반영할 곳은 그 2번 순서(린트·검사, `REVIEW.md` 「코딩 기준」·「배운 규칙」, `AGENTS.md` 길잡이)다. `CODING_STANDARDS.md`는 만들지 않는다. 제안 중 사용자가 고른 것만 반영한다.
 
 매 PR·정기 자동 회고는 만들지 않는다. 현재 작업의 확실한 결함은 회고를 기다리지 않고 자체 리뷰 절차에서 수정한다.
