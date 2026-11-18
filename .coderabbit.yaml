@@ -1,0 +1,12 @@
+# repo-baseline 공통 파일. 저장소에서 고치지 않고 repo-baseline의 templates/github/.coderabbit.yaml을 고친다.
+# 저장소에 .coderabbit.yaml이 이미 있으면 이 파일을 복사하지 않고 language 줄만 합친다.
+# 근거(2026-11-16 확인):
+# - language: 리뷰 언어. 기본값 en-US. https://docs.coderabbit.ai/reference/configuration
+#   요약·채팅 답글까지 바뀌는지는 문서에 없어 확인하지 못했다.
+# - 저장소 YAML은 CodeRabbit 웹의 저장소·조직 설정보다 우선하고, 조직 global override보다는 아래다.
+#   https://docs.coderabbit.ai/guides/configuration-overview
+# - inheritance: 없으면 가장 우선하는 설정 하나만 쓴다. 그러면 이 파일에 없는 키가 웹 설정 대신 기본값이 된다.
+#   true면 이 파일에 없는 키를 바로 아래 단계(Central YAML, 없으면 웹 설정)에서 받는다.
+#   그 단계에 inheritance가 없으면 상속은 거기서 멈춘다. https://docs.coderabbit.ai/configuration/configuration-inheritance
+language: "ko-KR"
+inheritance: true
