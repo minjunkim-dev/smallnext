@@ -53,7 +53,7 @@
 <!-- repo-baseline:ops -->
 ### ops
 
-- repo-baseline ops 프로필의 도구를 모두 쓴다. 빼는 도구는 이 블록 끝에 `뺀 도구: 도구 — 이유` 한 줄로 적고 그 도구의 줄을 지운다. 다른 도구를 더하려면 먼저 소유자에게 묻는다.
+- repo-baseline ops 프로필의 도구를 모두 쓴다. 이 블록은 손으로 고치지 않는다. 빼는 도구는 `.github/repo-baseline.json`의 `blocks.ops.exclude`에 `"도구": "이유"`로 적는다. 그 파일이 없으면 이 블록 끝에 `- 뺀 도구: 도구 — 이유` 한 줄로 적고 그 도구의 줄을 지운다. 다른 도구를 더하려면 먼저 소유자에게 묻는다.
 - 코드·의존성 보안(GitHub secret scanning, push protection, Dependabot, CodeQL)은 켜져 있다. CodeQL은 기본 설정을 먼저 쓰고, 기본 설정으로 분석이 안 될 때만 고급 설정 workflow를 쓴다. 그 이유는 저장소 문서에 적는다. secret scanning, push protection, Dependabot은 조직 기본값으로 켜고, 기존 저장소는 github 프로필 절차로 맞춘다. 저장소에서 끄지 않는다.
 - GitGuardian은 조직에 설치한 GitHub App으로 돈다. 저장소에서 끄지 않는다.
 - 에러 추적은 Sentry다.
