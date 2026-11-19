@@ -53,7 +53,7 @@
 ### ops
 
 - repo-baseline ops 프로필의 도구를 모두 쓴다. 빼는 도구는 이 절에 `뺀 도구: 도구 — 이유` 한 줄로 적는다. 다른 도구를 더하려면 먼저 소유자에게 묻는다.
-- 코드·의존성 보안(GitHub secret scanning, push protection, Dependabot, CodeQL)과 GitGuardian은 조직에서 켜져 있다. 저장소에서 끄지 않는다.
+- 코드·의존성 보안(GitHub secret scanning, push protection, Dependabot, CodeQL)과 GitGuardian은 켜져 있다. CodeQL은 기본 설정을 먼저 쓰고, 기본 설정으로 분석이 안 될 때만 고급 설정 workflow를 쓴다. 그 이유는 저장소 문서에 적는다. secret scanning, push protection, Dependabot은 조직 기본값으로 켜고, 기존 저장소는 github 프로필 절차로 맞춘다. GitGuardian은 조직에 설치한 GitHub App으로 돈다. 저장소에서 끄지 않는다.
 - 에러 추적은 Sentry, 제품 분석은 PostHog다. SDK는 처음 배포하는 PR에서 붙인다. 이미 배포한 앱이면 이 절을 붙인 뒤 따로 여는 PR에서 붙인다.
 - 배포한 URL은 UptimeRobot에, 도메인은 Cloudflare에 소유자가 등록한다.
 - 서버를 직접 운영하게 되면 Grafana Cloud, 비밀값이 세 곳을 넘으면 Infisical을 켠다. 켜기 전에 소유자에게 알린다.
