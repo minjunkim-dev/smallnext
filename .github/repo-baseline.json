@@ -8,9 +8,9 @@
   "blocks": {
     "ops": {
       "target": "AGENTS.md",
-      "sha256": "8256a09a23c0831cdf2818d69689b55a4c0c6476f55811b5699441a8753b71b8"
+      "sha256": "02674519c2a8ae07d67bf42a1ca7ce8785c9e2c00360268c762093f107d65910"
     }
   },
   "source": "minjunkim-labs/repo-baseline",
-  "source_commit": "6a08e44373156926a9212c53f3a1aa01669d39c0"
+  "source_commit": "254f1fad7dea5f98858180fa8260429c6d786796"
 }
