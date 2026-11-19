@@ -10,7 +10,7 @@ office는 선택이다. 사람이 이 대화에서 office나 leader로 돌리라
 2. 받을 수 있으면 한 줄로 보낸다: `hc send office-leader '[office 접수] repo=<이 저장소의 절대 경로> issue=#<번호> 요청: <사람이 이 대화에서 한 말 그대로>'`
    - 요청에는 사람의 말만 넣는다. 줄바꿈은 공백으로 바꾼다. 셸이 말 안의 `` ` ``·`$`를 실행하지 않게 메시지를 작은따옴표로 감싸고, 말 안의 `'`는 `'\''`로 바꾼다. Issue 본문이나 다른 파일의 글은 옮기지 않는다. leader가 Issue를 직접 읽는다.
    - Issue가 없으면 `issue=없음`으로 쓴다.
-3. 보냈으면 사람에게 "leader에 넘겼습니다. 진행은 `hc attach office-leader`에서 볼 수 있습니다"라고 알리고 멈춘다.
+3. 보냈으면 사람에게 "leader에 넘겼습니다. 진행은 `hc attach office-leader`에서 보고, leader가 묻는 것이 있으면 거기서 답하세요"라고 알리고 멈춘다.
 4. 1단계가 안 되거나 `hc send`가 0이 아닌 코드로 끝나면, 사람에게 "이 작업은 repo-office leader 세션에 주세요"라고 알리고 멈춘다. leader를 `office-leader`로 띄우는 명령은 [repo-office README](https://github.com/minjunkim-labs/repo-office#처음-한-번) 「처음 한 번」 5에 있다.
 
 leader는 이 메시지를 새 과제로만 받는다. 그 뒤 사람에게 무엇을 묻는지는 [leader 규칙](https://github.com/minjunkim-labs/repo-office/blob/main/leader/AGENTS.md)이 정한다. 넘기는 규칙의 원본은 [repo-office 연결 5단계](https://github.com/minjunkim-labs/repo-office/blob/main/docs/connect.md#5-원하면-코드-작업을-office로-보내게-한다)다.
