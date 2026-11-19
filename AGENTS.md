@@ -33,7 +33,7 @@
 - repo-office 파이프라인은 선택이다. 이 저장소는 여러 사람이 쓰고, office는 그것을 띄운 사람의 컴퓨터에만 있다.
   - 사람이 이 대화에서 office나 leader로 돌리라고 할 때만 떠 있는 leader 세션에 과제를 넘기고 멈춘다. 그 말이 넘겨도 된다는 허락이다. 따로 묻지 않는다. 넘기는 법은 [office 절차](docs/agents/office.md#과제-넘기기)에 있다.
   - 그 밖의 작업은 [개발 절차](docs/agents/development.md)와 [협업 규칙](docs/WORKFLOW.md)대로 한다. office로 넘길지 먼저 묻지 않는다.
-  - leader 세션은 사람이 repo-office 체크아웃에서 hc 터미널 `office-leader`로 하나만 띄운다. leader는 방향 선택과 설계 승인을 사람에게 묻는다. 병합은 사람이 한다.
+  - leader 세션은 사람이 repo-office 체크아웃에서 hc 터미널 `office-leader`로 하나만 띄운다. leader가 언제 사람에게 묻는지와 PR을 누가 병합하는지는 [repo-office](https://github.com/minjunkim-labs/repo-office)의 `leader/AGENTS.md`와 `AGENTS.md`가 정한다. 이 저장소에 옮겨 적지 않는다.
   - office 과제의 브랜치는 `office/<과제>`이고, 이 저장소의 브랜치 이름 규칙을 따르지 않는다.
   - office 작업자는 이 규칙을 따르지 않는다. 작업 폴더가 repo-office 체크아웃의 `jobs/<과제>/`이고 브랜치가 `office/<과제>`면 office 작업자다. office 작업자는 단계 지시서대로 일하고 leader에 넘기지 않는다.
 
