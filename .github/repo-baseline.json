@@ -1,0 +1,16 @@
+{
+  "files": {
+    ".github/pull_request_template.md": {
+      "source": ".github/pull_request_template.md",
+      "sha256": "2743f77ecf254d76a7f6cf01089eef1aa323cda5595b75a64f770de2eeb0122d"
+    }
+  },
+  "blocks": {
+    "ops": {
+      "target": "AGENTS.md",
+      "sha256": "8256a09a23c0831cdf2818d69689b55a4c0c6476f55811b5699441a8753b71b8"
+    }
+  },
+  "source": "minjunkim-labs/repo-baseline",
+  "source_commit": "6a08e44373156926a9212c53f3a1aa01669d39c0"
+}
