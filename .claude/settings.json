@@ -31,7 +31,29 @@
       "Bash(git push)"
     ],
     "ask": [
-      "Bash(gh api *)"
+      "Bash(gh api *enqueuePullRequest*)",
+      "Bash(gh api *mergePullRequest*)",
+      "Bash(gh api *PullRequestAutoMerge*)",
+      "Bash(gh api */merge*)",
+      "Bash(gh api *-X*)",
+      "Bash(gh api *--method*)",
+      "Bash(gh api *iX*)",
+      "Bash(gh api *=@*)",
+      "Bash(gh api *--input*)",
+      "Bash(gh api */secrets*)",
+      "Bash(gh api */variables*)",
+      "Bash(gh api */hooks*)",
+      "Bash(gh api */keys*)",
+      "Bash(gh api */collaborators*)",
+      "Bash(gh api */invitations*)",
+      "Bash(gh api */actions/permissions*)",
+      "Bash(gh api */environments*)",
+      "Bash(gh api */transfer*)",
+      "Bash(gh api *Repository*)",
+      "Bash(gh api *BranchProtection*)",
+      "Bash(gh api *Ruleset*)",
+      "Bash(gh api *mergeBranch*)",
+      "Bash(gh api *Environment*)"
     ]
   }
 }
