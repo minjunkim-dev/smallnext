@@ -66,6 +66,7 @@
     <!-- iOS 문장의 뒤 절("목표 보기에서 재개할 수 있어요.")은 재개 화면을 더하는 #354에서 붙인다. -->
     <string name="undo_notice">나눴던 작은 행동은 보류에 남겼어요.</string>
     <string name="announce_split">더 쉬운 행동으로 나눴어요. ‘%1$s’의 일부예요.</string>
+    <string name="answer_too_long">답을 보내기에는 내용이 너무 길어요. 답을 줄여 주세요. 작성 중인 내용은 유지했어요.</string>
     <string name="announce_undo">나누기 전 행동으로 되돌렸어요. 작은 행동은 보류에 남겼어요.</string>
 
     <!-- 제안 문제 이유 7+3 -->

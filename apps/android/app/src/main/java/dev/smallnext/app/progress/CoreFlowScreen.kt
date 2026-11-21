@@ -12,6 +12,8 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.focusable
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -69,10 +71,10 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.layout.SubcomposeLayout
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
@@ -118,7 +120,10 @@ object Motion {
     val SPLIT_BOTTOM = DpOffset(12.dp, 24.dp)
 }
 
-/** 애니메이터 배율이 0이면(개발자 옵션·'애니메이션 삭제') 장식 움직임과 스크롤 애니메이션을 쓰지 않는다. */
+/**
+ * 애니메이터 배율이 0이면(개발자 옵션·'애니메이션 삭제') 분할 장식을 그리지 않는다.
+ * 스크롤과 전환은 Compose가 같은 배율(MotionDurationScale)로 줄여 배율 0이면 바로 끝난다.
+ */
 internal fun animationsRemoved() = !ValueAnimator.areAnimatorsEnabled()
 
 /** iOS 접근성 글꼴 크기(AX1 이상)에 대응하는 글꼴 배율이다. 이 배율부터 머리 영역을 쌓고 고정 버튼을 본문으로 옮긴다. */
@@ -211,8 +216,13 @@ internal fun CoreFlowScreen(flow: ProgressFlow, reduceMotion: Boolean = remember
             } catch (error: CancellationException) {
                 throw error
             } catch (error: ProgressFlowException) {
-                if (error.reason == ProgressFlowException.Reason.INVALID_GOAL_CONTEXT) {
-                    goalInputProblem = resources.getString(R.string.goal_input_problem).also(announce)
+                when (error.reason) {
+                    ProgressFlowException.Reason.INVALID_GOAL_CONTEXT ->
+                        goalInputProblem = resources.getString(R.string.goal_input_problem).also(announce)
+                    // 답 초안은 명령 전에 저장했다. 답 저장만 되돌렸다.
+                    ProgressFlowException.Reason.ANSWER_EXCEEDS_REQUEST_LIMIT ->
+                        goalInputProblem = resources.getString(R.string.answer_too_long).also(announce)
+                    else -> Unit
                 }
                 // 그 밖에는 이미 바뀐 화면에 대한 늦은 입력이다(연타, 전환 중 사라지는 버튼). 저장은 앞 명령이 마쳤다.
             } catch (_: Exception) {
@@ -250,17 +260,19 @@ internal fun CoreFlowScreen(flow: ProgressFlow, reduceMotion: Boolean = remember
     var resultFocused by remember { mutableStateOf(false) }
     // '결과 남기기'는 마지막 자동 저장을 기다린다. 그동안 누른 '완료'가 앞질러 결과를 거부하게 하지 않도록 누른 순서대로 실행한다.
     val cardCommands = remember { Mutex() }
-    // iOS `run(saving:)`와 같다. 저장하지 못한 입력이 있으면 먼저 저장하고, 실패하면 완료하지 않는다.
-    val completeCard = { actionId: Long ->
+    // iOS `run(saving:)`와 같다. 카드를 바꾸는 명령 전에 저장하지 못한 입력을 먼저 저장하고, 실패하면 명령을 실행하지 않는다.
+    // 카드가 바뀐 뒤 도착한 초안 저장은 거부되므로 '완료'·'더 작게'·'되돌리기' 모두 이 경로를 쓴다.
+    val cardCommand = { actionId: Long, command: suspend () -> Unit ->
         run {
             cardCommands.withLock {
                 val saved = (flow.state.value.screen as? ProgressScreen.CurrentAction)?.card?.takeIf { it.id == actionId }?.draft
                 val input = draftInputs[actionId]
                 if (saved != null && input != null && input != saved) flow.updateDraft(input, actionId)
-                flow.complete(actionId)
+                command()
             }
         }
     }
+    val completeCard = { actionId: Long -> cardCommand(actionId) { flow.complete(actionId) } }
     val density = LocalDensity.current
     val largeText = density.fontScale >= LARGE_FONT_SCALE
     val compactHeight = with(density) { LocalWindowInfo.current.containerSize.height.toDp() } < COMPACT_HEIGHT.dp
@@ -270,13 +282,9 @@ internal fun CoreFlowScreen(flow: ProgressFlow, reduceMotion: Boolean = remember
     val asking = (screen as? ProgressScreen.CurrentAction)?.smaller is SmallerStatus.Question
     val pinned = screen is ProgressScreen.CurrentAction && !largeText && !compactHeight && !writingResult && !asking
     val scroll = rememberScrollState()
-    LaunchedEffect(asking) {
-        if (!asking) return@LaunchedEffect
-        // 질문이 배치된 다음에 스크롤해야 끝 위치를 안다.
-        withFrameNanos {}
-        if (reduceMotion) scroll.scrollTo(scroll.maxValue) else scroll.animateScrollTo(scroll.maxValue, tween(Motion.NEXT_CARD_MILLIS))
-    }
-    val smaller = { run(flow::makeSmaller) }
+    val currentCardId = (screen as? ProgressScreen.CurrentAction)?.card?.id
+    val smaller = { currentCardId?.let { cardCommand(it, flow::makeSmaller) } ?: Unit }
+    val undo = { actionId: Long -> cardCommand(actionId, flow::undoSplit) }
     val cancel = { run(flow::cancelSuggestion) }
     Scaffold(
         bottomBar = {
@@ -288,7 +296,7 @@ internal fun CoreFlowScreen(flow: ProgressFlow, reduceMotion: Boolean = remember
                         // '완료'를 더 작게 상태 위에 둔다(#64).
                         CommandButton(R.string.complete) { completeCard(screen.card.id) }
                         // 대기 상태의 높이를 미리 잡아 '더 작게'를 눌러도 '완료'가 움직이지 않고 '취소'가 같은 자리에 오지 않게 한다(#64).
-                        ReservingHeight({ SmallerSection(SmallerStatus.Waiting, {}, {}) }) { SmallerSection(screen.smaller, smaller, cancel) }
+                        ReservingHeight({ SmallerSection(SmallerStatus.Waiting, {}, {}, enabled = false) }) { SmallerSection(screen.smaller, smaller, cancel) }
                     }
                 }
             }
@@ -335,6 +343,7 @@ internal fun CoreFlowScreen(flow: ProgressFlow, reduceMotion: Boolean = remember
                         suggestionInput = state.suggestionInput,
                         smaller = smaller,
                         cancel = cancel,
+                        undo = { undo(target.card.id) },
                         save = save,
                         storageFailed = storageFailed,
                         flow = flow,
@@ -375,17 +384,14 @@ internal const val ANNOUNCEMENT = "announcement"
 internal const val SPLIT_GHOST = "splitGhost"
 
 /**
- * [reserve]와 [content] 중 큰 높이를 차지하고 [content]만 배치한다. 배치하지 않은 [reserve]는 보이지도 읽히지도 않는다.
- * iOS는 숨긴 뷰를 겹쳐 같은 효과를 얻는다(`hidden()`).
+ * [reserve]와 [content] 중 큰 높이를 차지한다. [reserve]는 투명하고 의미 트리에서 지워 보이지도 읽히지도 않는다.
+ * [reserve]의 버튼은 꺼서 초점과 입력을 받지 않게 한다. iOS는 숨긴 뷰를 겹쳐 같은 효과를 얻는다(`hidden()`).
  */
 @Composable
 private fun ReservingHeight(reserve: @Composable () -> Unit, content: @Composable () -> Unit) {
-    SubcomposeLayout { constraints ->
-        val loose = constraints.copy(minHeight = 0)
-        val reserved = subcompose("reserve", reserve).maxOfOrNull { it.measure(loose).height } ?: 0
-        val placeables = subcompose("content", content).map { it.measure(loose) }
-        val height = maxOf(reserved, placeables.maxOfOrNull { it.height } ?: 0)
-        layout(constraints.maxWidth, height) { placeables.forEach { it.place(0, 0) } }
+    Box {
+        Box(Modifier.alpha(0f).clearAndSetSemantics {}) { reserve() }
+        content()
     }
 }
 
@@ -394,22 +400,22 @@ private fun ReservingHeight(reserve: @Composable () -> Unit, content: @Composabl
  * 질문은 [QuestionAnswer]가 그린다.
  */
 @Composable
-private fun SmallerSection(status: SmallerStatus?, smaller: () -> Unit, cancel: () -> Unit) {
+private fun SmallerSection(status: SmallerStatus?, smaller: () -> Unit, cancel: () -> Unit, enabled: Boolean = true) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         when (status) {
-            null -> CommandButton(R.string.smaller, prominent = false, onClick = smaller)
+            null -> CommandButton(R.string.smaller, enabled, prominent = false, onClick = smaller)
             SmallerStatus.Waiting -> {
                 val message = stringResource(R.string.preparing_smaller)
                 Row(Modifier.semantics(mergeDescendants = true) {}, Arrangement.spacedBy(12.dp), Alignment.CenterVertically) {
                     CircularProgressIndicator(Modifier.size(24.dp))
                     Text(message, style = MaterialTheme.typography.bodyLarge)
                 }
-                CommandButton(R.string.cancel, prominent = false, onClick = cancel)
+                CommandButton(R.string.cancel, enabled, prominent = false, onClick = cancel)
             }
             is SmallerStatus.Question -> Unit
             is SmallerStatus.Problem -> {
                 Text(stringResource(status.problem.reason), style = MaterialTheme.typography.bodyLarge)
-                CommandButton(R.string.smaller, prominent = false, onClick = smaller)
+                CommandButton(R.string.smaller, enabled, prominent = false, onClick = smaller)
             }
         }
     }
@@ -456,13 +462,20 @@ private fun QuestionAnswer(
     save: (suspend () -> Unit) -> Unit,
 ) {
     val focus = remember { FocusRequester() }
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    val visible = remember { BringIntoViewRequester() }
+    Column(Modifier.bringIntoViewRequester(visible), Arrangement.spacedBy(12.dp)) {
         Text(
             question,
             Modifier.focusRequester(focus).focusable().semantics { heading() },
             style = MaterialTheme.typography.titleMedium,
         )
-        LaunchedEffect(question) { focus.requestFocus() }
+        LaunchedEffect(question) {
+            // 고정 막대가 본문으로 옮겨져 배치된 다음에 스크롤한다. 질문과 답 입력란이 함께 보이게 한다.
+            // 스크롤은 Compose의 애니메이터 배율(MotionDurationScale)을 따라 배율 0이면 바로 끝난다.
+            withFrameNanos {}
+            visible.bringIntoView()
+            focus.requestFocus()
+        }
         key(input?.requestId) {
             val answer = rememberTextFieldState(input?.text.orEmpty())
             // 이전 요청의 초안은 받지 않는다. 진행 흐름도 요청 ID로 늦은 입력을 거부한다.
@@ -661,6 +674,7 @@ private fun ActionCardContent(
     suggestionInput: SuggestionInput?,
     smaller: () -> Unit,
     cancel: () -> Unit,
+    undo: () -> Unit,
     save: (suspend () -> Unit) -> Unit,
     storageFailed: Boolean,
     flow: ProgressFlow,
@@ -684,8 +698,8 @@ private fun ActionCardContent(
     }
     Column(verticalArrangement = Arrangement.spacedBy(24.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Heading(R.string.current_action_title, MaterialTheme.typography.titleLarge)
-            Spacer(Modifier.weight(1f))
+            // 큰 글꼴에서도 '더 보기'가 48dp를 지키도록 남는 폭은 제목이 줄바꿈해 쓴다.
+            Heading(R.string.current_action_title, MaterialTheme.typography.titleLarge, Modifier.weight(1f))
             // 보조 메뉴다. '나중에'는 #354에서 더한다. 지금은 되돌릴 분할 원본이 있을 때만 보인다.
             if (card.origin != null) {
                 var menuOpen by remember { mutableStateOf(false) }
@@ -699,7 +713,7 @@ private fun ActionCardContent(
                             { Text(stringResource(R.string.undo_split)) },
                             {
                                 menuOpen = false
-                                run(flow::undoSplit)
+                                undo()
                             },
                             Modifier.heightIn(min = 48.dp),
                         )
@@ -842,8 +856,8 @@ private fun SuggestionStatus(@StringRes waiting: Int, problem: SuggestionProblem
 }
 
 @Composable
-private fun Heading(@StringRes text: Int, style: androidx.compose.ui.text.TextStyle) {
-    Text(stringResource(text), Modifier.semantics { heading() }, style = style)
+private fun Heading(@StringRes text: Int, style: androidx.compose.ui.text.TextStyle, modifier: Modifier = Modifier) {
+    Text(stringResource(text), modifier.semantics { heading() }, style = style)
 }
 
 @Composable

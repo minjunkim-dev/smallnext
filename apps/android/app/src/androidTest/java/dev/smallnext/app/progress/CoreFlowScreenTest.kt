@@ -387,7 +387,8 @@ class CoreFlowScreenTest {
         waitForText(next.task)
         compose.onNodeWithText("대상: 업무 보고서").assertIsDisplayed()
         compose.onNodeWithText("앞서 남긴 결과").performScrollTo().assertIsDisplayed()
-        compose.onNodeWithText("확인한 기간: 10월 첫째 주").assertIsDisplayed()
+        // 고정 막대에 더 작게 대기 높이까지 잡혀 있어 작은 화면(CI 320×640)에서는 결과까지 스크롤한다.
+        compose.onNodeWithText("확인한 기간: 10월 첫째 주").performScrollTo().assertIsDisplayed()
 
         // 설명과 자료는 필요할 때만 펼친다. 링크는 기기 브라우저로 연다.
         compose.onNodeWithText("이번 주 업무를 적은 문서").assertDoesNotExist()
@@ -724,5 +725,49 @@ class CoreFlowScreenTest {
         waitForText(question)
         assertFullyLaidOut(question)
         compose.onNodeWithText("답하기").performScrollTo().assertHeightIsAtLeast(48.dp)
+    }
+
+    // '더 작게'와 '되돌리기'도 '완료'처럼 카드를 바꾸기 전에 아직 저장하지 않은 결과 초안을 저장한다.
+    @Test
+    fun smallerAndUndoSaveTheVisibleDraftFirst() {
+        val (flow, provider) = gatedFlowWithCard(Action(small))
+        show(flow)
+        waitForText(first.task)
+        val setText = resultField.fetchSemanticsNode().config[SemanticsActions.SetText].action!!
+        val makeSmaller = compose.onNodeWithText("더 작게").fetchSemanticsNode().config[SemanticsActions.OnClick].action!!
+        compose.runOnUiThread {
+            setText(AnnotatedString("원본 초안"))
+            makeSmaller()
+        }
+        provider.release()
+        waitForText(small.task)
+        assertEquals(1L, count("SELECT COUNT(*) FROM action_note WHERE is_draft AND body = '원본 초안'"))
+
+        resultField.performTextInput("작은 초안")
+        compose.onNode(hasContentDescription("더 보기")).performClick()
+        val undo = compose.onNodeWithText("되돌리기").fetchSemanticsNode().config[SemanticsActions.OnClick].action!!
+        compose.runOnUiThread { undo() }
+        waitForText(first.task)
+        assertEquals(1L, count("SELECT COUNT(*) FROM action_note WHERE is_draft AND body = '작은 초안'"))
+    }
+
+    // 보낼 수 없는 길이의 답은 저장하지 않고 이유를 보이고 읽힌다. 작성 중인 답은 남는다.
+    @Test
+    fun tooLongAnswerShowsGuidanceAndKeepsTheDraft() {
+        val question = "가장 먼저 막히는 지점은 무엇인가요?"
+        val (flow, provider) = gatedFlowWithCard(Question(question))
+        runBlocking { flow.makeSmaller() }
+        provider.release()
+        runBlocking { flow.awaitSuggestion() }
+        show(flow)
+        waitForText(question)
+        val long = "가".repeat(1_000)
+        compose.onNode(hasSetTextAction() and hasText("가장 먼저 막히는 지점")).performTextReplacement(long)
+        compose.onNodeWithText("답하기").performScrollTo().clickAfterTyping()
+        val message = "답을 보내기에는 내용이 너무 길어요. 답을 줄여 주세요. 작성 중인 내용은 유지했어요."
+        assertAnnounced(message)
+        compose.onNodeWithText(message).performScrollTo().assertIsDisplayed()
+        assertEquals(long, flow.state.value.suggestionInput?.text)
+        assertEquals(SmallerStatus.Question(question), (flow.state.value.screen as ProgressScreen.CurrentAction).smaller)
     }
 }
