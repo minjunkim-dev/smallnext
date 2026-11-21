@@ -33,11 +33,15 @@ class ProgressFlowTest {
     private val name = "smallnext-test-${UUID.randomUUID()}.sqlite"
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val databases = mutableListOf<AppDatabase>()
-    private val probe by lazy { open().openHelper.writableDatabase }
+    private var probeDatabase: AppDatabase? = null
+    /** 직접 조회하는 DB다. [closeAll]로 닫혔으면 다시 연다. */
+    private val probe get() = (probeDatabase?.takeIf { it.isOpen } ?: open().also { probeDatabase = it }).openHelper.writableDatabase
 
     private val first = ProposedAction("관련 메모 하나 열기", "메모가 화면에 열려 있다", 3)
     private val second = ProposedAction("첫 문단 한 줄 쓰기", "문장 한 줄이 저장돼 있다", 5)
     private val third = ProposedAction("제목 한 줄 정하기", "제목이 적혀 있다", 2)
+    private val smaller = ProposedAction("메모 제목만 확인하기", "메모 제목을 읽었다", 1)
+    private val question = "가장 먼저 막히는 지점은 무엇인가요?"
 
     @After
     fun tearDown() {
@@ -74,6 +78,16 @@ class ProgressFlowTest {
     }
 
     private fun count(sql: String) = probe.query(sql).use { it.moveToFirst(); it.getLong(0) }
+
+    private fun status(ofTask: String): String? =
+        probe.query("SELECT status FROM action WHERE task = ?", arrayOf(ofTask)).use { if (it.moveToFirst()) it.getString(0) else null }
+
+    /** 요청에 담는 현재 행동은 할 일·완료 기준·예상 시간만 있다. iOS `card(_:)`와 같다. */
+    private fun card(action: ProposedAction) = ProposedAction(action.task, action.doneWhen, action.estimatedMinutes)
+
+    private fun ProgressFlow.smaller() = (state.value.screen as ProgressScreen.CurrentAction).smaller
+
+    private fun current(card: ActionCard, smaller: SmallerStatus? = null) = ProgressScreen.CurrentAction(card, smaller)
 
     private suspend fun failure(command: suspend () -> Unit) = runCatching { command() }.exceptionOrNull()
 
@@ -699,5 +713,298 @@ class ProgressFlowTest {
         flow.complete(flow.card().id)
         flow.awaitSuggestion()
         assertEquals(ProgressScreen.AwaitingNextAction(SuggestionProblem.Unsuitable), flow.state.value.screen)
+    }
+
+    // 더 작게(#353). 이름은 iOS ProgressFlowTests와 같다.
+
+    @Test
+    fun testSmallerThenCompleteKeepsSplitSourceAndGoalOpen() = runBlocking {
+        val provider = ScriptedProvider(Action(first), SuggestionCandidate.MinimalAction(smaller), Action(second), gated = true)
+        val flow = makeFlow(provider)
+        startGoal(flow, "주간 업무 보고서 초안 쓰기")
+        provider.release()
+        flow.awaitSuggestion()
+        val source = flow.card()
+        probe.execSQL("UPDATE goal SET blocker = '시간이 부족함', completion_criteria = '초안 한 쪽'")
+
+        flow.makeSmaller()
+        // 질문 없이 바로 요청한다.
+        assertEquals(current(source, SmallerStatus.Waiting), flow.state.value.screen)
+        provider.release()
+        flow.awaitSuggestion()
+        val small = flow.card()
+        assertNull(flow.smaller())
+        assertEquals(smaller.task, small.task)
+        assertEquals(ActionCard.Origin(source.id, first.task), small.origin)
+        assertEquals("split", status(first.task))
+
+        flow.complete(small.id)
+        provider.release()
+        flow.awaitSuggestion()
+        assertEquals("done", status(smaller.task))
+        assertEquals("split", status(first.task))
+        assertEquals(1L, count("SELECT COUNT(*) FROM completion"))
+        assertEquals(1L, count("SELECT COUNT(*) FROM goal WHERE status = 'active' AND completion_criteria = '초안 한 쪽'"))
+
+        val requests = provider.requests
+        assertEquals(listOf(SuggestionKind.FIRST_ACTION, SuggestionKind.SMALLER, SuggestionKind.NEXT_ACTION), requests.map { it.kind })
+        assertEquals(card(first), requests[1].currentAction)
+        assertEquals("시간이 부족함", requests[1].blocker)
+        // 작은 행동을 완료한 뒤에도 분할 원본의 남은 범위를 다음 요청에 전달한다.
+        assertEquals(card(first), requests[2].currentAction)
+        assertEquals(listOf(smaller.task), requests[2].completedTasks)
+    }
+
+    @Test
+    fun testSmallerThenUndoRestoresSourceAndKeepsResults() = runBlocking {
+        val flow = makeFlow(ScriptedProvider(Action(first), Action(smaller)))
+        val source = firstCard(flow)
+        flow.makeSmaller()
+        flow.awaitSuggestion()
+        val small = flow.card()
+        probe.execSQL("INSERT INTO action_note (action_id, body, is_draft, updated_at) VALUES (${small.id}, '제목: 주간 보고', 0, 0)")
+
+        flow.undoSplit()
+        assertEquals(current(source), flow.state.value.screen)
+        assertEquals("deferred", status(smaller.task))
+        assertEquals(1L, count("SELECT COUNT(*) FROM action_note"))
+        assertEquals(0L, count("SELECT COUNT(*) FROM completion"))
+
+        // 분할 원본은 되돌릴 대상이 없다.
+        flow.undoSplit()
+        assertEquals(current(source), flow.state.value.screen)
+
+        closeAll()
+        assertEquals(current(source), makeFlow(ScriptedProvider()).state.value.screen)
+    }
+
+    @Test
+    fun testRepeatedSmallerSendsSplitSourcesAndUndoesOneStep() = runBlocking {
+        val smallest = ProposedAction("메모 앱 열기", "메모 앱이 열려 있다", 1)
+        val provider = ScriptedProvider(Action(first), Action(smaller), Action(smallest))
+        val flow = makeFlow(provider)
+        firstCard(flow)
+        flow.makeSmaller()
+        flow.awaitSuggestion()
+        val small = flow.card()
+        flow.makeSmaller()
+        flow.awaitSuggestion()
+        assertEquals(ActionCard.Origin(small.id, smaller.task), flow.card().origin)
+
+        // 공급자가 같은 행동을 이미 나눴는지 알 수 있게 분할 원본을 처음 것부터 담는다.
+        assertEquals(emptyList<String>(), provider.requests[1].splitSources)
+        assertEquals(card(smaller), provider.requests[2].currentAction)
+        assertEquals(listOf(first.task), provider.requests[2].splitSources)
+
+        flow.undoSplit()
+        assertEquals(current(small), flow.state.value.screen)
+    }
+
+    @Test
+    fun testQuestionAnswerIsSavedAsBlockerAndSentWithNextRequest() = runBlocking {
+        val provider = ScriptedProvider(Action(first), Question(question), Action(smaller))
+        val flow = makeFlow(provider)
+        val source = firstCard(flow)
+
+        flow.makeSmaller()
+        flow.awaitSuggestion()
+        assertEquals(current(source, SmallerStatus.Question(question)), flow.state.value.screen)
+        assertEquals("current", status(first.task))
+        val requestId = flow.state.value.suggestionInput!!.requestId
+        flow.updateSuggestionInput(" 어떤 자료를 봐야 할지 모름 ", requestId)
+
+        closeAll()
+        val reopened = makeFlow(provider)
+        assertEquals(current(source, SmallerStatus.Question(question)), reopened.state.value.screen)
+        assertEquals(" 어떤 자료를 봐야 할지 모름 ", reopened.state.value.suggestionInput?.text)
+        assertEquals(ProgressFlowException.Reason.EMPTY_ANSWER, (failure { reopened.answerQuestion("  ") } as ProgressFlowException).reason)
+        reopened.answerQuestion(" 어떤 자료를 봐야 할지 모름 ")
+        assertEquals(SmallerStatus.Waiting, reopened.smaller())
+        assertNull(reopened.state.value.suggestionInput)
+        reopened.awaitSuggestion()
+        assertEquals(smaller.task, reopened.card().task)
+        assertEquals(1L, count("SELECT COUNT(*) FROM goal WHERE blocker = '어떤 자료를 봐야 할지 모름'"))
+
+        assertEquals(listOf(SuggestionKind.FIRST_ACTION, SuggestionKind.SMALLER, SuggestionKind.SMALLER), provider.requests.map { it.kind })
+        assertNull(provider.requests[1].blocker)
+        assertEquals("어떤 자료를 봐야 할지 모름", provider.requests[2].blocker)
+    }
+
+    @Test
+    fun testUndoWhileWaitingEndsRequestAndSmallerCanStartAgain() = runBlocking {
+        val setup = makeFlow(ScriptedProvider(Action(first), Action(smaller)))
+        firstCard(setup)
+        setup.makeSmaller()
+        setup.awaitSuggestion()
+        closeAll()
+        val held = HeldProvider(Action(smaller))
+        val flow = makeFlow(held)
+        val origin = flow.card().origin!!
+        flow.makeSmaller()
+        awaitRequest(held.requests)
+        flow.undoSplit()
+        val source = flow.card()
+        assertEquals(origin.id, source.id)
+        held.release()
+        flow.awaitSuggestion()
+        // 되돌린 뒤 도착한 결과는 적용하지 않는다.
+        assertEquals(current(source), flow.state.value.screen)
+        assertEquals(1L, count("SELECT COUNT(*) FROM suggestion_request WHERE status = 'interrupted'"))
+
+        // HeldProvider는 한 번만 풀린다. 다시 나누는 요청은 결과를 따로 붙잡는 공급자로 다시 연다.
+        closeAll()
+        val provider = ScriptedProvider(Action(smaller), gated = true)
+        val again = makeFlow(provider)
+        again.makeSmaller()
+        assertEquals(current(source, SmallerStatus.Waiting), again.state.value.screen)
+        provider.release()
+        again.awaitSuggestion()
+        assertEquals(source.id, again.card().origin?.id)
+    }
+
+    @Test
+    fun testAnsweredQuestionIsNotAskedAgain() = runBlocking {
+        val flow = makeFlow(ScriptedProvider(Action(first), Question(question), Question(" $question")))
+        val source = firstCard(flow)
+        flow.makeSmaller()
+        flow.awaitSuggestion()
+        flow.answerQuestion("자료 위치를 모름")
+        flow.awaitSuggestion()
+        assertEquals(current(source, SmallerStatus.Problem(SuggestionProblem.Unsuitable)), flow.state.value.screen)
+    }
+
+    @Test
+    fun testUnansweredQuestionCanBeAskedAgain() = runBlocking {
+        val skipped = "어떤 자료가 먼저 필요한가요?"
+        val flow = makeFlow(
+            ScriptedProvider(Action(first), Question(question), Action(smaller), Action(second), Question(skipped), Action(third), Question(skipped)),
+        )
+        firstCard(flow)
+        flow.makeSmaller()
+        flow.awaitSuggestion()
+        flow.answerQuestion("자료 위치를 모름")
+        flow.awaitSuggestion()
+        flow.complete(flow.card().id)
+        flow.awaitSuggestion()
+        flow.makeSmaller()
+        flow.awaitSuggestion()
+        assertEquals(SmallerStatus.Question(skipped), flow.smaller())
+        // 질문에 답하지 않고 완료한다. 같은 질문을 다시 받으면 보여준다.
+        flow.complete(flow.card().id)
+        flow.awaitSuggestion()
+        flow.makeSmaller()
+        flow.awaitSuggestion()
+        assertEquals(SmallerStatus.Question(skipped), flow.smaller())
+        assertEquals(third.task, flow.card().task)
+    }
+
+    @Test
+    fun testUndoWhileWaitingCancelsProvider() = runBlocking {
+        val setup = makeFlow(ScriptedProvider(Action(first), Action(smaller)))
+        firstCard(setup)
+        setup.makeSmaller()
+        setup.awaitSuggestion()
+        closeAll()
+        val provider = SuspendedProvider()
+        val flow = makeFlow(provider)
+        flow.makeSmaller()
+        awaitRequest(provider.requests)
+        flow.undoSplit()
+        flow.awaitSuggestion()
+        assertTrue(provider.cancelled)
+    }
+
+    // iOS는 DB 잠금으로, 여기서는 트리거로 결과 저장을 막는다.
+    @Test
+    fun testUnsavedSmallerResultCanBeRetried() = runBlocking {
+        val flow = makeFlow(ScriptedProvider(Action(first), Action(smaller), Action(smaller)))
+        val source = firstCard(flow)
+        probe.execSQL("CREATE TRIGGER fail_action BEFORE INSERT ON action BEGIN SELECT RAISE(ABORT, 'test failure'); END")
+        flow.makeSmaller()
+        flow.awaitSuggestion()
+        assertEquals(current(source, SmallerStatus.Problem(SuggestionProblem.Failure(SuggestionFailure.FAILED))), flow.state.value.screen)
+
+        probe.execSQL("DROP TRIGGER fail_action")
+        flow.makeSmaller()
+        flow.awaitSuggestion()
+        assertEquals(smaller.task, flow.card().task)
+        assertEquals(0L, count("SELECT COUNT(*) FROM suggestion_request WHERE status = 'pending'"))
+    }
+
+    @Test
+    fun testSmallerFailureAndCancelKeepCurrentAction() = runBlocking {
+        val provider = ScriptedProvider(
+            listOf(Result.success(Action(first))) + failures(SuggestionFailure.TIMED_OUT) + Result.success(Question(" ")),
+        )
+        val flow = makeFlow(provider)
+        val source = firstCard(flow)
+
+        flow.makeSmaller()
+        flow.awaitSuggestion()
+        assertEquals(current(source, SmallerStatus.Problem(SuggestionProblem.Failure(SuggestionFailure.TIMED_OUT))), flow.state.value.screen)
+        flow.makeSmaller()
+        flow.awaitSuggestion()
+        assertEquals(current(source, SmallerStatus.Problem(SuggestionProblem.Unsuitable)), flow.state.value.screen)
+
+        closeAll()
+        val waiting = makeFlow(SuspendedProvider())
+        waiting.makeSmaller()
+        waiting.makeSmaller()
+        assertEquals(1L, count("SELECT COUNT(*) FROM suggestion_request WHERE status = 'pending'"))
+        waiting.cancelSuggestion()
+        assertEquals(current(source, SmallerStatus.Problem(SuggestionProblem.Cancelled)), waiting.state.value.screen)
+        assertEquals("current", status(first.task))
+    }
+
+    @Test
+    fun testRemainingSplitWorkSurvivesTwoNextActionsAndReopen() = runBlocking {
+        val fourth = ProposedAction("자료 저장하기", "자료가 저장됐다", 1)
+        val fifth = ProposedAction("자료 위치 확인하기", "위치를 확인했다", 1)
+        val provider = ScriptedProvider(Action(first), Action(second), Action(third), Action(fourth), Action(fifth))
+        val flow = makeFlow(provider)
+        startGoal(flow, "학습 자료 정리")
+        flow.awaitSuggestion()
+        flow.makeSmaller()
+        flow.awaitSuggestion()
+        flow.complete(flow.card().id)
+        flow.awaitSuggestion()
+        flow.complete(flow.card().id)
+        flow.awaitSuggestion()
+        assertTrue(first.task in provider.requests.last().remainingTasks)
+        assertEquals(2, provider.requests.last().completedActionIds.size)
+        assertFalse(provider.requests.last().stateKey.isEmpty())
+
+        closeAll()
+        val reopened = makeFlow(provider)
+        reopened.complete(reopened.card().id)
+        reopened.awaitSuggestion()
+        assertTrue(first.task in provider.requests.last().remainingTasks)
+        assertEquals(3, provider.requests.last().completedActionIds.size)
+    }
+
+    // iOS testSplitInheritsTargetAndNotesSurviveUndoAndResume의 분할·되돌리기 부분이다. 보류·재개는 #354에서 더한다.
+    @Test
+    fun testSplitInheritsTargetAndNotesSurviveUndoAndResume() = runBlocking {
+        val initial = first.copy(targetName = "업무 보고서", targetDescription = "내가 작성 중인 보고서", materialLinks = listOf("https://example.com/report"))
+        val flow = makeFlow(ScriptedProvider(Action(initial), Action(smaller)))
+        val source = firstCard(flow)
+        flow.recordResult("원본에 남긴 결과", source.id)
+        flow.updateDraft("원본 초안", source.id)
+        flow.makeSmaller()
+        flow.awaitSuggestion()
+        val small = flow.card()
+        assertEquals(initial.targetName, small.targetName)
+        assertEquals(initial.targetDescription, small.targetDescription)
+        assertEquals(initial.materialLinks, small.materialLinks)
+        assertEquals(listOf("원본에 남긴 결과"), small.previousResults.map { it.body })
+        flow.recordResult("작은 행동의 결과", small.id)
+        flow.updateDraft("작은 행동 초안", small.id)
+        flow.undoSplit()
+
+        closeAll()
+        val restored = makeFlow(UnavailableSuggestionProvider).card()
+        assertEquals("원본 초안", restored.draft)
+        assertEquals(listOf("원본에 남긴 결과"), restored.results.map { it.body })
+        assertEquals(listOf("작은 행동의 결과"), restored.previousResults.map { it.body })
     }
 }

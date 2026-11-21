@@ -55,6 +55,19 @@
     <string name="announce_completed">행동을 완료했어요.</string>
     <string name="announce_current_action">지금 할 행동: %1$s</string>
 
+    <!-- 더 작게·되돌리기(#353) -->
+    <string name="smaller">더 작게</string>
+    <string name="preparing_smaller">더 쉬운 행동을 준비하고 있어요.</string>
+    <string name="smaller_question_prompt">가장 먼저 막히는 지점</string>
+    <string name="answer">답하기</string>
+    <string name="more">더 보기</string>
+    <string name="undo_split">되돌리기</string>
+    <string name="split_origin">‘%1$s’의 일부예요. 같은 작업의 남은 범위는 그대로 두었어요.</string>
+    <!-- iOS 문장의 뒤 절("목표 보기에서 재개할 수 있어요.")은 재개 화면을 더하는 #354에서 붙인다. -->
+    <string name="undo_notice">나눴던 작은 행동은 보류에 남겼어요.</string>
+    <string name="announce_split">더 쉬운 행동으로 나눴어요. ‘%1$s’의 일부예요.</string>
+    <string name="announce_undo">나누기 전 행동으로 되돌렸어요. 작은 행동은 보류에 남겼어요.</string>
+
     <!-- 제안 문제 이유 7+3 -->
     <string name="problem_unsuitable">알맞은 행동을 찾지 못했어요.</string>
     <string name="problem_interrupted">행동 제안이 중단됐어요.</string>

@@ -86,7 +86,8 @@ class CoreFlowScreenTest {
     private val openedLinks = mutableListOf<String>()
     private lateinit var view: View
 
-    private fun show(flow: ProgressFlow, fontScale: Float? = null) = compose.setContent {
+    /** 애니메이터 배율은 기기 설정과 관계없이 [reduceMotion]으로 정한다. */
+    private fun show(flow: ProgressFlow, fontScale: Float? = null, reduceMotion: Boolean = false) = compose.setContent {
         val density = LocalDensity.current
         view = LocalView.current
         val links = object : UriHandler {
@@ -95,7 +96,7 @@ class CoreFlowScreenTest {
             }
         }
         CompositionLocalProvider(LocalDensity provides Density(density.density, fontScale ?: density.fontScale), LocalUriHandler provides links) {
-            SmallnextTheme { CoreFlowScreen(flow) }
+            SmallnextTheme { CoreFlowScreen(flow, reduceMotion) }
         }
     }
 
@@ -597,5 +598,131 @@ class CoreFlowScreenTest {
         }
         compose.onNodeWithText("결과 남기기").performScrollTo().assertHeightIsAtLeast(48.dp)
         resultField.performScrollTo().assertHeightIsAtLeast(48.dp)
+    }
+
+    // 더 작게(#353)
+
+    private val small = ProposedAction("메모 제목만 확인하기", "메모 제목을 읽었다", 1)
+
+    /** 첫 행동을 받은 흐름이다. 이후 결과는 [ScriptedProvider.release]로 하나씩 푼다. */
+    private fun gatedFlowWithCard(vararg later: SuggestionCandidate): Pair<ProgressFlow, ScriptedProvider> {
+        val provider = ScriptedProvider(Action(first), *later, gated = true)
+        val flow = flow(goalPreparing(provider))
+        runBlocking {
+            flow.prepareGoal(GoalInput("분기 업무 보고서 초안 쓰기"))
+            flow.awaitSuggestion()
+            flow.confirmGoal("분기 업무 보고서 초안 쓰기")
+            provider.release()
+            flow.awaitSuggestion()
+        }
+        return flow to provider
+    }
+
+    private val ghostIsShown get() = compose.onAllNodes(hasTestTag(SPLIT_GHOST), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
+
+    // '완료'는 '더 작게' 위에 있고, 기다리는 동안 움직이지 않으며 '취소'가 그 자리에 오지 않는다(#64).
+    // 분할 장식은 접근성 트리에서 숨기고, 분할·되돌리기를 TalkBack으로 알린다.
+    @Test
+    fun smallerKeepsCompleteInPlaceSplitsWithHiddenMotionAndUndoes() {
+        val (flow, provider) = gatedFlowWithCard(Action(small))
+        show(flow)
+        waitForText(first.task)
+        val complete = bounds("완료")
+        val smaller = bounds("더 작게")
+        assertTrue(complete.bottom <= smaller.top)
+        compose.onNodeWithText("더 작게").assertHeightIsAtLeast(48.dp)
+        // 되돌릴 분할 원본이 없으면 보조 메뉴가 없다. '나중에'는 #354에서 더한다.
+        compose.onAllNodes(hasContentDescription("더 보기")).assertCountEquals(0)
+
+        compose.onNodeWithText("더 작게").performClick()
+        waitForText("더 쉬운 행동을 준비하고 있어요.")
+        assertAnnounced("더 쉬운 행동을 준비하고 있어요.")
+        assertEquals(complete, bounds("완료"))
+        assertTrue(bounds("취소").top >= complete.bottom)
+        compose.onNodeWithText("취소").assertHeightIsAtLeast(48.dp)
+
+        compose.mainClock.autoAdvance = false
+        provider.release()
+        compose.waitUntil(5_000) {
+            compose.mainClock.advanceTimeByFrame()
+            ghostIsShown
+        }
+        compose.onNodeWithTag(SPLIT_GHOST, useUnmergedTree = true).assert(SemanticsMatcher.keyIsDefined(SemanticsProperties.HideFromAccessibility))
+        compose.mainClock.advanceTimeBy(Motion.SPLIT_MILLIS.toLong() + 100)
+        compose.mainClock.autoAdvance = true
+        compose.waitUntil(5_000) { !ghostIsShown }
+        waitForText(small.task)
+        assertAnnounced("더 쉬운 행동으로 나눴어요. ‘${first.task}’의 일부예요. 지금 할 행동: ${small.task}")
+        compose.onNodeWithText("‘${first.task}’의 일부예요. 같은 작업의 남은 범위는 그대로 두었어요.").assertIsDisplayed()
+
+        compose.onNode(hasContentDescription("더 보기")).assertHeightIsAtLeast(48.dp).performClick()
+        compose.onNodeWithText("되돌리기").assertHeightIsAtLeast(48.dp).performClick()
+        waitForText(first.task)
+        assertAnnounced("나누기 전 행동으로 되돌렸어요. 작은 행동은 보류에 남겼어요. 지금 할 행동: ${first.task}")
+        compose.onNodeWithText("나눴던 작은 행동은 보류에 남겼어요.").assertIsDisplayed()
+        assertEquals(1L, count("SELECT COUNT(*) FROM action WHERE status = 'deferred'"))
+    }
+
+    // 애니메이터 배율이 0이면 분할 장식을 그리지 않는다.
+    @Test
+    fun removedAnimationsSkipSplitMotion() {
+        val (flow, provider) = gatedFlowWithCard(Action(small))
+        show(flow, reduceMotion = true)
+        waitForText(first.task)
+        compose.onNodeWithText("더 작게").performClick()
+        waitForText("더 쉬운 행동을 준비하고 있어요.")
+        compose.mainClock.autoAdvance = false
+        provider.release()
+        compose.waitUntil(5_000) {
+            compose.mainClock.advanceTimeByFrame()
+            assertFalse(ghostIsShown)
+            compose.onAllNodes(hasText(small.task)).fetchSemanticsNodes().isNotEmpty()
+        }
+        repeat(30) {
+            compose.mainClock.advanceTimeByFrame()
+            assertFalse(ghostIsShown)
+        }
+        compose.mainClock.autoAdvance = true
+    }
+
+    // 확인 질문(최대 글꼴): 하단 고정을 풀고 질문으로 초점을 옮긴다. 답은 초안으로 저장되고 막힘 원인으로 보낸다.
+    @Test
+    fun smallerQuestionUnpinsCommandsTakesFocusAndSendsAnswer() {
+        val question = "가장 먼저 막히는 지점은 무엇인가요? 자료를 찾는 일인지 글을 시작하는 일인지 알려 주세요."
+        val (flow, provider) = gatedFlowWithCard(Question(question), Action(small))
+        show(flow)
+        waitForText(first.task)
+        compose.onNodeWithTag(PINNED_COMMANDS).assertExists()
+        compose.onNodeWithText("더 작게").performClick()
+        provider.release()
+        waitForText(question)
+        compose.onAllNodes(hasTestTag(PINNED_COMMANDS)).assertCountEquals(0)
+        compose.onNodeWithText(question).assertIsFocused().assertIsDisplayed()
+        assertHeading(question)
+        compose.onNode(hasSetTextAction() and hasText("가장 먼저 막히는 지점")).performTextInput("자료 위치를 모름")
+        compose.waitUntil(5_000) { flow.state.value.suggestionInput?.text == "자료 위치를 모름" }
+        compose.onNodeWithText("답하기").assertHeightIsAtLeast(48.dp).performScrollTo().clickAfterTyping()
+        waitForText("더 쉬운 행동을 준비하고 있어요.")
+        provider.release()
+        waitForText(small.task)
+        assertEquals("자료 위치를 모름", provider.requests.last().blocker)
+    }
+
+    // 최대 글꼴: 더 작게 상태와 질문이 본문에서 잘리지 않고 48dp 이상이다.
+    @Test
+    fun largestFontKeepsSmallerStatesInBody() {
+        val question = "가장 먼저 막히는 지점은 무엇인가요?"
+        val (flow, provider) = gatedFlowWithCard(SuggestionCandidate.Question(question))
+        show(flow, fontScale = 2f)
+        waitForText(first.task)
+        compose.onAllNodes(hasTestTag(PINNED_COMMANDS)).assertCountEquals(0)
+        compose.onNodeWithText("더 작게").performScrollTo().assertHeightIsAtLeast(48.dp).performClick()
+        waitForText("더 쉬운 행동을 준비하고 있어요.")
+        compose.onNodeWithText("더 쉬운 행동을 준비하고 있어요.", useUnmergedTree = true).performScrollTo()
+        assertFullyLaidOut("더 쉬운 행동을 준비하고 있어요.", unmerged = true)
+        provider.release()
+        waitForText(question)
+        assertFullyLaidOut(question)
+        compose.onNodeWithText("답하기").performScrollTo().assertHeightIsAtLeast(48.dp)
     }
 }
