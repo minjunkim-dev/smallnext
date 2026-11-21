@@ -298,10 +298,14 @@ class ProgressFlow private constructor(
         }
     }
 
-    /** 현재 행동보다 쉬운 행동 하나를 바로 요청한다. 질문을 먼저 하지 않는다. 기다리는 중이면 무시한다. */
-    suspend fun makeSmaller() = serially {
+    /**
+     * 현재 행동보다 쉬운 행동 하나를 바로 요청한다. 질문을 먼저 하지 않는다. 기다리는 중이면 무시한다.
+     * [actionId]를 주면 그 행동이 지금 보이는 현재 행동일 때만 실행한다. 화면은 누른 카드의 ID를 넘긴다.
+     */
+    suspend fun makeSmaller(actionId: Long? = null) = serially {
         val screen = state.value.screen
         if (screen !is ProgressScreen.CurrentAction || screen.smaller == SmallerStatus.Waiting) return@serially
+        if (actionId != null && screen.card.id != actionId) return@serially
         perform { db ->
             val goalId = selectedGoalId(db) ?: return@perform null
             // 결과 저장에 실패해 pending으로 남은 요청을 끝낸다. 늦게 온 결과는 적용하지 않는다.
@@ -342,9 +346,13 @@ class ProgressFlow private constructor(
         }
     }
 
-    /** 분할 직전 행동을 현재 행동으로 되돌린다. 작은 행동은 보류로 남긴다. 행동 결과는 지우지 않는다. */
-    suspend fun undoSplit() = serially {
+    /**
+     * 분할 직전 행동을 현재 행동으로 되돌린다. 작은 행동은 보류로 남긴다. 행동 결과는 지우지 않는다.
+     * [actionId]를 주면 그 행동이 지금 보이는 현재 행동일 때만 되돌린다.
+     */
+    suspend fun undoSplit(actionId: Long? = null) = serially {
         val card = (state.value.screen as? ProgressScreen.CurrentAction)?.card ?: return@serially
+        if (actionId != null && card.id != actionId) return@serially
         val origin = card.origin ?: return@serially
         perform { db ->
             val goalId = selectedGoalId(db) ?: return@perform null

@@ -195,7 +195,7 @@ internal fun CoreFlowScreen(flow: ProgressFlow, reduceMotion: Boolean = remember
             val old = (shown as? ProgressScreen.CurrentAction)?.card
             val new = (screen as? ProgressScreen.CurrentAction)?.card
             if (old != null && new != null && old.id != new.id) {
-                if (new.origin?.id == old.id && !reduceMotion) splitGhost = SplitGhost(old.task)
+                if (new.origin?.id == old.id && !reduceMotion) splitGhost = SplitGhost(old.task, new.id)
                 if (old.origin?.id == new.id) undoneActionId = new.id
             }
             if (new?.id != undoneActionId) undoneActionId = null
@@ -283,8 +283,9 @@ internal fun CoreFlowScreen(flow: ProgressFlow, reduceMotion: Boolean = remember
     val pinned = screen is ProgressScreen.CurrentAction && !largeText && !compactHeight && !writingResult && !asking
     val scroll = rememberScrollState()
     val currentCardId = (screen as? ProgressScreen.CurrentAction)?.card?.id
-    val smaller = { currentCardId?.let { cardCommand(it, flow::makeSmaller) } ?: Unit }
-    val undo = { actionId: Long -> cardCommand(actionId, flow::undoSplit) }
+    // 누른 카드의 ID를 넘겨 그사이 바뀐 카드에는 실행하지 않는다.
+    val smaller = { currentCardId?.let { id -> cardCommand(id) { flow.makeSmaller(id) } } ?: Unit }
+    val undo = { actionId: Long -> cardCommand(actionId) { flow.undoSplit(actionId) } }
     val cancel = { run(flow::cancelSuggestion) }
     Scaffold(
         bottomBar = {
@@ -337,7 +338,8 @@ internal fun CoreFlowScreen(flow: ProgressFlow, reduceMotion: Boolean = remember
                         target.card,
                         smallerStatus = target.smaller,
                         commandsInBody = !pinned,
-                        splitGhost = splitGhost,
+                        // 사라지는 원본 카드도 투명도 전환 동안 그려지므로 새 작은 행동 카드에만 넘긴다.
+                        splitGhost = splitGhost?.takeIf { it.cardId == target.card.id },
                         onSplitFinished = { splitGhost = null },
                         undone = undoneActionId == target.card.id,
                         suggestionInput = state.suggestionInput,
@@ -422,7 +424,7 @@ private fun SmallerSection(status: SmallerStatus?, smaller: () -> Unit, cancel: 
 }
 
 /** 분할 직전 카드다. 같은 할 일이어도 새로 만든 값마다 다시 움직인다(값 동등성을 쓰지 않는다). */
-internal class SplitGhost(val task: String)
+internal class SplitGhost(val task: String, val cardId: Long)
 
 /** 분할 직전 카드의 위·아래 두 조각이 갈라지며 사라진다. 접근성 트리에서는 숨긴다. */
 @Composable

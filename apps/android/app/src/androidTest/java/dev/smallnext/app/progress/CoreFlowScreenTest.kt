@@ -744,7 +744,8 @@ class CoreFlowScreenTest {
         assertEquals(1L, count("SELECT COUNT(*) FROM action_note WHERE is_draft AND body = '원본 초안'"))
 
         resultField.performTextInput("작은 초안")
-        compose.onNode(hasContentDescription("더 보기")).performClick()
+        // 입력란으로 스크롤돼 머리 영역이 화면 밖에 있을 수 있다. 메뉴 버튼까지 다시 스크롤한다.
+        compose.onNode(hasContentDescription("더 보기")).performScrollTo().clickAfterTyping()
         val undo = compose.onNodeWithText("되돌리기").fetchSemanticsNode().config[SemanticsActions.OnClick].action!!
         compose.runOnUiThread { undo() }
         waitForText(first.task)

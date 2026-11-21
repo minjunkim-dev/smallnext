@@ -1007,4 +1007,27 @@ class ProgressFlowTest {
         assertEquals(listOf("원본에 남긴 결과"), restored.results.map { it.body })
         assertEquals(listOf("작은 행동의 결과"), restored.previousResults.map { it.body })
     }
+
+    // 화면이 누른 카드의 ID를 넘기면 그사이 바뀐 현재 행동에는 더 작게·되돌리기를 실행하지 않는다.
+    @Test
+    fun testSmallerAndUndoIgnoreAStaleCard() = runBlocking {
+        val smallest = ProposedAction("메모 앱 열기", "메모 앱이 열려 있다", 1)
+        val provider = ScriptedProvider(Action(first), Action(smaller), Action(smallest))
+        val flow = makeFlow(provider)
+        val source = firstCard(flow)
+        flow.makeSmaller(source.id)
+        flow.awaitSuggestion()
+        val small = flow.card()
+        flow.makeSmaller(source.id)
+        assertEquals(current(small), flow.state.value.screen)
+        flow.makeSmaller(small.id)
+        flow.awaitSuggestion()
+        val tiny = flow.card()
+        // 작은 행동 카드에서 누른 되돌리기가 더 작은 행동에 닿지 않는다.
+        flow.undoSplit(small.id)
+        assertEquals(current(tiny), flow.state.value.screen)
+        flow.undoSplit(tiny.id)
+        assertEquals(current(small), flow.state.value.screen)
+        assertEquals(3, provider.requests.size)
+    }
 }
