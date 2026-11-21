@@ -49,7 +49,11 @@ data class ActionCard(
     val materialLinks: List<String> = emptyList(),
     /** 같은 목표에서 같은 대상에 남긴 다른 행동의 결과다. */
     val previousResults: List<ActionResult> = emptyList(),
-)
+    /** 이 행동을 나눈 분할 원본이다. 원본이 `split`일 때만 있다. 되돌리기는 이 원본으로 돌아간다. */
+    val origin: Origin? = null,
+) {
+    data class Origin(val id: Long, val task: String)
+}
 
 data class ActionResult(val id: Long, val body: String)
 
@@ -63,16 +67,24 @@ sealed interface SuggestionProblem {
     data object Cancelled : SuggestionProblem
 }
 
+/** 현재 행동의 '더 작게' 요청 상태다. iOS `SmallerStatus`와 같다. */
+sealed interface SmallerStatus {
+    data object Waiting : SmallerStatus
+    /** 공급자가 행동 대신 확인 질문 하나를 돌려줬다. 답은 막힘 원인으로 저장한다. */
+    data class Question(val question: String) : SmallerStatus
+    data class Problem(val problem: SuggestionProblem) : SmallerStatus
+}
+
 /**
  * iOS `ProgressScreen` 중 이 단계에서 닿는 상태다. 대기 화면의 `problem`이 null이면 제안을 기다리는 중이다.
- * 정보 부족 안내·행동 질문·보류 중·목표 중단과 더 작게 상태는 해당 티켓(#353~#356)에서 더한다.
+ * 정보 부족 안내·행동 질문·보류 중·목표 중단은 해당 티켓(#354~#356)에서 더한다.
  */
 sealed interface ProgressScreen {
     data object GoalInput : ProgressScreen
     data class PreparingGoal(val question: String?, val completionCriteria: String?, override val problem: SuggestionProblem?) : ProgressScreen
     /** 첫 행동을 받기 전이다. 입력한 목표를 유지한다. */
     data class AwaitingFirstAction(val goal: String, override val problem: SuggestionProblem?) : ProgressScreen
-    data class CurrentAction(val card: ActionCard) : ProgressScreen
+    data class CurrentAction(val card: ActionCard, val smaller: SmallerStatus? = null) : ProgressScreen
     /** 완료 후 다음 행동을 받기 전이다. 완료 기록을 유지한다. */
     data class AwaitingNextAction(override val problem: SuggestionProblem?) : ProgressScreen
 
@@ -85,7 +97,8 @@ val ProgressScreen.isWaitingForSuggestion: Boolean
     get() = when (this) {
         is ProgressScreen.PreparingGoal -> this == ProgressScreen.PreparingGoal(null, null, null)
         is ProgressScreen.AwaitingFirstAction, is ProgressScreen.AwaitingNextAction -> problem == null
-        ProgressScreen.GoalInput, is ProgressScreen.CurrentAction -> false
+        is ProgressScreen.CurrentAction -> smaller == SmallerStatus.Waiting
+        ProgressScreen.GoalInput -> false
     }
 
 data class ProgressState(
@@ -96,7 +109,9 @@ data class ProgressState(
 )
 
 class ProgressFlowException(val reason: Reason) : RuntimeException(reason.name) {
-    enum class Reason { EMPTY_GOAL, EMPTY_ANSWER, GOAL_INPUT_NOT_ACTIVE, INVALID_GOAL_CONTEXT, GOAL_NOT_READY, GOAL_NOT_FOUND, EMPTY_RESULT, ACTION_NOT_CURRENT }
+    enum class Reason { EMPTY_GOAL, EMPTY_ANSWER, GOAL_INPUT_NOT_ACTIVE, INVALID_GOAL_CONTEXT, GOAL_NOT_READY, GOAL_NOT_FOUND, EMPTY_RESULT, ACTION_NOT_CURRENT,
+        SPLIT_SOURCE_NOT_FOUND, ANSWER_EXCEEDS_REQUEST_LIMIT,
+    }
 }
 
 /**
@@ -283,6 +298,77 @@ class ProgressFlow private constructor(
         }
     }
 
+    /**
+     * 현재 행동보다 쉬운 행동 하나를 바로 요청한다. 질문을 먼저 하지 않는다. 기다리는 중이면 무시한다.
+     * [actionId]를 주면 그 행동이 지금 보이는 현재 행동일 때만 실행한다. 화면은 누른 카드의 ID를 넘긴다.
+     */
+    suspend fun makeSmaller(actionId: Long? = null) = serially {
+        val screen = state.value.screen
+        if (screen !is ProgressScreen.CurrentAction || screen.smaller == SmallerStatus.Waiting) return@serially
+        if (actionId != null && screen.card.id != actionId) return@serially
+        perform { db ->
+            val goalId = selectedGoalId(db) ?: return@perform null
+            // 결과 저장에 실패해 pending으로 남은 요청을 끝낸다. 늦게 온 결과는 적용하지 않는다.
+            endPendingRequests(db, goalId, "interrupted")
+            insertRequest(db, goalId, SuggestionKind.SMALLER)
+        }
+    }
+
+    /** 실제 질문의 답을 원래 요청에 저장하고 같은 종류를 한 번 요청한다. 더 작게의 답만 막힘으로 확정한다. */
+    suspend fun answerQuestion(text: String) = serially {
+        if ((state.value.screen as? ProgressScreen.CurrentAction)?.smaller !is SmallerStatus.Question) return@serially
+        val answer = nonempty(text) ?: fail(ProgressFlowException.Reason.EMPTY_ANSWER)
+        val input = state.value.suggestionInput ?: fail(ProgressFlowException.Reason.GOAL_NOT_READY)
+        perform { db ->
+            val goalId = selectedGoalId(db)
+            val kind = goalId?.takeIf { loadSuggestionInput(db, it, loadScreen(db, it))?.requestId == input.requestId }?.let {
+                SuggestionKind.of(
+                    db.string(
+                        "SELECT r.kind FROM suggestion_request r JOIN goal g ON g.id = r.goal_id WHERE r.id = ? AND r.goal_id = ? " +
+                            "AND r.goal_revision = g.revision AND r.status = 'applied' AND r.question IS NOT NULL AND r.answer IS NULL " +
+                            "AND g.status = 'active'",
+                        input.requestId, it,
+                    ),
+                )
+            }
+            if (goalId == null || kind == null || kind == SuggestionKind.GOAL_PREPARATION) fail(ProgressFlowException.Reason.GOAL_NOT_READY)
+            if (kind == SuggestionKind.SMALLER) db.update("UPDATE goal SET blocker = ? WHERE id = ?", answer, goalId)
+            db.update("UPDATE suggestion_request SET answer = ? WHERE id = ?", answer, input.requestId)
+            bumpRevision(db, goalId)
+            insertRequest(db, goalId, kind).also {
+                // 보낼 수 없는 답은 저장하지 않는다. 예외로 트랜잭션을 되돌린다.
+                try {
+                    ServerSuggestionProvider.requestBody(it.request)
+                } catch (_: SuggestionException) {
+                    fail(ProgressFlowException.Reason.ANSWER_EXCEEDS_REQUEST_LIMIT)
+                }
+            }
+        }
+    }
+
+    /**
+     * 분할 직전 행동을 현재 행동으로 되돌린다. 작은 행동은 보류로 남긴다. 행동 결과는 지우지 않는다.
+     * [actionId]를 주면 그 행동이 지금 보이는 현재 행동일 때만 되돌린다.
+     */
+    suspend fun undoSplit(actionId: Long? = null) = serially {
+        val card = (state.value.screen as? ProgressScreen.CurrentAction)?.card ?: return@serially
+        if (actionId != null && card.id != actionId) return@serially
+        val origin = card.origin ?: return@serially
+        perform { db ->
+            val goalId = selectedGoalId(db) ?: return@perform null
+            if (db.update("UPDATE action SET status = 'deferred' WHERE id = ? AND status = 'current'", card.id) != 1) return@perform null
+            if (db.update("UPDATE action SET status = 'current' WHERE id = ? AND status = 'split'", origin.id) != 1) {
+                fail(ProgressFlowException.Reason.SPLIT_SOURCE_NOT_FOUND)
+            }
+            bumpRevision(db, goalId)
+            // 작은 행동에 대한 대기 요청은 이전 상태에 대한 요청이다.
+            endPendingRequests(db, goalId, "interrupted")
+            null
+        }
+        // 되돌린 뒤 결과를 버릴 공급자 작업은 취소한다.
+        if ((state.value.screen as? ProgressScreen.CurrentAction)?.card?.id == origin.id) suggestionJob?.cancel()
+    }
+
     /** 실패·중단·취소한 제안만 다시 요청한다. 기다리는 중이면 무시한다. */
     suspend fun retrySuggestion() = serially {
         if (state.value.screen.problem == null) return@serially
@@ -374,6 +460,8 @@ class ProgressFlow private constructor(
                         is ProgressScreen.PreparingGoal -> if (screen == ProgressScreen.PreparingGoal(null, null, null)) screen.copy(problem = failed) else screen
                         is ProgressScreen.AwaitingFirstAction -> if (screen.problem == null) screen.copy(problem = failed) else screen
                         is ProgressScreen.AwaitingNextAction -> if (screen.problem == null) screen.copy(problem = failed) else screen
+                        is ProgressScreen.CurrentAction ->
+                            if (screen.smaller == SmallerStatus.Waiting) screen.copy(smaller = SmallerStatus.Problem(failed)) else screen
                         else -> screen
                     },
                 )
@@ -407,7 +495,7 @@ class ProgressFlow private constructor(
 
         /**
          * 요청이 아직 `pending`이고 목표 리비전이 같을 때만 결과를 적용한다. 리비전이 바뀐 요청은 `interrupted`로 끝낸다.
-         * 아직 화면이 없는 후보(행동 요청의 질문, 정보 부족, 대체 후보 없음)는 부적합으로 끝낸다(#354, #356).
+         * 아직 화면이 없는 후보(더 작게가 아닌 행동 요청의 질문, 정보 부족, 대체 후보 없음)는 부적합으로 끝낸다(#354, #356).
          */
         private fun apply(db: SupportSQLiteDatabase, pending: PendingSuggestion, outcome: Result<SuggestionCandidate>) {
             val (status, revision) = db.query(
@@ -423,7 +511,8 @@ class ProgressFlow private constructor(
             val proposed = outcome.getOrElse {
                 return finishRequest(db, pending.id, "failed", (it as SuggestionException).failure.raw)
             }
-            val action = when (val candidate = CandidatePolicy.accept(proposed, pending.request)) {
+            val isSmaller = pending.request.kind == SuggestionKind.SMALLER
+            var action = when (val candidate = CandidatePolicy.accept(proposed, pending.request)) {
                 is SuggestionCandidate.GoalSummary -> {
                     db.update("UPDATE goal SET proposed_completion_criteria = ? WHERE id = ? AND NOT is_confirmed", candidate.criteria, pending.goalId)
                     return finishRequest(db, pending.id, "applied", null)
@@ -434,7 +523,7 @@ class ProgressFlow private constructor(
                         "SELECT EXISTS (SELECT 1 FROM suggestion_request WHERE goal_id = ? AND question = ? AND answer IS NOT NULL)",
                         pending.goalId, candidate.question,
                     ) == 1L
-                    if (pending.request.kind != SuggestionKind.GOAL_PREPARATION || answered) {
+                    if ((pending.request.kind != SuggestionKind.GOAL_PREPARATION && !isSmaller) || answered) {
                         return finishRequest(db, pending.id, "failed", UNSUITABLE)
                     }
                     db.update("UPDATE suggestion_request SET status = 'applied', question = ? WHERE id = ?", candidate.question, pending.id)
@@ -445,14 +534,34 @@ class ProgressFlow private constructor(
                 is SuggestionCandidate.InsufficientInfo, SuggestionCandidate.NoAction, null ->
                     return finishRequest(db, pending.id, "failed", UNSUITABLE)
             }
+            // 분할 원본은 내용을 바꾸지 않고 `split`으로 남긴다. 남은 범위와 목표의 완료 조건을 유지한다.
+            var sourceId: Long? = null
+            if (isSmaller) {
+                val source = db.query(
+                    "SELECT id, target_name, target_description, material_links FROM action WHERE goal_id = ? AND status = 'current'",
+                    pending.goalId,
+                ) { listOf(it.getLong(0), it.optString(1), it.optString(2), it.getString(3)) }.firstOrNull()
+                    ?: return finishRequest(db, pending.id, "interrupted", null)
+                sourceId = source[0] as Long
+                val (name, description, links) = Triple(source[1] as String?, source[2] as String?, source[3] as String)
+                // 같은 작업을 나눈 행동에서 생략한 대상 정보는 분할 원본의 정보를 유지한다.
+                if (action.targetName == null) action = action.copy(targetName = name)
+                if (action.targetName == name) {
+                    action = action.copy(
+                        targetDescription = action.targetDescription ?: description,
+                        materialLinks = action.materialLinks.ifEmpty { gson.fromJson(links, stringList) },
+                    )
+                }
+                db.update("UPDATE action SET status = 'split' WHERE id = ?", sourceId)
+            }
             db.insert(
                 """
                 INSERT INTO action (goal_id, task, done_when, estimated_minutes, reason, target_name, target_description,
                                     material_links, status, split_from_id, remaining_summary, sequence)
-                VALUES (?, ?, ?, ?, NULL, ?, ?, ?, 'current', NULL, NULL, (SELECT COALESCE(MAX(sequence), 0) + 1 FROM action WHERE goal_id = ?))
+                VALUES (?, ?, ?, ?, NULL, ?, ?, ?, 'current', ?, NULL, (SELECT COALESCE(MAX(sequence), 0) + 1 FROM action WHERE goal_id = ?))
                 """,
                 pending.goalId, action.task, action.doneWhen, action.estimatedMinutes, action.targetName, action.targetDescription,
-                gson.toJson(action.materialLinks), pending.goalId,
+                gson.toJson(action.materialLinks), sourceId, pending.goalId,
             )
             bumpRevision(db, pending.goalId)
             finishRequest(db, pending.id, "applied", null)
@@ -490,6 +599,7 @@ class ProgressFlow private constructor(
                 currentAction = contextAction(db, goalId, kind),
                 completedTasks = db.strings("SELECT a.task $completed", goalId),
                 blocker = db.string("SELECT blocker FROM goal WHERE id = ?", goalId),
+                splitSources = if (kind == SuggestionKind.SMALLER) splitSources(db, goalId) else emptyList(),
                 deferredTasks = db.strings("SELECT task FROM action WHERE goal_id = ? AND status = 'deferred' ORDER BY sequence", goalId),
                 context = details.context,
                 completionCriteria = details.completionCriteria,
@@ -502,19 +612,36 @@ class ProgressFlow private constructor(
             )
         }
 
-        /** 다음 행동은 방금 완료한 작은 행동의 분할 원본을 담는다. 더 작게는 #353에서 현재 행동을 담는다. */
+        /** 더 작게는 현재 행동을, 다음 행동은 방금 완료한 작은 행동의 분할 원본을 담는다. */
         private fun contextAction(db: SupportSQLiteDatabase, goalId: Long, kind: SuggestionKind): ProposedAction? {
-            if (kind != SuggestionKind.NEXT_ACTION) return null
-            return db.query(
-                """
-                SELECT p.task, p.done_when, p.estimated_minutes FROM completion c
-                JOIN action a ON a.id = c.action_id
-                LEFT JOIN action p ON p.id = a.split_from_id AND p.status = 'split'
-                WHERE a.goal_id = ? ORDER BY c.id DESC LIMIT 1
-                """,
-                goalId,
-            ) { if (it.isNull(0)) null else ProposedAction(it.getString(0), it.getString(1), it.getInt(2)) }.firstOrNull()
+            val sql = when (kind) {
+                SuggestionKind.SMALLER -> "SELECT task, done_when, estimated_minutes FROM action WHERE goal_id = ? AND status = 'current'"
+                SuggestionKind.NEXT_ACTION ->
+                    """
+                    SELECT p.task, p.done_when, p.estimated_minutes FROM completion c
+                    JOIN action a ON a.id = c.action_id
+                    LEFT JOIN action p ON p.id = a.split_from_id AND p.status = 'split'
+                    WHERE a.goal_id = ? ORDER BY c.id DESC LIMIT 1
+                    """
+                SuggestionKind.GOAL_PREPARATION, SuggestionKind.FIRST_ACTION, SuggestionKind.REPLACEMENT -> return null
+            }
+            return db.query(sql, goalId) { if (it.isNull(0)) null else ProposedAction(it.getString(0), it.getString(1), it.getInt(2)) }.firstOrNull()
         }
+
+        /** 현재 행동을 나눈 분할 원본을 가장 처음 원본부터 담는다. */
+        private fun splitSources(db: SupportSQLiteDatabase, goalId: Long) = db.strings(
+            """
+            WITH RECURSIVE source(id, task, depth) AS (
+                SELECT p.id, p.task, 1 FROM action a JOIN action p ON p.id = a.split_from_id
+                WHERE a.goal_id = ? AND a.status = 'current'
+                UNION ALL
+                SELECT p.id, p.task, s.depth + 1 FROM source s
+                JOIN action a ON a.id = s.id JOIN action p ON p.id = a.split_from_id
+            )
+            SELECT task FROM source ORDER BY depth DESC
+            """,
+            goalId,
+        )
 
         /** 목표 준비 질문의 답과 행동 요청 질문의 답을 나눠 읽는다. */
         private fun answers(db: SupportSQLiteDatabase, goalId: Long, goalPreparation: Boolean) = db.query(
@@ -532,11 +659,14 @@ class ProgressFlow private constructor(
             )
         }
 
-        /** 확인 질문이나 확인할 완료 조건이 보이는 동안만 초안을 받는다. 행동 질문은 #354에서 더한다. */
+        /** 확인 질문이나 확인할 완료 조건이 보이는 동안만 초안을 받는다. 행동 질문은 #356에서 더한다. */
         private fun loadSuggestionInput(db: SupportSQLiteDatabase, goalId: Long, screen: ProgressScreen): SuggestionInput? {
-            if (screen !is ProgressScreen.PreparingGoal || screen.problem != null || (screen.question == null && screen.completionCriteria == null)) {
-                return null
+            val asking = when (screen) {
+                is ProgressScreen.PreparingGoal -> screen.problem == null && (screen.question != null || screen.completionCriteria != null)
+                is ProgressScreen.CurrentAction -> screen.smaller is SmallerStatus.Question
+                else -> false
             }
+            if (!asking) return null
             val requestId = db.long("SELECT MAX(id) FROM suggestion_request WHERE goal_id = ?", goalId) ?: return null
             return SuggestionInput(requestId, db.string("SELECT value FROM app_metadata WHERE `key` = ?", "$SUGGESTION_INPUT:$goalId"))
         }
@@ -578,20 +708,39 @@ class ProgressFlow private constructor(
                 "SELECT statement, is_confirmed, proposed_completion_criteria FROM goal WHERE id = ?", goalId,
             ) { Triple(it.getString(0), it.getInt(1) == 1, it.optString(2)) }.firstOrNull() ?: return ProgressScreen.GoalInput
             val latest = db.query(
-                "SELECT status, failure_reason, question FROM suggestion_request WHERE goal_id = ? ORDER BY id DESC LIMIT 1", goalId,
-            ) { Triple(it.getString(0), it.optString(1), it.optString(2)) }.firstOrNull()
+                "SELECT r.status, r.failure_reason, r.question, r.kind, r.goal_revision = g.revision " +
+                    "FROM suggestion_request r JOIN goal g ON g.id = r.goal_id WHERE r.goal_id = ? ORDER BY r.id DESC LIMIT 1",
+                goalId,
+            ) { LatestRequest(it.getString(0), it.optString(1), it.optString(2), SuggestionKind.of(it.getString(3)), it.getInt(4) == 1) }
+                .firstOrNull()
             // 요청이 없으면 이전 상태에 대한 요청처럼 다시 시도를 기다린다.
-            val problem = if (latest == null) SuggestionProblem.Interrupted else requestProblem(latest.first, latest.second)
-            if (!confirmed) return ProgressScreen.PreparingGoal(latest?.third, proposed, problem)
-            loadCard(db, goalId)?.let { return ProgressScreen.CurrentAction(it) }
+            val problem = if (latest == null) SuggestionProblem.Interrupted else requestProblem(latest.status, latest.failureReason)
+            if (!confirmed) return ProgressScreen.PreparingGoal(latest?.question, proposed, problem)
+            loadCard(db, goalId)?.let { card ->
+                // 같은 리비전의 더 작게 요청만 현재 행동에 대한 요청이다.
+                val smaller = latest?.takeIf { it.kind == SuggestionKind.SMALLER && it.currentRevision }?.let {
+                    when {
+                        problem != null -> SmallerStatus.Problem(problem)
+                        it.question != null -> SmallerStatus.Question(it.question)
+                        it.status == "pending" -> SmallerStatus.Waiting
+                        else -> null
+                    }
+                }
+                return ProgressScreen.CurrentAction(card, smaller)
+            }
             if (hasCompletion(db, goalId)) return ProgressScreen.AwaitingNextAction(problem)
             return ProgressScreen.AwaitingFirstAction(statement, problem)
         }
 
+        private class LatestRequest(
+            val status: String, val failureReason: String?, val question: String?, val kind: SuggestionKind?, val currentRevision: Boolean,
+        )
+
         private fun loadCard(db: SupportSQLiteDatabase, goalId: Long): ActionCard? {
             val card = db.query(
-                "SELECT id, task, done_when, estimated_minutes, target_name, target_description, material_links " +
-                    "FROM action WHERE goal_id = ? AND status = 'current'",
+                "SELECT a.id, a.task, a.done_when, a.estimated_minutes, a.target_name, a.target_description, a.material_links, " +
+                    "a.split_from_id, p.task FROM action a LEFT JOIN action p ON p.id = a.split_from_id AND p.status = 'split' " +
+                    "WHERE a.goal_id = ? AND a.status = 'current'",
                 goalId,
             ) {
                 ActionCard(
@@ -599,6 +748,8 @@ class ProgressFlow private constructor(
                     targetName = it.optString(4),
                     targetDescription = it.optString(5),
                     materialLinks = gson.fromJson(it.getString(6), stringList),
+                    // 분할 원본이 `split`일 때만 되돌릴 수 있다. 보류·완료한 원본은 관계에서 뺀다.
+                    origin = it.optString(8)?.let { task -> ActionCard.Origin(it.getLong(7), task) },
                 )
             }.firstOrNull() ?: return null
             val notes = { sql: String, args: Array<Any?> -> db.query(sql, *args) { ActionResult(it.getLong(0), it.getString(1)) } }
