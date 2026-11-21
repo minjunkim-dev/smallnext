@@ -3,6 +3,7 @@
 import json
 import os
 from pathlib import Path
+import platform
 import re
 import subprocess
 import sys
@@ -49,6 +50,24 @@ def check_android():
         print(f"Android package: {package}")
 
 
+def android_avd_image():
+    """CI 기기 테스트 이미지에서 ABI만 이 호스트 CPU에 맞춘다. Apple silicon은 x86_64 이미지를 실행하지 못한다."""
+    image = config()["android_system_image"]
+    abi = "arm64-v8a" if platform.machine() in ("arm64", "aarch64") else "x86_64"
+    return f'{image.rsplit(";", 1)[0]};{abi}'
+
+
+def install_android_avd():
+    """CI의 `Start emulator` 단계와 같은 이미지·기본 기기로 `SmallnextCI` AVD를 만든다."""
+    check_java()
+    sdk = Path(os.environ["ANDROID_HOME"])
+    image = android_avd_image()
+    subprocess.run([str(sdk / "cmdline-tools/latest/bin/sdkmanager"), image, "emulator"], check=True)
+    subprocess.run([str(sdk / "cmdline-tools/latest/bin/avdmanager"), "create", "avd", "--force",
+                    "--name", "SmallnextCI", "--package", image], input="no\n", text=True, check=True)
+    print(f"AVD SmallnextCI: {image}")
+
+
 def check_ios():
     pins = config()
     version = output(["xcodebuild", "-version"])
@@ -86,6 +105,8 @@ def main():
         subprocess.run([str(sdk / "cmdline-tools/latest/bin/sdkmanager"),
                         f'platforms;android-{pins["android_platform"]}',
                         f'build-tools;{pins["android_build_tools"]}', "platform-tools"], check=True)
+    elif action == "android-avd":
+        install_android_avd()
     elif action == "ios":
         check_ios()
     else:

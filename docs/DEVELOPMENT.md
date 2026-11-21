@@ -253,6 +253,9 @@ make android-device-check
 `make android-sdk`는 고정 compile SDK와 Build Tools를 설치합니다.
 API 37의 SDK Manager 패키지 이름은 `platforms;android-37.0`입니다. Gradle의 `compileSdk = 37`과 구분합니다.
 CI 기기 테스트는 `.ci/toolchains.json`의 Android 35 google_apis x86_64 이미지를 사용합니다.
+`make android-avd`는 같은 이미지(ABI만 호스트 CPU에 맞춤)와 CI와 같은 기본 기기(320×640)로 `SmallnextCI` AVD를 만듭니다.
+화면 계측 테스트는 `"$ANDROID_HOME/emulator/emulator" -avd SmallnextCI`를 띄운 뒤 `make android-device-check`로 실행합니다. CI의 작은 화면에서만 가려지는 버튼·글자를 로컬에서 재현합니다.
+API 37 AVD에서는 지금의 Espresso가 `InputManager.getInstance`를 찾지 못해 Compose 화면 테스트가 모두 실패합니다.
 로컬 기기의 OS·CPU가 다르면 같은 명령으로 수행한 추가 플랫폼 검사로 기록합니다.
 Room 테스트는 별도 테스트 DB 파일을 생성하고 삭제합니다.
 앱의 실제 DB 파일을 삭제하지 않습니다.

@@ -3,37 +3,33 @@
 lockfile_version = 3
 
 [[tools.java]]
-version = "zulu-17.66.19.0"
+version = "temurin-17.0.20.1+1"
 backend = "core:java"
-specifiers = ["zulu-17.66.19.0"]
+specifiers = ["temurin-17.0.20.1+1"]
 
 [tools.java."platforms.linux-arm64"]
-checksum = "sha256:c17d5657a673c0cfc099e9d803ed30498495894d7359fd1064d463093ed9850b"
-url = "https://cdn.azul.com/zulu/bin/zulu17.66.19-ca-jdk17.0.19-linux_aarch64.tar.gz"
-
-[tools.java."platforms.linux-arm64-musl"]
-checksum = "sha256:2f740bbca0fb27017859a5e66d74540b517ac7a6b78b1c5de143c82bc6b64309"
-url = "https://cdn.azul.com/zulu/bin/zulu17.66.19-ca-jdk17.0.19-linux_musl_aarch64.tar.gz"
+checksum = "sha256:457b57af8f9c93ec39080bb8c764f559dc8c89a6da1a39d718a400b7890d3e41"
+url = "https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.20.1%2B1/OpenJDK17U-jdk_aarch64_linux_hotspot_17.0.20.1_1.tar.gz"
 
 [tools.java."platforms.linux-x64"]
-checksum = "sha256:ad319aabe659c18fa63fadb446026a7c7f5260f02a6159f51195735d20e7aa1c"
-url = "https://cdn.azul.com/zulu/bin/zulu17.66.19-ca-jdk17.0.19-linux_x64.tar.gz"
+checksum = "sha256:3808d1d15e3ec6bd5b84057fb5d84c33d8a1536a258146bcea2e603fc726e08e"
+url = "https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.20.1%2B1/OpenJDK17U-jdk_x64_linux_hotspot_17.0.20.1_1.tar.gz"
 
 [tools.java."platforms.linux-x64-musl"]
-checksum = "sha256:a9cf70d7d2c70fbf424e68326f8963bbbdef14069f5435ded54552d6efe6ed76"
-url = "https://cdn.azul.com/zulu/bin/zulu17.66.19-ca-jdk17.0.19-linux_musl_x64.tar.gz"
+checksum = "sha256:0c4fcdefa2737ccd66e049245fdb9dc431f91796182141204cd5f8192cb288e6"
+url = "https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.20.1%2B1/OpenJDK17U-jdk_x64_alpine-linux_hotspot_17.0.20.1_1.tar.gz"
 
 [tools.java."platforms.macos-arm64"]
-checksum = "sha256:f2bd5afaaaa4c23eb4bf2c78913c7eb7d3d228e44209ffec652fb72388a2f25c"
-url = "https://cdn.azul.com/zulu/bin/zulu17.66.19-ca-jdk17.0.19-macosx_aarch64.tar.gz"
+checksum = "sha256:196d13ba5f10414bef7f6a05a9b3f00edacb18ebacef2b99485db9e2ee18f0e8"
+url = "https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.20.1%2B1/OpenJDK17U-jdk_aarch64_mac_hotspot_17.0.20.1_1.tar.gz"
 
 [tools.java."platforms.macos-x64"]
-checksum = "sha256:6a7b8b23f2419ea1dde7eeace0d5a4cc5dbe7bbc83a8dda35dc64aa12269d041"
-url = "https://cdn.azul.com/zulu/bin/zulu17.66.19-ca-jdk17.0.19-macosx_x64.tar.gz"
+checksum = "sha256:c01975da12ed4235250ff891fe8bba73a9e73037d444b269c9d0922b5dbc8e0a"
+url = "https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.20.1%2B1/OpenJDK17U-jdk_x64_mac_hotspot_17.0.20.1_1.tar.gz"
 
 [tools.java."platforms.windows-x64"]
-checksum = "sha256:463c85454c45fd3827df7ccfaa2b14f136eb972387da697a349a42867334328a"
-url = "https://cdn.azul.com/zulu/bin/zulu17.66.19-ca-jdk17.0.19-win_x64.zip"
+checksum = "sha256:e53a79c3c3d86865bd7e787903884331068e71321714ffd44f145785affc7cb0"
+url = "https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.20.1%2B1/OpenJDK17U-jdk_x64_windows_hotspot_17.0.20.1_1.zip"
 
 [[tools.rust]]
 version = "1.99.1"
