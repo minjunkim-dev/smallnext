@@ -4,13 +4,16 @@ unexport RUSTUP_TOOLCHAIN
 API_MANIFEST := services/api/Cargo.toml
 COMPOSE := docker compose --env-file .env -f infra/dev/compose.yaml
 
-.PHONY: dev-db dev-db-stop api api-check api-test-db api-spec api-spec-check ios-check android-check android-device-check android-sdk api-setup repository-check api-image-build api-image-check api-production-check check
+.PHONY: dev-db dev-db-stop api api-check api-test-db api-spec api-spec-check ios-check android-check android-device-check android-sdk android-avd api-setup repository-check api-image-build api-image-check api-production-check check
 
 api-setup:
 	python3 scripts/environment.py rust-install
 
 android-sdk:
 	python3 scripts/environment.py android-install
+
+android-avd:
+	python3 scripts/environment.py android-avd
 
 dev-db:
 	$(COMPOSE) up -d --wait

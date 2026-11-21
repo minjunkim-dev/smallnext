@@ -66,6 +66,16 @@ class EnvironmentTests(unittest.TestCase):
         ci = (ROOT / ".github/workflows/api-checks.yml").read_text()
         image = next(line.strip() for line in dev.splitlines() if "image: postgres:" in line)
         self.assertIn(image, ci)
+        # mise로 받은 JDK가 `make android-check`의 Java 런타임 검사를 통과해야 한다.
+        mise = (ROOT / ".mise.toml").read_text()
+        self.assertIn(f'java = "temurin-{pins["java_runtime"]}"', mise)
+
+    def test_android_avd_image_matches_the_ci_image_except_for_abi(self):
+        pins = environment.config()
+        for machine, abi in (("x86_64", "x86_64"), ("arm64", "arm64-v8a"), ("aarch64", "arm64-v8a")):
+            with patch.object(environment.platform, "machine", return_value=machine):
+                image = environment.android_avd_image()
+            self.assertEqual(image.rsplit(";", 1), [pins["android_system_image"].rsplit(";", 1)[0], abi])
 
 
 class SimulatorTests(unittest.TestCase):
